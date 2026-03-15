@@ -31,7 +31,8 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"http://localhost:3000/assets/UNIT%20IMAGE%201-1/ESPION%201-1.png\")",
       "Bash(powershell -Command \"$p = Get-NetTCPConnection -LocalPort 3000 -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty OwningProcess; if \\($p\\) { Stop-Process -Id $p -Force; Start-Sleep 1 }; Start-Process node -ArgumentList ''server.js'' -WorkingDirectory ''e:\\\\Files\\\\Jeux\\\\JDR\\\\Kingdom App'' -WindowStyle Hidden; Write-Host ''OK''\")",
       "Bash(cp -r \"e:/Files/Jeux/JDR/Kingdom App/assets/GENERAL IMAGE 1-1/.\" \"e:/Files/Jeux/JDR/Kingdom App/public/assets/GENERAL IMAGE 1-1/\")",
-      "Bash(cp -r \"e:/Files/Jeux/JDR/Kingdom App/assets/UNIT IMAGE 1-1/.\" \"e:/Files/Jeux/JDR/Kingdom App/public/assets/UNIT IMAGE 1-1/\")"
+      "Bash(cp -r \"e:/Files/Jeux/JDR/Kingdom App/assets/UNIT IMAGE 1-1/.\" \"e:/Files/Jeux/JDR/Kingdom App/public/assets/UNIT IMAGE 1-1/\")",
+      "Bash(gh auth:*)"
     ]
   }
 }
