@@ -30,6 +30,38 @@ const GENERAL_TOKEN_MAP = {
   'ren_pa':      'Ren Pa',
   'go_hou_mei':  'Go Hou Mei',
 };
+const GENERAL_IMAGE1_MAP = {
+  'ou_ki':       { file: 'OU KI 1-1',       ext: 'jpg' },
+  'ou_sen':      { file: 'OU SEN 1-1',       ext: 'png' },
+  'mou_bu':      { file: 'MOU BU 1-1',       ext: 'jpg' },
+  'kan_ki':      { file: 'KAN KI 1-1',       ext: 'jpg' },
+  'ri_boku':     { file: 'RI BOKU 1-1',      ext: 'jpg' },
+  'kei_sha':     { file: 'KEI SHA 1-1',      ext: 'jpg' },
+  'shi_ba_shou': { file: 'SHI BA SHOU 1-1',  ext: 'jpg' },
+  'ren_pa':      { file: 'REN PA 1-1',       ext: 'jpg' },
+  'go_hou_mei':  { file: 'GO HOU MEI 1-1',   ext: 'jpg' },
+  'gai_mou':     { file: 'GAI MOU',          ext: 'jpg' },
+};
+const UNIT_IMAGE1_MAP = {
+  'pietaille':      { file: 'PIETAILLE 1-1',       ext: 'jpeg' },
+  'soldats':        { file: 'SOLDAT',               ext: 'jpg'  },
+  'phalange':       { file: 'PHALANGE 1-1',         ext: 'png'  },
+  'lancier':        { file: 'LANCIER 1-1',          ext: 'jpg'  },
+  'espion':         { file: 'ESPION 1-1',           ext: 'png'  },
+  'assassin':       { file: "ASSASSIN 1-1",         ext: 'jpg'  },
+  'cavalier_leger': { file: 'CAVALIER LEGER 1-1',   ext: 'jpg'  },
+  'cavalier_lourd': { file: 'CAVALIER LOURD 1-1',   ext: 'jpg'  },
+  'archer':         { file: 'ARCHER 1-1',           ext: 'jpg'  },
+  'archer_elite':   { file: "ARCHER D'ELITE 1-1",   ext: 'jpg'  },
+  'batisseurs':     { file: 'BATISSEUR 1-1',        ext: 'jpg'  },
+  'char':           { file: 'CHAR 1-1',             ext: 'png'  },
+};
+function img1Url(map, key, folder) {
+  const entry = map[key];
+  if (!entry) return null;
+  return `/assets/${folder}/${encodeURIComponent(entry.file)}.${entry.ext}`;
+}
+
 const generalTokenImages = {};
 for (const [id, name] of Object.entries(GENERAL_TOKEN_MAP)) {
   const img = new Image();
@@ -74,7 +106,7 @@ function drawForestTrees(ctx) {
     const [q, r] = key.split(',').map(Number);
     const { x, y } = hexToPixel(q, r);
     // 2 ou 3 arbres par case
-    const treeCount = 4 + Math.floor(seededRand(q * 137 + r * 251) * 3);
+    const treeCount = 7 + Math.floor(seededRand(q * 137 + r * 251) * 4);
     for (let i = 0; i < treeCount; i++) {
       const s1 = q * 1000 + r * 100 + i * 7 + 1;
       const s2 = q * 2000 + r * 200 + i * 13 + 2;
@@ -106,6 +138,50 @@ let myId = sessionStorage.getItem('myId');
 let roomCode = sessionStorage.getItem('roomCode');
 let gameState = null;
 let deployState = sessionStorage.getItem('deploymentState');
+
+// Animations de déplacement : unitId → { path:[[q,r],...], startTime, stepMs }
+const unitAnimations = {};
+const ANIM_STEP_MS = 200;
+let animLoopRunning = false;
+
+function startAnimLoop() {
+  if (animLoopRunning) return;
+  animLoopRunning = true;
+  function loop() {
+    const now = performance.now();
+    let anyActive = false;
+    for (const id of Object.keys(unitAnimations)) {
+      const a = unitAnimations[id];
+      const totalSteps = a.path.length;
+      const elapsed = now - a.startTime;
+      const currentStep = Math.floor(elapsed / ANIM_STEP_MS);
+      if (currentStep >= totalSteps) {
+        delete unitAnimations[id];
+      } else {
+        anyActive = true;
+      }
+    }
+    render();
+    if (anyActive) requestAnimationFrame(loop);
+    else animLoopRunning = false;
+  }
+  requestAnimationFrame(loop);
+}
+
+function getAnimatedPos(unit) {
+  const a = unitAnimations[unit.id];
+  if (!a) return null;
+  const elapsed = performance.now() - a.startTime;
+  const stepF = elapsed / ANIM_STEP_MS;
+  const step = Math.floor(stepF);
+  const t = stepF - step;
+  const totalSteps = a.path.length;
+  if (step >= totalSteps) return null;
+  // Position de départ de ce step
+  const fromPos = step === 0 ? hexToPixel(a.fromQ, a.fromR) : hexToPixel(a.path[step - 1][0], a.path[step - 1][1]);
+  const toPos = hexToPixel(a.path[step][0], a.path[step][1]);
+  return { x: fromPos.x + (toPos.x - fromPos.x) * t, y: fromPos.y + (toPos.y - fromPos.y) * t };
+}
 if (deployState) deployState = JSON.parse(deployState);
 
 let mode = 'select'; // select | move | attack | deploy
@@ -175,7 +251,6 @@ function render() {
   // Arbres sur les cases forêt (toujours visibles, couverts par le brouillard)
   drawForestTrees(ctx);
 
-  const hexes = deployState ? deployState.hexMap : (gameState ? null : null);
   const visibleSet = new Set(gameState?.visibleHexes || []);
   const startZone = deployState?.startingZone;
 
@@ -257,7 +332,8 @@ function render() {
   // Battle units
   for (const u of units) {
     if (u.q === null) continue;
-    const { x, y } = hexToPixel(u.q, u.r);
+    const animPos = getAnimatedPos(u);
+    const { x, y } = animPos || hexToPixel(u.q, u.r);
     const isSelected = selectedUnit && selectedUnit.id === u.id;
 
     // Vision radius for general (highlight)
@@ -272,9 +348,15 @@ function render() {
 }
 
 function getGeneralIdForUnit(unit) {
-  if (!unit.isGeneral || !gameState) return null;
-  const player = gameState.players.find(p => p.id === unit.playerId);
-  return player?.generalId || null;
+  if (!unit.isGeneral) return null;
+  if (gameState) {
+    const player = gameState.players.find(p => p.id === unit.playerId);
+    if (player?.generalId) return player.generalId;
+  }
+  // Pendant le déploiement, utiliser le generalId stocké dans l'unité ou deployState
+  if (unit.generalId) return unit.generalId;
+  if (deployState?.generalData?.id) return deployState.generalData.id;
+  return null;
 }
 
 function drawTokenImage(ctx, img, x, y, radius) {
@@ -380,7 +462,6 @@ function drawStar(ctx, cx, cy, spikes, outerR, innerR) {
 // ---- INPUT ----
 canvas.addEventListener('dblclick', (e) => {
   const hex = getHexUnderMouse(e);
-  const key = `${hex.q},${hex.r}`;
   const units = gameState?.units || deployState?.units || [];
   const unit = units.find(u => u.q === hex.q && u.r === hex.r);
   if (unit) showUnitCard(unit);
@@ -524,27 +605,36 @@ function handleHexClick(hex) {
 }
 
 function handleDeployClick(hex) {
-  if (!selectedUnit) return;
-  const zone = deployState.startingZone;
-  let inDeployZone = false;
-  const rRiver = Math.round(21 - 0.43 * hex.q);
-  if (zone.type === 'river_north') {
-    inDeployZone = hex.r >= rRiver - zone.radius && hex.r <= rRiver - 1;
-  } else if (zone.type === 'river_south') {
-    inDeployZone = hex.r >= rRiver + 1 && hex.r <= rRiver + zone.radius;
-  } else {
-    inDeployZone = hexDistance(hex.q, hex.r, zone.q, zone.r) <= zone.radius;
-  }
-  if (!inDeployZone) {
-    notify('Hors de la zone de déploiement.');
+  // Clic sur une unité déjà placée → la reprendre
+  const clickedUnit = deployState.units.find(u => u.q === hex.q && u.r === hex.r);
+  if (clickedUnit) {
+    if (selectedUnit && selectedUnit.id === clickedUnit.id) {
+      // Déselectionner si on reclique dessus
+      selectedUnit = null;
+      renderDeployUnitList(deployState.units);
+      render();
+      return;
+    }
+    selectedUnit = clickedUnit;
+    renderDeployUnitList(deployState.units);
+    render();
     return;
   }
-  // Check not already occupied
-  const occupied = deployState.units.some(u => u.q === hex.q && u.r === hex.r && u.id !== selectedUnit.id);
-  if (occupied) { notify('Case occupée.'); return; }
+
+  if (!selectedUnit) return;
+
+  const zone = deployState.startingZone;
+  const inDeployZone = hexDistance(hex.q, hex.r, zone.q, zone.r) <= zone.radius;
+
+  if (!inDeployZone) {
+    // Clic hors zone → déselectionner
+    selectedUnit = null;
+    renderDeployUnitList(deployState.units);
+    render();
+    return;
+  }
 
   socket.emit('place_unit', { roomCode, unitId: selectedUnit.id, q: hex.q, r: hex.r });
-  // Mise à jour locale immédiate
   selectedUnit.q = hex.q;
   selectedUnit.r = hex.r;
   selectedUnit = null;
@@ -584,9 +674,9 @@ function computeMovableTiles(unit) {
       const key = `${nq},${nr}`;
       if (visited.has(key)) continue;
       if (gameState && !gameState.visibleHexes.has(key)) continue;
-      // Check not occupied by enemy
+      // Toute case occupée (amie ou ennemie) bloque le passage
       const occupant = gameState?.units.find(u => u.q === nq && u.r === nr);
-      if (occupant && !occupant.isMine) continue;
+      if (occupant) continue;
       visited.add(key);
       movableTiles.add(key);
       queue.push({ q: nq, r: nr, steps: steps + 1 });
@@ -596,7 +686,6 @@ function computeMovableTiles(unit) {
 }
 
 function computeAttackableTiles(unit) {
-  const dirs = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
   if (!gameState) return;
 
   for (const u of gameState.units) {
@@ -749,6 +838,17 @@ function toggleToolPopup(id) {
   btn.classList.toggle('active', isVisible);
 }
 
+function toggleGridSubmenu() {
+  const sub = document.getElementById('grid-submenu');
+  const btn = document.getElementById('tool-grid-group');
+  const isVisible = sub.classList.toggle('visible');
+  btn.classList.toggle('active', isVisible);
+  if (!isVisible) {
+    document.querySelectorAll('#grid-submenu .tool-popup').forEach(p => p.classList.remove('visible'));
+    document.querySelectorAll('#grid-submenu .tool-btn').forEach(b => b.classList.remove('active'));
+  }
+}
+
 function toggleTerrain() {
   showTerrain = !showTerrain;
   document.getElementById('tool-terrain').classList.toggle('active', showTerrain);
@@ -790,19 +890,32 @@ function renderTurnOrder(turnOrder, initiativeRolls, currentPlayerId) {
   panel.style.display = 'block';
   list.innerHTML = '';
   const currentIdx = turnOrder.indexOf(currentPlayerId);
+
   for (let i = 0; i < turnOrder.length; i++) {
     const id = turnOrder[i];
     const roll = initiativeRolls?.[id];
-    const name = roll?.playerName || id;
     const isCurrent = id === currentPlayerId;
     const hasPlayed = currentIdx >= 0 && i < currentIdx;
+
+    // Trouver le generalId du joueur
+    const playerData = gameState?.players.find(p => p.id === id);
+    const gid = playerData?.generalId;
+    const imgToken = gid ? GENERAL_TOKEN_MAP[gid] : null;
+    const img1Src = img1Url(GENERAL_IMAGE1_MAP, gid, 'GENERAL IMAGE 1-1');
+    const imgTokenSrc = imgToken ? `/assets/GENERAL TOKEN/${encodeURIComponent(imgToken)}.png` : null;
+    let portraitHtml;
+    if (img1Src) {
+      portraitHtml = `<img class="to-portrait" src="${img1Src}">`;
+    } else if (imgTokenSrc) {
+      portraitHtml = `<img class="to-portrait" src="${imgTokenSrc}">`;
+    } else {
+      portraitHtml = `<div class="to-portrait-placeholder">★</div>`;
+    }
+
+    const name = roll?.playerName || roll?.generalName || id;
     const div = document.createElement('div');
     div.className = `turn-order-item${isCurrent ? ' current' : ''}${hasPlayed ? ' played' : ''}`;
-    div.innerHTML = `
-      <span class="to-rank">${i + 1}.</span>
-      <span class="to-name">${name}${id === myId ? ' (moi)' : ''}</span>
-      ${roll ? `<span style="color:#7a5820;font-size:0.85em">${roll.total}</span>` : ''}
-    `;
+    div.innerHTML = `${portraitHtml}<span class="to-name">${name}</span>`;
     list.appendChild(div);
   }
 }
@@ -856,82 +969,81 @@ function showUnitCard(unit) {
   const overlay = document.getElementById('overlay-unit-card');
   const content = document.getElementById('unit-card-content');
 
-  // Token image
-  let tokenHtml = '';
+  // Image portrait
+  let imgHtml = '';
   if (unit.isGeneral) {
     const gid = unit.generalId || (gameState?.players.find(p => p.id === unit.playerId)?.generalId);
-    const name = GENERAL_TOKEN_MAP[gid];
-    if (name) {
-      tokenHtml = `<img class="unit-card-token" src="/assets/GENERAL TOKEN/${encodeURIComponent(name)}.png" alt="${unit.name}">`;
+    const src = img1Url(GENERAL_IMAGE1_MAP, gid, 'GENERAL IMAGE 1-1');
+    if (src) {
+      imgHtml = `<img class="uc-pdf-img" src="${src}" alt="${unit.name}">`;
     } else {
-      tokenHtml = `<div class="unit-card-token-placeholder">★</div>`;
+      imgHtml = `<div class="uc-pdf-img-placeholder" style="font-size:52px;flex-direction:column;gap:8px">★<span style="font-size:14px;color:#7a5820">${unit.name}</span></div>`;
     }
   } else {
-    const name = UNIT_TOKEN_MAP[unit.typeId];
-    if (name) {
-      tokenHtml = `<img class="unit-card-token" src="/assets/UNIT TOKEN/${encodeURIComponent(name)}.png" alt="${unit.name}">`;
+    const src = img1Url(UNIT_IMAGE1_MAP, unit.typeId, 'UNIT IMAGE 1-1');
+    const imgToken = UNIT_TOKEN_MAP[unit.typeId];
+    if (src) {
+      imgHtml = `<img class="uc-pdf-img" src="${src}" alt="${unit.name}">`;
+    } else if (imgToken) {
+      imgHtml = `<img class="uc-pdf-img" src="/assets/UNIT TOKEN/${encodeURIComponent(imgToken)}.png" alt="${unit.name}">`;
     } else {
-      tokenHtml = `<div class="unit-card-token-placeholder">${unit.name.charAt(0)}</div>`;
+      imgHtml = `<div class="uc-pdf-img-placeholder">${unit.name.charAt(0)}</div>`;
     }
   }
 
-  const hpBar = `<div style="height:5px;background:#1a0a04;border-radius:3px;margin-top:4px">
-    <div style="height:100%;width:${Math.round(unit.vitality/unit.maxVitality*100)}%;background:${unit.vitality/unit.maxVitality>0.5?'#2a8c2a':unit.vitality/unit.maxVitality>0.25?'#c8960c':'#a02020'};border-radius:3px"></div>
-  </div>`;
+  // Barre de vie
+  const hpPct = Math.round(unit.vitality / unit.maxVitality * 100);
+  const hpColor = hpPct > 50 ? '#2a8c2a' : hpPct > 25 ? '#c8960c' : '#a02020';
+  const hpBar = `<div class="uc-pdf-hpbar-wrap"><div class="uc-pdf-hpbar" style="width:${hpPct}%;background:${hpColor}"></div></div>`;
 
-  let statsHtml = `<div class="unit-card-stats">
-    <div class="uc-stat"><span>Vitalité</span><span>${unit.vitality}/${unit.maxVitality}</span></div>
-    <div class="uc-stat"><span>Moral</span><span>${unit.morale ?? '—'}/${unit.maxMorale ?? '—'}</span></div>
-    <div class="uc-stat"><span>Attaque</span><span>${unit.attack}</span></div>
-    <div class="uc-stat"><span>Puissance</span><span>${unit.power}</span></div>
-    <div class="uc-stat"><span>Défense</span><span>${unit.defense}</span></div>
-    <div class="uc-stat"><span>Armure</span><span>${unit.armor}</span></div>
-    <div class="uc-stat"><span>Vitesse</span><span>${unit.speed}</span></div>
-    <div class="uc-stat"><span>Portée</span><span>${unit.range} case${unit.range > 1 ? 's' : ''}</span></div>
-    ${unit.visionRange > 0 ? `<div class="uc-stat"><span>Vision</span><span>${unit.visionRange} cases</span></div>` : ''}
-    ${unit.intimidation ? `<div class="uc-stat"><span>Intimidation</span><span>${unit.intimidation}</span></div>` : ''}
-  </div>`;
+  // Stats
+  const stats = [
+    { label: 'Vitalité', value: `${unit.vitality}/${unit.maxVitality}` },
+    { label: 'Morale',   value: `${unit.morale ?? '—'}/${unit.maxMorale ?? '—'}` },
+    { label: 'Attaque',  value: unit.attack },
+    { label: 'Défense',  value: unit.defense },
+    { label: 'Puissance',value: unit.power },
+    { label: 'Armure',   value: unit.armor },
+    { label: 'Intimidation', value: unit.intimidation ?? 0 },
+    { label: 'Vitesse',  value: unit.speed },
+  ];
+  if (unit.range > 1) stats.push({ label: 'Portée', value: `${unit.range} cases` });
 
-  let abilitiesHtml = '';
-  if (unit.activeAbility) {
-    abilitiesHtml += `<div class="unit-card-ability">
-      <div class="ab-name">⚡ ${unit.activeAbility.name}</div>
-      <div class="ab-desc">${unit.activeAbility.description}</div>
-      <div class="ab-cooldown">Recharge : ${unit.activeAbility.cooldown} tours</div>
-    </div>`;
-  }
-  if (unit.passiveAbility) {
-    abilitiesHtml += `<div class="unit-card-ability">
-      <div class="ab-name">🔹 ${unit.passiveAbility.name}</div>
-      <div class="ab-desc">${unit.passiveAbility.description}</div>
-    </div>`;
-  }
-  if (unit.bonus) {
-    abilitiesHtml += `<div class="unit-card-ability">
-      <div class="ab-name">✦ Capacité spéciale</div>
-      <div class="ab-desc">${unit.bonus}</div>
-    </div>`;
-  }
+  const statsHtml = stats.map(s =>
+    `<div class="uc-pdf-stat"><div class="uc-pdf-stat-label">${s.label}</div><div class="uc-pdf-stat-value">${s.value}</div></div>`
+  ).join('');
 
-  const citationHtml = unit.citation
-    ? `<div class="unit-card-citation">${unit.citation}</div>` : '';
+  // Bonus / capacités
+  const bonusLines = [];
+  if (unit.bonus) bonusLines.push(`<strong>Bonus :</strong> ${unit.bonus}`);
+  if (unit.activeAbility) bonusLines.push(`<strong>Capacité active :</strong> ${unit.activeAbility.name} — ${unit.activeAbility.description} (recharge : ${unit.activeAbility.cooldown} tours)`);
+  if (unit.passiveAbility) bonusLines.push(`<strong>Passif :</strong> ${unit.passiveAbility.name} — ${unit.passiveAbility.description}`);
+  const bonusHtml = bonusLines.length
+    ? `<div class="uc-pdf-bonus">${bonusLines.join('<br>')}</div>`
+    : `<div class="uc-pdf-bonus" style="color:#888;font-style:italic">Aucun bonus spécial</div>`;
 
-  const kingdom = unit.kingdom ? `<span style="color:#c8960c;font-size:0.8em;margin-left:6px">[${unit.kingdom}]</span>` : '';
-  const weapon = unit.weapon ? `<div style="font-size:0.78em;color:#7a5820;margin-top:1px">Arme : ${unit.weapon}</div>` : '';
+  // Titre
+  const category = unit.category ? `<br><span style="font-size:0.85em">(${unit.category})</span>` : '';
+  const titleHtml = `<div class="uc-pdf-title">${unit.name}${category}</div>`;
+
+  // Description
+  const descHtml = unit.description || unit.citation
+    ? `<div class="uc-pdf-desc"><strong>Description :</strong> ${unit.description || unit.citation}</div>`
+    : '';
 
   content.innerHTML = `
-    <div class="unit-card-header">
-      ${tokenHtml}
-      <div class="unit-card-title">
-        <h3>${unit.name}${kingdom}</h3>
-        <div class="uc-category">${unit.category || ''}</div>
-        ${weapon}
+    <div class="uc-pdf">
+      <div class="uc-pdf-left">
+        ${imgHtml}
         ${hpBar}
+        ${bonusHtml}
       </div>
+      <div class="uc-pdf-right">
+        ${titleHtml}
+        <div class="uc-pdf-stats">${statsHtml}</div>
+      </div>
+      ${descHtml}
     </div>
-    ${statsHtml}
-    ${abilitiesHtml}
-    ${citationHtml}
   `;
 
   overlay.style.display = 'flex';
@@ -993,6 +1105,11 @@ socket.on('phase_change', ({ phase }) => {
     setMode('select');
     document.getElementById('btn-deploy-ready').style.display = 'none';
   }
+});
+
+socket.on('unit_move_anim', ({ unitId, fromQ, fromR, path }) => {
+  unitAnimations[unitId] = { path, fromQ, fromR, startTime: performance.now() };
+  startAnimLoop();
 });
 
 socket.on('game_state', (state) => {
@@ -1058,7 +1175,7 @@ socket.on('deployment_ready_update', ({ readyCount, total }) => {
 
 socket.on('error', (msg) => notify(msg));
 
-socket.on('player_disconnected', ({ playerId }) => {
+socket.on('player_disconnected', () => {
   notify('Un joueur s\'est déconnecté.', 'info');
 });
 

@@ -154,7 +154,7 @@ class GameRoom {
       intimidation: data.intimidation,
       speed: data.speed,
       range: data.range,
-      visionRange: 1, // vision de base (1 case autour)
+      visionRange: 2,
       hasMoved: false,
       hasAttacked: false,
       q: null,
@@ -208,19 +208,15 @@ class GameRoom {
     if (!player) return { error: 'Joueur introuvable.' };
 
     const zone = player.startingZone;
-    const rRiver = Math.round(21 - 0.43 * q);
-    let inZone = false;
-    if (zone.type === 'river_north') {
-      inZone = r >= rRiver - zone.radius && r <= rRiver - 1;
-    } else if (zone.type === 'river_south') {
-      inZone = r >= rRiver + 1 && r <= rRiver + zone.radius;
-    } else {
-      inZone = hexDistance(q, r, zone.q, zone.r) <= zone.radius;
-    }
+    const inZone = hexDistance(q, r, zone.q, zone.r) <= zone.radius;
     if (!inZone) return { error: 'Hors de la zone de déploiement.' };
 
     const key = hexKey(q, r);
     if (!this.hexMap[key]) return { error: 'Case invalide.' };
+
+    // Pas de déploiement sur la rivière
+    const terrain = this.hexMap[key]?.terrain;
+    if (terrain === 'river') return { error: 'Impossible de se déployer sur la rivière.' };
 
     // Check if occupied
     for (const p of this.players) {
@@ -386,6 +382,8 @@ class GameRoom {
     const path = findPath(this.hexMap, this.unitMap, unit.q, unit.r, targetQ, targetR, unit.speed, playerId);
     if (path === null) return { error: 'Chemin inaccessible.' };
 
+    const fromQ = unit.q, fromR = unit.r;
+
     // Move unit
     delete this.unitMap[hexKey(unit.q, unit.r)];
     unit.q = targetQ;
@@ -393,7 +391,7 @@ class GameRoom {
     unit.hasMoved = true;
     this.unitMap[hexKey(targetQ, targetR)] = unit;
 
-    return { ok: true };
+    return { ok: true, unitId: unit.id, fromQ, fromR, path };
   }
 
   attackUnit(playerId, attackerId, targetId) {

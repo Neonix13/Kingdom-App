@@ -88,9 +88,9 @@ function findPath(hexMap, unitMap, q1, r1, q2, r2, maxSteps, playerId) {
       if (visited.has(key)) continue;
       if (!hexMap[key]) continue; // out of map
 
-      // Can't move through enemy units (but can move to empty or own general)
+      // Aucune unité ne peut traverser une case occupée (amie ou ennemie)
       const occupant = unitMap[key];
-      if (occupant && occupant.playerId !== playerId) continue;
+      if (occupant) continue;
 
       visited.set(key, true);
       const newPath = [...path, [nq, nr]];
@@ -102,25 +102,43 @@ function findPath(hexMap, unitMap, q1, r1, q2, r2, maxSteps, playerId) {
   return null;
 }
 
-// Rivière horizontale approximée en coordonnées hex
-// r_rivière(q) ≈ 21 - 0.43*q  (calculé depuis la calibration image)
-const RIVER_SLOPE = 0.43;
-const RIVER_OFFSET = 21;
-function riverR(q) { return Math.round(RIVER_OFFSET - RIVER_SLOPE * q); }
-
 const Q_MAP_MIN = 0;
-const Q_MAP_MAX = 57; // largeur de la carte en hexes
-const DEPLOY_RIVER_DIST = 3; // cases max de la rivière (Nord et Sud)
+const Q_MAP_MAX = 57;
+const DEPLOY_RADIUS = 4; // rayon de la zone de déploiement (en cases)
+const DEPLOY_OFFSET = 4; // décalage depuis la rivière vers chaque camp
 
 function getStartingZones(numPlayers, mapRadius) {
-  // Joueurs pairs (index 0,2,4,6) → Nord de la rivière
-  // Joueurs impairs (index 1,3,5,7) → Sud de la rivière
+  const td = getTerrainData();
+
+  // Trouver les cases rivière dans la zone centrale de la carte (éviter les bords)
+  const riverTiles = [];
+  for (const [key, type] of Object.entries(td)) {
+    if (type !== 'river') continue;
+    const [q, r] = key.split(',').map(Number);
+    if (q >= 10 && q <= 45) riverTiles.push({ q, r });
+  }
+
+  // Choisir un point de traversée aléatoire dans la rivière
+  let crossQ, crossR;
+  if (riverTiles.length > 0) {
+    const pick = riverTiles[Math.floor(Math.random() * riverTiles.length)];
+    crossQ = pick.q;
+    crossR = pick.r;
+  } else {
+    // Fallback si pas de terrain
+    crossQ = Math.round((Q_MAP_MIN + Q_MAP_MAX) / 2);
+    crossR = Math.round(21 - 0.43 * crossQ);
+  }
+
   const zones = [];
-  const qCenter = Math.round((Q_MAP_MIN + Q_MAP_MAX) / 2);
-  const rCenter = riverR(qCenter);
   for (let i = 0; i < numPlayers; i++) {
-    const type = (i % 2 === 0) ? 'river_north' : 'river_south';
-    zones.push({ q: qCenter, r: rCenter, radius: DEPLOY_RIVER_DIST, type });
+    if (i % 2 === 0) {
+      // Équipe paire → Nord de la rivière
+      zones.push({ q: crossQ, r: crossR - DEPLOY_OFFSET, crossR, radius: DEPLOY_RADIUS, type: 'circle' });
+    } else {
+      // Équipe impaire → Sud de la rivière
+      zones.push({ q: crossQ, r: crossR + DEPLOY_OFFSET, crossR, radius: DEPLOY_RADIUS, type: 'circle' });
+    }
   }
   return zones;
 }

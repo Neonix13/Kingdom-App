@@ -172,7 +172,9 @@ io.on('connection', (socket) => {
     if (room.getCurrentPlayerId() !== socket.id) return socket.emit('error', 'Ce n\'est pas votre tour.');
     const result = room.moveUnit(socket.id, unitId, targetQ, targetR);
     if (result.error) return socket.emit('error', result.error);
+    // Envoyer l'animation d'abord, puis le game_state
     room.players.forEach(p => {
+      io.to(p.id).emit('unit_move_anim', { unitId: result.unitId, fromQ: result.fromQ, fromR: result.fromR, path: result.path });
       io.to(p.id).emit('game_state', room.getGameState(p.id));
     });
   });

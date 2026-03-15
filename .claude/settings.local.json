@@ -20,7 +20,18 @@
       "Bash(node server.js)",
       "Bash(powershell -Command \"Stop-Process -Id 23392 -Force -ErrorAction SilentlyContinue; Start-Sleep 2; Start-Process node -ArgumentList ''server.js'' -WorkingDirectory ''e:\\\\Files\\\\Jeux\\\\JDR\\\\Kingdom App'' -WindowStyle Hidden\")",
       "Bash(powershell -Command \"Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep 2; Start-Process node -ArgumentList ''server.js'' -WorkingDirectory ''e:\\\\Files\\\\Jeux\\\\JDR\\\\Kingdom App'' -WindowStyle Hidden\")",
-      "Bash(powershell -Command \"Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force\")"
+      "Bash(powershell -Command \"Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force\")",
+      "Bash(git config:*)",
+      "Bash(netstat -ano)",
+      "Bash(cp -r \"e:/Files/Jeux/JDR/Kingdom App/assets/GENERAL IMAGE 1-1\" \"e:/Files/Jeux/JDR/Kingdom App/public/assets/GENERAL IMAGE 1-1\")",
+      "Bash(cp -r \"e:/Files/Jeux/JDR/Kingdom App/assets/UNIT IMAGE 1-1\" \"e:/Files/Jeux/JDR/Kingdom App/public/assets/UNIT IMAGE 1-1\")",
+      "Bash(wc -c \"e:/Files/Jeux/JDR/Kingdom App/terrain \\(3\\).json\" \"e:/Files/Jeux/JDR/Kingdom App/public/terrain.json\")",
+      "Bash(powershell -Command \":*)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"http://localhost:3000/assets/UNIT%20IMAGE%201-1/CHAR%201-1.png\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"http://localhost:3000/assets/UNIT%20IMAGE%201-1/ESPION%201-1.png\")",
+      "Bash(powershell -Command \"$p = Get-NetTCPConnection -LocalPort 3000 -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty OwningProcess; if \\($p\\) { Stop-Process -Id $p -Force; Start-Sleep 1 }; Start-Process node -ArgumentList ''server.js'' -WorkingDirectory ''e:\\\\Files\\\\Jeux\\\\JDR\\\\Kingdom App'' -WindowStyle Hidden; Write-Host ''OK''\")",
+      "Bash(cp -r \"e:/Files/Jeux/JDR/Kingdom App/assets/GENERAL IMAGE 1-1/.\" \"e:/Files/Jeux/JDR/Kingdom App/public/assets/GENERAL IMAGE 1-1/\")",
+      "Bash(cp -r \"e:/Files/Jeux/JDR/Kingdom App/assets/UNIT IMAGE 1-1/.\" \"e:/Files/Jeux/JDR/Kingdom App/public/assets/UNIT IMAGE 1-1/\")"
     ]
   }
 }
