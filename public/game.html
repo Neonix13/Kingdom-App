@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kingdom Battleground — Bataille</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    #sidebar { background: #120804; }
+
+    /* Barre d'outils */
+    #toolbar {
+      position: absolute;
+      top: 52px;
+      left: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      background: rgba(18,8,4,0.92);
+      border: 1px solid #3a2408;
+      border-radius: 8px;
+      padding: 6px;
+      z-index: 50;
+    }
+    .tool-btn {
+      width: 36px; height: 36px;
+      background: #1a0f04;
+      border: 1px solid #3a2408;
+      border-radius: 5px;
+      color: #c8a84b;
+      font-size: 15px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.1s, border-color 0.1s;
+    }
+    .tool-btn:hover { background: #2a1a08; border-color: #7a5820; }
+    .tool-btn.active { background: #3a2408; border-color: #c8960c; color: #ffd700; }
+    .tool-separator { height: 1px; background: #3a2408; margin: 2px 0; }
+    .tool-popup {
+      display: none;
+      position: absolute;
+      left: calc(100% + 8px);
+      top: 0;
+      background: rgba(18,8,4,0.95);
+      border: 1px solid #3a2408;
+      border-radius: 7px;
+      padding: 8px 10px;
+      white-space: nowrap;
+      align-items: center;
+      gap: 8px;
+      z-index: 60;
+    }
+    .tool-popup.visible { display: flex; }
+    .tool-popup label { font-size: 11px; color: #a89060; }
+    .tool-popup input[type=range] { width: 120px; accent-color: #c8960c; cursor: pointer; }
+    .grid-color-swatch {
+      width: 22px; height: 22px; border-radius: 4px; cursor: pointer;
+      border: 2px solid transparent; flex-shrink: 0;
+    }
+    .grid-color-swatch:hover { border-color: #c8960c; }
+    .grid-color-swatch.active { border-color: #ffd700; }
+    #unit-panel { padding: 8px; }
+    .unit-card-header { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
+    .unit-card-token { width:64px; height:64px; border-radius:50%; object-fit:cover; flex-shrink:0; }
+    .unit-card-token-placeholder { width:64px; height:64px; border-radius:50%; background:#1a0f04; border:2px solid #3a2408; display:flex; align-items:center; justify-content:center; font-size:24px; flex-shrink:0; }
+    .unit-card-title { flex:1; }
+    .unit-card-title h3 { margin:0 0 2px; color:#ffd700; font-size:1.1em; }
+    .unit-card-title .uc-category { font-size:0.78em; color:#7a5820; text-transform:uppercase; letter-spacing:1px; }
+    .unit-card-stats { display:grid; grid-template-columns:1fr 1fr; gap:4px 12px; margin-bottom:12px; }
+    .uc-stat { display:flex; justify-content:space-between; font-size:0.82em; padding:3px 0; border-bottom:1px solid #1a0f04; }
+    .uc-stat span:first-child { color:#a89060; }
+    .uc-stat span:last-child { color:#e0c080; font-weight:bold; }
+    .unit-card-ability { background:#0a0a0a; border:1px solid #3a2408; border-radius:5px; padding:8px 10px; margin-bottom:8px; font-size:0.8em; }
+    .unit-card-ability .ab-name { color:#c8960c; font-weight:bold; margin-bottom:3px; }
+    .unit-card-ability .ab-desc { color:#a89060; line-height:1.5; }
+    .unit-card-ability .ab-cooldown { color:#7a5820; font-size:0.85em; margin-top:3px; }
+    .unit-card-citation { font-style:italic; color:#7a5820; font-size:0.78em; text-align:center; margin-top:10px; border-top:1px solid #1a0f04; padding-top:8px; }
+    .initiative-row {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 8px; border-radius: 4px; margin-bottom: 4px;
+      background: #0f0804; border: 1px solid #2a1a08;
+      font-size: 0.82em;
+    }
+    .initiative-row.mine { border-color: #c8960c; background: #1a0f04; }
+    .initiative-row .rank { color: #7a5820; width: 18px; font-weight: bold; }
+    .initiative-row .i-name { flex: 1; color: #e0c080; }
+    .initiative-row .i-roll { color: #a89060; font-size: 0.9em; }
+    .initiative-row .i-roll strong { color: #ffd700; }
+    .turn-order-item {
+      display: flex; align-items: center; gap: 5px;
+      padding: 3px 6px; border-radius: 3px; margin-bottom: 3px;
+      font-size: 0.78em; opacity: 0.6;
+    }
+    .turn-order-item.current { opacity: 1; background: #1a0f04; border: 1px solid #c8960c; }
+    .turn-order-item .to-rank { color: #7a5820; width: 14px; }
+    .turn-order-item .to-name { flex: 1; color: #e0c080; }
+    .turn-order-item.played { text-decoration: line-through; opacity: 0.35; }
+    .unit-row {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      margin-bottom: 4px;
+      font-size: 0.82em;
+    }
+    .unit-row:hover { border-color: #3a2408; background: #0f0804; }
+    .unit-row.selected { border-color: #c8960c; background: #1a0f04; }
+    .unit-row.done { opacity: 0.5; }
+    .unit-row .icon { width: 20px; text-align: center; }
+    .unit-row .uname { flex: 1; }
+    .unit-row .uhp { color: #a89060; font-size: 0.85em; }
+    .unit-row.is-general .uname { color: #ffd700; }
+    .phase-overlay-title { font-size: 1.4em; color: #c8960c; text-align: center; margin-bottom: 12px; }
+    #deploy-instructions { color: #a89060; font-size: 0.85em; margin-bottom: 12px; text-align: center; }
+    .mode-indicator {
+      position: absolute; bottom: 12px; left: 12px;
+      background: rgba(20,10,4,0.9); border: 1px solid #5a3c10;
+      border-radius: 6px; padding: 8px 12px;
+      font-size: 0.85em; color: #c8960c;
+      z-index: 50;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <div id="canvas-area">
+      <div id="top-bar">
+        <span class="text-gold" style="font-weight:bold">KINGDOM BATTLEGROUND</span>
+        <span id="top-turn" class="text-muted">Tour 1</span>
+        <span id="top-current-player" style="color:#c8960c"></span>
+        <span style="flex:1"></span>
+        <span id="top-phase" class="text-muted"></span>
+      </div>
+      <canvas id="game-canvas"></canvas>
+
+      <!-- Barre d'outils haut-gauche -->
+      <div id="toolbar">
+        <button class="tool-btn active" id="tool-cursor" title="Sélection" onclick="setToolbarTool('cursor')">&#9654;</button>
+        <div class="tool-separator"></div>
+        <button class="tool-btn" id="tool-terrain" title="Afficher les terrains" onclick="toggleTerrain()">&#127795;</button>
+        <div class="tool-separator"></div>
+        <div style="position:relative">
+          <button class="tool-btn" id="tool-grid" title="Opacité de la grille" onclick="toggleToolPopup('grid-popup')">&#35;</button>
+          <div class="tool-popup" id="grid-popup">
+            <label>Opacité</label>
+            <input type="range" min="0" max="1" step="0.05" value="0.25" oninput="setGridOpacity(this.value)">
+          </div>
+        </div>
+        <div style="position:relative">
+          <button class="tool-btn" id="tool-grid-thick" title="Épaisseur de la grille" onclick="toggleToolPopup('grid-thick-popup')">&#8801;</button>
+          <div class="tool-popup" id="grid-thick-popup">
+            <label>Épaisseur</label>
+            <input type="range" min="0.3" max="4" step="0.1" value="1" oninput="setGridThickness(this.value)">
+          </div>
+        </div>
+        <div style="position:relative">
+          <button class="tool-btn" id="tool-grid-color" title="Couleur de la grille" onclick="toggleToolPopup('grid-color-popup')">&#11044;</button>
+          <div class="tool-popup" id="grid-color-popup" style="flex-wrap:wrap;max-width:180px;white-space:normal;gap:5px;">
+            <label style="width:100%;margin-bottom:2px">Couleur</label>
+            <div class="grid-color-swatch active" data-rgb="180,140,60" title="Or"     style="background:rgba(180,140,60,0.9)" onclick="setGridColor('180,140,60')"></div>
+            <div class="grid-color-swatch"        data-rgb="220,220,220" title="Blanc"   style="background:rgba(220,220,220,0.9)" onclick="setGridColor('220,220,220')"></div>
+            <div class="grid-color-swatch"        data-rgb="60,180,220" title="Cyan"    style="background:rgba(60,180,220,0.9)"  onclick="setGridColor('60,180,220')"></div>
+            <div class="grid-color-swatch"        data-rgb="220,80,40" title="Rouge"   style="background:rgba(220,80,40,0.9)"   onclick="setGridColor('220,80,40')"></div>
+            <div class="grid-color-swatch"        data-rgb="80,220,80" title="Vert"    style="background:rgba(80,220,80,0.9)"   onclick="setGridColor('80,220,80')"></div>
+            <div class="grid-color-swatch"        data-rgb="160,100,220" title="Violet"  style="background:rgba(160,100,220,0.9)" onclick="setGridColor('160,100,220')"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mode-indicator" id="mode-indicator">Mode : Sélection</div>
+    </div>
+
+    <div id="sidebar">
+      <div id="sidebar-header">
+        <h3 id="sidebar-title">Chargement…</h3>
+        <div id="turn-info"></div>
+      </div>
+
+      <div id="turn-order-panel" style="padding:6px 8px;display:none">
+        <div style="font-size:0.7em;color:#7a5820;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Ordre de tour</div>
+        <div id="turn-order-list"></div>
+      </div>
+
+      <div id="unit-panel">
+        <div id="unit-list"></div>
+      </div>
+
+      <div id="selected-unit-detail" style="display:none">
+        <h4 id="detail-name"></h4>
+        <div id="detail-stats"></div>
+      </div>
+
+      <div id="action-panel">
+        <h4>Actions</h4>
+        <div class="action-btns">
+          <button class="btn btn-primary" id="btn-move" style="display:none"></button>
+          <button class="btn btn-danger" id="btn-attack" onclick="setMode('attack')" style="display:none">Attaquer</button>
+          <button class="btn btn-primary" id="btn-ability" onclick="useAbility()" style="display:none">Capacité active</button>
+          <button class="btn btn-success" id="btn-end-turn" onclick="endTurn()" style="display:none">Fin du tour</button>
+          <button class="btn btn-success" id="btn-deploy-ready" onclick="deploymentReady()" style="display:none">Prêt !</button>
+        </div>
+      </div>
+
+      <div id="combat-log"></div>
+    </div>
+  </div>
+
+  <div id="notification"></div>
+  <div id="app-version" style="position:fixed;bottom:8px;right:12px;font-size:0.72em;color:#5a3c10;opacity:0.7;pointer-events:none;z-index:200"></div>
+
+  <!-- Initiative overlay -->
+  <div class="overlay" id="overlay-initiative" style="display:none">
+    <div class="overlay-box" style="min-width:320px">
+      <div id="initiative-content"></div>
+      <button class="btn btn-primary" style="width:100%;margin-top:14px" onclick="closeInitiativeModal()">Commencer !</button>
+    </div>
+  </div>
+
+  <!-- Fiche unité -->
+  <div class="overlay" id="overlay-unit-card" style="display:none" onclick="if(event.target===this)closeUnitCard()">
+    <div class="overlay-box" id="unit-card-box" style="min-width:300px;max-width:420px;position:relative">
+      <button onclick="closeUnitCard()" style="position:absolute;top:8px;right:10px;background:none;border:none;color:#7a5820;font-size:18px;cursor:pointer">✕</button>
+      <div id="unit-card-content"></div>
+    </div>
+  </div>
+
+  <!-- Game Over overlay -->
+  <div class="overlay" id="overlay-gameover" style="display:none">
+    <div class="overlay-box" style="text-align:center">
+      <h2>Fin de Bataille</h2>
+      <div id="gameover-msg" style="font-size:1.3em;margin:20px 0;color:#c8960c"></div>
+      <button class="btn btn-primary" onclick="window.location.href='/'">Retour au menu</button>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/version.js"></script>
+  <script src="/js/hexGrid.js"></script>
+  <script src="/js/game.js"></script>
+  <script>document.getElementById('app-version').textContent = APP_VERSION;</script>
+</body>
+</html>

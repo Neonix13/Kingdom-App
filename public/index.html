@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kingdom Battleground</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="lobby-container">
+    <div class="logo">
+      <h1>KINGDOM</h1>
+      <p>Battleground — Stratégie au Tour par Tour</p>
+    </div>
+
+    <!-- Écran d'accueil -->
+    <div id="screen-home">
+      <div class="card">
+        <h2>Créer une partie</h2>
+        <div class="input-group">
+          <label>Votre nom</label>
+          <input type="text" id="create-name" placeholder="Ex: Shin" maxlength="20">
+        </div>
+        <button class="btn btn-primary" onclick="createRoom()">Créer la salle</button>
+      </div>
+      <div class="divider">— ou —</div>
+      <div class="card">
+        <h2>Rejoindre une partie</h2>
+        <div class="input-group">
+          <label>Votre nom</label>
+          <input type="text" id="join-name" placeholder="Ex: Kyoukai" maxlength="20">
+        </div>
+        <div class="input-group">
+          <label>Code de la salle</label>
+          <input type="text" id="join-code" placeholder="Ex: AB3XYZ" maxlength="6" style="text-transform:uppercase">
+        </div>
+        <button class="btn btn-primary" onclick="joinRoom()">Rejoindre</button>
+      </div>
+    </div>
+
+    <!-- Salle d'attente -->
+    <div id="screen-lobby" style="display:none">
+      <div class="card">
+        <h2>Code de la salle</h2>
+        <div class="room-code" id="room-code-display">------</div>
+        <p class="text-muted" style="text-align:center;font-size:0.85em">Partagez ce code avec vos amis</p>
+      </div>
+
+      <div class="card" id="budget-card" style="display:none">
+        <h2>Budget par joueur</h2>
+        <div class="input-group">
+          <label>Montant (or)</label>
+          <input type="number" id="budget-input" value="15000" min="1000" max="100000" step="1000">
+        </div>
+        <button class="btn btn-primary" onclick="setBudget()">Définir le budget</button>
+        <p class="text-muted mt-8" style="font-size:0.8em">Budget actuel : <span id="current-budget" class="text-gold">15 000</span> or</p>
+      </div>
+
+      <div class="card">
+        <h2>Joueurs (<span id="player-count">0</span>/8)</h2>
+        <ul class="player-list" id="player-list"></ul>
+      </div>
+
+      <div class="card">
+        <h2>Choisir votre Général</h2>
+        <div class="generals-grid" id="generals-grid"></div>
+      </div>
+
+      <div class="mt-16 flex gap-8">
+        <button class="btn btn-success flex-1" id="start-btn" onclick="startGame()" style="display:none">
+          Lancer la bataille
+        </button>
+      </div>
+    </div>
+
+    <!-- Construction armée -->
+    <div id="screen-army" style="display:none">
+      <div class="phase-title">Construisez votre armée</div>
+      <div class="budget-bar">
+        <span class="budget-label">Budget :</span>
+        <span class="budget-value" id="army-budget">15 000</span>
+        <span class="budget-label">Dépensé :</span>
+        <span class="budget-used" id="army-spent">0</span>
+        <span class="budget-label">Restant :</span>
+        <span class="budget-value" id="army-remaining">15 000</span>
+      </div>
+      <div class="unit-shop" id="unit-shop"></div>
+      <div class="mt-16">
+        <button class="btn btn-success" onclick="submitArmy()">Confirmer l'armée</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="notification"></div>
+  <div id="app-version" style="position:fixed;bottom:8px;right:12px;font-size:0.72em;color:#5a3c10;opacity:0.7;pointer-events:none"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/version.js"></script>
+  <script src="/js/lobby.js"></script>
+  <script>document.getElementById('app-version').textContent = APP_VERSION;</script>
+</body>
+</html>

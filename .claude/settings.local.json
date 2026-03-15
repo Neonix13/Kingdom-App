@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(node -e \"require\\(''./game/GameRoom''\\); require\\(''./game/data/generals''\\); require\\(''./game/data/units''\\); require\\(''./game/HexUtils''\\); console.log\\(''OK - Tous les modules chargent correctement''\\)\")",
+      "Bash(taskkill /F /IM node.exe)",
+      "Bash(powershell -Command \"Stop-Process -Name node -Force -ErrorAction SilentlyContinue\")",
+      "Bash(python3 -c \"from PIL import Image; img = Image.open\\(''e:/Files/Jeux/JDR/Kingdom App/super test.webp''\\); print\\(img.size\\)\")",
+      "Bash(node -e \"const fs=require\\(''fs''\\); const buf=fs.readFileSync\\(''super test.webp''\\); console.log\\(''Taille fichier:'', buf.length, ''bytes''\\);\")",
+      "Bash(node -e \":*)",
+      "Bash(node -e:*)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000)",
+      "Bash(npx kill-port:*)",
+      "Bash(node \"e:/Files/Jeux/JDR/Kingdom App/server.js\")",
+      "Bash(find 'e:/Files/Jeux/JDR/Kingdom App' -name *.png)",
+      "Bash(curl -s http://localhost:3000)",
+      "Bash(cp -r \"e:/Files/Jeux/JDR/Kingdom App/assets/GENERAL TOKEN\" \"e:/Files/Jeux/JDR/Kingdom App/public/assets/GENERAL TOKEN\")",
+      "Bash(cp -r \"e:/Files/Jeux/JDR/Kingdom App/UNIT TOKEN\" \"e:/Files/Jeux/JDR/Kingdom App/public/assets/UNIT TOKEN\")",
+      "Bash(taskkill /F /PID 23392)",
+      "Bash(node server.js)",
+      "Bash(powershell -Command \"Stop-Process -Id 23392 -Force -ErrorAction SilentlyContinue; Start-Sleep 2; Start-Process node -ArgumentList ''server.js'' -WorkingDirectory ''e:\\\\Files\\\\Jeux\\\\JDR\\\\Kingdom App'' -WindowStyle Hidden\")",
+      "Bash(powershell -Command \"Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep 2; Start-Process node -ArgumentList ''server.js'' -WorkingDirectory ''e:\\\\Files\\\\Jeux\\\\JDR\\\\Kingdom App'' -WindowStyle Hidden\")",
+      "Bash(powershell -Command \"Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force\")"
+    ]
+  }
+}
