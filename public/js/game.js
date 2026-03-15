@@ -21,6 +21,18 @@ const treeImage = new Image();
 treeImage.src = '/assets/arbre.png';
 treeImage.onload = () => render();
 
+// Stance icons
+const stanceIcons = {};
+const stanceList = ['marche','combat','charge','percee','defense_combat','defense_distance'];
+const stanceIconFiles = { marche:'marche', combat:'combat', charge:'charge', percee:'percee', defense_combat:'def_charge', defense_distance:'def_eparse' };
+const stanceNames = { marche:'Marche', combat:'Combat', charge:'Charge', percee:'Percée', defense_combat:'Déf. combat', defense_distance:'Déf. distance' };
+for (const s of stanceList) {
+  const img = new Image();
+  img.src = `/icons/${stanceIconFiles[s]}.svg`;
+  img.onload = () => render();
+  stanceIcons[s] = img;
+}
+
 // Tokens des généraux
 const GENERAL_TOKEN_MAP = {
   'ou_ki':       'Ou Ki',
@@ -442,6 +454,32 @@ function drawUnit(ctx, x, y, unit, playerId, isSelected = false) {
     ctx.fill();
   }
 
+  // Overlay "en fuite"
+  if (unit.isFleeing) {
+    ctx.fillStyle = 'rgba(255,80,0,0.35)';
+    ctx.beginPath();
+    ctx.arc(x, y, tokenR, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Draw stance icon (bottom-right of hex) — only for own units
+  if (unit.isMine && unit.stance) {
+    const icon = stanceIcons[unit.stance];
+    const iconSize = HEX_SIZE * 0.4;
+    const iconX = x + HEX_SIZE * 0.45;
+    const iconY = y + HEX_SIZE * 0.35;
+    if (icon && icon.complete && icon.naturalWidth) {
+      ctx.drawImage(icon, iconX - iconSize/2, iconY - iconSize/2, iconSize, iconSize);
+    } else {
+      // Fallback: text indicator
+      ctx.fillStyle = 'rgba(200,150,12,0.9)';
+      ctx.font = `bold ${Math.round(HEX_SIZE * 0.22)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText((unit.stance || '').charAt(0).toUpperCase(), iconX, iconY);
+    }
+  }
+
   ctx.restore();
 }
 
@@ -647,20 +685,22 @@ function selectUnit(unit) {
   movableTiles.clear();
   attackableTiles.clear();
 
-  if (gameState?.currentPlayerId === myId && !unit.hasMoved) {
+  if (gameState?.currentPlayerId === myId && !unit.hasMoved && !unit.isFleeing) {
     computeMovableTiles(unit);
   }
-  if (gameState?.currentPlayerId === myId && !unit.hasAttacked) {
+  if (gameState?.currentPlayerId === myId && !unit.hasAttacked && !unit.isFleeing) {
     computeAttackableTiles(unit);
   }
 
   updateActionButtons();
   showUnitDetail(unit);
+  renderStancePanel(unit);
   render();
 }
 
 function computeMovableTiles(unit) {
-  // BFS up to speed tiles
+  // BFS up to speedRemaining tiles
+  const maxSpeed = unit.speedRemaining != null ? unit.speedRemaining : unit.speed;
   const visited = new Set();
   const queue = [{ q: unit.q, r: unit.r, steps: 0 }];
   const dirs = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
@@ -668,7 +708,7 @@ function computeMovableTiles(unit) {
   visited.add(`${unit.q},${unit.r}`);
   while (queue.length > 0) {
     const { q, r, steps } = queue.shift();
-    if (steps >= unit.speed) continue;
+    if (steps >= maxSpeed) continue;
     for (const [dq, dr] of dirs) {
       const nq = q + dq, nr = r + dr;
       const key = `${nq},${nr}`;
@@ -710,8 +750,9 @@ function setMode(newMode) {
 function updateActionButtons() {
   const isMyTurn = gameState?.currentPlayerId === myId;
   const hasUnit = !!selectedUnit;
-  const canMove = hasUnit && isMyTurn && !selectedUnit.hasMoved;
-  const canAttack = hasUnit && isMyTurn && !selectedUnit.hasAttacked;
+  const isFleeing = hasUnit && selectedUnit.isFleeing;
+  const canMove = hasUnit && isMyTurn && !selectedUnit.hasMoved && !isFleeing && (selectedUnit.speedRemaining > 0 || selectedUnit.speedRemaining == null);
+  const canAttack = hasUnit && isMyTurn && !selectedUnit.hasAttacked && !isFleeing;
   const isGeneral = hasUnit && selectedUnit.isGeneral;
   const canAbility = isGeneral && isMyTurn && !selectedUnit.hasUsedAbility && selectedUnit.abilityCooldown === 0;
 
@@ -720,22 +761,32 @@ function updateActionButtons() {
   document.getElementById('btn-ability').style.display = canAbility ? 'block' : 'none';
   document.getElementById('btn-end-turn').style.display = isMyTurn ? 'block' : 'none';
   document.getElementById('btn-deploy-ready').style.display = (mode === 'deploy') ? 'block' : 'none';
+
+  // Show/hide stance panel
+  const stancePanel = document.getElementById('stance-panel');
+  if (stancePanel) {
+    stancePanel.style.display = (hasUnit && isMyTurn && !isFleeing && gameState?.phase === 'battle') ? 'block' : 'none';
+  }
 }
 
 function showUnitDetail(unit) {
   const panel = document.getElementById('selected-unit-detail');
   if (!unit) { panel.style.display = 'none'; return; }
   panel.style.display = 'block';
-  document.getElementById('detail-name').textContent = unit.name;
+  document.getElementById('detail-name').textContent = unit.name + (unit.isFleeing ? ' (EN FUITE)' : '');
+  const speedLabel = unit.speedRemaining != null ? `${unit.speedRemaining}/${unit.speed}` : `${unit.speed}`;
+  const stanceLabel = unit.stance ? (stanceNames[unit.stance] || unit.stance) : '—';
   document.getElementById('detail-stats').innerHTML = `
     <div class="stat-row"><span>Vitalité</span><span>${unit.vitality}/${unit.maxVitality}</span></div>
+    <div class="stat-row"><span>Moral</span><span>${unit.morale != null ? unit.morale : '—'}/${unit.maxMorale != null ? unit.maxMorale : '—'}</span></div>
     <div class="stat-row"><span>Attaque</span><span>${unit.attack}</span></div>
     <div class="stat-row"><span>Puissance</span><span>${unit.power}</span></div>
     <div class="stat-row"><span>Défense</span><span>${unit.defense}</span></div>
     <div class="stat-row"><span>Armure</span><span>${unit.armor}</span></div>
-    <div class="stat-row"><span>Vitesse</span><span>${unit.speed}</span></div>
+    <div class="stat-row"><span>Vitesse</span><span>${speedLabel}</span></div>
     <div class="stat-row"><span>Portée</span><span>${unit.range} case${unit.range > 1 ? 's' : ''}</span></div>
     ${unit.visionRange > 0 ? `<div class="stat-row"><span>Vision</span><span>${unit.visionRange} cases</span></div>` : ''}
+    <div class="stat-row"><span>Posture</span><span>${stanceLabel}</span></div>
     <div class="stat-row"><span>Déplacé</span><span>${unit.hasMoved ? 'Oui' : 'Non'}</span></div>
     <div class="stat-row"><span>Attaqué</span><span>${unit.hasAttacked ? 'Oui' : 'Non'}</span></div>
   `;
@@ -750,10 +801,13 @@ function renderUnitList() {
   for (const u of myUnits) {
     const div = document.createElement('div');
     const done = u.hasMoved && u.hasAttacked;
+    const fleeing = u.isFleeing ? ' style="color:#f84"' : '';
+    const stanceLabel = u.stance ? (stanceNames[u.stance] || u.stance).charAt(0).toUpperCase() : '';
     div.className = `unit-row${selectedUnit?.id === u.id ? ' selected' : ''}${done ? ' done' : ''}${u.isGeneral ? ' is-general' : ''}`;
     div.innerHTML = `
       <span class="icon">${u.isGeneral ? '★' : '·'}</span>
-      <span class="uname">${u.name}</span>
+      <span class="uname"${fleeing}>${u.name}${u.isFleeing ? ' ✦' : ''}</span>
+      <span class="uhp" style="font-size:0.75em;color:#7a5820" title="${u.stance || ''}">[${stanceLabel}]</span>
       <span class="uhp">${u.vitality}/${u.maxVitality}</span>
     `;
     div.onclick = () => {
@@ -927,6 +981,8 @@ function endTurn() {
   movableTiles.clear();
   attackableTiles.clear();
   setMode('select');
+  const stancePanel = document.getElementById('stance-panel');
+  if (stancePanel) stancePanel.style.display = 'none';
 }
 
 function useAbility() {
@@ -956,9 +1012,11 @@ function addCombatLog(log) {
     text = `⚡ ${log.abilityUsed}: ${log.effects?.join(', ')}`;
   } else {
     text = `${log.attackerName} → ${log.targetName}: `;
-    text += log.hit ? `${log.damage} dégâts` : 'Manqué';
+    // Support both old format (damage) and new format (dmgReceived)
+    const dmg = log.dmgReceived != null ? log.dmgReceived : log.damage;
+    text += log.hit ? `${dmg} dégâts` : 'Manqué';
     if (log.targetKilled) text += ` (${log.targetName} éliminé!)`;
-    if (log.generalKilled) text += ` ⚠️ GÉNÉRAL TUÉ!`;
+    if (log.generalKilled) text += ` ⚠ GÉNÉRAL TUÉ!`;
   }
   entry.textContent = text;
   container.insertBefore(entry, container.firstChild);
@@ -1061,6 +1119,95 @@ function notify(msg, type = 'error') {
   setTimeout(() => n.style.display = 'none', 3000);
 }
 
+// ---- STANCE PANEL ----
+function renderStancePanel(unit) {
+  const panel = document.getElementById('stance-panel');
+  const listEl = document.getElementById('stance-list');
+  if (!panel || !listEl) return;
+  if (!unit || gameState?.currentPlayerId !== myId || unit.isFleeing || gameState?.phase !== 'battle') {
+    panel.style.display = 'none';
+    return;
+  }
+  panel.style.display = 'block';
+  listEl.innerHTML = '';
+  for (const s of stanceList) {
+    const btn = document.createElement('button');
+    btn.className = 'stance-btn' + (unit.stance === s ? ' active' : '');
+    btn.title = stanceNames[s] || s;
+    const icon = stanceIcons[s];
+    if (icon && icon.complete && icon.naturalWidth) {
+      btn.innerHTML = `<img src="${icon.src}" alt="${s}"> ${stanceNames[s] || s}`;
+    } else {
+      btn.textContent = stanceNames[s] || s;
+    }
+    btn.onclick = () => changeStance(unit.id, s);
+    listEl.appendChild(btn);
+  }
+}
+
+function changeStance(unitId, stanceId) {
+  if (!roomCode) return;
+  socket.emit('change_stance', { roomCode, unitId, stanceId });
+}
+
+// ---- COMBAT RESULT ----
+function showCombatResult(log) {
+  const el = document.getElementById('combat-result-box');
+  if (!el) return;
+  let html = `<b>${log.attackerName}</b> attaque <b>${log.targetName}</b><br>`;
+  html += `Attaque : ${log.attackTotal} vs D20=${log.attackD20} → ${log.hit ? '<span style="color:#4f4">TOUCHÉ</span>' : '<span style="color:#f44">RATÉ</span>'}<br>`;
+  if (log.hit) {
+    html += `Dégâts infligés : ${log.dmgInflicted} − armure ${log.armorAbsorb} = <b>${log.dmgReceived}</b><br>`;
+    html += `Moral −${log.moralDmg}<br>`;
+  }
+  if (log.defenseChoice && log.defenseChoice !== 'rien') {
+    html += `Défense (${log.defenseChoice}) : ${log.defenseSuccess ? '<span style="color:#4f4">SUCCÈS</span>' : '<span style="color:#f44">ÉCHEC</span>'}`;
+    if (log.defenseSuccess && log.counterDmgReceived > 0) {
+      html += ` → contre-attaque <b>${log.counterDmgReceived}</b> dégâts`;
+    }
+    html += '<br>';
+  }
+  if (log.targetKilled) html += `<span style="color:#f84">&#9876; ${log.targetName} éliminé !</span><br>`;
+  if (log.attackerKilled) html += `<span style="color:#f84">&#9876; ${log.attackerName} éliminé !</span><br>`;
+  el.innerHTML = html;
+  el.style.display = 'block';
+  clearTimeout(window._combatResultTimer);
+  window._combatResultTimer = setTimeout(() => { el.style.display = 'none'; }, 5000);
+}
+
+// ---- DEFENSE POPUP ----
+function showDefenseRequest(data) {
+  const overlay = document.getElementById('overlay-defense');
+  if (!overlay) return;
+  document.getElementById('defense-attacker-name').textContent = data.attackerName;
+  document.getElementById('defense-target-name').textContent = data.targetName;
+  overlay.style.display = 'flex';
+  overlay.dataset.attackId = data.attackId;
+  overlay.dataset.roomCode = data.roomCode;
+  // Countdown
+  let t = 8;
+  const countdown = document.getElementById('defense-countdown');
+  if (countdown) countdown.textContent = t;
+  window._defenseTimer = setInterval(() => {
+    t--;
+    if (countdown) countdown.textContent = t;
+    if (t <= 0) {
+      clearInterval(window._defenseTimer);
+      sendDefenseChoice('rien');
+    }
+  }, 1000);
+}
+
+function sendDefenseChoice(choice) {
+  clearInterval(window._defenseTimer);
+  const overlay = document.getElementById('overlay-defense');
+  if (!overlay) return;
+  const attackId = overlay.dataset.attackId;
+  const rc = overlay.dataset.roomCode;
+  overlay.style.display = 'none';
+  socket.emit('defend_choice', { roomCode: rc, attackId, choice });
+}
+
 // ---- SOCKET EVENTS ----
 socket.on('connect', () => {
   const oldPlayerId = sessionStorage.getItem('myId');
@@ -1130,8 +1277,8 @@ socket.on('game_state', (state) => {
   // Refresh selected unit from new state
   if (selectedUnit) {
     const updated = state.myUnits.find(u => u.id === selectedUnit.id);
-    if (updated) { selectedUnit = updated; showUnitDetail(updated); }
-    else { selectedUnit = null; showUnitDetail(null); }
+    if (updated) { selectedUnit = updated; showUnitDetail(updated); renderStancePanel(updated); }
+    else { selectedUnit = null; showUnitDetail(null); renderStancePanel(null); }
   }
 
   renderTurnOrder(state.turnOrder, state.initiativeRolls, state.currentPlayerId);
@@ -1156,8 +1303,29 @@ socket.on('initiative_rolled', ({ rolls, turnOrder, turn }) => {
   showInitiativeModal(rolls, turnOrder, turn);
 });
 
-socket.on('combat_result', (log) => {
+socket.on('combat_result', (data) => {
+  // Support both old format (direct log) and new format ({ combatLog })
+  const log = data.combatLog || data;
   addCombatLog(log);
+  showCombatResult(log);
+});
+
+socket.on('defense_request', (data) => {
+  showDefenseRequest(data);
+});
+
+socket.on('waiting_defense', () => {
+  const el = document.getElementById('combat-result-box');
+  if (el) { el.innerHTML = 'En attente de la réponse du défenseur…'; el.style.display = 'block'; }
+});
+
+socket.on('units_fled', ({ fled }) => {
+  const el = document.getElementById('combat-result-box');
+  if (el && fled.length > 0) {
+    el.innerHTML = fled.map(f => `&#127939; ${f.unitName} a fui !`).join('<br>');
+    el.style.display = 'block';
+    setTimeout(() => { el.style.display = 'none'; }, 4000);
+  }
 });
 
 socket.on('game_over', ({ winnerName }) => {

@@ -1,6 +1,10 @@
 const GENERALS = require('./data/generals');
 const UNITS = require('./data/units');
 const { hexDistance, hexKey, hexesInRange, generateHexMap, findPath, getStartingZones } = require('./HexUtils');
+const STANCES = require('./data/stances');
+const TERRAINS = require('./data/terrains');
+const fs = require('fs');
+const nodePath = require('path');
 
 const MAP_RADIUS = 30;
 
@@ -23,6 +27,10 @@ class GameRoom {
     this.winner = null;
     this.abilityCooldowns = {}; // playerId -> turnsRemaining
     this.activeEffects = []; // { type, targetPlayerId, turnsLeft, value }
+    this.pendingAttacks = {}; // attackId -> pending attack data
+    let terrainRaw = {};
+    try { terrainRaw = JSON.parse(fs.readFileSync(nodePath.join(__dirname, '../public/terrain.json'), 'utf8')); } catch(e) {}
+    this.terrainData = terrainRaw;
   }
 
   addPlayer(id, name) {
@@ -109,6 +117,7 @@ class GameRoom {
       power: generalData.weapon.damage,
       defense: generalData.force,
       armor: generalData.armor,
+      maxArmor: generalData.armor,
       intimidation: 5,
       speed: 3,
       range: 1,
@@ -126,6 +135,9 @@ class GameRoom {
       activeAbility: generalData.activeAbility,
       passiveAbility: generalData.passiveAbility,
       citation: generalData.citation,
+      stance: 'marche',
+      speedRemaining: 0,
+      isFleeing: false,
     };
 
     player.units = [generalUnit, ...units];
@@ -151,6 +163,7 @@ class GameRoom {
       power: data.power,
       defense: data.defense,
       armor: data.armor,
+      maxArmor: data.armor,
       intimidation: data.intimidation,
       speed: data.speed,
       range: data.range,
@@ -162,6 +175,9 @@ class GameRoom {
       buffs: [],
       category: data.category,
       bonus: data.bonus || null,
+      stance: 'marche',
+      speedRemaining: 0,
+      isFleeing: false,
     };
   }
 
@@ -259,6 +275,13 @@ class GameRoom {
       for (const u of p.units) {
         u.hasMoved = false;
         u.hasAttacked = false;
+      }
+    }
+    // Init speed for first player
+    const firstPlayer = this.getPlayer(this.getCurrentPlayerId());
+    if (firstPlayer) {
+      for (const u of firstPlayer.units) {
+        this._initUnitSpeedForTurn(u);
       }
     }
   }
@@ -377,9 +400,9 @@ class GameRoom {
     const player = this.getPlayer(playerId);
     const unit = player.units.find(u => u.id === unitId);
     if (!unit) return { error: 'Unité introuvable.' };
-    if (unit.hasMoved) return { error: 'Cette unité a déjà bougé ce tour.' };
+    if (unit.isFleeing) return { error: 'Unité en fuite.' };
 
-    const path = findPath(this.hexMap, this.unitMap, unit.q, unit.r, targetQ, targetR, unit.speed, playerId);
+    const path = findPath(this.hexMap, this.unitMap, unit.q, unit.r, targetQ, targetR, unit.speedRemaining, playerId);
     if (path === null) return { error: 'Chemin inaccessible.' };
 
     const fromQ = unit.q, fromR = unit.r;
@@ -389,20 +412,102 @@ class GameRoom {
     unit.q = targetQ;
     unit.r = targetR;
     unit.hasMoved = true;
+    unit.speedRemaining = Math.max(0, unit.speedRemaining - path.length);
     this.unitMap[hexKey(targetQ, targetR)] = unit;
 
     return { ok: true, unitId: unit.id, fromQ, fromR, path };
   }
 
-  attackUnit(playerId, attackerId, targetId) {
+  // Terrain and stance helpers
+  _getTerrainMods(q, r) {
+    const type = this.terrainData[`${q},${r}`];
+    return TERRAINS[type] || TERRAINS['plain'];
+  }
+
+  _getStanceMods(unit) {
+    return STANCES[unit.stance] || STANCES['marche'];
+  }
+
+  _initUnitSpeedForTurn(unit) {
+    if (unit.q === null) return;
+    const stance = this._getStanceMods(unit);
+    const terrain = this._getTerrainMods(unit.q, unit.r);
+    unit.speedRemaining = Math.max(0, unit.speed + stance.vitesse + terrain.vitesse);
+  }
+
+  _applyTurnRegen(unit) {
+    if (unit.q === null) return;
+    const stance = this._getStanceMods(unit);
+    const terrain = this._getTerrainMods(unit.q, unit.r);
+    const ar = (stance.armure_tour || 0) + (terrain.armure_tour || 0);
+    const mr = (stance.moral_tour || 0) + (terrain.moral_tour || 0);
+    const vr = (stance.vitalite_tour || 0) + (terrain.vitalite_tour || 0);
+    if (ar !== 0) unit.armor = Math.max(0, Math.min(unit.maxArmor || unit.armor, unit.armor + ar));
+    if (mr !== 0) unit.morale = Math.max(0, Math.min(unit.maxMorale, unit.morale + mr));
+    if (vr !== 0) unit.vitality = Math.max(0, Math.min(unit.maxVitality, unit.vitality + vr));
+  }
+
+  // Called at the start of a player's turn to handle fleeing units
+  _processFleeing(playerId) {
     const player = this.getPlayer(playerId);
-    const attacker = player.units.find(u => u.id === attackerId);
+    if (!player) return [];
+    const fled = [];
+    for (const unit of [...player.units]) {
+      if (!unit.isFleeing || unit.q === null) continue;
+      // Move toward nearest edge
+      const dist = hexDistance(0, 0, unit.q, unit.r);
+      if (dist === 0) {
+        // At center, pick direction q+1
+        const tq = unit.q + 1, tr = unit.r;
+        if (this.hexMap[hexKey(tq, tr)]) {
+          delete this.unitMap[hexKey(unit.q, unit.r)];
+          unit.q = tq; unit.r = tr;
+          this.unitMap[hexKey(tq, tr)] = unit;
+        }
+        continue;
+      }
+      const speed = unit.speedRemaining || unit.speed;
+      const scale = (dist + speed) / dist;
+      const targetQ = Math.round(unit.q * scale);
+      const targetR = Math.round(unit.r * scale);
+      if (!this.hexMap[hexKey(targetQ, targetR)]) {
+        // Outside map - unit has fled
+        player.units = player.units.filter(u => u.id !== unit.id);
+        delete this.unitMap[hexKey(unit.q, unit.r)];
+        fled.push({ unitId: unit.id, unitName: unit.name });
+        if (unit.isGeneral) { player.isEliminated = true; this._checkVictory(); }
+      } else {
+        // Move toward edge
+        delete this.unitMap[hexKey(unit.q, unit.r)];
+        unit.q = targetQ; unit.r = targetR;
+        this.unitMap[hexKey(targetQ, targetR)] = unit;
+      }
+      unit.speedRemaining = 0; // used up fleeing
+      unit.hasMoved = true;
+    }
+    return fled;
+  }
+
+  changeStance(playerId, unitId, stanceId) {
+    if (!STANCES[stanceId]) return { error: 'Posture invalide.' };
+    const player = this.getPlayer(playerId);
+    if (!player) return { error: 'Joueur introuvable.' };
+    const unit = player.units.find(u => u.id === unitId);
+    if (!unit) return { error: 'Unité introuvable.' };
+    if (unit.isFleeing) return { error: 'Unité en fuite.' };
+    if (unit.stance === stanceId) return { error: 'Déjà dans cette posture.' };
+    unit.speedRemaining = Math.max(0, unit.speedRemaining - 2);
+    unit.stance = stanceId;
+    return { ok: true };
+  }
+
+  initiateCombat(playerId, attackerId, targetId) {
+    const player = this.getPlayer(playerId);
+    const attacker = player?.units.find(u => u.id === attackerId);
     if (!attacker) return { error: 'Unité attaquante introuvable.' };
     if (attacker.hasAttacked) return { error: 'Cette unité a déjà attaqué ce tour.' };
 
-    // Find target
-    let targetPlayer = null;
-    let target = null;
+    let targetPlayer = null, target = null;
     for (const p of this.players) {
       if (p.id === playerId) continue;
       const u = p.units.find(u => u.id === targetId);
@@ -410,96 +515,149 @@ class GameRoom {
     }
     if (!target) return { error: 'Cible introuvable.' };
 
-    // Check range
     const dist = hexDistance(attacker.q, attacker.r, target.q, target.r);
     if (dist > attacker.range) return { error: `Cible hors de portée (distance: ${dist}, portée: ${attacker.range}).` };
 
-    // Combat resolution
-    const result = this._resolveCombat(attacker, target, dist, playerId, targetPlayer.id);
-
+    // Deduct speed (all remaining, min 1)
+    const speedCost = Math.max(1, attacker.speedRemaining);
+    attacker.speedRemaining = Math.max(0, attacker.speedRemaining - speedCost);
     attacker.hasAttacked = true;
 
-    // Apply damage
-    target.vitality -= result.damage;
+    const attackId = `atk_${Date.now()}_${Math.random()}`;
+    this.pendingAttacks[attackId] = { attackerPlayerId: playerId, attackerId, targetPlayerId: targetPlayer.id, targetId, dist };
+
+    return { pending: true, attackId, targetPlayerId: targetPlayer.id, attackerName: attacker.name, targetName: target.name };
+  }
+
+  resolveAttack(attackId, defenseChoice) {
+    const pending = this.pendingAttacks[attackId];
+    if (!pending) return { error: 'Attaque introuvable.' };
+    delete this.pendingAttacks[attackId];
+
+    const { attackerPlayerId, attackerId, targetPlayerId, targetId, dist } = pending;
+    const attackerPlayer = this.getPlayer(attackerPlayerId);
+    const targetPlayer = this.getPlayer(targetPlayerId);
+    if (!attackerPlayer || !targetPlayer) return { error: 'Joueur disparu.' };
+    const attacker = attackerPlayer.units.find(u => u.id === attackerId);
+    const target = targetPlayer.units.find(u => u.id === targetId);
+    if (!attacker || !target) return { error: 'Unité disparue.' };
+
+    const isCac = dist <= 1;
+    const result = this._resolveCombat(attacker, target, isCac, defenseChoice);
+
+    // Apply to target
+    target.vitality = Math.max(0, target.vitality - result.dmgReceived);
+    target.morale = Math.max(0, target.morale - result.moralDmg);
+    target.armor = Math.max(0, target.armor - 1); // -1 armure per attaque reçue
+    if (target.morale <= 0 && !target.isFleeing) { target.stance = 'marche'; target.isFleeing = true; }
+
+    // Apply to attacker (counter-attack)
+    if (result.counterDmgReceived > 0) {
+      attacker.vitality = Math.max(0, attacker.vitality - result.counterDmgReceived);
+      attacker.armor = Math.max(0, attacker.armor - 1);
+    }
+    if (result.counterMoralDmg > 0) {
+      attacker.morale = Math.max(0, attacker.morale - result.counterMoralDmg);
+      if (attacker.morale <= 0 && !attacker.isFleeing) { attacker.stance = 'marche'; attacker.isFleeing = true; }
+    }
+
     const combatLog = {
-      attackerName: attacker.name,
-      targetName: target.name,
-      attackerRoll: result.attackRoll,
-      defenseRoll: result.defenseRoll,
-      hit: result.hit,
-      damage: result.damage,
-      targetVitalityLeft: target.vitality,
+      attackerName: attacker.name, targetName: target.name,
+      defenseChoice,
+      attackTotal: result.attackTotal, attackD20: result.attackD20, hit: result.hit,
+      dmgInflicted: result.dmgInflicted, armorAbsorb: result.armorAbsorb, dmgReceived: result.dmgReceived,
+      moralDmg: result.moralDmg,
+      defenseRoll: result.defenseRoll, defenseSuccess: result.defenseSuccess,
+      counterDmgReceived: result.counterDmgReceived, counterMoralDmg: result.counterMoralDmg,
+      targetVitalityLeft: target.vitality, targetMoraleLeft: target.morale,
+      attackerVitalityLeft: attacker.vitality,
     };
-
-    // Kei Sha passive: attacker loses 1 vitality on defense (ignoring armor)
-    const targetGen = GENERALS.find(g => g.id === targetPlayer.generalId);
-    if (targetGen && targetGen.id === 'kei_sha') {
-      attacker.vitality -= 1;
-      combatLog.keiShaEffect = true;
-    }
-
-    // Soldats bonus: destroy if <= 3 vitality
-    const attackerGen = GENERALS.find(g => g.id === player.generalId);
-    if (attacker.typeId === 'soldats' && target.vitality <= 3 && target.vitality > 0) {
-      target.vitality = 0;
-      combatLog.executeKill = true;
-    }
 
     // Remove dead units
     if (target.vitality <= 0) {
       combatLog.targetKilled = true;
       targetPlayer.units = targetPlayer.units.filter(u => u.id !== targetId);
       delete this.unitMap[hexKey(target.q, target.r)];
-
-      // Shi Ba Shou passive: allies in 400m regain 1 vitality when unit dies
-      if (targetGen && targetGen.id === 'shi_ba_shou') {
-        for (const u of targetPlayer.units) {
-          if (u.q !== null && hexDistance(u.q, u.r, target.q, target.r) <= 4) {
-            u.vitality = Math.min(u.vitality + 1, u.maxVitality);
-          }
-        }
-      }
-
-      // Check if general was killed
-      if (target.isGeneral) {
-        targetPlayer.isEliminated = true;
-        combatLog.generalKilled = true;
-        combatLog.eliminatedPlayer = targetPlayer.name;
-        this._checkVictory();
-      }
+      if (target.isGeneral) { targetPlayer.isEliminated = true; combatLog.generalKilled = true; combatLog.eliminatedPlayer = targetPlayer.name; this._checkVictory(); }
     }
-
     if (attacker.vitality <= 0) {
       combatLog.attackerKilled = true;
-      player.units = player.units.filter(u => u.id !== attackerId);
+      attackerPlayer.units = attackerPlayer.units.filter(u => u.id !== attackerId);
       delete this.unitMap[hexKey(attacker.q, attacker.r)];
-      if (attacker.isGeneral) {
-        player.isEliminated = true;
-        this._checkVictory();
-      }
+      if (attacker.isGeneral) { attackerPlayer.isEliminated = true; this._checkVictory(); }
     }
 
     return { ok: true, combatLog };
   }
 
-  _resolveCombat(attacker, target, distance, attackerPlayerId, targetPlayerId) {
-    // Ranged units: no defense roll for target
-    const isRanged = attacker.range > 1;
-    const attackRoll = Math.floor(Math.random() * 20) + 1 + attacker.attack;
-    const defenseRoll = isRanged ? 0 : Math.floor(Math.random() * 20) + 1 + target.defense;
+  _resolveCombat(attacker, target, isCac, defenseChoice) {
+    const type = isCac ? 'cac' : 'tir';
+    const stA = this._getStanceMods(attacker);
+    const stD = this._getStanceMods(target);
+    const tA = this._getTerrainMods(attacker.q, attacker.r);
+    const tD = this._getTerrainMods(target.q, target.r);
 
-    // Apply active effects
-    let effectivePower = attacker.power;
-    let effectiveArmor = target.armor;
-    for (const e of this.activeEffects) {
-      if (e.type === 'power_boost' && e.targetPlayerId === attackerPlayerId) effectivePower += e.value;
-      if (e.type === 'armor_reduction' && e.targetPlayerId === targetPlayerId) effectiveArmor = Math.max(0, effectiveArmor - e.value);
+    // Attack effective
+    const attackTotal = attacker.attack
+      + (stA[`attack_${type}`] || 0) + (tA[`attack_${type}`] || 0)
+      - (stD[`esquive_${type}`] || 0) - (tD[`esquive_${type}`] || 0);
+    const attackD20 = Math.floor(Math.random() * 20) + 1;
+    const hit = attackTotal >= attackD20;
+
+    // Damage inflicted: N dé X where N=attacker.vitality, X=effective power
+    let dmgInflicted = 0;
+    if (hit) {
+      const dieFaces = Math.max(1, attacker.power + (stA[`puissance_${type}`] || 0) + (tA[`puissance_${type}`] || 0));
+      for (let i = 0; i < attacker.vitality; i++) {
+        dmgInflicted += Math.floor(Math.random() * dieFaces) + 1;
+      }
     }
 
-    const hit = isRanged || attackRoll > defenseRoll;
-    const damage = hit ? Math.max(1, effectivePower - effectiveArmor) : 0;
+    // Armor absorption: Vitalite_def × Armure_def_effective
+    const effectiveArmor = Math.max(0, target.armor + (stD.armure || 0) + (tD.armure || 0));
+    const armorAbsorb = target.vitality * effectiveArmor;
+    let dmgReceived = Math.max(0, dmgInflicted - armorAbsorb);
 
-    return { attackRoll, defenseRoll, hit, damage };
+    // Intimidation → moral damage
+    let moralDmg = attacker.vitality * Math.max(0,
+      attacker.intimidation + (stA[`intimidation_${type}`] || 0) + (tA[`intimidation_${type}`] || 0)
+    );
+
+    // Defense choice
+    let defenseRoll = null, defenseSuccess = false;
+    let counterDmgReceived = 0, counterMoralDmg = 0;
+
+    if (defenseChoice === 'counter' || defenseChoice === 'absorb') {
+      const defTotal = target.defense
+        + (stD[`defense_${type}`] || 0) + (tD[`defense_${type}`] || 0)
+        - (stA[`precision_${type}`] || 0) - (tA[`precision_${type}`] || 0);
+      defenseRoll = Math.floor(Math.random() * 20) + 1;
+      defenseSuccess = defTotal >= defenseRoll;
+
+      if (defenseSuccess) {
+        const counterDieFaces = Math.max(1, target.power + (stD[`puissance_${type}`] || 0) + (tD[`puissance_${type}`] || 0));
+        let counterRaw = 0;
+        for (let i = 0; i < target.vitality; i++) {
+          counterRaw += Math.floor(Math.random() * counterDieFaces) + 1;
+        }
+        const atkArmor = Math.max(0, attacker.armor + (stA.armure || 0) + (tA.armure || 0));
+        const atkArmorAbsorb = attacker.vitality * atkArmor;
+        const rawCounter = Math.max(0, counterRaw - atkArmorAbsorb);
+        const rawMoral = target.vitality * Math.max(0, target.intimidation + (stD[`intimidation_${type}`] || 0) + (tD[`intimidation_${type}`] || 0));
+
+        if (defenseChoice === 'absorb') {
+          dmgReceived = Math.ceil(dmgReceived / 2);
+          moralDmg = Math.ceil(moralDmg / 2);
+          counterDmgReceived = Math.ceil(rawCounter / 2);
+          counterMoralDmg = Math.ceil(rawMoral / 2);
+        } else {
+          counterDmgReceived = rawCounter;
+          counterMoralDmg = rawMoral;
+        }
+      }
+    }
+
+    return { attackTotal, attackD20, hit, dmgInflicted, armorAbsorb, dmgReceived, moralDmg, defenseRoll, defenseSuccess, counterDmgReceived, counterMoralDmg };
   }
 
   useGeneralAbility(playerId, targetHex, targetId) {
@@ -560,10 +718,9 @@ class GameRoom {
   }
 
   endTurn() {
-    // Reset flags for current player
-    const player = this.getPlayer(this.getCurrentPlayerId());
-    if (player) {
-      for (const u of player.units) {
+    const currentPlayer = this.getPlayer(this.getCurrentPlayerId());
+    if (currentPlayer) {
+      for (const u of currentPlayer.units) {
         u.hasMoved = false;
         u.hasAttacked = false;
         if (u.isGeneral) {
@@ -575,7 +732,6 @@ class GameRoom {
 
     this.currentTurnIndex++;
 
-    // Nouveau round quand tous les joueurs actifs ont joué
     const newRound = this.currentTurnIndex >= this.turnOrder.length;
     if (newRound) {
       this.turn++;
@@ -586,7 +742,18 @@ class GameRoom {
       this._rollInitiative();
     }
 
-    return { newRound };
+    // Init speed for new current player's units + apply regen + process fleeing
+    const nextPlayer = this.getPlayer(this.getCurrentPlayerId());
+    let fled = [];
+    if (nextPlayer) {
+      for (const u of nextPlayer.units) {
+        this._applyTurnRegen(u);
+        this._initUnitSpeedForTurn(u);
+      }
+      fled = this._processFleeing(nextPlayer.id);
+    }
+
+    return { newRound, fled };
   }
 
   _applyPassives() {

@@ -183,14 +183,59 @@ io.on('connection', (socket) => {
     const room = rooms[roomCode];
     if (!room || room.phase !== 'battle') return;
     if (room.getCurrentPlayerId() !== socket.id) return socket.emit('error', 'Ce n\'est pas votre tour.');
-    const result = room.attackUnit(socket.id, attackerId, targetId);
+    const result = room.initiateCombat(socket.id, attackerId, targetId);
     if (result.error) return socket.emit('error', result.error);
-    io.to(roomCode).emit('combat_result', result.combatLog);
-    room.players.forEach(p => {
+    if (result.pending) {
+      // Find defender socket
+      const defenderSocket = result.targetPlayerId;
+      io.to(defenderSocket).emit('defense_request', {
+        attackId: result.attackId,
+        attackerName: result.attackerName,
+        targetName: result.targetName,
+        roomCode,
+      });
+      socket.emit('waiting_defense', { attackId: result.attackId });
+      // Auto-resolve after 8 seconds
+      setTimeout(() => {
+        if (!room.pendingAttacks[result.attackId]) return;
+        const resolved = room.resolveAttack(result.attackId, 'rien');
+        if (resolved.ok) {
+          for (const p of room.players) {
+            io.to(p.id).emit('combat_result', { combatLog: resolved.combatLog });
+            io.to(p.id).emit('game_state', room.getGameState(p.id));
+          }
+          if (room.phase === 'ended') {
+            io.to(roomCode).emit('game_over', { winnerId: room.winner, winnerName: room.getPlayer(room.winner)?.name });
+          }
+        }
+      }, 8000);
+    }
+  });
+
+  socket.on('defend_choice', ({ roomCode, attackId, choice }) => {
+    const room = rooms[roomCode];
+    if (!room) return;
+    const resolved = room.resolveAttack(attackId, choice || 'rien');
+    if (resolved.error) return socket.emit('error', resolved.error);
+    if (resolved.ok) {
+      for (const p of room.players) {
+        io.to(p.id).emit('combat_result', { combatLog: resolved.combatLog });
+        io.to(p.id).emit('game_state', room.getGameState(p.id));
+      }
+      if (room.phase === 'ended') {
+        io.to(roomCode).emit('game_over', { winnerId: room.winner, winnerName: room.getPlayer(room.winner)?.name });
+      }
+    }
+  });
+
+  socket.on('change_stance', ({ roomCode, unitId, stanceId }) => {
+    const room = rooms[roomCode];
+    if (!room) return socket.emit('error', 'Salle introuvable.');
+    if (room.getCurrentPlayerId() !== socket.id) return socket.emit('error', 'Ce n\'est pas votre tour.');
+    const result = room.changeStance(socket.id, unitId, stanceId);
+    if (result.error) return socket.emit('error', result.error);
+    for (const p of room.players) {
       io.to(p.id).emit('game_state', room.getGameState(p.id));
-    });
-    if (room.phase === 'ended') {
-      io.to(roomCode).emit('game_over', { winnerId: room.winner, winnerName: room.getPlayer(room.winner)?.name });
     }
   });
 
@@ -210,7 +255,7 @@ io.on('connection', (socket) => {
     const room = rooms[roomCode];
     if (!room || room.phase !== 'battle') return;
     if (room.getCurrentPlayerId() !== socket.id) return socket.emit('error', 'Ce n\'est pas votre tour.');
-    const { newRound } = room.endTurn();
+    const { newRound, fled } = room.endTurn();
     if (newRound) {
       io.to(roomCode).emit('initiative_rolled', {
         rolls: room.initiativeRolls,
@@ -219,6 +264,11 @@ io.on('connection', (socket) => {
       });
     }
     io.to(roomCode).emit('turn_change', { currentPlayerId: room.getCurrentPlayerId(), turn: room.turn });
+    if (fled && fled.length > 0) {
+      for (const p of room.players) {
+        io.to(p.id).emit('units_fled', { fled });
+      }
+    }
     room.players.forEach(p => {
       io.to(p.id).emit('game_state', room.getGameState(p.id));
     });
