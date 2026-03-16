@@ -113,11 +113,25 @@ function seededRand(seed) {
 
 function drawForestTrees(ctx) {
   if (!treeImage.complete || !treeImage.naturalWidth) return;
+
+  // Opacité réduite uniquement autour des unités qui sont DANS une forêt
+  const unitProximity = new Set();
+  const allUnits = [...(gameState?.units || []), ...(deployState?.units || [])];
+  const dirs = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
+  for (const u of allUnits) {
+    if (u.q === null) continue;
+    const uKey = `${u.q},${u.r}`;
+    if (terrainData[uKey] === 'forest') {
+      unitProximity.add(uKey);
+      for (const [dq, dr] of dirs) unitProximity.add(`${u.q+dq},${u.r+dr}`);
+    }
+  }
+
   for (const [key, terrain] of Object.entries(terrainData)) {
     if (terrain !== 'forest') continue;
     const [q, r] = key.split(',').map(Number);
     const { x, y } = hexToPixel(q, r);
-    // 2 ou 3 arbres par case
+    const nearUnit = unitProximity.has(key);
     const treeCount = 7 + Math.floor(seededRand(q * 137 + r * 251) * 4);
     for (let i = 0; i < treeCount; i++) {
       const s1 = q * 1000 + r * 100 + i * 7 + 1;
@@ -127,8 +141,9 @@ function drawForestTrees(ctx) {
       const offsetX = (seededRand(s1) - 0.5) * HEX_SIZE * 1.1;
       const offsetY = (seededRand(s2) - 0.5) * HEX_SIZE * 0.9;
       const rotation = seededRand(s3) * Math.PI * 2;
-      const size = HEX_SIZE * (1.5 + seededRand(s4) * 0.7); // 1.5x à 2.2x le rayon
+      const size = HEX_SIZE * (1.5 + seededRand(s4) * 0.7);
       ctx.save();
+      ctx.globalAlpha = nearUnit ? 0.25 : 1.0;
       ctx.translate(x + offsetX, y + offsetY);
       ctx.rotate(rotation);
       ctx.drawImage(treeImage, -size / 2, -size / 2, size, size);
@@ -260,9 +275,6 @@ function render() {
     }
   }
 
-  // Arbres sur les cases forêt (toujours visibles, couverts par le brouillard)
-  drawForestTrees(ctx);
-
   const visibleSet = new Set(gameState?.visibleHexes || []);
   const startZone = deployState?.startingZone;
 
@@ -355,6 +367,9 @@ function render() {
 
     drawUnit(ctx, x, y, u, u.playerId, isSelected);
   }
+
+  // Arbres par dessus les unités
+  drawForestTrees(ctx);
 
   ctx.restore();
 }
@@ -462,8 +477,8 @@ function drawUnit(ctx, x, y, unit, playerId, isSelected = false) {
     ctx.fill();
   }
 
-  // Draw stance icon (bottom-right of hex) — only for own units
-  if (unit.isMine && unit.stance) {
+  // Draw stance icon (bottom-right of hex) — only for own non-general units
+  if (unit.isMine && unit.stance && !unit.isGeneral) {
     const icon = stanceIcons[unit.stance];
     const iconSize = HEX_SIZE * 0.4;
     const iconX = x + HEX_SIZE * 0.45;
@@ -685,7 +700,7 @@ function selectUnit(unit) {
   movableTiles.clear();
   attackableTiles.clear();
 
-  if (gameState?.currentPlayerId === myId && !unit.hasMoved && !unit.isFleeing) {
+  if (gameState?.currentPlayerId === myId && unit.speedRemaining > 0 && !unit.isFleeing) {
     computeMovableTiles(unit);
   }
   if (gameState?.currentPlayerId === myId && !unit.hasAttacked && !unit.isFleeing) {
@@ -751,7 +766,7 @@ function updateActionButtons() {
   const isMyTurn = gameState?.currentPlayerId === myId;
   const hasUnit = !!selectedUnit;
   const isFleeing = hasUnit && selectedUnit.isFleeing;
-  const canMove = hasUnit && isMyTurn && !selectedUnit.hasMoved && !isFleeing && (selectedUnit.speedRemaining > 0 || selectedUnit.speedRemaining == null);
+  const canMove = hasUnit && isMyTurn && !isFleeing && (selectedUnit.speedRemaining > 0);
   const canAttack = hasUnit && isMyTurn && !selectedUnit.hasAttacked && !isFleeing;
   const isGeneral = hasUnit && selectedUnit.isGeneral;
   const canAbility = isGeneral && isMyTurn && !selectedUnit.hasUsedAbility && selectedUnit.abilityCooldown === 0;
@@ -1124,7 +1139,7 @@ function renderStancePanel(unit) {
   const panel = document.getElementById('stance-panel');
   const listEl = document.getElementById('stance-list');
   if (!panel || !listEl) return;
-  if (!unit || gameState?.currentPlayerId !== myId || unit.isFleeing || gameState?.phase !== 'battle') {
+  if (!unit || unit.isGeneral || gameState?.currentPlayerId !== myId || unit.isFleeing || gameState?.phase !== 'battle') {
     panel.style.display = 'none';
     return;
   }
@@ -1277,8 +1292,15 @@ socket.on('game_state', (state) => {
   // Refresh selected unit from new state
   if (selectedUnit) {
     const updated = state.myUnits.find(u => u.id === selectedUnit.id);
-    if (updated) { selectedUnit = updated; showUnitDetail(updated); renderStancePanel(updated); }
-    else { selectedUnit = null; showUnitDetail(null); renderStancePanel(null); }
+    if (updated) {
+      selectedUnit = updated;
+      showUnitDetail(updated);
+      renderStancePanel(updated);
+      movableTiles.clear();
+      if (state.currentPlayerId === myId && updated.speedRemaining > 0 && !updated.isFleeing) {
+        computeMovableTiles(updated);
+      }
+    } else { selectedUnit = null; movableTiles.clear(); showUnitDetail(null); renderStancePanel(null); }
   }
 
   renderTurnOrder(state.turnOrder, state.initiativeRolls, state.currentPlayerId);
@@ -1337,8 +1359,13 @@ socket.on('game_over', ({ winnerName }) => {
 socket.on('deployment_ready_update', ({ readyCount, total }) => {
   notify(`${readyCount}/${total} joueurs prêts…`, 'info');
   const btn = document.getElementById('btn-deploy-ready');
-  btn.textContent = `En attente… (${readyCount}/${total} prêts)`;
-  btn.disabled = true;
+  if (btn.disabled) {
+    // Ce joueur a déjà cliqué Prêt — juste mettre à jour le texte
+    btn.textContent = `En attente… (${readyCount}/${total} prêts)`;
+  } else {
+    // Ce joueur n'a pas encore cliqué — afficher le compte sans bloquer
+    btn.textContent = `Prêt ! (${readyCount}/${total})`;
+  }
 });
 
 socket.on('error', (msg) => notify(msg));

@@ -158,7 +158,7 @@ io.on('connection', (socket) => {
         });
         console.log(`[deployment_ready] Bataille démarrée!`);
       } catch (e) {
-        console.error('[deployment_ready] ERREUR:', e.message);
+        console.error('[deployment_ready] ERREUR:', e.stack || e.message);
         socket.emit('error', 'Erreur au démarrage: ' + e.message);
       }
     }

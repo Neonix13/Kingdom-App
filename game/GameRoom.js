@@ -6,7 +6,7 @@ const TERRAINS = require('./data/terrains');
 const fs = require('fs');
 const nodePath = require('path');
 
-const MAP_RADIUS = 30;
+const MAP_RADIUS = 70;
 
 let unitCounter = 0;
 function newUnitId() { return `u_${++unitCounter}`; }
@@ -342,11 +342,19 @@ class GameRoom {
 
     for (const unit of player.units) {
       if (unit.q === null) continue;
-      const range = Math.max(1, unit.visionRange); // minimum 1 case de vision pour toutes les unités
+      const unitTerrain = this.terrainData[hexKey(unit.q, unit.r)] || 'plain';
+      const inForest = unitTerrain === 'forest';
+      // En forêt : vision réduite à 1. Hors forêt : vision normale mais forêts visibles max à 2
+      const range = inForest ? 1 : Math.max(2, unit.visionRange);
       const hexes = hexesInRange(unit.q, unit.r, range);
       for (const [hq, hr] of hexes) {
         const key = hexKey(hq, hr);
-        if (this.hexMap[key]) visible.add(key);
+        if (!this.hexMap[key]) continue;
+        // Hors forêt : les cases forêt ne sont visibles qu'à rayon ≤ 2
+        if (!inForest && this.terrainData[key] === 'forest') {
+          if (hexDistance(unit.q, unit.r, hq, hr) > 2) continue;
+        }
+        visible.add(key);
       }
     }
     return visible;
@@ -401,6 +409,7 @@ class GameRoom {
     const unit = player.units.find(u => u.id === unitId);
     if (!unit) return { error: 'Unité introuvable.' };
     if (unit.isFleeing) return { error: 'Unité en fuite.' };
+    if (unit.speedRemaining <= 0) return { error: 'Plus de déplacement disponible.' };
 
     const path = findPath(this.hexMap, this.unitMap, unit.q, unit.r, targetQ, targetR, unit.speedRemaining, playerId);
     if (path === null) return { error: 'Chemin inaccessible.' };
@@ -616,7 +625,7 @@ class GameRoom {
     // Armor absorption: Vitalite_def × Armure_def_effective
     const effectiveArmor = Math.max(0, target.armor + (stD.armure || 0) + (tD.armure || 0));
     const armorAbsorb = target.vitality * effectiveArmor;
-    let dmgReceived = Math.max(0, dmgInflicted - armorAbsorb);
+    let dmgReceived = Math.max(0, Math.floor((dmgInflicted - armorAbsorb) / 10));
 
     // Intimidation → moral damage
     let moralDmg = attacker.vitality * Math.max(0,

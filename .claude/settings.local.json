@@ -32,7 +32,16 @@
       "Bash(powershell -Command \"$p = Get-NetTCPConnection -LocalPort 3000 -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty OwningProcess; if \\($p\\) { Stop-Process -Id $p -Force; Start-Sleep 1 }; Start-Process node -ArgumentList ''server.js'' -WorkingDirectory ''e:\\\\Files\\\\Jeux\\\\JDR\\\\Kingdom App'' -WindowStyle Hidden; Write-Host ''OK''\")",
       "Bash(cp -r \"e:/Files/Jeux/JDR/Kingdom App/assets/GENERAL IMAGE 1-1/.\" \"e:/Files/Jeux/JDR/Kingdom App/public/assets/GENERAL IMAGE 1-1/\")",
       "Bash(cp -r \"e:/Files/Jeux/JDR/Kingdom App/assets/UNIT IMAGE 1-1/.\" \"e:/Files/Jeux/JDR/Kingdom App/public/assets/UNIT IMAGE 1-1/\")",
-      "Bash(gh auth:*)"
+      "Bash(gh auth:*)",
+      "Bash(cmd /c \"taskkill /F /IM node.exe\")",
+      "Bash(cmd /c \"taskkill /PID 31608 /F 2>&1\")",
+      "Bash(cmd /c \"wmic process where ProcessId=31608 get Name,ProcessId,CommandLine 2>&1\")",
+      "Bash(cmd /c \"wmic process get ProcessId,Name,CommandLine 2>&1\")",
+      "Bash(node --check server.js)",
+      "Bash(node --check game/GameRoom.js)",
+      "Bash(node --check game/data/stances.js)",
+      "Bash(node --check game/data/terrains.js)",
+      "Bash(powershell -Command \"Stop-Process -Id 31608 -Force; Start-Sleep 2; Start-Process node -ArgumentList ''server.js'' -WorkingDirectory ''e:\\\\Files\\\\Jeux\\\\JDR\\\\Kingdom App'' -WindowStyle Hidden\")"
     ]
   }
 }
