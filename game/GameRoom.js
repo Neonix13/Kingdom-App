@@ -139,7 +139,6 @@ class GameRoom {
       activeAbility: generalData.activeAbility,
       passiveAbility: generalData.passiveAbility,
       citation: generalData.citation,
-      stance: 'marche',
       speedRemaining: 0,
       isFleeing: false,
     };
@@ -465,14 +464,14 @@ class GameRoom {
 
   _initUnitSpeedForTurn(unit) {
     if (unit.q === null) return;
-    const stance = this._getStanceMods(unit);
+    const stance = unit.isGeneral ? {} : this._getStanceMods(unit);
     const terrain = this._getTerrainMods(unit.q, unit.r);
-    unit.speedRemaining = Math.max(0, unit.speed + stance.vitesse + terrain.vitesse);
+    unit.speedRemaining = Math.max(0, unit.speed + (stance.vitesse || 0) + terrain.vitesse);
   }
 
   _applyTurnRegen(unit) {
     if (unit.q === null) return;
-    const stance = this._getStanceMods(unit);
+    const stance = unit.isGeneral ? {} : this._getStanceMods(unit);
     const terrain = this._getTerrainMods(unit.q, unit.r);
     const ar = (stance.armure_tour || 0) + (terrain.armure_tour || 0);
     const mr = (stance.moral_tour || 0) + (terrain.moral_tour || 0);
@@ -529,6 +528,7 @@ class GameRoom {
     if (!player) return { error: 'Joueur introuvable.' };
     const unit = player.units.find(u => u.id === unitId);
     if (!unit) return { error: 'Unité introuvable.' };
+    if (unit.isGeneral) return { error: 'Les généraux n\'ont pas de posture.' };
     if (unit.isFleeing) return { error: 'Unité en fuite.' };
     if (unit.stance === stanceId) return { error: 'Déjà dans cette posture.' };
     unit.speedRemaining = Math.max(0, unit.speedRemaining - 2);
@@ -670,8 +670,8 @@ class GameRoom {
 
   _resolveCombat(attacker, target, isCac, defenseChoice) {
     const type = isCac ? 'cac' : 'tir';
-    const stA = this._getStanceMods(attacker);
-    const stD = this._getStanceMods(target);
+    const stA = attacker.isGeneral ? {} : this._getStanceMods(attacker);
+    const stD = target.isGeneral ? {} : this._getStanceMods(target);
     const tA = this._getTerrainMods(attacker.q, attacker.r);
     const tD = this._getTerrainMods(target.q, target.r);
     // Segment on the edge between attacker and target (only for adjacent melee)

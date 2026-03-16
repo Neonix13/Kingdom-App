@@ -457,8 +457,8 @@ function render() {
     }
   }
 
-  // Segments (arêtes entre tuiles)
-  drawSegments(ctx);
+  // Segments (arêtes entre tuiles) — visibles quand le toggle terrain est actif
+  if (showTerrain) drawSegments(ctx);
 
   ctx.restore();
 }
@@ -931,7 +931,7 @@ function updateActionButtons() {
   // Show/hide stance panel
   const stancePanel = document.getElementById('stance-panel');
   if (stancePanel) {
-    stancePanel.style.display = (hasUnit && isMyTurn && !isFleeing && gameState?.phase === 'battle') ? 'block' : 'none';
+    stancePanel.style.display = (hasUnit && isMyTurn && !isFleeing && !selectedUnit?.isGeneral && gameState?.phase === 'battle') ? 'block' : 'none';
   }
 }
 
@@ -952,7 +952,7 @@ function showUnitDetail(unit) {
     <div class="stat-row"><span>Vitesse</span><span>${speedLabel}</span></div>
     <div class="stat-row"><span>Portée</span><span>${unit.range} case${unit.range > 1 ? 's' : ''}</span></div>
     ${unit.visionRange > 0 ? `<div class="stat-row"><span>Vision</span><span>${unit.visionRange} cases</span></div>` : ''}
-    <div class="stat-row"><span>Posture</span><span>${stanceLabel}</span></div>
+    ${!unit.isGeneral ? `<div class="stat-row"><span>Posture</span><span>${stanceLabel}</span></div>` : ''}
     <div class="stat-row"><span>Déplacé</span><span>${unit.hasMoved ? 'Oui' : 'Non'}</span></div>
     <div class="stat-row"><span>Attaqué</span><span>${unit.hasAttacked ? 'Oui' : 'Non'}</span></div>
   `;
@@ -973,7 +973,7 @@ function renderUnitList() {
     div.innerHTML = `
       <span class="icon">${u.isGeneral ? '★' : '·'}</span>
       <span class="uname"${fleeing}>${u.name}${u.isFleeing ? ' ✦' : ''}</span>
-      <span class="uhp" style="font-size:0.75em;color:#7a5820" title="${u.stance || ''}">[${stanceLabel}]</span>
+      ${!u.isGeneral ? `<span class="uhp" style="font-size:0.75em;color:#7a5820" title="${u.stance || ''}">[${stanceLabel}]</span>` : ''}
       <span class="uhp">${u.vitality}/${u.maxVitality}</span>
     `;
     div.onclick = () => {
