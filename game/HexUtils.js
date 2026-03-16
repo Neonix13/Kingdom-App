@@ -13,6 +13,22 @@ function getTerrainData() {
   return _terrainData;
 }
 
+const SEGMENT_DEFS = require('./data/segments');
+let _segmentData = null;
+function getSegmentData() {
+  if (!_segmentData) {
+    try {
+      _segmentData = JSON.parse(fs.readFileSync(path.join(__dirname, '../public/segments.json'), 'utf8'));
+    } catch(e) { _segmentData = {}; }
+  }
+  return _segmentData;
+}
+
+function segmentEdgeKey(q1, r1, q2, r2) {
+  if (q1 < q2 || (q1 === q2 && r1 < r2)) return `${q1},${r1}|${q2},${r2}`;
+  return `${q2},${r2}|${q1},${r1}`;
+}
+
 // Calibration carte (synchronisé avec public/js/hexGrid.js)
 const MAP_HEX_SIZE = 101.5;
 const MAP_ORIG_X   = 137;
@@ -78,13 +94,14 @@ function terrainMoveCost(terrain) {
   return costs[terrain] ?? 1;
 }
 
-// Dijkstra pathfinding with terrain movement costs (returns path array or null)
-function findPath(hexMap, unitMap, q1, r1, q2, r2, maxSpeed, playerId) {
+// Dijkstra pathfinding with terrain + segment movement costs (returns path array or null)
+function findPath(hexMap, unitMap, q1, r1, q2, r2, maxSpeed, playerId, unit) {
   if (q1 === q2 && r1 === r2) return [];
 
-  // dist[key] = { cost, path }
+  const segMap = getSegmentData();
+  const isCavalry = unit && (unit.category === 'Chevaux' || unit.category === 'Chars');
+
   const dist = new Map();
-  // Min-heap via sorted array (small map, acceptable perf)
   const queue = [{ q: q1, r: r1, cost: 0, path: [] }];
   dist.set(hexKey(q1, r1), 0);
 
@@ -98,12 +115,34 @@ function findPath(hexMap, unitMap, q1, r1, q2, r2, maxSpeed, playerId) {
     for (const [nq, nr] of hexNeighbors(q, r)) {
       const key = hexKey(nq, nr);
       if (!hexMap[key]) continue;
+      if (unitMap[key]) continue;
 
-      const occupant = unitMap[key];
-      if (occupant) continue;
+      // Segment check
+      const edgeK = segmentEdgeKey(q, r, nq, nr);
+      const segType = segMap[edgeK];
+      const segDef = segType ? SEGMENT_DEFS[segType] : null;
+      if (segDef) {
+        if (segDef.infranchissable) continue;
+        if (segDef.infranchissable_cavalerie && isCavalry) continue;
+      }
 
       const srcTerrain = hexMap[hexKey(q, r)]?.terrain || 'plain';
-      const newCost = cost + terrainMoveCost(srcTerrain);
+      let stepCost = terrainMoveCost(srcTerrain);
+
+      if (segDef) {
+        if (segDef.vitesse_tout) {
+          // Consumes all remaining speed
+          const newCost = maxSpeed;
+          if (!dist.has(key) || newCost < dist.get(key)) {
+            dist.set(key, newCost);
+            queue.push({ q: nq, r: nr, cost: newCost, path: [...path, [nq, nr]] });
+          }
+          continue;
+        }
+        stepCost += Math.max(0, -(segDef.vitesse || 0));
+      }
+
+      const newCost = cost + stepCost;
       if (newCost > maxSpeed) continue;
 
       if (!dist.has(key) || newCost < dist.get(key)) {
@@ -156,4 +195,4 @@ function getStartingZones(numPlayers, mapRadius) {
   return zones;
 }
 
-module.exports = { hexDistance, hexKey, hexNeighbors, hexesInRange, generateHexMap, findPath, getStartingZones };
+module.exports = { hexDistance, hexKey, hexNeighbors, hexesInRange, generateHexMap, findPath, getStartingZones, segmentEdgeKey, getSegmentData };

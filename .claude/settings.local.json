@@ -41,7 +41,8 @@
       "Bash(node --check game/GameRoom.js)",
       "Bash(node --check game/data/stances.js)",
       "Bash(node --check game/data/terrains.js)",
-      "Bash(powershell -Command \"Stop-Process -Id 31608 -Force; Start-Sleep 2; Start-Process node -ArgumentList ''server.js'' -WorkingDirectory ''e:\\\\Files\\\\Jeux\\\\JDR\\\\Kingdom App'' -WindowStyle Hidden\")"
+      "Bash(powershell -Command \"Stop-Process -Id 31608 -Force; Start-Sleep 2; Start-Process node -ArgumentList ''server.js'' -WorkingDirectory ''e:\\\\Files\\\\Jeux\\\\JDR\\\\Kingdom App'' -WindowStyle Hidden\")",
+      "Bash(grep -v \"^\\\\s*//\")"
     ]
   }
 }

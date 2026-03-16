@@ -16,6 +16,67 @@ let gridThickness = 1;
 let gridColorRGB = '180,140,60';
 fetch('/terrain.json').then(r => r.json()).then(d => { terrainData = d; render(); }).catch(() => {});
 
+// Chargement des segments
+let segmentData = {};
+fetch('/segments.json').then(r => r.json()).then(d => { segmentData = d; render(); }).catch(() => {});
+
+// Edge i = between corners[i] and corners[(i+1)%6], direction to neighbor i
+const SEGMENT_EDGE_DIRS = [[1,0],[0,1],[-1,1],[-1,0],[0,-1],[1,-1]];
+
+const SEGMENT_COLORS_MAP = {
+  river:            '#4a90d9',
+  cliff:            '#8888aa',
+  bridge:           '#e8a040',
+  passerelle:       '#c8b060',
+  barriere:         '#4a8040',
+  chevaux_de_frise: '#c04040',
+  mur:              '#606060',
+  echelle:          '#a07840',
+};
+
+// Propriétés locales pour les vérifications de mouvement côté client
+const SEGMENT_DEFS_CLIENT = {
+  river:            { vitesse: -1, vitesse_tout: false, infranchissable: false, infranchissable_cavalerie: false },
+  cliff:            { vitesse: 0,  vitesse_tout: true,  infranchissable: false, infranchissable_cavalerie: true },
+  bridge:           { vitesse: 0,  vitesse_tout: false, infranchissable: false, infranchissable_cavalerie: false },
+  passerelle:       { vitesse: 0,  vitesse_tout: false, infranchissable: false, infranchissable_cavalerie: false },
+  barriere:         { vitesse: -1, vitesse_tout: false, infranchissable: false, infranchissable_cavalerie: false },
+  chevaux_de_frise: { vitesse: 0,  vitesse_tout: false, infranchissable: false, infranchissable_cavalerie: false },
+  mur:              { vitesse: 0,  vitesse_tout: false, infranchissable: true,  infranchissable_cavalerie: false },
+  echelle:          { vitesse: -2, vitesse_tout: false, infranchissable: false, infranchissable_cavalerie: true },
+};
+
+function segmentEdgeKey(q1, r1, q2, r2) {
+  if (q1 < q2 || (q1 === q2 && r1 < r2)) return `${q1},${r1}|${q2},${r2}`;
+  return `${q2},${r2}|${q1},${r1}`;
+}
+
+function drawSegments(ctx) {
+  if (Object.keys(segmentData).length === 0) return;
+  ctx.save();
+  ctx.lineCap = 'round';
+  for (const [edgeKey, segType] of Object.entries(segmentData)) {
+    const color = SEGMENT_COLORS_MAP[segType];
+    if (!color) continue;
+    const parts = edgeKey.split('|');
+    const [q1, r1] = parts[0].split(',').map(Number);
+    const [q2, r2] = parts[1].split(',').map(Number);
+    const dq = q2 - q1, dr = r2 - r1;
+    const dirIdx = SEGMENT_EDGE_DIRS.findIndex(([d0, d1]) => d0 === dq && d1 === dr);
+    if (dirIdx === -1) continue;
+    const { x: cx, y: cy } = hexToPixel(q1, r1);
+    const corners = hexCorners(cx, cy);
+    const c1 = corners[dirIdx], c2 = corners[(dirIdx + 1) % 6];
+    ctx.strokeStyle = color;
+    ctx.lineWidth = HEX_SIZE * 0.13;
+    ctx.beginPath();
+    ctx.moveTo(c1.x, c1.y);
+    ctx.lineTo(c2.x, c2.y);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 // Chargement de l'image d'arbre
 const treeImage = new Image();
 treeImage.src = '/assets/arbre.png';
@@ -136,7 +197,7 @@ function drawForestTrees(ctx) {
     } else if (visibleHexes.has(key)) {
       alpha = 0.10;
     } else {
-      alpha = 1.0;
+      alpha = 0.65;
     }
     if (alpha === 0) continue;
 
@@ -277,6 +338,8 @@ function render() {
   ctx.fillStyle = '#0a0a0a';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   ctx.translate(canvas.width / 2 + camX, canvas.height / 2 + camY);
   ctx.scale(zoom, zoom);
 
@@ -394,6 +457,9 @@ function render() {
     }
   }
 
+  // Segments (arêtes entre tuiles)
+  drawSegments(ctx);
+
   ctx.restore();
 }
 
@@ -410,12 +476,15 @@ function getGeneralIdForUnit(unit) {
 }
 
 function drawTokenImage(ctx, img, x, y, radius, tintColor, tintOpacity = 0.25, overlayColor = null) {
-  const size = Math.ceil(radius * 2);
+  const RES = 4; // suréchantillonnage pour éviter le flou au zoom
+  const size = Math.ceil(radius * 2 * RES);
   const off = document.createElement('canvas');
   off.width = size; off.height = size;
   const o = off.getContext('2d');
+  o.imageSmoothingEnabled = true;
+  o.imageSmoothingQuality = 'high';
   o.beginPath();
-  o.arc(radius, radius, radius, 0, Math.PI * 2);
+  o.arc(radius * RES, radius * RES, radius * RES, 0, Math.PI * 2);
   o.clip();
   o.drawImage(img, 0, 0, size, size);
   o.globalCompositeOperation = 'source-atop';
@@ -430,7 +499,7 @@ function drawTokenImage(ctx, img, x, y, radius, tintColor, tintOpacity = 0.25, o
     o.fillStyle = overlayColor;
     o.fillRect(0, 0, size, size);
   }
-  ctx.drawImage(off, x - radius, y - radius);
+  ctx.drawImage(off, x - radius, y - radius, radius * 2, radius * 2);
 }
 
 function drawUnit(ctx, x, y, unit, playerId, isSelected = false) {
@@ -762,6 +831,7 @@ function terrainMoveCost(key) {
 
 function computeMovableTiles(unit) {
   const maxSpeed = unit.speedRemaining != null ? unit.speedRemaining : unit.speed;
+  const isCavalry = unit.category === 'Chevaux' || unit.category === 'Chars';
   const dist = new Map();
   const queue = [{ q: unit.q, r: unit.r, cost: 0 }];
   const dirs = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
@@ -777,8 +847,29 @@ function computeMovableTiles(unit) {
       if (gameState && !gameState.visibleHexes.has(key)) continue;
       const occupant = gameState?.units.find(u => u.q === nq && u.r === nr);
       if (occupant) continue;
+
+      // Segment check
+      const edgeK = segmentEdgeKey(q, r, nq, nr);
+      const segType = segmentData[edgeK];
+      const segDef = segType ? SEGMENT_DEFS_CLIENT[segType] : null;
+      if (segDef) {
+        if (segDef.infranchissable) continue;
+        if (segDef.infranchissable_cavalerie && isCavalry) continue;
+        if (segDef.vitesse_tout) {
+          const newCost = maxSpeed;
+          if (!dist.has(key) || newCost < dist.get(key)) {
+            dist.set(key, newCost);
+            movableTiles.add(key);
+            queue.push({ q: nq, r: nr, cost: newCost });
+          }
+          continue;
+        }
+      }
+
       const srcKey = `${q},${r}`;
-      const newCost = cost + terrainMoveCost(srcKey);
+      let stepCost = terrainMoveCost(srcKey);
+      if (segDef) stepCost += Math.max(0, -(segDef.vitesse || 0));
+      const newCost = cost + stepCost;
       if (newCost > maxSpeed) continue;
       if (!dist.has(key) || newCost < dist.get(key)) {
         dist.set(key, newCost);

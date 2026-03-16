@@ -1,8 +1,9 @@
 const GENERALS = require('./data/generals');
 const UNITS = require('./data/units');
-const { hexDistance, hexKey, hexesInRange, generateHexMap, findPath, getStartingZones } = require('./HexUtils');
+const { hexDistance, hexKey, hexesInRange, generateHexMap, findPath, getStartingZones, segmentEdgeKey } = require('./HexUtils');
 const STANCES = require('./data/stances');
 const TERRAINS = require('./data/terrains');
+const SEGMENTS = require('./data/segments');
 const fs = require('fs');
 const nodePath = require('path');
 
@@ -31,6 +32,9 @@ class GameRoom {
     let terrainRaw = {};
     try { terrainRaw = JSON.parse(fs.readFileSync(nodePath.join(__dirname, '../public/terrain.json'), 'utf8')); } catch(e) {}
     this.terrainData = terrainRaw;
+    let segmentRaw = {};
+    try { segmentRaw = JSON.parse(fs.readFileSync(nodePath.join(__dirname, '../public/segments.json'), 'utf8')); } catch(e) {}
+    this.segmentData = segmentRaw;
   }
 
   addPlayer(id, name) {
@@ -412,7 +416,7 @@ class GameRoom {
     if (unit.isFleeing) return { error: 'Unité en fuite.' };
     if (unit.speedRemaining <= 0) return { error: 'Plus de déplacement disponible.' };
 
-    const path = findPath(this.hexMap, this.unitMap, unit.q, unit.r, targetQ, targetR, unit.speedRemaining, playerId);
+    const path = findPath(this.hexMap, this.unitMap, unit.q, unit.r, targetQ, targetR, unit.speedRemaining, playerId, unit);
     if (path === null) return { error: 'Chemin inaccessible.' };
 
     const fromQ = unit.q, fromR = unit.r;
@@ -422,14 +426,27 @@ class GameRoom {
     unit.q = targetQ;
     unit.r = targetR;
     unit.hasMoved = true;
-    // Cost is based on the terrain being LEFT (source tile of each step)
+
+    // Cost: terrain exit cost + segment crossing cost
     const fullPath = [[fromQ, fromR], ...path];
-    const moveCost = path.reduce((sum, _, i) => {
-      const [pq, pr] = fullPath[i]; // source tile of this step
+    const terrainCosts = { plain: 1, road: 1, forest: 2, river: 2, building: 1, bridge: 1 };
+    let moveCost = 0;
+    let vitesseTout = false;
+    for (let i = 0; i < path.length; i++) {
+      const [pq, pr] = fullPath[i];
+      const [nq, nr] = path[i];
       const t = this.hexMap[hexKey(pq, pr)]?.terrain || 'plain';
-      const costs = { plain: 1, road: 1, forest: 2, river: 2, building: 1, bridge: 1 };
-      return sum + (costs[t] ?? 1);
-    }, 0);
+      let stepCost = terrainCosts[t] ?? 1;
+      const edgeK = segmentEdgeKey(pq, pr, nq, nr);
+      const segType = this.segmentData[edgeK];
+      const segDef = segType ? SEGMENTS[segType] : null;
+      if (segDef) {
+        if (segDef.vitesse_tout) { vitesseTout = true; break; }
+        stepCost += Math.max(0, -(segDef.vitesse || 0));
+      }
+      moveCost += stepCost;
+    }
+    if (vitesseTout) moveCost = unit.speedRemaining;
     unit.speedRemaining = Math.max(0, unit.speedRemaining - moveCost);
     this.unitMap[hexKey(targetQ, targetR)] = unit;
 
@@ -645,17 +662,25 @@ class GameRoom {
     return { ok: true, combatLog };
   }
 
+  _getSegmentDef(q1, r1, q2, r2) {
+    const edgeK = segmentEdgeKey(q1, r1, q2, r2);
+    const segType = this.segmentData[edgeK];
+    return segType ? (SEGMENTS[segType] || null) : null;
+  }
+
   _resolveCombat(attacker, target, isCac, defenseChoice) {
     const type = isCac ? 'cac' : 'tir';
     const stA = this._getStanceMods(attacker);
     const stD = this._getStanceMods(target);
     const tA = this._getTerrainMods(attacker.q, attacker.r);
     const tD = this._getTerrainMods(target.q, target.r);
+    // Segment on the edge between attacker and target (only for adjacent melee)
+    const segDef = isCac ? this._getSegmentDef(attacker.q, attacker.r, target.q, target.r) : null;
 
     // Attack effective (généraux utilisent force comme base d'attaque)
     const attackBase = attacker.isGeneral ? attacker.force : attacker.attack;
     const attackTotal = attackBase
-      + (stA[`attack_${type}`] || 0) + (tA[`attack_${type}`] || 0)
+      + (stA[`attack_${type}`] || 0) + (tA[`attack_${type}`] || 0) + (segDef ? (segDef[`attack_${type}`] || 0) : 0)
       - (stD[`esquive_${type}`] || 0) - (tD[`esquive_${type}`] || 0);
     const attackD20 = Math.floor(Math.random() * 20) + 1;
     const hit = attackTotal >= attackD20;
@@ -663,7 +688,7 @@ class GameRoom {
     // Damage inflicted: N dé X where N=attacker.vitality, X=effective power
     let dmgInflicted = 0;
     if (hit) {
-      const dieFaces = Math.max(1, attacker.power + (stA[`puissance_${type}`] || 0) + (tA[`puissance_${type}`] || 0));
+      const dieFaces = Math.max(1, attacker.power + (stA[`puissance_${type}`] || 0) + (tA[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0));
       for (let i = 0; i < attacker.vitality; i++) {
         dmgInflicted += Math.floor(Math.random() * dieFaces) + 1;
       }
@@ -687,13 +712,13 @@ class GameRoom {
       // Généraux utilisent force comme base de défense
       const defBase = target.isGeneral ? target.force : target.defense;
       const defTotal = defBase
-        + (stD[`defense_${type}`] || 0) + (tD[`defense_${type}`] || 0)
+        + (stD[`defense_${type}`] || 0) + (tD[`defense_${type}`] || 0) + (segDef ? (segDef[`defense_${type}`] || 0) : 0)
         - (stA[`precision_${type}`] || 0) - (tA[`precision_${type}`] || 0);
       defenseRoll = Math.floor(Math.random() * 20) + 1;
       defenseSuccess = defTotal >= defenseRoll;
 
       if (defenseSuccess) {
-        const counterDieFaces = Math.max(1, target.power + (stD[`puissance_${type}`] || 0) + (tD[`puissance_${type}`] || 0));
+        const counterDieFaces = Math.max(1, target.power + (stD[`puissance_${type}`] || 0) + (tD[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0));
         let counterRaw = 0;
         for (let i = 0; i < target.vitality; i++) {
           counterRaw += Math.floor(Math.random() * counterDieFaces) + 1;
@@ -725,7 +750,7 @@ class GameRoom {
       attackTotal,
       attackD20,
       hit,
-      dieFaces: Math.max(1, attacker.power + (stA[`puissance_${type}`] || 0) + (tA[`puissance_${type}`] || 0)),
+      dieFaces: Math.max(1, attacker.power + (stA[`puissance_${type}`] || 0) + (tA[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0)),
       diceCount: attacker.vitality,
       dmgInflicted,
       armorAbsorb,
@@ -739,7 +764,7 @@ class GameRoom {
       stA_precision: (stA[`precision_${type}`] || 0),
       tA_precision:  (tA[`precision_${type}`] || 0),
       defTotal: (defenseChoice === 'counter' || defenseChoice === 'absorb')
-        ? (target.isGeneral ? target.force : target.defense) + (stD[`defense_${type}`] || 0) + (tD[`defense_${type}`] || 0) - (stA[`precision_${type}`] || 0) - (tA[`precision_${type}`] || 0)
+        ? (target.isGeneral ? target.force : target.defense) + (stD[`defense_${type}`] || 0) + (tD[`defense_${type}`] || 0) + (segDef ? (segDef[`defense_${type}`] || 0) : 0) - (stA[`precision_${type}`] || 0) - (tA[`precision_${type}`] || 0)
         : null,
       defenseRoll,
       defenseSuccess,
@@ -749,6 +774,10 @@ class GameRoom {
       defenderStance: target.stance,
       attackerTerrain: this.terrainData[hexKey(attacker.q, attacker.r)] || 'plaines',
       defenderTerrain: this.terrainData[hexKey(target.q, target.r)] || 'plaines',
+      segment: segDef ? segDef.name : null,
+      seg_attack: segDef ? (segDef[`attack_${type}`] || 0) : 0,
+      seg_defense: segDef ? (segDef[`defense_${type}`] || 0) : 0,
+      seg_puissance: segDef ? (segDef[`puissance_${type}`] || 0) : 0,
     };
     return { attackTotal, attackD20, hit, dmgInflicted, armorAbsorb, dmgReceived, moralDmg, defenseRoll, defenseSuccess, counterDmgReceived, counterMoralDmg, breakdown };
   }
