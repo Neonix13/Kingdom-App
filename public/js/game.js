@@ -114,24 +114,32 @@ function seededRand(seed) {
 function drawForestTrees(ctx) {
   if (!treeImage.complete || !treeImage.naturalWidth) return;
 
-  // Opacité réduite uniquement autour des unités qui sont DANS une forêt
-  const unitProximity = new Set();
   const allUnits = [...(gameState?.units || []), ...(deployState?.units || [])];
-  const dirs = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
+
+  // Cases directement occupées par un pion
+  const unitHexes = new Set();
   for (const u of allUnits) {
-    if (u.q === null) continue;
-    const uKey = `${u.q},${u.r}`;
-    if (terrainData[uKey] === 'forest') {
-      unitProximity.add(uKey);
-      for (const [dq, dr] of dirs) unitProximity.add(`${u.q+dq},${u.r+dr}`);
-    }
+    if (u.q !== null) unitHexes.add(`${u.q},${u.r}`);
   }
+
+  // Cases dans la vision
+  const visibleHexes = gameState?.visibleHexes || new Set();
 
   for (const [key, terrain] of Object.entries(terrainData)) {
     if (terrain !== 'forest') continue;
     const [q, r] = key.split(',').map(Number);
     const { x, y } = hexToPixel(q, r);
-    const nearUnit = unitProximity.has(key);
+
+    let alpha;
+    if (unitHexes.has(key)) {
+      alpha = 0;
+    } else if (visibleHexes.has(key)) {
+      alpha = 0.10;
+    } else {
+      alpha = 1.0;
+    }
+    if (alpha === 0) continue;
+
     const treeCount = 7 + Math.floor(seededRand(q * 137 + r * 251) * 4);
     for (let i = 0; i < treeCount; i++) {
       const s1 = q * 1000 + r * 100 + i * 7 + 1;
@@ -143,7 +151,7 @@ function drawForestTrees(ctx) {
       const rotation = seededRand(s3) * Math.PI * 2;
       const size = HEX_SIZE * (1.5 + seededRand(s4) * 0.7);
       ctx.save();
-      ctx.globalAlpha = nearUnit ? 0.25 : 1.0;
+      ctx.globalAlpha = alpha;
       ctx.translate(x + offsetX, y + offsetY);
       ctx.rotate(rotation);
       ctx.drawImage(treeImage, -size / 2, -size / 2, size, size);
@@ -224,6 +232,21 @@ const MAP_CENTER_WORLD_Y = (MAP_IMG_H / 2 - MAP_ORIG_Y) * MAP_SCALE; // ≈ 1075
 let zoom = 0.3;
 let camX = -MAP_CENTER_WORLD_X * zoom;
 let camY = -MAP_CENTER_WORLD_Y * zoom;
+
+function smoothPanTo(worldX, worldY, durationMs = 600) {
+  const startX = camX, startY = camY;
+  const targetX = -worldX * zoom, targetY = -worldY * zoom;
+  const startTime = performance.now();
+  function step(now) {
+    const t = Math.min(1, (now - startTime) / durationMs);
+    const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+    camX = startX + (targetX - startX) * ease;
+    camY = startY + (targetY - startY) * ease;
+    render();
+    if (t < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
 let isDragging = false, dragStart = null, camAtDrag = null;
 
 // Player colors
@@ -233,9 +256,9 @@ const PLAYER_COLORS = [
 ];
 
 function getPlayerColor(playerId) {
-  if (!gameState) return '#888';
-  const idx = gameState.players.findIndex(p => p.id === playerId);
-  return PLAYER_COLORS[idx % PLAYER_COLORS.length] || '#888';
+  if (!gameState) return '#4a90d9';
+  const player = gameState.players.find(p => p.id === playerId);
+  return player?.color || '#4a90d9';
 }
 
 // ---- CANVAS SETUP ----
@@ -262,17 +285,6 @@ function render() {
     const imgX = -MAP_ORIG_X * MAP_SCALE;
     const imgY = -MAP_ORIG_Y * MAP_SCALE;
     ctx.drawImage(mapImage, imgX, imgY, MAP_IMG_W * MAP_SCALE, MAP_IMG_H * MAP_SCALE);
-  }
-
-  // Overlays de terrain (si activé)
-  if (showTerrain) {
-    for (const [key, terrain] of Object.entries(terrainData)) {
-      const color = TERRAIN_COLORS[terrain];
-      if (!color) continue;
-      const [q, r] = key.split(',').map(Number);
-      const { x, y } = hexToPixel(q, r);
-      drawHex(ctx, x, y, color, 'rgba(0,0,0,0)');
-    }
   }
 
   const visibleSet = new Set(gameState?.visibleHexes || []);
@@ -371,6 +383,17 @@ function render() {
   // Arbres par dessus les unités
   drawForestTrees(ctx);
 
+  // Overlays de terrain (si activé) — par dessus les arbres
+  if (showTerrain) {
+    for (const [key, terrain] of Object.entries(terrainData)) {
+      const color = TERRAIN_COLORS[terrain];
+      if (!color) continue;
+      const [q, r] = key.split(',').map(Number);
+      const { x, y } = hexToPixel(q, r);
+      drawHex(ctx, x, y, color, 'rgba(0,0,0,0)');
+    }
+  }
+
   ctx.restore();
 }
 
@@ -386,13 +409,28 @@ function getGeneralIdForUnit(unit) {
   return null;
 }
 
-function drawTokenImage(ctx, img, x, y, radius) {
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(x, y, radius, 0, Math.PI * 2);
-  ctx.clip();
-  ctx.drawImage(img, x - radius, y - radius, radius * 2, radius * 2);
-  ctx.restore();
+function drawTokenImage(ctx, img, x, y, radius, tintColor, tintOpacity = 0.25, overlayColor = null) {
+  const size = Math.ceil(radius * 2);
+  const off = document.createElement('canvas');
+  off.width = size; off.height = size;
+  const o = off.getContext('2d');
+  o.beginPath();
+  o.arc(radius, radius, radius, 0, Math.PI * 2);
+  o.clip();
+  o.drawImage(img, 0, 0, size, size);
+  o.globalCompositeOperation = 'source-atop';
+  if (tintColor) {
+    const r = parseInt(tintColor.slice(1,3),16);
+    const g = parseInt(tintColor.slice(3,5),16);
+    const b = parseInt(tintColor.slice(5,7),16);
+    o.fillStyle = `rgba(${r},${g},${b},${tintOpacity})`;
+    o.fillRect(0, 0, size, size);
+  }
+  if (overlayColor) {
+    o.fillStyle = overlayColor;
+    o.fillRect(0, 0, size, size);
+  }
+  ctx.drawImage(off, x - radius, y - radius);
 }
 
 function drawUnit(ctx, x, y, unit, playerId, isSelected = false) {
@@ -412,11 +450,15 @@ function drawUnit(ctx, x, y, unit, playerId, isSelected = false) {
 
   const tokenR = HEX_SIZE * 0.95;
 
+  const overlayColor = unit.isFleeing ? 'rgba(255,80,0,0.45)'
+    : (unit.hasMoved && unit.isMine) ? 'rgba(0,0,0,0.45)'
+    : null;
+
   if (unit.isGeneral) {
     const gid = getGeneralIdForUnit(unit);
     const img = gid ? generalTokenImages[gid] : null;
     if (img && img.complete && img.naturalWidth) {
-      drawTokenImage(ctx, img, x, y, tokenR);
+      drawTokenImage(ctx, img, x, y, tokenR, color, 0.15, overlayColor);
     } else {
       drawStar(ctx, x, y, 5, size, size * 0.45);
       ctx.fillStyle = color;
@@ -433,7 +475,7 @@ function drawUnit(ctx, x, y, unit, playerId, isSelected = false) {
   } else {
     const img = unit.typeId ? unitTokenImages[unit.typeId] : null;
     if (img && img.complete && img.naturalWidth) {
-      drawTokenImage(ctx, img, x, y, tokenR);
+      drawTokenImage(ctx, img, x, y, tokenR, color, 0.25, overlayColor);
     } else {
       ctx.beginPath();
       ctx.arc(x, y, size, 0, Math.PI * 2);
@@ -460,22 +502,6 @@ function drawUnit(ctx, x, y, unit, playerId, isSelected = false) {
   ctx.fillRect(bx, by, barW, barH);
   ctx.fillStyle = hpRatio > 0.5 ? '#2a8c2a' : hpRatio > 0.25 ? '#c8960c' : '#a02020';
   ctx.fillRect(bx, by, barW * hpRatio, barH);
-
-  // Overlay "déjà joué"
-  if (unit.hasMoved && unit.isMine) {
-    ctx.fillStyle = 'rgba(0,0,0,0.4)';
-    ctx.beginPath();
-    ctx.arc(x, y, tokenR, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // Overlay "en fuite"
-  if (unit.isFleeing) {
-    ctx.fillStyle = 'rgba(255,80,0,0.35)';
-    ctx.beginPath();
-    ctx.arc(x, y, tokenR, 0, Math.PI * 2);
-    ctx.fill();
-  }
 
   // Draw stance icon (bottom-right of hex) — only for own non-general units
   if (unit.isMine && unit.stance && !unit.isGeneral) {
@@ -634,6 +660,21 @@ function handleHexClick(hex) {
       }
     }
 
+    // Mode motiver → cliquer une unité amie à portée
+    if (mode === 'motivate') {
+      const target = gameState?.units.find(u => u.q === hex.q && u.r === hex.r && u.isMine && !u.isGeneral);
+      if (target) {
+        const dist = hexDistance(selectedUnit.q, selectedUnit.r, hex.q, hex.r);
+        if (dist <= 2) {
+          socket.emit('motivate_unit', { roomCode, generalId: selectedUnit.id, targetId: target.id });
+          setMode('select');
+          return;
+        }
+      }
+      setMode('select');
+      return;
+    }
+
     // Clic sur une autre unité alliée → changer de sélection
     const ally = gameState?.units.find(u => u.q === hex.q && u.r === hex.r && u.isMine);
     if (ally && ally.id !== selectedUnit.id) {
@@ -713,28 +754,37 @@ function selectUnit(unit) {
   render();
 }
 
-function computeMovableTiles(unit) {
-  // BFS up to speedRemaining tiles
-  const maxSpeed = unit.speedRemaining != null ? unit.speedRemaining : unit.speed;
-  const visited = new Set();
-  const queue = [{ q: unit.q, r: unit.r, steps: 0 }];
-  const dirs = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
+function terrainMoveCost(key) {
+  const t = terrainData[key] || 'plain';
+  const costs = { plain: 1, road: 1, forest: 2, river: 2, building: 1, bridge: 1 };
+  return costs[t] ?? 1;
+}
 
-  visited.add(`${unit.q},${unit.r}`);
+function computeMovableTiles(unit) {
+  const maxSpeed = unit.speedRemaining != null ? unit.speedRemaining : unit.speed;
+  const dist = new Map();
+  const queue = [{ q: unit.q, r: unit.r, cost: 0 }];
+  const dirs = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
+  dist.set(`${unit.q},${unit.r}`, 0);
+
   while (queue.length > 0) {
-    const { q, r, steps } = queue.shift();
-    if (steps >= maxSpeed) continue;
+    queue.sort((a, b) => a.cost - b.cost);
+    const { q, r, cost } = queue.shift();
+    if (cost > dist.get(`${q},${r}`)) continue;
     for (const [dq, dr] of dirs) {
       const nq = q + dq, nr = r + dr;
       const key = `${nq},${nr}`;
-      if (visited.has(key)) continue;
       if (gameState && !gameState.visibleHexes.has(key)) continue;
-      // Toute case occupée (amie ou ennemie) bloque le passage
       const occupant = gameState?.units.find(u => u.q === nq && u.r === nr);
       if (occupant) continue;
-      visited.add(key);
-      movableTiles.add(key);
-      queue.push({ q: nq, r: nr, steps: steps + 1 });
+      const srcKey = `${q},${r}`;
+      const newCost = cost + terrainMoveCost(srcKey);
+      if (newCost > maxSpeed) continue;
+      if (!dist.has(key) || newCost < dist.get(key)) {
+        dist.set(key, newCost);
+        movableTiles.add(key);
+        queue.push({ q: nq, r: nr, cost: newCost });
+      }
     }
   }
   movableTiles.delete(`${unit.q},${unit.r}`);
@@ -755,10 +805,14 @@ function computeAttackableTiles(unit) {
 function setMode(newMode) {
   mode = newMode;
   const indicator = document.getElementById('mode-indicator');
-  const labels = { select: 'Sélection', move: 'Déplacement', attack: 'Attaque', deploy: 'Déploiement' };
+  const labels = { select: 'Sélection', move: 'Déplacement', attack: 'Attaque', motivate: 'Motiver', deploy: 'Déploiement' };
   indicator.textContent = `Mode : ${labels[newMode] || newMode}`;
   if (newMode !== 'move') movableTiles.clear();
-  if (newMode !== 'attack') attackableTiles.clear();
+  if (newMode !== 'attack') {
+    attackableTiles.clear();
+  } else if (selectedUnit) {
+    computeAttackableTiles(selectedUnit);
+  }
   render();
 }
 
@@ -770,12 +824,18 @@ function updateActionButtons() {
   const canAttack = hasUnit && isMyTurn && !selectedUnit.hasAttacked && !isFleeing;
   const isGeneral = hasUnit && selectedUnit.isGeneral;
   const canAbility = isGeneral && isMyTurn && !selectedUnit.hasUsedAbility && selectedUnit.abilityCooldown === 0;
+  const canMotivate = isGeneral && isMyTurn && !selectedUnit.hasAttacked;
 
   document.getElementById('btn-move').style.display = canMove ? 'block' : 'none';
   document.getElementById('btn-attack').style.display = canAttack ? 'block' : 'none';
   document.getElementById('btn-ability').style.display = canAbility ? 'block' : 'none';
-  document.getElementById('btn-end-turn').style.display = isMyTurn ? 'block' : 'none';
-  document.getElementById('btn-deploy-ready').style.display = (mode === 'deploy') ? 'block' : 'none';
+  document.getElementById('btn-motivate').style.display = canMotivate ? 'block' : 'none';
+  const endDisplay = isMyTurn ? 'block' : 'none';
+  const deployDisplay = (mode === 'deploy') ? 'block' : 'none';
+  document.getElementById('btn-end-turn').style.display = endDisplay;
+  document.getElementById('btn-deploy-ready').style.display = deployDisplay;
+  document.getElementById('btn-end-turn-global').style.display = endDisplay;
+  document.getElementById('btn-deploy-ready-global').style.display = deployDisplay;
 
   // Show/hide stance panel
   const stancePanel = document.getElementById('stance-panel');
@@ -1069,22 +1129,40 @@ function showUnitCard(unit) {
   const hpColor = hpPct > 50 ? '#2a8c2a' : hpPct > 25 ? '#c8960c' : '#a02020';
   const hpBar = `<div class="uc-pdf-hpbar-wrap"><div class="uc-pdf-hpbar" style="width:${hpPct}%;background:${hpColor}"></div></div>`;
 
-  // Stats
-  const stats = [
-    { label: 'Vitalité', value: `${unit.vitality}/${unit.maxVitality}` },
-    { label: 'Morale',   value: `${unit.morale ?? '—'}/${unit.maxMorale ?? '—'}` },
-    { label: 'Attaque',  value: unit.attack },
-    { label: 'Défense',  value: unit.defense },
-    { label: 'Puissance',value: unit.power },
-    { label: 'Armure',   value: unit.armor },
-    { label: 'Intimidation', value: unit.intimidation ?? 0 },
-    { label: 'Vitesse',  value: unit.speed },
-  ];
-  if (unit.range > 1) stats.push({ label: 'Portée', value: `${unit.range} cases` });
-
-  const statsHtml = stats.map(s =>
-    `<div class="uc-pdf-stat"><div class="uc-pdf-stat-label">${s.label}</div><div class="uc-pdf-stat-value">${s.value}</div></div>`
-  ).join('');
+  // Stats — fiche spéciale pour les généraux
+  let statsHtml;
+  if (unit.isGeneral) {
+    const row2 = [
+      { label: 'Force',      value: unit.force },
+      { label: 'Stratégie',  value: unit.strategy },
+      { label: 'Charisme',   value: unit.charisma },
+    ];
+    const row3 = [
+      { label: 'Puissance',    value: unit.power },
+      { label: 'Armure',       value: unit.armor },
+      { label: 'Intimidation', value: unit.intimidation ?? 0 },
+      { label: 'Vitesse',      value: unit.speed },
+    ];
+    const vit = `<div class="uc-pdf-stat" style="grid-column:1/-1"><div class="uc-pdf-stat-label">Vitalité</div><div class="uc-pdf-stat-value">${unit.vitality}/${unit.maxVitality}</div></div>`;
+    const r2 = `<div style="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px">${row2.map(s => `<div class="uc-pdf-stat"><div class="uc-pdf-stat-label">${s.label}</div><div class="uc-pdf-stat-value">${s.value}</div></div>`).join('')}</div>`;
+    const r3 = row3.map(s => `<div class="uc-pdf-stat"><div class="uc-pdf-stat-label">${s.label}</div><div class="uc-pdf-stat-value">${s.value}</div></div>`).join('');
+    statsHtml = vit + r2 + r3;
+  } else {
+    const stats = [
+      { label: 'Vitalité',    value: `${unit.vitality}/${unit.maxVitality}` },
+      { label: 'Morale',      value: `${unit.morale ?? '—'}/${unit.maxMorale ?? '—'}` },
+      { label: 'Attaque',     value: unit.attack },
+      { label: 'Défense',     value: unit.defense },
+      { label: 'Puissance',   value: unit.power },
+      { label: 'Intimidation',value: unit.intimidation ?? 0 },
+      { label: 'Armure',      value: unit.armor },
+      { label: 'Vitesse',     value: unit.speed },
+    ];
+    if (unit.range > 1) stats.push({ label: 'Portée', value: `${unit.range} cases` });
+    statsHtml = stats.map(s =>
+      `<div class="uc-pdf-stat"><div class="uc-pdf-stat-label">${s.label}</div><div class="uc-pdf-stat-value">${s.value}</div></div>`
+    ).join('');
+  }
 
   // Bonus / capacités
   const bonusLines = [];
@@ -1096,7 +1174,8 @@ function showUnitCard(unit) {
     : `<div class="uc-pdf-bonus" style="color:#888;font-style:italic">Aucun bonus spécial</div>`;
 
   // Titre
-  const category = unit.category ? `<br><span style="font-size:0.85em">(${unit.category})</span>` : '';
+  const titleSub = unit.isGeneral ? `${unit.kingdom || ''}</span>` : (unit.category ? `(${unit.category})</span>` : '</span>');
+  const category = `<br><span style="font-size:0.85em">${titleSub}`;
   const titleHtml = `<div class="uc-pdf-title">${unit.name}${category}</div>`;
 
   // Description
@@ -1124,6 +1203,150 @@ function showUnitCard(unit) {
 
 function closeUnitCard() {
   document.getElementById('overlay-unit-card').style.display = 'none';
+}
+
+function switchSidebarTab(tab) {
+  const tabs = ['units', 'history', 'chat'];
+  document.querySelectorAll('.sidebar-tab').forEach((el, i) => {
+    el.classList.toggle('active', tabs[i] === tab);
+  });
+  document.getElementById('pane-units').classList.toggle('active', tab === 'units');
+  document.getElementById('pane-history').classList.toggle('active', tab === 'history');
+  document.getElementById('pane-chat').classList.toggle('active', tab === 'chat');
+  if (tab === 'chat') {
+    document.getElementById('tab-chat').classList.remove('unread');
+    const msgs = document.getElementById('chat-messages');
+    msgs.scrollTop = msgs.scrollHeight;
+    document.getElementById('chat-input').focus();
+  }
+  updateActionButtons();
+}
+
+function sendChat() {
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text) return;
+  socket.emit('chat_message', { roomCode, text });
+  input.value = '';
+}
+
+function appendChatMessage({ authorName, text, isMine, isSystem }) {
+  const container = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  if (isSystem) {
+    div.className = 'chat-msg system';
+    div.textContent = text;
+  } else {
+    div.className = `chat-msg ${isMine ? 'mine' : 'other'}`;
+    div.innerHTML = `<span class="chat-author">${authorName} : </span><span class="chat-text">${text}</span>`;
+  }
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+  // Badge si l'onglet n'est pas actif
+  const pane = document.getElementById('pane-chat');
+  if (!pane.classList.contains('active')) {
+    document.getElementById('tab-chat').classList.add('unread');
+  }
+}
+
+let combatHistoryEntries = [];
+function addCombatHistory(log, round) {
+  combatHistoryEntries.push({ log, round });
+  const container = document.getElementById('combat-history');
+  if (!container) return;
+  const entry = document.createElement('div');
+  entry.innerHTML = formatHistoryEntry({ log, round });
+  container.appendChild(entry.firstElementChild);
+  container.scrollTop = container.scrollHeight;
+}
+
+let historyCounter = 0;
+function formatHistoryEntry({ log, round }) {
+  if (!log) return '';
+  const id = `h${historyCounter++}`;
+  const b = log.breakdown || {};
+  const hit = log.hit;
+  const defLabels = { none: 'Rien', counter: 'Contre-attaque', absorb: 'Encaisse' };
+  const stanceNames2 = { marche:'Marche', combat:'Combat', charge:'Charge', percee:'Percée', def_combat:'Déf. Combat', def_distance:'Déf. Distance' };
+
+  // Header line
+  const hitBadge = hit
+    ? `<span class="h-badge h-hit">TOUCHÉ</span>`
+    : `<span class="h-badge h-miss">RATÉ</span>`;
+  const header = `<div class="h-header" onclick="toggleHistory('${id}')">
+    <span class="h-arrow" id="arrow-${id}">▶</span>
+    <span class="h-title">T${round} — <b>${log.attackerName||'?'}</b> → <b>${log.targetName||'?'}</b></span>
+    ${hitBadge}
+    ${log.targetKilled ? `<span class="h-badge h-dead">💀</span>` : ''}
+    ${log.attackerKilled ? `<span class="h-badge h-dead">💀 (attaquant)</span>` : ''}
+  </div>`;
+
+  // Detail table
+  const sign = n => n >= 0 ? `+${n}` : `${n}`;
+  const row = (label, val, cls='') => {
+    // Masquer les lignes dont la valeur est 0 ou +0
+    const raw = typeof val === 'number' ? val : (typeof val === 'string' ? parseFloat(val) : NaN);
+    if (!isNaN(raw) && raw === 0) return '';
+    const signed = typeof val === 'string' && val.startsWith('+') ? parseFloat(val) : NaN;
+    if (!isNaN(signed) && signed === 0) return '';
+    return `<tr class="${cls}"><td>${label}</td><td>${val}</td></tr>`;
+  };
+  const signRow = (label, n, cls='') => n === 0 ? '' : row(label, sign(n), cls);
+
+  let table = `<div class="h-detail" id="${id}" style="display:none"><table class="h-table">
+    <tbody>
+    <tr class="h-section"><td colspan="2">⚔ ATTAQUE</td></tr>
+    ${row('Base attaque', b.attackBase ?? '—')}
+    ${signRow('Posture atq. ('+(stanceNames2[b.attackerStance]||b.attackerStance||'?')+')', b.stA_attack||0)}
+    ${signRow('Terrain atq. ('+(b.attackerTerrain||'?')+')', b.tA_attack||0)}
+    ${signRow('− Esquive posture déf.', -(b.stD_esquive||0))}
+    ${signRow('− Esquive terrain déf.', -(b.tD_esquive||0))}
+    ${row('= Total attaque', `<b>${b.attackTotal??'—'}</b> vs D20: <b>${b.attackD20??'—'}</b>`, hit?'h-hit-row':'h-miss-row')}`;
+
+  if (hit) {
+    table += `
+    <tr class="h-section"><td colspan="2">💥 DÉGÂTS</td></tr>
+    ${row('Dés', `${b.diceCount??'?'} × D${b.dieFaces??'?'}`)}
+    ${row('Dégâts infligés', b.dmgInflicted??0)}
+    ${(b.armorAbsorb||0) > 0 ? row('Absorption (Vit×Arm)', `${b.armorAbsorb} (armure eff. ${b.effectiveArmor??'?'})`) : ''}
+    ${row('Dégâts reçus (÷10)', `<b>${log.dmgReceived??0}</b>`, 'h-hit-row')}
+    ${row('Vitalité restante cible', log.targetVitalityLeft??'—')}`;
+  }
+
+  if (log.moralDmg > 0 || log.targetMoraleLeft != null) {
+    table += `<tr class="h-section"><td colspan="2">😰 MORAL</td></tr>`;
+    if (log.moralDmg > 0) table += row('Moral infligé (Vit×Intim.)', log.moralDmg);
+    if (log.targetMoraleLeft != null) table += row('Moral restant cible', log.targetMoraleLeft);
+  }
+
+  if (log.defenseChoice && log.defenseChoice !== 'none') {
+    const ds = log.defenseSuccess;
+    table += `<tr class="h-section"><td colspan="2">🛡 DÉFENSE — ${defLabels[log.defenseChoice]||log.defenseChoice}</td></tr>
+    ${row('Base défense', b.defBase??'—')}
+    ${signRow('Posture déf. ('+(stanceNames2[b.defenderStance]||b.defenderStance||'?')+')', b.stD_defense||0)}
+    ${signRow('Terrain déf. ('+(b.defenderTerrain||'?')+')', b.tD_defense||0)}
+    ${signRow('− Précision posture atq.', -(b.stA_precision||0))}
+    ${signRow('− Précision terrain atq.', -(b.tA_precision||0))}
+    ${row('= Total défense', `<b>${b.defTotal??'—'}</b> vs D20: <b>${log.defenseRoll??'—'}</b>`, ds?'h-hit-row':'h-miss-row')}`;
+    if (ds && log.counterDmgReceived > 0) {
+      table += row('Dégâts contre-attaque', `<b>${log.counterDmgReceived}</b>`, 'h-hit-row');
+      table += row('Vitalité restante atq.', log.attackerVitalityLeft??'—');
+    }
+    if (ds && log.counterMoralDmg > 0) table += row('Moral contre-attaque', log.counterMoralDmg);
+  }
+
+  table += `</tbody></table></div>`;
+
+  return `<div class="history-entry">${header}${table}</div>`;
+}
+
+function toggleHistory(id) {
+  const el = document.getElementById(id);
+  const arrow = document.getElementById(`arrow-${id}`);
+  if (!el) return;
+  const open = el.style.display === 'block';
+  el.style.display = open ? 'none' : 'block';
+  if (arrow) arrow.textContent = open ? '▶' : '▼';
 }
 
 function notify(msg, type = 'error') {
@@ -1200,12 +1423,16 @@ function showDefenseRequest(data) {
   overlay.dataset.attackId = data.attackId;
   overlay.dataset.roomCode = data.roomCode;
   // Countdown
-  let t = 8;
+  let t = 20;
   const countdown = document.getElementById('defense-countdown');
   if (countdown) countdown.textContent = t;
+  clearInterval(window._defenseTimer);
   window._defenseTimer = setInterval(() => {
     t--;
-    if (countdown) countdown.textContent = t;
+    if (countdown) {
+      countdown.textContent = t;
+      countdown.style.color = t <= 5 ? '#ff4040' : t <= 10 ? '#ff9040' : '#c8960c';
+    }
     if (t <= 0) {
       clearInterval(window._defenseTimer);
       sendDefenseChoice('rien');
@@ -1330,10 +1557,16 @@ socket.on('combat_result', (data) => {
   const log = data.combatLog || data;
   addCombatLog(log);
   showCombatResult(log);
+  addCombatHistory(log, gameState?.round || 1);
 });
 
 socket.on('defense_request', (data) => {
   showDefenseRequest(data);
+  // Pan caméra vers l'unité attaquée
+  if (data.targetQ != null && data.targetR != null) {
+    const { x, y } = hexToPixel(data.targetQ, data.targetR);
+    smoothPanTo(x, y, 700);
+  }
 });
 
 socket.on('waiting_defense', () => {
@@ -1366,6 +1599,18 @@ socket.on('deployment_ready_update', ({ readyCount, total }) => {
     // Ce joueur n'a pas encore cliqué — afficher le compte sans bloquer
     btn.textContent = `Prêt ! (${readyCount}/${total})`;
   }
+});
+
+socket.on('motivate_result', ({ success, charisma, d20, moralGain, targetName }) => {
+  if (success) {
+    notify(`Motivation réussie ! (Charisme ${charisma} ≥ D20 ${d20}) → ${targetName} regagne ${moralGain} moral.`, 'success');
+  } else {
+    notify(`Motivation échouée. (Charisme ${charisma} < D20 ${d20})`, 'info');
+  }
+});
+
+socket.on('chat_message', ({ authorId, authorName, text }) => {
+  appendChatMessage({ authorName, text, isMine: authorId === myId });
 });
 
 socket.on('error', (msg) => notify(msg));

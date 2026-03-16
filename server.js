@@ -83,6 +83,15 @@ io.on('connection', (socket) => {
     io.to(roomCode).emit('room_update', room.getLobbyState());
   });
 
+  socket.on('set_player_color', ({ roomCode, color }) => {
+    const room = rooms[roomCode];
+    if (!room || room.phase !== 'lobby') return;
+    const player = room.getPlayer(socket.id);
+    const allowed = ['#4a90d9','#e05050','#50c050','#e0a030','#a050d0','#e07840','#40c0c0','#e050a0','#ffffff'];
+    if (player && allowed.includes(color)) player.color = color;
+    io.to(roomCode).emit('room_update', room.getLobbyState());
+  });
+
   socket.on('select_general', ({ roomCode, generalId }) => {
     const room = rooms[roomCode];
     if (!room || room.phase !== 'lobby') return;
@@ -192,10 +201,13 @@ io.on('connection', (socket) => {
         attackId: result.attackId,
         attackerName: result.attackerName,
         targetName: result.targetName,
+        targetQ: result.targetQ,
+        targetR: result.targetR,
         roomCode,
       });
       socket.emit('waiting_defense', { attackId: result.attackId });
-      // Auto-resolve after 8 seconds
+      // Auto-resolve after 20 seconds
+      io.to(defenderSocket).emit('defense_timer', { attackId: result.attackId, seconds: 20 });
       setTimeout(() => {
         if (!room.pendingAttacks[result.attackId]) return;
         const resolved = room.resolveAttack(result.attackId, 'rien');
@@ -208,7 +220,7 @@ io.on('connection', (socket) => {
             io.to(roomCode).emit('game_over', { winnerId: room.winner, winnerName: room.getPlayer(room.winner)?.name });
           }
         }
-      }, 8000);
+      }, 20000);
     }
   });
 
@@ -237,6 +249,26 @@ io.on('connection', (socket) => {
     for (const p of room.players) {
       io.to(p.id).emit('game_state', room.getGameState(p.id));
     }
+  });
+
+  socket.on('motivate_unit', ({ roomCode, generalId, targetId }) => {
+    const room = rooms[roomCode];
+    if (!room || room.phase !== 'battle') return;
+    if (room.getCurrentPlayerId() !== socket.id) return socket.emit('error', 'Ce n\'est pas votre tour.');
+    const result = room.motivateUnit(socket.id, generalId, targetId);
+    if (result.error) return socket.emit('error', result.error);
+    socket.emit('motivate_result', result);
+    for (const p of room.players) io.to(p.id).emit('game_state', room.getGameState(p.id));
+  });
+
+  socket.on('chat_message', ({ roomCode, text }) => {
+    const room = rooms[roomCode];
+    if (!room) return;
+    const player = room.getPlayer(socket.id);
+    if (!player) return;
+    const msg = String(text || '').slice(0, 200).trim();
+    if (!msg) return;
+    io.to(roomCode).emit('chat_message', { authorId: socket.id, authorName: player.name, text: msg });
   });
 
   socket.on('use_ability', ({ roomCode, targetHex, targetId }) => {

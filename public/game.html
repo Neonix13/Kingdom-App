@@ -6,7 +6,38 @@
   <title>Kingdom Battleground — Bataille</title>
   <link rel="stylesheet" href="/css/style.css">
   <style>
-    #sidebar { background: #120804; }
+    #sidebar { background: #120804; display: flex; flex-direction: column; }
+    .sidebar-tabs { display: flex; border-bottom: 2px solid #3a2408; flex-shrink: 0; }
+    .sidebar-tab { flex: 1; padding: 7px 4px; font-size: 0.78em; font-weight: bold; text-align: center; cursor: pointer; color: #7a5820; background: #0c0502; border: none; transition: background 0.15s; }
+    .sidebar-tab:hover { background: #1a0d04; color: #c8960c; }
+    .sidebar-tab.active { background: #120804; color: #ffd700; border-bottom: 2px solid #ffd700; margin-bottom: -2px; }
+    .sidebar-pane { display: none; flex: 1; overflow-y: auto; flex-direction: column; }
+    .sidebar-pane.active { display: flex; }
+    #combat-history { padding: 6px 8px; font-size: 0.75em; color: #c8a060; }
+    .history-entry { border-bottom: 1px solid #2a1608; }
+    .h-header { display:flex; align-items:center; gap:5px; padding:5px 4px; cursor:pointer; user-select:none; }
+    .h-header:hover { background:#1a0d04; }
+    .h-arrow { color:#7a5820; font-size:0.75em; width:10px; flex-shrink:0; }
+    .h-title { flex:1; font-size:0.78em; color:#c8a060; }
+    .h-badge { font-size:0.7em; padding:1px 5px; border-radius:3px; font-weight:bold; }
+    .h-badge.h-hit { background:#6a1010; color:#ff8080; }
+    .h-badge.h-miss { background:#1a3a1a; color:#80c080; }
+    .h-badge.h-dead { background:#3a0a0a; color:#ff6060; }
+    .h-detail { padding:4px 6px 10px; }
+    .h-table { width:100%; border-collapse:collapse; font-size:0.82em; }
+    .h-table td { padding:4px 7px; border:1px solid #2a1608; color:#a89060; }
+    .h-table td:first-child { color:#7a5820; width:58%; }
+    .h-table td:last-child { text-align:right; font-variant-numeric:tabular-nums; font-size:1.05em; }
+    .h-table tr.h-section td { background:#1a0d04; color:#c8960c; font-weight:bold; font-size:0.9em; text-align:center; border-color:#3a2408; padding:5px; }
+    .h-table tr.h-hit-row td { color:#ff9060; font-weight:bold; }
+    .h-table tr.h-miss-row td { color:#80a060; }
+    .chat-msg { font-size:0.8em; line-height:1.4; padding:3px 0; border-bottom:1px solid #1a0d04; }
+    .chat-msg .chat-author { font-weight:bold; }
+    .chat-msg.mine .chat-author { color:#ffd700; }
+    .chat-msg.other .chat-author { color:#80c0ff; }
+    .chat-msg .chat-text { color:#c8a060; }
+    .chat-msg.system { color:#7a5820; font-style:italic; }
+    #tab-chat.unread::after { content:'●'; color:#ff6040; font-size:0.6em; vertical-align:super; margin-left:2px; }
 
     /* Barre d'outils */
     #toolbar {
@@ -226,33 +257,59 @@
         <div id="turn-info"></div>
       </div>
 
-
-      <div id="unit-panel">
-        <div id="unit-list"></div>
+      <div class="sidebar-tabs">
+        <button class="sidebar-tab active" onclick="switchSidebarTab('units')">⚔ Unités</button>
+        <button class="sidebar-tab" onclick="switchSidebarTab('history')">📜 Historique</button>
+        <button class="sidebar-tab" id="tab-chat" onclick="switchSidebarTab('chat')">💬 Chat</button>
+      </div>
+      <div id="global-action-bar" style="padding:4px 8px;border-bottom:1px solid #3a2408;display:flex;gap:4px">
+        <button class="btn btn-success" id="btn-end-turn-global" onclick="endTurn()" style="display:none;flex:1">Fin du tour</button>
+        <button class="btn btn-success" id="btn-deploy-ready-global" onclick="deploymentReady()" style="display:none;flex:1">Prêt !</button>
       </div>
 
-      <div id="stance-panel" style="display:none;padding:6px 8px;border-top:1px solid #3a2408">
-        <div style="font-size:0.75em;color:#7a5820;margin-bottom:4px">POSTURE (coût: 2 vitesse)</div>
-        <div id="stance-list" style="display:flex;flex-wrap:wrap;gap:4px"></div>
+      <div class="sidebar-pane active" id="pane-units">
+        <div id="unit-panel">
+          <div id="unit-list"></div>
+        </div>
+
+        <div id="stance-panel" style="display:none;padding:6px 8px;border-top:1px solid #3a2408">
+          <div style="font-size:0.75em;color:#7a5820;margin-bottom:4px">POSTURE (coût: 2 vitesse)</div>
+          <div id="stance-list" style="display:flex;flex-wrap:wrap;gap:4px"></div>
+        </div>
+
+        <div id="selected-unit-detail" style="display:none">
+          <h4 id="detail-name"></h4>
+          <div id="detail-stats"></div>
+        </div>
+
+        <div id="action-panel">
+          <h4>Actions</h4>
+          <div class="action-btns">
+            <button class="btn btn-primary" id="btn-move" style="display:none"></button>
+            <button class="btn btn-danger" id="btn-attack" onclick="setMode('attack')" style="display:none">Attaquer</button>
+            <button class="btn btn-primary" id="btn-ability" onclick="useAbility()" style="display:none">Capacité active</button>
+            <button class="btn btn-warning" id="btn-motivate" onclick="setMode('motivate')" style="display:none">Motiver</button>
+            <button class="btn btn-success" id="btn-end-turn" onclick="endTurn()" style="display:none">Fin du tour</button>
+            <button class="btn btn-success" id="btn-deploy-ready" onclick="deploymentReady()" style="display:none">Prêt !</button>
+          </div>
+        </div>
+
+        <div id="combat-log"></div>
       </div>
 
-      <div id="selected-unit-detail" style="display:none">
-        <h4 id="detail-name"></h4>
-        <div id="detail-stats"></div>
+      <div class="sidebar-pane" id="pane-history" style="overflow-y:auto">
+        <div id="combat-history"><div style="color:#5a3c10;font-style:italic;padding:12px">Aucun combat pour l'instant.</div></div>
       </div>
 
-      <div id="action-panel">
-        <h4>Actions</h4>
-        <div class="action-btns">
-          <button class="btn btn-primary" id="btn-move" style="display:none"></button>
-          <button class="btn btn-danger" id="btn-attack" onclick="setMode('attack')" style="display:none">Attaquer</button>
-          <button class="btn btn-primary" id="btn-ability" onclick="useAbility()" style="display:none">Capacité active</button>
-          <button class="btn btn-success" id="btn-end-turn" onclick="endTurn()" style="display:none">Fin du tour</button>
-          <button class="btn btn-success" id="btn-deploy-ready" onclick="deploymentReady()" style="display:none">Prêt !</button>
+      <div class="sidebar-pane" id="pane-chat" style="flex-direction:column">
+        <div id="chat-messages" style="flex:1;overflow-y:auto;padding:6px 8px;display:flex;flex-direction:column;gap:4px;min-height:0"></div>
+        <div id="chat-input-area" style="display:flex;gap:4px;padding:6px 8px;border-top:1px solid #3a2408;flex-shrink:0">
+          <input id="chat-input" type="text" placeholder="Message…" maxlength="200"
+            style="flex:1;background:#0c0502;border:1px solid #3a2408;color:#e0c080;border-radius:4px;padding:5px 8px;font-size:0.82em;"
+            onkeydown="if(event.key==='Enter')sendChat()">
+          <button class="btn btn-primary" onclick="sendChat()" style="padding:4px 10px;font-size:0.8em">Envoyer</button>
         </div>
       </div>
-
-      <div id="combat-log"></div>
     </div>
   </div>
 

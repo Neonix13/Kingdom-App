@@ -72,31 +72,44 @@ function generateHexMap(radius) {
   return hexes;
 }
 
-// BFS pathfinding (returns path array or null)
-function findPath(hexMap, unitMap, q1, r1, q2, r2, maxSteps, playerId) {
+// Terrain movement cost: entering a tile costs max(1, 1 - vitesse_modifier)
+function terrainMoveCost(terrain) {
+  const costs = { plain: 1, road: 1, forest: 2, river: 2, building: 1, bridge: 1 };
+  return costs[terrain] ?? 1;
+}
+
+// Dijkstra pathfinding with terrain movement costs (returns path array or null)
+function findPath(hexMap, unitMap, q1, r1, q2, r2, maxSpeed, playerId) {
   if (q1 === q2 && r1 === r2) return [];
-  const visited = new Map();
-  const queue = [{ q: q1, r: r1, path: [] }];
-  visited.set(hexKey(q1, r1), true);
+
+  // dist[key] = { cost, path }
+  const dist = new Map();
+  // Min-heap via sorted array (small map, acceptable perf)
+  const queue = [{ q: q1, r: r1, cost: 0, path: [] }];
+  dist.set(hexKey(q1, r1), 0);
 
   while (queue.length > 0) {
-    const { q, r, path } = queue.shift();
-    if (path.length >= maxSteps) continue;
+    queue.sort((a, b) => a.cost - b.cost);
+    const { q, r, cost, path } = queue.shift();
+
+    if (q === q2 && r === r2) return path;
+    if (cost > maxSpeed) continue;
 
     for (const [nq, nr] of hexNeighbors(q, r)) {
       const key = hexKey(nq, nr);
-      if (visited.has(key)) continue;
-      if (!hexMap[key]) continue; // out of map
+      if (!hexMap[key]) continue;
 
-      // Aucune unité ne peut traverser une case occupée (amie ou ennemie)
       const occupant = unitMap[key];
       if (occupant) continue;
 
-      visited.set(key, true);
-      const newPath = [...path, [nq, nr]];
+      const srcTerrain = hexMap[hexKey(q, r)]?.terrain || 'plain';
+      const newCost = cost + terrainMoveCost(srcTerrain);
+      if (newCost > maxSpeed) continue;
 
-      if (nq === q2 && nr === r2) return newPath;
-      queue.push({ q: nq, r: nr, path: newPath });
+      if (!dist.has(key) || newCost < dist.get(key)) {
+        dist.set(key, newCost);
+        queue.push({ q: nq, r: nr, cost: newCost, path: [...path, [nq, nr]] });
+      }
     }
   }
   return null;

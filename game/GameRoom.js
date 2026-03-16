@@ -66,6 +66,7 @@ class GameRoom {
         generalId: p.generalId,
         isReady: p.isReady,
         isEliminated: p.isEliminated,
+        color: p.color || '#4a90d9',
       })),
       takenGenerals: this.players.filter(p => p.generalId).map(p => p.generalId),
     };
@@ -111,11 +112,10 @@ class GameRoom {
       generalId: generalData.id,
       vitality: generalData.vitality,
       maxVitality: generalData.vitality,
-      morale: 20,
-      maxMorale: 20,
-      attack: generalData.force,
+      force: generalData.force,
+      strategy: generalData.strategy,
+      charisma: generalData.charisma,
       power: generalData.weapon.damage,
-      defense: generalData.force,
       armor: generalData.armor,
       maxArmor: generalData.armor,
       intimidation: 5,
@@ -396,6 +396,7 @@ class GameRoom {
         generalId: p.generalId,
         isEliminated: p.isEliminated,
         unitCount: p.units.length,
+        color: p.color || '#4a90d9',
       })),
       turnOrder: this.turnOrder,
       initiativeRolls: this.initiativeRolls,
@@ -421,7 +422,15 @@ class GameRoom {
     unit.q = targetQ;
     unit.r = targetR;
     unit.hasMoved = true;
-    unit.speedRemaining = Math.max(0, unit.speedRemaining - path.length);
+    // Cost is based on the terrain being LEFT (source tile of each step)
+    const fullPath = [[fromQ, fromR], ...path];
+    const moveCost = path.reduce((sum, _, i) => {
+      const [pq, pr] = fullPath[i]; // source tile of this step
+      const t = this.hexMap[hexKey(pq, pr)]?.terrain || 'plain';
+      const costs = { plain: 1, road: 1, forest: 2, river: 2, building: 1, bridge: 1 };
+      return sum + (costs[t] ?? 1);
+    }, 0);
+    unit.speedRemaining = Math.max(0, unit.speedRemaining - moveCost);
     this.unitMap[hexKey(targetQ, targetR)] = unit;
 
     return { ok: true, unitId: unit.id, fromQ, fromR, path };
@@ -452,7 +461,7 @@ class GameRoom {
     const mr = (stance.moral_tour || 0) + (terrain.moral_tour || 0);
     const vr = (stance.vitalite_tour || 0) + (terrain.vitalite_tour || 0);
     if (ar !== 0) unit.armor = Math.max(0, Math.min(unit.maxArmor || unit.armor, unit.armor + ar));
-    if (mr !== 0) unit.morale = Math.max(0, Math.min(unit.maxMorale, unit.morale + mr));
+    if (mr !== 0 && !unit.isGeneral) unit.morale = Math.max(0, Math.min(unit.maxMorale, unit.morale + mr));
     if (vr !== 0) unit.vitality = Math.max(0, Math.min(unit.maxVitality, unit.vitality + vr));
   }
 
@@ -510,6 +519,40 @@ class GameRoom {
     return { ok: true };
   }
 
+  motivateUnit(playerId, generalId, targetId) {
+    const player = this.getPlayer(playerId);
+    if (!player) return { error: 'Joueur introuvable.' };
+    const general = player.units.find(u => u.id === generalId && u.isGeneral);
+    if (!general) return { error: 'Général introuvable.' };
+    if (general.hasAttacked) return { error: 'Le général a déjà agi ce tour.' };
+
+    const target = player.units.find(u => u.id === targetId);
+    if (!target) return { error: 'Unité amie introuvable.' };
+    if (target.isGeneral) return { error: 'Ne peut pas motiver un général.' };
+
+    const dist = hexDistance(general.q, general.r, target.q, target.r);
+    if (dist > 2) return { error: 'Unité hors de portée (max 2 cases).' };
+
+    // Jet de Charisme vs D20
+    const generalData = GENERALS.find(g => g.id === general.generalId);
+    const charisma = generalData ? generalData.charisma : 10;
+    const d20 = Math.floor(Math.random() * 20) + 1;
+    const success = charisma >= d20;
+
+    if (success) {
+      const moralGain = general.intimidation || 5;
+      target.morale = Math.min(target.maxMorale, target.morale + moralGain);
+      if (target.isFleeing && target.morale > 0) target.isFleeing = false;
+    }
+
+    // Coût : toute la vitesse restante min 1
+    const speedCost = Math.max(1, general.speedRemaining);
+    general.speedRemaining = Math.max(0, general.speedRemaining - speedCost);
+    general.hasAttacked = true;
+
+    return { ok: true, success, charisma, d20, moralGain: success ? (general.intimidation || 5) : 0, targetName: target.name };
+  }
+
   initiateCombat(playerId, attackerId, targetId) {
     const player = this.getPlayer(playerId);
     const attacker = player?.units.find(u => u.id === attackerId);
@@ -535,7 +578,7 @@ class GameRoom {
     const attackId = `atk_${Date.now()}_${Math.random()}`;
     this.pendingAttacks[attackId] = { attackerPlayerId: playerId, attackerId, targetPlayerId: targetPlayer.id, targetId, dist };
 
-    return { pending: true, attackId, targetPlayerId: targetPlayer.id, attackerName: attacker.name, targetName: target.name };
+    return { pending: true, attackId, targetPlayerId: targetPlayer.id, attackerName: attacker.name, targetName: target.name, targetQ: target.q, targetR: target.r };
   }
 
   resolveAttack(attackId, defenseChoice) {
@@ -556,16 +599,18 @@ class GameRoom {
 
     // Apply to target
     target.vitality = Math.max(0, target.vitality - result.dmgReceived);
-    target.morale = Math.max(0, target.morale - result.moralDmg);
-    target.armor = Math.max(0, target.armor - 1); // -1 armure per attaque reçue
-    if (target.morale <= 0 && !target.isFleeing) { target.stance = 'marche'; target.isFleeing = true; }
+    target.armor = Math.max(0, target.armor - 1);
+    if (!target.isGeneral) {
+      target.morale = Math.max(0, target.morale - result.moralDmg);
+      if (target.morale <= 0 && !target.isFleeing) { target.stance = 'marche'; target.isFleeing = true; }
+    }
 
     // Apply to attacker (counter-attack)
     if (result.counterDmgReceived > 0) {
       attacker.vitality = Math.max(0, attacker.vitality - result.counterDmgReceived);
       attacker.armor = Math.max(0, attacker.armor - 1);
     }
-    if (result.counterMoralDmg > 0) {
+    if (result.counterMoralDmg > 0 && !attacker.isGeneral) {
       attacker.morale = Math.max(0, attacker.morale - result.counterMoralDmg);
       if (attacker.morale <= 0 && !attacker.isFleeing) { attacker.stance = 'marche'; attacker.isFleeing = true; }
     }
@@ -580,6 +625,7 @@ class GameRoom {
       counterDmgReceived: result.counterDmgReceived, counterMoralDmg: result.counterMoralDmg,
       targetVitalityLeft: target.vitality, targetMoraleLeft: target.morale,
       attackerVitalityLeft: attacker.vitality,
+      breakdown: result.breakdown,
     };
 
     // Remove dead units
@@ -606,8 +652,9 @@ class GameRoom {
     const tA = this._getTerrainMods(attacker.q, attacker.r);
     const tD = this._getTerrainMods(target.q, target.r);
 
-    // Attack effective
-    const attackTotal = attacker.attack
+    // Attack effective (généraux utilisent force comme base d'attaque)
+    const attackBase = attacker.isGeneral ? attacker.force : attacker.attack;
+    const attackTotal = attackBase
       + (stA[`attack_${type}`] || 0) + (tA[`attack_${type}`] || 0)
       - (stD[`esquive_${type}`] || 0) - (tD[`esquive_${type}`] || 0);
     const attackD20 = Math.floor(Math.random() * 20) + 1;
@@ -628,7 +675,7 @@ class GameRoom {
     let dmgReceived = Math.max(0, Math.floor((dmgInflicted - armorAbsorb) / 10));
 
     // Intimidation → moral damage
-    let moralDmg = attacker.vitality * Math.max(0,
+    let moralDmg = Math.max(0,
       attacker.intimidation + (stA[`intimidation_${type}`] || 0) + (tA[`intimidation_${type}`] || 0)
     );
 
@@ -637,7 +684,9 @@ class GameRoom {
     let counterDmgReceived = 0, counterMoralDmg = 0;
 
     if (defenseChoice === 'counter' || defenseChoice === 'absorb') {
-      const defTotal = target.defense
+      // Généraux utilisent force comme base de défense
+      const defBase = target.isGeneral ? target.force : target.defense;
+      const defTotal = defBase
         + (stD[`defense_${type}`] || 0) + (tD[`defense_${type}`] || 0)
         - (stA[`precision_${type}`] || 0) - (tA[`precision_${type}`] || 0);
       defenseRoll = Math.floor(Math.random() * 20) + 1;
@@ -652,7 +701,7 @@ class GameRoom {
         const atkArmor = Math.max(0, attacker.armor + (stA.armure || 0) + (tA.armure || 0));
         const atkArmorAbsorb = attacker.vitality * atkArmor;
         const rawCounter = Math.max(0, counterRaw - atkArmorAbsorb);
-        const rawMoral = target.vitality * Math.max(0, target.intimidation + (stD[`intimidation_${type}`] || 0) + (tD[`intimidation_${type}`] || 0));
+        const rawMoral = Math.max(0, target.intimidation + (stD[`intimidation_${type}`] || 0) + (tD[`intimidation_${type}`] || 0));
 
         if (defenseChoice === 'absorb') {
           dmgReceived = Math.ceil(dmgReceived / 2);
@@ -666,7 +715,42 @@ class GameRoom {
       }
     }
 
-    return { attackTotal, attackD20, hit, dmgInflicted, armorAbsorb, dmgReceived, moralDmg, defenseRoll, defenseSuccess, counterDmgReceived, counterMoralDmg };
+    // Breakdown details for history
+    const breakdown = {
+      attackBase,
+      stA_attack: stA[`attack_${type}`] || 0,
+      tA_attack:  tA[`attack_${type}`] || 0,
+      stD_esquive: stD[`esquive_${type}`] || 0,
+      tD_esquive:  tD[`esquive_${type}`] || 0,
+      attackTotal,
+      attackD20,
+      hit,
+      dieFaces: Math.max(1, attacker.power + (stA[`puissance_${type}`] || 0) + (tA[`puissance_${type}`] || 0)),
+      diceCount: attacker.vitality,
+      dmgInflicted,
+      armorAbsorb,
+      effectiveArmor,
+      dmgReceived,
+      moralDmg,
+      defenseChoice,
+      defBase: (defenseChoice === 'counter' || defenseChoice === 'absorb') ? (target.isGeneral ? target.force : target.defense) : null,
+      stD_defense: (stD[`defense_${type}`] || 0),
+      tD_defense:  (tD[`defense_${type}`] || 0),
+      stA_precision: (stA[`precision_${type}`] || 0),
+      tA_precision:  (tA[`precision_${type}`] || 0),
+      defTotal: (defenseChoice === 'counter' || defenseChoice === 'absorb')
+        ? (target.isGeneral ? target.force : target.defense) + (stD[`defense_${type}`] || 0) + (tD[`defense_${type}`] || 0) - (stA[`precision_${type}`] || 0) - (tA[`precision_${type}`] || 0)
+        : null,
+      defenseRoll,
+      defenseSuccess,
+      counterDmgReceived,
+      counterMoralDmg,
+      attackerStance: attacker.stance,
+      defenderStance: target.stance,
+      attackerTerrain: this.terrainData[hexKey(attacker.q, attacker.r)] || 'plaines',
+      defenderTerrain: this.terrainData[hexKey(target.q, target.r)] || 'plaines',
+    };
+    return { attackTotal, attackD20, hit, dmgInflicted, armorAbsorb, dmgReceived, moralDmg, defenseRoll, defenseSuccess, counterDmgReceived, counterMoralDmg, breakdown };
   }
 
   useGeneralAbility(playerId, targetHex, targetId) {

@@ -5,6 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Kingdom Battleground</title>
   <link rel="stylesheet" href="/css/style.css">
+  <style>
+    #general-card-box { max-width:740px; width:min(740px,95vw); background:#2a2a2e; border:3px solid #111; padding:12px; border-radius:6px; position:relative; }
+    .uc-pdf { display:grid; grid-template-columns:260px 1fr; grid-template-rows:auto auto; gap:8px; color:#111; }
+    .uc-pdf-left { display:flex; flex-direction:column; gap:8px; }
+    .uc-pdf-img { width:100%; aspect-ratio:1/1; object-fit:cover; object-position:top; border:2px solid #444; background:#111; }
+    .uc-pdf-img-placeholder { width:100%; aspect-ratio:1/1; background:#111; border:2px solid #444; display:flex; align-items:center; justify-content:center; font-size:64px; color:#555; }
+    .uc-pdf-bonus { background:#fff; border:2px solid #444; padding:10px 12px; font-size:0.85em; line-height:1.6; flex:1; }
+    .uc-pdf-bonus strong { color:#8b1a1a; }
+    .uc-pdf-right { display:flex; flex-direction:column; gap:7px; }
+    .uc-pdf-title { background:#fff; border:2px solid #444; text-align:center; padding:12px 8px; font-size:1.15em; font-weight:bold; color:#8b1a1a; line-height:1.3; font-family:'Georgia',serif; }
+    .uc-pdf-stats { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+    .uc-pdf-stat { background:#fff; border:2px solid #444; text-align:center; padding:8px 6px; }
+    .uc-pdf-stat-label { font-weight:bold; font-size:0.85em; color:#222; font-family:'Georgia',serif; }
+    .uc-pdf-stat-value { font-size:1.35em; font-weight:bold; color:#111; margin-top:3px; }
+    .uc-pdf-desc { grid-column:1/-1; background:#fff; border:2px solid #444; padding:10px 12px; font-size:0.85em; line-height:1.6; color:#111; }
+    .uc-pdf-desc strong { color:#8b1a1a; }
+  </style>
 </head>
 <body>
   <div class="lobby-container">
@@ -88,6 +105,14 @@
       <div class="mt-16">
         <button class="btn btn-success" onclick="submitArmy()">Confirmer l'armée</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Fiche général -->
+  <div id="overlay-general-card" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)closeGeneralCard()">
+    <div id="general-card-box">
+      <button onclick="closeGeneralCard()" style="position:absolute;top:8px;right:12px;background:none;border:none;color:#c8960c;font-size:1.4em;cursor:pointer;z-index:1">✕</button>
+      <div id="general-card-content"></div>
     </div>
   </div>
 
