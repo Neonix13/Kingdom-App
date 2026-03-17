@@ -19,35 +19,43 @@
 </head>
 <body>
   <h1>⚔️ Kingdom Battleground</h1>
-  <p>Liens de test — assure-toi que le serveur tourne avec <kbd>node server.js</kbd></p>
+  <p>Liens de test — version locale et version en ligne</p>
+
+  <div class="section">
+    <h2>🌐 Version en ligne (AWS)</h2>
+    <a href="https://d17j7vqprm2stg.cloudfront.net" target="_blank">
+      https://d17j7vqprm2stg.cloudfront.net
+      <div class="label">Version déployée — accessible à tes amis depuis n'importe où</div>
+    </a>
+  </div>
 
   <div class="note">
-    ✅ <strong>Avant de cliquer :</strong> le serveur doit être lancé dans le terminal avec <code>node server.js</code>
+    ✅ <strong>Version locale :</strong> le serveur doit être lancé dans le terminal avec <code>node server.js</code>
   </div>
 
   <div class="section">
-    <h2>🎮 Accès principal</h2>
+    <h2>💻 Version locale</h2>
     <a href="http://localhost:3000" target="_blank">
       http://localhost:3000
-      <div class="label">Page d'accueil — Créer ou rejoindre une partie</div>
+      <div class="label">Page d'accueil locale — Créer ou rejoindre une partie</div>
     </a>
   </div>
 
   <div class="section">
     <h2>👥 Test multijoueur (ouvre chaque lien dans un onglet séparé)</h2>
-    <a href="http://localhost:3000" target="_blank">
-      Joueur 1 — Créer la salle
+    <a href="https://d17j7vqprm2stg.cloudfront.net" target="_blank">
+      Joueur 1 — Créer la salle (en ligne)
       <div class="label">Entre ton nom → Créer la salle → Note le code à 6 lettres</div>
     </a>
-    <a href="http://localhost:3000" target="_blank">
-      Joueur 2 — Rejoindre
+    <a href="https://d17j7vqprm2stg.cloudfront.net" target="_blank">
+      Joueur 2 — Rejoindre (en ligne)
       <div class="label">Entre un autre nom → Colle le code → Rejoindre</div>
     </a>
-    <a href="http://localhost:3000" target="_blank">
+    <a href="https://d17j7vqprm2stg.cloudfront.net" target="_blank">
       Joueur 3 (optionnel)
       <div class="label">Même procédure</div>
     </a>
-    <a href="http://localhost:3000" target="_blank">
+    <a href="https://d17j7vqprm2stg.cloudfront.net" target="_blank">
       Joueur 4 (optionnel)
       <div class="label">Même procédure</div>
     </a>
@@ -71,7 +79,7 @@
   </div>
 
   <div class="warn">
-    ⚠️ <strong>Si la page ne charge pas :</strong> le serveur n'est pas lancé. Va dans le terminal VS Code et tape <kbd>node server.js</kbd>
+    ⚠️ <strong>Si la version en ligne ne fonctionne pas :</strong> attends quelques minutes que CloudFront propage les mises à jour (invalidation en cours).
   </div>
 </body>
 </html>

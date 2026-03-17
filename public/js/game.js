@@ -373,18 +373,11 @@ function render() {
   const visibleSet = new Set(gameState?.visibleHexes || []);
   const startZone = deployState?.startingZone;
 
-  // Determine which hexes to draw
-  const hexMap = deployState?.hexMap || {};
-  const hexKeys = Object.keys(hexMap);
+  const S = Math.sqrt(3);
+  const qMin = Math.floor(-MAP_ORIG_X / (MAP_HEX_SIZE * 1.5)) - 1;
+  const qMax = Math.ceil((MAP_IMG_W - MAP_ORIG_X) / (MAP_HEX_SIZE * 1.5)) + 1;
 
-  // In battle, we only have visibleHexes + fog
   if (gameState && gameState.phase === 'battle') {
-    // Draw all hexes (fog on non-visible)
-    // We need the full hex map — server sends visible hexes as array
-    // Draw a large area and mark fog
-    const S = Math.sqrt(3);
-    const qMin = Math.floor(-MAP_ORIG_X / (MAP_HEX_SIZE * 1.5)) - 1;
-    const qMax = Math.ceil((MAP_IMG_W - MAP_ORIG_X) / (MAP_HEX_SIZE * 1.5)) + 1;
     for (let q = qMin; q <= qMax; q++) {
       const rMin2 = Math.floor((-MAP_ORIG_Y - MAP_HEX_SIZE * S / 2 * q) / (MAP_HEX_SIZE * S)) - 1;
       const rMax2 = Math.ceil((MAP_IMG_H - MAP_ORIG_Y - MAP_HEX_SIZE * S / 2 * q) / (MAP_HEX_SIZE * S)) + 1;
@@ -396,42 +389,32 @@ function render() {
         const { x, y } = hexToPixel(q, r);
         const isVisible = visibleSet.has(key);
         const isHovered = hoveredHex && hoveredHex.q === q && hoveredHex.r === r;
-
-        // Zones visibles : transparent sur la carte, brouillard : sombre opaque
         let fill = isVisible ? 'rgba(0,0,0,0)' : 'rgba(0,0,0,0.72)';
         let stroke = isVisible ? `rgba(${gridColorRGB},${gridOpacity})` : 'rgba(0,0,0,0)';
-
         if (isVisible && movableTiles.has(key)) fill = 'rgba(40,120,20,0.35)';
         if (isVisible && attackableTiles.has(key)) fill = 'rgba(180,30,10,0.35)';
         if (isHovered && isVisible) stroke = '#c8960c';
-
         drawHex(ctx, x, y, fill, stroke, 1, gridThickness);
       }
     }
   } else {
-    // Deployment: draw all hexes
-    for (const key of hexKeys) {
-      const [q, r] = key.split(',').map(Number);
-      const { x, y } = hexToPixel(q, r);
-      let inZone = false;
-      if (startZone) {
-        const rRiver = Math.round(21 - 0.43 * q);
-        if (startZone.type === 'river_north') {
-          inZone = r >= rRiver - startZone.radius && r <= rRiver - 1;
-        } else if (startZone.type === 'river_south') {
-          inZone = r >= rRiver + 1 && r <= rRiver + startZone.radius;
-        } else {
-          inZone = hexDistance(q, r, startZone.q, startZone.r) <= startZone.radius;
-        }
+    // Deployment: iterate over the full map extent without needing hexMap
+    for (let q = qMin; q <= qMax; q++) {
+      const rMin2 = Math.floor((-MAP_ORIG_Y - MAP_HEX_SIZE * S / 2 * q) / (MAP_HEX_SIZE * S)) - 1;
+      const rMax2 = Math.ceil((MAP_IMG_H - MAP_ORIG_Y - MAP_HEX_SIZE * S / 2 * q) / (MAP_HEX_SIZE * S)) + 1;
+      for (let r = rMin2; r <= rMax2; r++) {
+        const imgX = MAP_HEX_SIZE * 1.5 * q + MAP_ORIG_X;
+        const imgY = MAP_HEX_SIZE * (S / 2 * q + S * r) + MAP_ORIG_Y;
+        if (imgX < 0 || imgX > MAP_IMG_W || imgY < 0 || imgY > MAP_IMG_H) continue;
+        const { x, y } = hexToPixel(q, r);
+        const inZone = startZone ? hexDistance(q, r, startZone.q, startZone.r) <= startZone.radius : false;
+        const isHovered = hoveredHex && hoveredHex.q === q && hoveredHex.r === r;
+        let fill = inZone ? 'rgba(40,120,20,0.25)' : 'rgba(0,0,0,0)';
+        let stroke = inZone ? `rgba(80,200,40,${Math.min(1, gridOpacity * 2)})` : `rgba(${gridColorRGB},${gridOpacity * 0.6})`;
+        if (inZone && isHovered) fill = 'rgba(60,180,30,0.4)';
+        if (isHovered && !inZone) stroke = 'rgba(200,160,80,0.5)';
+        drawHex(ctx, x, y, fill, stroke, 1, gridThickness);
       }
-      const isHovered = hoveredHex && hoveredHex.q === q && hoveredHex.r === r;
-
-      // Déploiement : transparent sur carte, zone de départ en vert léger
-      let fill = inZone ? 'rgba(40,120,20,0.25)' : 'rgba(0,0,0,0)';
-      let stroke = inZone ? `rgba(80,200,40,${Math.min(1, gridOpacity * 2)})` : `rgba(${gridColorRGB},${gridOpacity * 0.6})`;
-      if (inZone && isHovered) fill = 'rgba(60,180,30,0.4)';
-      if (isHovered && !inZone) stroke = 'rgba(200,160,80,0.5)';
-      drawHex(ctx, x, y, fill, stroke, 1, gridThickness);
     }
   }
 
