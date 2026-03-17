@@ -297,8 +297,8 @@ class GameRoom {
     const player = this.getPlayer(playerId);
     if (!player) return { error: 'Joueur introuvable.' };
 
-    // Check general is placed (cherche dans units au cas où generalUnit est désynchronisé après désérialisation)
-    const generalUnit = player.generalUnit || player.units.find(u => u.isGeneral);
+    // Check general is placed — toujours chercher dans units (generalUnit peut être désynchronisé après désérialisation DynamoDB)
+    const generalUnit = player.units.find(u => u.isGeneral);
     if (!generalUnit || generalUnit.q === null) {
       return { error: 'Vous devez placer votre général avant d\'être prêt.' };
     }
