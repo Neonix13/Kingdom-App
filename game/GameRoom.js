@@ -9,8 +9,10 @@ const nodePath = require('path');
 
 const MAP_RADIUS = 70;
 
-let unitCounter = 0;
-function newUnitId() { return `u_${++unitCounter}`; }
+function newUnitId(room) {
+  room._unitCounter = (room._unitCounter || 0) + 1;
+  return `u_${room._unitCounter}`;
+}
 
 class GameRoom {
   constructor(roomCode, hostId) {
@@ -29,12 +31,13 @@ class GameRoom {
     this.abilityCooldowns = {}; // playerId -> turnsRemaining
     this.activeEffects = []; // { type, targetPlayerId, turnsLeft, value }
     this.pendingAttacks = {}; // attackId -> pending attack data
-    let terrainRaw = {};
-    try { terrainRaw = JSON.parse(fs.readFileSync(nodePath.join(__dirname, '../public/terrain.json'), 'utf8')); } catch(e) {}
-    this.terrainData = terrainRaw;
-    let segmentRaw = {};
-    try { segmentRaw = JSON.parse(fs.readFileSync(nodePath.join(__dirname, '../public/segments.json'), 'utf8')); } catch(e) {}
-    this.segmentData = segmentRaw;
+    this._unitCounter = 0;
+    this._loadStaticData();
+  }
+
+  _loadStaticData() {
+    try { this.terrainData = JSON.parse(fs.readFileSync(nodePath.join(__dirname, '../public/terrain.json'), 'utf8')); } catch(e) { this.terrainData = {}; }
+    try { this.segmentData = JSON.parse(fs.readFileSync(nodePath.join(__dirname, '../public/segments.json'), 'utf8')); } catch(e) { this.segmentData = {}; }
   }
 
   addPlayer(id, name) {
@@ -108,7 +111,7 @@ class GameRoom {
     if (!generalData) return { error: 'Général non sélectionné.' };
 
     const generalUnit = {
-      id: newUnitId(),
+      id: newUnitId(this),
       playerId,
       typeId: 'general',
       name: generalData.name,
@@ -153,7 +156,7 @@ class GameRoom {
   _createUnit(typeId, playerId) {
     const data = UNITS[typeId];
     return {
-      id: newUnitId(),
+      id: newUnitId(this),
       playerId,
       typeId,
       name: data.name,
@@ -204,7 +207,6 @@ class GameRoom {
       phase: 'deployment',
       myId: playerId,
       budget: this.budget,
-      hexMap: this.hexMap,
       startingZone: player.startingZone,
       units: player.units,
       placedUnits: player.placedUnits,
@@ -228,7 +230,7 @@ class GameRoom {
       abilityCooldowns: this.abilityCooldowns,
       activeEffects: this.activeEffects,
       pendingAttacks: this.pendingAttacks,
-      _unitCounter: unitCounter,
+      _unitCounter: this._unitCounter,
     };
   }
 
@@ -245,7 +247,9 @@ class GameRoom {
     room.abilityCooldowns = data.abilityCooldowns || {};
     room.activeEffects = data.activeEffects || [];
     room.pendingAttacks = data.pendingAttacks || {};
-    if (data._unitCounter) unitCounter = data._unitCounter;
+    room._unitCounter = data._unitCounter || 0;
+    // Recharger les données statiques (terrain/segments) depuis fichiers
+    room._loadStaticData();
     if (['deployment', 'battle', 'ended'].includes(data.phase)) {
       room.hexMap = generateHexMap(MAP_RADIUS);
       room._rebuildUnitMap();
@@ -827,9 +831,10 @@ class GameRoom {
   useGeneralAbility(playerId, targetHex, targetId) {
     const player = this.getPlayer(playerId);
     const general = GENERALS.find(g => g.id === player.generalId);
-    const generalUnit = player.generalUnit;
+    const generalUnit = player.units.find(u => u.isGeneral);
 
     if (!general) return { error: 'Général introuvable.' };
+    if (!generalUnit) return { error: 'Unité général introuvable.' };
     if (generalUnit.hasUsedAbility) return { error: 'Capacité déjà utilisée ce tour.' };
     if (generalUnit.abilityCooldown > 0) return { error: `Capacité en recharge (${generalUnit.abilityCooldown} tours restants).` };
 
