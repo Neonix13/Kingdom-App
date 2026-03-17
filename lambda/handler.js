@@ -78,14 +78,21 @@ exports.handler = async (event) => {
       if (room) {
         const player = room.getPlayer(connectionId);
         if (player) {
-          await broadcast(apigw, room, { event: 'player_disconnected', playerId: connectionId });
-          room.removePlayer(connectionId);
-          if (room.players.length === 0) {
-            await deleteRoom(conn.roomCode);
+          if (room.phase === 'lobby') {
+            // En lobby : suppression immédiate
+            room.removePlayer(connectionId);
+            if (room.players.length === 0) {
+              await deleteRoom(conn.roomCode);
+            } else {
+              if (room.hostId === connectionId) room.hostId = room.players[0].id;
+              await saveRoom(room);
+              await broadcast(apigw, room, { event: 'room_update', ...room.getLobbyState() });
+            }
           } else {
-            if (room.hostId === connectionId) room.hostId = room.players[0].id;
+            // En jeu : marquer offline, permettre le rejoin
+            player.offline = true;
             await saveRoom(room);
-            await broadcast(apigw, room, { event: 'room_update', ...room.getLobbyState() });
+            await broadcast(apigw, room, { event: 'player_disconnected', playerId: connectionId });
           }
         }
       }

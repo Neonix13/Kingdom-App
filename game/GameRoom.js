@@ -297,8 +297,9 @@ class GameRoom {
     const player = this.getPlayer(playerId);
     if (!player) return { error: 'Joueur introuvable.' };
 
-    // Check general is placed
-    if (!player.generalUnit || player.generalUnit.q === null) {
+    // Check general is placed (cherche dans units au cas où generalUnit est désynchronisé après désérialisation)
+    const generalUnit = player.generalUnit || player.units.find(u => u.isGeneral);
+    if (!generalUnit || generalUnit.q === null) {
       return { error: 'Vous devez placer votre général avant d\'être prêt.' };
     }
 
