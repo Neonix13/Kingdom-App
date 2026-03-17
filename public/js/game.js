@@ -1577,6 +1577,7 @@ function wsDispatch(event, data) {
   switch (event) {
     case 'deployment_state': {
       myId = data.myId;
+      sessionStorage.setItem('myId', myId);
       deployState = data;
       renderDeployUnitList(data.units);
       render();
@@ -1600,6 +1601,7 @@ function wsDispatch(event, data) {
     }
     case 'game_state': {
       myId = data.myId;
+      sessionStorage.setItem('myId', myId);
       gameState = data;
       gameState.visibleHexes = new Set(data.visibleHexes);
 
