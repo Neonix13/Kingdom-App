@@ -1,8 +1,0 @@
-node_modules
-.git
-.claude
-public/assets
-public/segment-editor.html
-*.md
-.samignore
-.gitignore

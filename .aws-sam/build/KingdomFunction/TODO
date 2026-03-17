@@ -1,5 +1,0 @@
- Créer un compte AWS
- Installer la toolchain AWS
- Se login à AWS (clé d'API/identification)
- Créer le backend avec des fonction lamda pour la gestion du jeu en ligne
- brancher l'API au frontend
