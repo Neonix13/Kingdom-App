@@ -1,12 +1,19 @@
 // WebSocket natif (remplace socket.io)
 let ws = null;
 let wsQueue = [];
+let tryingRejoin = false;
 
 function wsConnect() {
   ws = new WebSocket(window.WS_URL || ('ws' + (location.protocol === 'https:' ? 's' : '') + '://' + location.host));
   ws.onopen = () => {
     wsQueue.forEach(msg => ws.send(msg));
     wsQueue = [];
+    const savedId = sessionStorage.getItem('lobbyPlayerId');
+    const savedCode = sessionStorage.getItem('lobbyRoomCode');
+    if (savedId && savedCode) {
+      tryingRejoin = true;
+      ws.send(JSON.stringify({ action: 'rejoin_game', roomCode: savedCode, oldPlayerId: savedId }));
+    }
   };
   ws.onmessage = (e) => {
     let msg;
@@ -395,6 +402,8 @@ function wsDispatch(event, data) {
       myId = data.playerId;
       roomCode = data.roomCode;
       isHost = true;
+      sessionStorage.setItem('lobbyPlayerId', myId);
+      sessionStorage.setItem('lobbyRoomCode', roomCode);
       document.getElementById('room-code-display').textContent = data.roomCode;
       document.getElementById('budget-card').style.display = 'block';
       document.getElementById('start-btn').style.display = 'block';
@@ -404,6 +413,9 @@ function wsDispatch(event, data) {
     case 'room_joined': {
       myId = data.playerId;
       roomCode = data.roomCode;
+      tryingRejoin = false;
+      sessionStorage.setItem('lobbyPlayerId', myId);
+      sessionStorage.setItem('lobbyRoomCode', roomCode);
       document.getElementById('room-code-display').textContent = data.roomCode;
       show('screen-lobby');
       break;
@@ -437,10 +449,18 @@ function wsDispatch(event, data) {
       sessionStorage.setItem('deploymentState', JSON.stringify(data));
       sessionStorage.setItem('roomCode', roomCode);
       sessionStorage.setItem('myId', myId);
+      sessionStorage.removeItem('lobbyPlayerId');
+      sessionStorage.removeItem('lobbyRoomCode');
       window.location.href = '/game.html';
       break;
     case 'error':
-      notify(data.message || data);
+      if (tryingRejoin) {
+        tryingRejoin = false;
+        sessionStorage.removeItem('lobbyPlayerId');
+        sessionStorage.removeItem('lobbyRoomCode');
+      } else {
+        notify(data.message || data);
+      }
       break;
     case 'player_disconnected':
       notify('Un joueur s\'est déconnecté.', 'info');

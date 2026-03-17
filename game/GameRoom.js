@@ -67,7 +67,7 @@ class GameRoom {
       hostId: this.hostId,
       phase: this.phase,
       budget: this.budget,
-      players: this.players.map(p => ({
+      players: this.players.filter(p => !p.offline).map(p => ({
         id: p.id,
         name: p.name,
         generalId: p.generalId,
@@ -75,7 +75,7 @@ class GameRoom {
         isEliminated: p.isEliminated,
         color: p.color || '#4a90d9',
       })),
-      takenGenerals: this.players.filter(p => p.generalId).map(p => p.generalId),
+      takenGenerals: this.players.filter(p => p.generalId && !p.offline).map(p => p.generalId),
     };
   }
 

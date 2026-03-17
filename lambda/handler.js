@@ -78,20 +78,11 @@ exports.handler = async (event) => {
       if (room) {
         const player = room.getPlayer(connectionId);
         if (player) {
+          player.offline = true;
+          await saveRoom(room);
           if (room.phase === 'lobby') {
-            // En lobby : suppression immédiate
-            room.removePlayer(connectionId);
-            if (room.players.length === 0) {
-              await deleteRoom(conn.roomCode);
-            } else {
-              if (room.hostId === connectionId) room.hostId = room.players[0].id;
-              await saveRoom(room);
-              await broadcast(apigw, room, { event: 'room_update', ...room.getLobbyState() });
-            }
+            await broadcast(apigw, room, { event: 'room_update', ...room.getLobbyState() });
           } else {
-            // En jeu : marquer offline, permettre le rejoin
-            player.offline = true;
-            await saveRoom(room);
             await broadcast(apigw, room, { event: 'player_disconnected', playerId: connectionId });
           }
         }
@@ -129,11 +120,15 @@ async function handleAction(apigw, connectionId, action, data) {
       if (!player) return send(apigw, connectionId, { event: 'error', message: 'Joueur introuvable.' });
       await deleteConn(oldPlayerId);
       player.id = connectionId;
+      player.offline = false;
       if (room.hostId === oldPlayerId) room.hostId = connectionId;
       await saveConn(connectionId, roomCode);
       await saveRoom(room);
       console.log(`Rejoin: ${player.name} (${oldPlayerId} → ${connectionId})`);
-      if (room.phase === 'deployment') {
+      if (room.phase === 'lobby') {
+        await send(apigw, connectionId, { event: 'room_joined', roomCode, playerId: connectionId });
+        await broadcast(apigw, room, { event: 'room_update', ...room.getLobbyState() });
+      } else if (room.phase === 'deployment') {
         await send(apigw, connectionId, { event: 'deployment_state', ...room.getDeploymentState(connectionId) });
       } else if (room.phase === 'battle') {
         await send(apigw, connectionId, { event: 'game_state', ...room.getGameState(connectionId) });
