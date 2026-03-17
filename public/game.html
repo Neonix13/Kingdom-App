@@ -360,8 +360,9 @@
   <script>
     if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
       window.WS_URL = 'ws://localhost:3000';
+    } else {
+      window.WS_URL = 'wss://czp9kaymr6.execute-api.eu-west-3.amazonaws.com/prod';
     }
-    // En production AWS, definir window.WS_URL = 'wss://xxxx.execute-api.region.amazonaws.com/prod'
   </script>
   <script src="/js/version.js"></script>
   <script src="/js/hexGrid.js"></script>

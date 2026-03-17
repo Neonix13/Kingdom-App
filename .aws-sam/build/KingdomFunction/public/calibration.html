@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Calibration Grille</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #111; color: #fff; font-family: monospace; display: flex; height: 100vh; overflow: hidden; }
+    #canvas-wrap { flex: 1; overflow: hidden; position: relative; }
+    canvas { display: block; cursor: crosshair; }
+    #controls {
+      width: 260px; background: #1a1a1a; padding: 12px; overflow-y: auto;
+      border-left: 1px solid #333; font-size: 13px;
+    }
+    h2 { color: #c8a84b; margin-bottom: 12px; font-size: 14px; }
+    .group { margin-bottom: 14px; }
+    label { display: block; color: #aaa; margin-bottom: 3px; }
+    input[type=range] { width: 100%; }
+    .val { color: #c8a84b; font-weight: bold; }
+    button {
+      width: 100%; margin-top: 6px; padding: 8px; background: #2a4a1a;
+      color: #8bc34a; border: 1px solid #4a7a2a; cursor: pointer; border-radius: 4px;
+    }
+    button:hover { background: #3a6a2a; }
+    .copy-btn { background: #1a3a5a; color: #4ab0ea; border-color: #2a6a9a; }
+    #output {
+      margin-top: 10px; padding: 8px; background: #0a0a0a; border: 1px solid #333;
+      font-size: 11px; color: #8bc34a; white-space: pre; border-radius: 4px;
+    }
+    .info { font-size: 11px; color: #666; margin-top: 4px; }
+    #coords { position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.7);
+      padding: 4px 8px; font-family: monospace; font-size: 12px; color: #c8a84b; }
+  </style>
+</head>
+<body>
+<div id="canvas-wrap">
+  <canvas id="c"></canvas>
+  <div id="coords">q: — r: —</div>
+</div>
+<div id="controls">
+  <h2>🔧 Calibration Grille</h2>
+
+  <div class="group">
+    <label>Taille hex (px image): <span class="val" id="v-size">300</span></label>
+    <input type="range" id="hex-size" min="30" max="600" value="300" step="0.1">
+    <input type="number" id="hex-size-num" value="300" min="10" max="2000" step="0.1" style="width:100%;margin-top:4px;background:#111;color:#fff;border:1px solid #333;padding:3px;">
+  </div>
+
+  <div class="group">
+    <label>Origine X (px image): <span class="val" id="v-ox">150</span></label>
+    <input type="range" id="orig-x" min="-600" max="600" value="150" step="1">
+    <input type="number" id="orig-x-num" value="150" style="width:100%;margin-top:4px;background:#111;color:#fff;border:1px solid #333;padding:3px;">
+  </div>
+
+  <div class="group">
+    <label>Origine Y (px image): <span class="val" id="v-oy">260</span></label>
+    <input type="range" id="orig-y" min="-600" max="600" value="260" step="1">
+    <input type="number" id="orig-y-num" value="260" style="width:100%;margin-top:4px;background:#111;color:#fff;border:1px solid #333;padding:3px;">
+  </div>
+
+  <div class="group">
+    <label>Opacité grille: <span class="val" id="v-alpha">0.4</span></label>
+    <input type="range" id="grid-alpha" min="0.05" max="1" value="0.4" step="0.05">
+  </div>
+
+  <div class="group">
+    <label>Zoom: <span class="val" id="v-zoom">1.0</span></label>
+    <input type="range" id="zoom-slider" min="0.05" max="0.5" value="0.1" step="0.005">
+  </div>
+
+  <button onclick="copyConfig()" class="copy-btn">📋 Copier la config</button>
+  <div id="output">— Ajuste les paramètres —</div>
+
+  <div class="info" style="margin-top:12px;">
+    <b>Navigation:</b><br>
+    • Clic-glisser = déplacer la vue<br>
+    • Molette = zoom<br>
+    • La grille en vert s'aligne sur la carte<br><br>
+    <b>But:</b> ajuste Taille hex + Origine X/Y pour que les lignes de la grille coïncident avec les rivières, falaises et murs.
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('canvas-wrap');
+
+const IMG_W = 8800, IMG_H = 7200;
+const img = new Image();
+img.src = '/img/map.webp';
+img.onload = () => draw();
+
+// State
+let hexSize = 300;
+let origX = 150, origY = 260;
+let gridAlpha = 0.4;
+let zoom = 0.1;
+let panX = 0, panY = 0;
+let dragging = false, lastMx = 0, lastMy = 0;
+
+function resize() {
+  canvas.width = wrap.clientWidth;
+  canvas.height = wrap.clientHeight;
+  draw();
+}
+window.addEventListener('resize', resize);
+resize();
+
+// Contrôles
+document.getElementById('hex-size').addEventListener('input', function() {
+  hexSize = parseFloat(this.value);
+  document.getElementById('v-size').textContent = hexSize.toFixed(1);
+  document.getElementById('hex-size-num').value = hexSize;
+  draw(); updateOutput();
+});
+document.getElementById('hex-size-num').addEventListener('input', function() {
+  hexSize = parseFloat(this.value) || 300;
+  document.getElementById('v-size').textContent = hexSize.toFixed(1);
+  document.getElementById('hex-size').value = Math.min(600, Math.max(30, hexSize));
+  draw(); updateOutput();
+});
+document.getElementById('grid-alpha').addEventListener('input', function() {
+  gridAlpha = parseFloat(this.value);
+  document.getElementById('v-alpha').textContent = gridAlpha.toFixed(2);
+  draw();
+});
+document.getElementById('zoom-slider').addEventListener('input', function() {
+  zoom = parseFloat(this.value);
+  document.getElementById('v-zoom').textContent = zoom.toFixed(3);
+  draw();
+});
+
+// Sync origine sliders et number inputs
+['x','y'].forEach(axis => {
+  const slider = document.getElementById(`orig-${axis}`);
+  const num = document.getElementById(`orig-${axis}-num`);
+  function update(val) {
+    val = parseInt(val);
+    if (axis === 'x') origX = val;
+    else origY = val;
+    document.getElementById(`v-o${axis}`).textContent = val;
+    slider.value = Math.max(-500, Math.min(500, val));
+    num.value = val;
+    draw(); updateOutput();
+  }
+  slider.addEventListener('input', () => update(slider.value));
+  num.addEventListener('input', () => update(num.value));
+});
+
+// Hex math (flat-top)
+function hexToPixel(q, r) {
+  const x = hexSize * (3/2 * q) + origX;
+  const y = hexSize * (Math.sqrt(3)/2 * q + Math.sqrt(3) * r) + origY;
+  return { x, y };
+}
+function pixelToHex(px, py) {
+  const x = (px - origX) / hexSize;
+  const y = (py - origY) / hexSize;
+  const q = (2/3) * x;
+  const r = (-1/3) * x + (Math.sqrt(3)/3) * y;
+  return roundHex(q, r);
+}
+function roundHex(q, r) {
+  const s = -q - r;
+  let rq = Math.round(q), rr = Math.round(r), rs = Math.round(s);
+  const dq = Math.abs(rq-q), dr = Math.abs(rr-r), ds = Math.abs(rs-s);
+  if (dq > dr && dq > ds) rq = -rr-rs;
+  else if (dr > ds) rr = -rq-rs;
+  return { q: rq, r: rr };
+}
+function hexCorners(cx, cy) {
+  const corners = [];
+  for (let i = 0; i < 6; i++) {
+    const angle = Math.PI / 180 * (60 * i);
+    corners.push({ x: cx + hexSize * Math.cos(angle), y: cy + hexSize * Math.sin(angle) });
+  }
+  return corners;
+}
+
+function draw() {
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0, 0, W, H);
+
+  // Image
+  if (img.complete && img.naturalWidth) {
+    ctx.save();
+    ctx.translate(panX, panY);
+    ctx.scale(zoom, zoom);
+    ctx.drawImage(img, 0, 0);
+
+    // Grille hex
+    ctx.strokeStyle = `rgba(100, 255, 100, ${gridAlpha})`;
+    ctx.lineWidth = 1 / zoom;
+
+    const screenToImg = (sx, sy) => ({ x: (sx - panX) / zoom, y: (sy - panY) / zoom });
+    const tl = screenToImg(0, 0);
+    const br = screenToImg(W, H);
+
+    const qMin = Math.floor((tl.x - origX - hexSize) / (hexSize * 1.5)) - 1;
+    const qMax = Math.ceil((br.x - origX + hexSize) / (hexSize * 1.5)) + 1;
+    const rMin = Math.floor((tl.y - origY - hexSize) / (hexSize * Math.sqrt(3))) - 2;
+    const rMax = Math.ceil((br.y - origY + hexSize) / (hexSize * Math.sqrt(3))) + 2;
+
+    for (let q = qMin; q <= qMax; q++) {
+      for (let r = rMin; r <= rMax; r++) {
+        const { x, y } = hexToPixel(q, r);
+        const corners = hexCorners(x, y);
+        ctx.beginPath();
+        ctx.moveTo(corners[0].x, corners[0].y);
+        for (let i = 1; i < 6; i++) ctx.lineTo(corners[i].x, corners[i].y);
+        ctx.closePath();
+        ctx.stroke();
+      }
+    }
+
+    // Origine marker
+    ctx.fillStyle = 'rgba(255, 80, 80, 0.8)';
+    ctx.beginPath();
+    ctx.arc(origX, origY, 8 / zoom, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+}
+
+// Pan avec drag
+canvas.addEventListener('mousedown', e => {
+  dragging = true; lastMx = e.clientX; lastMy = e.clientY;
+});
+canvas.addEventListener('mousemove', e => {
+  if (dragging) {
+    panX += e.clientX - lastMx;
+    panY += e.clientY - lastMy;
+    lastMx = e.clientX; lastMy = e.clientY;
+    draw();
+  }
+  // Afficher coordonnées hex
+  const rect = canvas.getBoundingClientRect();
+  const imgX = (e.clientX - rect.left - panX) / zoom;
+  const imgY = (e.clientY - rect.top - panY) / zoom;
+  const { q, r } = pixelToHex(imgX, imgY);
+  document.getElementById('coords').textContent = `q: ${q}  r: ${r}  |  img: ${Math.round(imgX)}, ${Math.round(imgY)}`;
+});
+canvas.addEventListener('mouseup', () => dragging = false);
+canvas.addEventListener('mouseleave', () => dragging = false);
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const factor = e.deltaY > 0 ? 0.9 : 1.1;
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  panX = mx - (mx - panX) * factor;
+  panY = my - (my - panY) * factor;
+  zoom *= factor;
+  zoom = Math.max(0.02, Math.min(2, zoom));
+  document.getElementById('zoom-slider').value = zoom;
+  document.getElementById('v-zoom').textContent = zoom.toFixed(3);
+  draw();
+}, { passive: false });
+
+function updateOutput() {
+  document.getElementById('output').textContent =
+    `hexSize: ${hexSize}\norigX: ${origX}\norigY: ${origY}`;
+}
+
+function copyConfig() {
+  const text = `hexSize: ${hexSize}\norigX: ${origX}\norigY: ${origY}`;
+  navigator.clipboard.writeText(text);
+  document.getElementById('output').textContent = '✓ Copié !\n' + text;
+}
+
+updateOutput();
+</script>
+</body>
+</html>

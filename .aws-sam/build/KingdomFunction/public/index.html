@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kingdom Battleground</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    #general-card-box { max-width:740px; width:min(740px,95vw); background:#2a2a2e; border:3px solid #111; padding:12px; border-radius:6px; position:relative; }
+    .uc-pdf { display:grid; grid-template-columns:260px 1fr; grid-template-rows:auto auto; gap:8px; color:#111; }
+    .uc-pdf-left { display:flex; flex-direction:column; gap:8px; }
+    .uc-pdf-img { width:100%; aspect-ratio:1/1; object-fit:cover; object-position:top; border:2px solid #444; background:#111; }
+    .uc-pdf-img-placeholder { width:100%; aspect-ratio:1/1; background:#111; border:2px solid #444; display:flex; align-items:center; justify-content:center; font-size:64px; color:#555; }
+    .uc-pdf-bonus { background:#fff; border:2px solid #444; padding:10px 12px; font-size:0.85em; line-height:1.6; flex:1; }
+    .uc-pdf-bonus strong { color:#8b1a1a; }
+    .uc-pdf-right { display:flex; flex-direction:column; gap:7px; }
+    .uc-pdf-title { background:#fff; border:2px solid #444; text-align:center; padding:12px 8px; font-size:1.15em; font-weight:bold; color:#8b1a1a; line-height:1.3; font-family:'Georgia',serif; }
+    .uc-pdf-stats { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+    .uc-pdf-stat { background:#fff; border:2px solid #444; text-align:center; padding:8px 6px; }
+    .uc-pdf-stat-label { font-weight:bold; font-size:0.85em; color:#222; font-family:'Georgia',serif; }
+    .uc-pdf-stat-value { font-size:1.35em; font-weight:bold; color:#111; margin-top:3px; }
+    .uc-pdf-desc { grid-column:1/-1; background:#fff; border:2px solid #444; padding:10px 12px; font-size:0.85em; line-height:1.6; color:#111; }
+    .uc-pdf-desc strong { color:#8b1a1a; }
+  </style>
+</head>
+<body>
+  <div class="lobby-container">
+    <div class="logo">
+      <h1>KINGDOM</h1>
+      <p>Battleground — Stratégie au Tour par Tour</p>
+    </div>
+
+    <!-- Écran d'accueil -->
+    <div id="screen-home">
+      <div class="card">
+        <h2>Créer une partie</h2>
+        <div class="input-group">
+          <label>Votre nom</label>
+          <input type="text" id="create-name" placeholder="Ex: Shin" maxlength="20">
+        </div>
+        <button class="btn btn-primary" onclick="createRoom()">Créer la salle</button>
+      </div>
+      <div class="divider">— ou —</div>
+      <div class="card">
+        <h2>Rejoindre une partie</h2>
+        <div class="input-group">
+          <label>Votre nom</label>
+          <input type="text" id="join-name" placeholder="Ex: Kyoukai" maxlength="20">
+        </div>
+        <div class="input-group">
+          <label>Code de la salle</label>
+          <input type="text" id="join-code" placeholder="Ex: AB3XYZ" maxlength="6" style="text-transform:uppercase">
+        </div>
+        <button class="btn btn-primary" onclick="joinRoom()">Rejoindre</button>
+      </div>
+    </div>
+
+    <!-- Salle d'attente -->
+    <div id="screen-lobby" style="display:none">
+      <div class="card">
+        <h2>Code de la salle</h2>
+        <div class="room-code" id="room-code-display">------</div>
+        <p class="text-muted" style="text-align:center;font-size:0.85em">Partagez ce code avec vos amis</p>
+      </div>
+
+      <div class="card" id="budget-card" style="display:none">
+        <h2>Budget par joueur</h2>
+        <div class="input-group">
+          <label>Montant (or)</label>
+          <input type="number" id="budget-input" value="15000" min="1000" max="100000" step="1000">
+        </div>
+        <button class="btn btn-primary" onclick="setBudget()">Définir le budget</button>
+        <p class="text-muted mt-8" style="font-size:0.8em">Budget actuel : <span id="current-budget" class="text-gold">15 000</span> or</p>
+      </div>
+
+      <div class="card">
+        <h2>Joueurs (<span id="player-count">0</span>/8)</h2>
+        <ul class="player-list" id="player-list"></ul>
+      </div>
+
+      <div class="card">
+        <h2>Choisir votre Général</h2>
+        <div class="generals-grid" id="generals-grid"></div>
+      </div>
+
+      <div class="mt-16 flex gap-8">
+        <button class="btn btn-success flex-1" id="start-btn" onclick="startGame()" style="display:none">
+          Lancer la bataille
+        </button>
+      </div>
+    </div>
+
+    <!-- Construction armée -->
+    <div id="screen-army" style="display:none">
+      <div class="phase-title">Construisez votre armée</div>
+      <div class="budget-bar">
+        <span class="budget-label">Budget :</span>
+        <span class="budget-value" id="army-budget">15 000</span>
+        <span class="budget-label">Dépensé :</span>
+        <span class="budget-used" id="army-spent">0</span>
+        <span class="budget-label">Restant :</span>
+        <span class="budget-value" id="army-remaining">15 000</span>
+      </div>
+      <div class="unit-shop" id="unit-shop"></div>
+      <div class="mt-16">
+        <button class="btn btn-success" onclick="submitArmy()">Confirmer l'armée</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fiche général -->
+  <div id="overlay-general-card" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)closeGeneralCard()">
+    <div id="general-card-box">
+      <button onclick="closeGeneralCard()" style="position:absolute;top:8px;right:12px;background:none;border:none;color:#c8960c;font-size:1.4em;cursor:pointer;z-index:1">✕</button>
+      <div id="general-card-content"></div>
+    </div>
+  </div>
+
+  <div id="notification"></div>
+  <div id="app-version" style="position:fixed;bottom:8px;right:12px;font-size:0.72em;color:#5a3c10;opacity:0.7;pointer-events:none"></div>
+
+  <script>
+    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+      window.WS_URL = 'ws://localhost:3000';
+    }
+    // En production AWS, definir window.WS_URL = 'wss://xxxx.execute-api.region.amazonaws.com/prod'
+  </script>
+  <script src="/js/version.js"></script>
+  <script src="/js/lobby.js"></script>
+  <script>document.getElementById('app-version').textContent = APP_VERSION;</script>
+</body>
+</html>

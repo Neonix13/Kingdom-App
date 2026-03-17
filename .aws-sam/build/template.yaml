@@ -1,0 +1,205 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Kingdom Battleground - WebSocket backend on AWS
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 29
+    MemorySize: 512
+Resources:
+  KingdomWebSocketApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: KingdomWebSocketApi
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: $request.body.action
+  KingdomFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: KingdomFunction
+      CodeUri: KingdomFunction
+      Handler: lambda/handler.handler
+      Environment:
+        Variables:
+          CONNECTIONS_TABLE:
+            Ref: KingdomConnectionsTable
+          ROOMS_TABLE:
+            Ref: KingdomRoomsTable
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: KingdomConnectionsTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: KingdomRoomsTable
+      - Statement:
+        - Effect: Allow
+          Action:
+          - execute-api:ManageConnections
+          Resource:
+          - Fn::Sub: arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${KingdomWebSocketApi}/*
+    Metadata:
+      SamResourceId: KingdomFunction
+  KingdomFunctionPermissionConnect:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Fn::GetAtt:
+        - KingdomFunction
+        - Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Sub: arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${KingdomWebSocketApi}/*
+  KingdomIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId:
+        Ref: KingdomWebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri:
+        Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${KingdomFunction.Arn}/invocations
+  ConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId:
+        Ref: KingdomWebSocketApi
+      RouteKey: $connect
+      AuthorizationType: NONE
+      Target:
+        Fn::Sub: integrations/${KingdomIntegration}
+  DisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId:
+        Ref: KingdomWebSocketApi
+      RouteKey: $disconnect
+      AuthorizationType: NONE
+      Target:
+        Fn::Sub: integrations/${KingdomIntegration}
+  DefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId:
+        Ref: KingdomWebSocketApi
+      RouteKey: $default
+      AuthorizationType: NONE
+      Target:
+        Fn::Sub: integrations/${KingdomIntegration}
+  KingdomApiDeployment:
+    Type: AWS::ApiGatewayV2::Deployment
+    DependsOn:
+    - ConnectRoute
+    - DisconnectRoute
+    - DefaultRoute
+    Properties:
+      ApiId:
+        Ref: KingdomWebSocketApi
+  KingdomApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId:
+        Ref: KingdomWebSocketApi
+      DeploymentId:
+        Ref: KingdomApiDeployment
+      StageName: prod
+  KingdomConnectionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: KingdomConnections
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: connectionId
+        AttributeType: S
+      KeySchema:
+      - AttributeName: connectionId
+        KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+  KingdomRoomsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: KingdomRooms
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: roomCode
+        AttributeType: S
+      KeySchema:
+      - AttributeName: roomCode
+        KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName:
+        Fn::Sub: kingdom-battleground-${AWS::AccountId}
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket:
+        Ref: FrontendBucket
+      PolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: cloudfront.amazonaws.com
+          Action: s3:GetObject
+          Resource:
+            Fn::Sub: ${FrontendBucket.Arn}/*
+          Condition:
+            StringEquals:
+              AWS:SourceArn:
+                Fn::Sub: arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}
+  CloudFrontOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: KingdomOAC
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        Origins:
+        - Id: S3Origin
+          DomainName:
+            Fn::GetAtt:
+            - FrontendBucket
+            - RegionalDomainName
+          OriginAccessControlId:
+            Fn::GetAtt:
+            - CloudFrontOAC
+            - Id
+          S3OriginConfig: {}
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+          - GET
+          - HEAD
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+        HttpVersion: http2
+        CustomErrorResponses:
+        - ErrorCode: 403
+          ResponseCode: 200
+          ResponsePagePath: /index.html
+Outputs:
+  WebSocketURL:
+    Description: "URL WebSocket (\xE0 mettre dans index.html et game.html)"
+    Value:
+      Fn::Sub: wss://${KingdomWebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/prod
+  FrontendURL:
+    Description: "URL publique du jeu (\xE0 partager avec les amis)"
+    Value:
+      Fn::Sub: https://${CloudFrontDistribution.DomainName}
+  S3BucketName:
+    Description: Bucket S3 pour les fichiers frontend
+    Value:
+      Ref: FrontendBucket

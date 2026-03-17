@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Kingdom Battleground — Liens de test</title>
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; background: #1a1008; color: #e8d5a0; padding: 40px; max-width: 700px; margin: 0 auto; }
+    h1 { color: #c8960c; margin-bottom: 8px; }
+    p { color: #a89060; margin-bottom: 30px; }
+    .section { background: #2a1a08; border: 1px solid #5a3c10; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+    .section h2 { color: #c8960c; font-size: 1em; margin-bottom: 14px; }
+    a { display: block; background: #3a2408; color: #e8d5a0; padding: 10px 16px; border-radius: 6px; text-decoration: none; margin-bottom: 8px; border: 1px solid #5a3c10; }
+    a:hover { background: #5a3c10; color: #fff; }
+    .label { font-size: 0.8em; color: #7a6040; margin-top: 2px; }
+    .note { background: #0f1a0f; border: 1px solid #2a5c2a; border-radius: 6px; padding: 14px; color: #80c080; font-size: 0.9em; margin-bottom: 20px; }
+    .warn { background: #1a0f0f; border: 1px solid #5c2a2a; border-radius: 6px; padding: 14px; color: #c08080; font-size: 0.9em; margin-bottom: 20px; }
+    kbd { background: #3a2408; border: 1px solid #5a3c10; border-radius: 3px; padding: 2px 6px; font-family: monospace; }
+  </style>
+</head>
+<body>
+  <h1>⚔️ Kingdom Battleground</h1>
+  <p>Liens de test — assure-toi que le serveur tourne avec <kbd>node server.js</kbd></p>
+
+  <div class="note">
+    ✅ <strong>Avant de cliquer :</strong> le serveur doit être lancé dans le terminal avec <code>node server.js</code>
+  </div>
+
+  <div class="section">
+    <h2>🎮 Accès principal</h2>
+    <a href="http://localhost:3000" target="_blank">
+      http://localhost:3000
+      <div class="label">Page d'accueil — Créer ou rejoindre une partie</div>
+    </a>
+  </div>
+
+  <div class="section">
+    <h2>👥 Test multijoueur (ouvre chaque lien dans un onglet séparé)</h2>
+    <a href="http://localhost:3000" target="_blank">
+      Joueur 1 — Créer la salle
+      <div class="label">Entre ton nom → Créer la salle → Note le code à 6 lettres</div>
+    </a>
+    <a href="http://localhost:3000" target="_blank">
+      Joueur 2 — Rejoindre
+      <div class="label">Entre un autre nom → Colle le code → Rejoindre</div>
+    </a>
+    <a href="http://localhost:3000" target="_blank">
+      Joueur 3 (optionnel)
+      <div class="label">Même procédure</div>
+    </a>
+    <a href="http://localhost:3000" target="_blank">
+      Joueur 4 (optionnel)
+      <div class="label">Même procédure</div>
+    </a>
+  </div>
+
+  <div class="section">
+    <h2>📋 Étapes pour une partie test</h2>
+    <ol style="color:#a89060; line-height:2; padding-left:20px;">
+      <li>Ouvre <strong>Joueur 1</strong> → Entre ton nom → <strong>Créer la salle</strong></li>
+      <li>Note le <strong>code à 6 lettres</strong> affiché</li>
+      <li>Définis le budget (défaut : 15 000 or)</li>
+      <li>Choisis un <strong>Général</strong></li>
+      <li>Ouvre <strong>Joueur 2</strong> → Entre un nom → Colle le code → <strong>Rejoindre</strong></li>
+      <li>Joueur 2 choisit aussi un Général</li>
+      <li>Joueur 1 (le host) clique <strong>"Lancer la bataille"</strong></li>
+      <li>Chaque joueur achète ses unités avec le budget</li>
+      <li>Phase de déploiement : place tes unités dans la zone verte</li>
+      <li>Clique <strong>"Prêt !"</strong> quand tu as placé ton Général</li>
+      <li>La bataille commence ! ⚔️</li>
+    </ol>
+  </div>
+
+  <div class="warn">
+    ⚠️ <strong>Si la page ne charge pas :</strong> le serveur n'est pas lancé. Va dans le terminal VS Code et tape <kbd>node server.js</kbd>
+  </div>
+</body>
+</html>
