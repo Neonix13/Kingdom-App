@@ -202,6 +202,7 @@ class GameRoom {
     const general = GENERALS.find(g => g.id === player.generalId);
     return {
       phase: 'deployment',
+      myId: playerId,
       budget: this.budget,
       hexMap: this.hexMap,
       startingZone: player.startingZone,
@@ -210,6 +211,46 @@ class GameRoom {
       generalData: general,
       occupiedHexes: this._getAllOccupiedHexes(),
     };
+  }
+
+  serialize() {
+    return {
+      roomCode: this.roomCode,
+      hostId: this.hostId,
+      players: this.players,
+      phase: this.phase,
+      budget: this.budget,
+      turn: this.turn,
+      turnOrder: this.turnOrder,
+      initiativeRolls: this.initiativeRolls,
+      currentTurnIndex: this.currentTurnIndex,
+      winner: this.winner,
+      abilityCooldowns: this.abilityCooldowns,
+      activeEffects: this.activeEffects,
+      pendingAttacks: this.pendingAttacks,
+      _unitCounter: unitCounter,
+    };
+  }
+
+  static deserialize(data) {
+    const room = new GameRoom(data.roomCode, data.hostId);
+    room.players = data.players;
+    room.phase = data.phase;
+    room.budget = data.budget;
+    room.turn = data.turn || 1;
+    room.turnOrder = data.turnOrder || [];
+    room.initiativeRolls = data.initiativeRolls || {};
+    room.currentTurnIndex = data.currentTurnIndex || 0;
+    room.winner = data.winner || null;
+    room.abilityCooldowns = data.abilityCooldowns || {};
+    room.activeEffects = data.activeEffects || [];
+    room.pendingAttacks = data.pendingAttacks || {};
+    if (data._unitCounter) unitCounter = data._unitCounter;
+    if (['deployment', 'battle', 'ended'].includes(data.phase)) {
+      room.hexMap = generateHexMap(MAP_RADIUS);
+      room._rebuildUnitMap();
+    }
+    return room;
   }
 
   _getAllOccupiedHexes() {

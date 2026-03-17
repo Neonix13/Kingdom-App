@@ -1,4 +1,30 @@
-const socket = io();
+// WebSocket natif (remplace socket.io)
+let ws = null;
+let wsQueue = [];
+
+function wsConnect() {
+  ws = new WebSocket(window.WS_URL || ('ws' + (location.protocol === 'https:' ? 's' : '') + '://' + location.host));
+  ws.onopen = () => {
+    wsQueue.forEach(msg => ws.send(msg));
+    wsQueue = [];
+  };
+  ws.onmessage = (e) => {
+    let msg;
+    try { msg = JSON.parse(e.data); } catch { return; }
+    const { event, ...data } = msg;
+    wsDispatch(event, data);
+  };
+  ws.onclose = () => { ws = null; setTimeout(wsConnect, 2000); };
+  ws.onerror = () => ws.close();
+}
+
+function wsSend(action, data) {
+  const msg = JSON.stringify({ action, ...data });
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(msg);
+  else wsQueue.push(msg);
+}
+
+wsConnect();
 let myId = null;
 let roomCode = null;
 let isHost = false;
@@ -30,7 +56,7 @@ function initColorPicker() {
 
 function pickColor(hex) {
   selectedColor = hex;
-  socket.emit('set_player_color', { roomCode, color: hex });
+  wsSend('set_player_color', { roomCode, color: hex });
 }
 let armyQuantities = {};
 let budget = 15000;
@@ -110,7 +136,7 @@ function notify(msg, type = 'error') {
 function createRoom() {
   const name = document.getElementById('create-name').value.trim();
   if (!name) return notify('Entrez votre nom.');
-  socket.emit('create_room', { playerName: name });
+  wsSend('create_room', { playerName: name });
 }
 
 function joinRoom() {
@@ -118,22 +144,22 @@ function joinRoom() {
   const code = document.getElementById('join-code').value.trim().toUpperCase();
   if (!name) return notify('Entrez votre nom.');
   if (code.length < 4) return notify('Entrez le code de la salle.');
-  socket.emit('join_room', { roomCode: code, playerName: name });
+  wsSend('join_room', { roomCode: code, playerName: name });
 }
 
 function setBudget() {
   const val = parseInt(document.getElementById('budget-input').value);
   if (isNaN(val) || val < 1000) return notify('Budget minimum : 1000 or');
-  socket.emit('set_budget', { roomCode, budget: val });
+  wsSend('set_budget', { roomCode, budget: val });
 }
 
 function selectGeneral(id) {
   selectedGeneral = id;
-  socket.emit('select_general', { roomCode, generalId: id });
+  wsSend('select_general', { roomCode, generalId: id });
 }
 
 function startGame() {
-  socket.emit('start_game', { roomCode });
+  wsSend('start_game', { roomCode });
 }
 
 function renderGenerals(takenList) {
@@ -359,65 +385,65 @@ function submitArmy() {
     .map(([typeId, count]) => ({ typeId, count }));
 
   if (units.length === 0) return notify('Ajoutez au moins une unité.');
-  socket.emit('submit_army', { roomCode, units });
+  wsSend('submit_army', { roomCode, units });
 }
 
-// Socket events
-socket.on('room_created', ({ roomCode: code, playerId }) => {
-  myId = playerId;
-  roomCode = code;
-  isHost = true;
-  document.getElementById('room-code-display').textContent = code;
-  document.getElementById('budget-card').style.display = 'block';
-  document.getElementById('start-btn').style.display = 'block';
-  show('screen-lobby');
-});
-
-socket.on('room_joined', ({ roomCode: code, playerId }) => {
-  myId = playerId;
-  roomCode = code;
-  document.getElementById('room-code-display').textContent = code;
-  show('screen-lobby');
-});
-
-socket.on('room_update', (state) => {
-  budget = state.budget;
-  document.getElementById('current-budget').textContent = state.budget.toLocaleString();
-  renderPlayerList(state.players, state.hostId);
-  renderGenerals(state.takenGenerals);
-  // Show start button only for host
-  if (state.hostId === myId) {
-    document.getElementById('budget-card').style.display = 'block';
-    document.getElementById('start-btn').style.display = 'block';
+// WebSocket event dispatch
+function wsDispatch(event, data) {
+  switch (event) {
+    case 'room_created': {
+      myId = data.playerId;
+      roomCode = data.roomCode;
+      isHost = true;
+      document.getElementById('room-code-display').textContent = data.roomCode;
+      document.getElementById('budget-card').style.display = 'block';
+      document.getElementById('start-btn').style.display = 'block';
+      show('screen-lobby');
+      break;
+    }
+    case 'room_joined': {
+      myId = data.playerId;
+      roomCode = data.roomCode;
+      document.getElementById('room-code-display').textContent = data.roomCode;
+      show('screen-lobby');
+      break;
+    }
+    case 'room_update': {
+      budget = data.budget;
+      document.getElementById('current-budget').textContent = data.budget.toLocaleString();
+      renderPlayerList(data.players, data.hostId);
+      renderGenerals(data.takenGenerals);
+      if (data.hostId === myId) {
+        document.getElementById('budget-card').style.display = 'block';
+        document.getElementById('start-btn').style.display = 'block';
+      }
+      const me = data.players.find(p => p.id === myId);
+      if (me && me.generalId) selectedGeneral = me.generalId;
+      break;
+    }
+    case 'phase_change': {
+      if (data.budget !== undefined) budget = data.budget;
+      if (data.phase === 'army_building') {
+        show('screen-army');
+        document.getElementById('army-budget').textContent = budget.toLocaleString();
+        renderArmyBuilder();
+      }
+      break;
+    }
+    case 'army_accepted':
+      notify('Armée confirmée ! En attente des autres joueurs...', 'success');
+      break;
+    case 'deployment_state':
+      sessionStorage.setItem('deploymentState', JSON.stringify(data));
+      sessionStorage.setItem('roomCode', roomCode);
+      sessionStorage.setItem('myId', myId);
+      window.location.href = '/game.html';
+      break;
+    case 'error':
+      notify(data.message || data);
+      break;
+    case 'player_disconnected':
+      notify('Un joueur s\'est déconnecté.', 'info');
+      break;
   }
-  // Sync my general
-  const me = state.players.find(p => p.id === myId);
-  if (me && me.generalId) selectedGeneral = me.generalId;
-});
-
-socket.on('phase_change', ({ phase, budget: b }) => {
-  if (b !== undefined) budget = b;
-  if (phase === 'army_building') {
-    show('screen-army');
-    document.getElementById('army-budget').textContent = budget.toLocaleString();
-    renderArmyBuilder();
-  }
-});
-
-socket.on('army_accepted', () => {
-  notify('Armée confirmée ! En attente des autres joueurs...', 'success');
-});
-
-socket.on('deployment_state', (state) => {
-  // Redirect to game page with state
-  sessionStorage.setItem('deploymentState', JSON.stringify(state));
-  sessionStorage.setItem('roomCode', roomCode);
-  sessionStorage.setItem('myId', myId);
-  window.location.href = '/game.html';
-});
-
-socket.on('error', (msg) => notify(msg));
-
-socket.on('player_disconnected', ({ playerId }) => {
-  notify('Un joueur s\'est déconnecté.', 'info');
-});
+}

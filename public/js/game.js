@@ -1,6 +1,26 @@
 // Kingdom Battleground — Game Client
 
-const socket = io();
+// WebSocket natif (remplace socket.io)
+let ws = null;
+
+function wsConnect() {
+  ws = new WebSocket(window.WS_URL || ('ws' + (location.protocol === 'https:' ? 's' : '') + '://' + location.host));
+  ws.onopen = onWsOpen;
+  ws.onmessage = (e) => {
+    let msg;
+    try { msg = JSON.parse(e.data); } catch { return; }
+    const { event, ...data } = msg;
+    wsDispatch(event, data);
+  };
+  ws.onclose = () => { ws = null; setTimeout(wsConnect, 2000); };
+  ws.onerror = () => ws.close();
+}
+
+function wsSend(action, data) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ action, ...data }));
+}
+
+wsConnect();
 const canvas = document.getElementById('game-canvas');
 const ctx = canvas.getContext('2d');
 
@@ -710,7 +730,7 @@ function handleHexClick(hex) {
   if (selectedUnit) {
     // Clic sur case de déplacement → déplacer
     if (movableTiles.has(key)) {
-      socket.emit('move_unit', { roomCode, unitId: selectedUnit.id, targetQ: hex.q, targetR: hex.r });
+      wsSend('move_unit', { roomCode, unitId: selectedUnit.id, targetQ: hex.q, targetR: hex.r });
       movableTiles.clear();
       attackableTiles.clear();
       render();
@@ -721,7 +741,7 @@ function handleHexClick(hex) {
     if (attackableTiles.has(key)) {
       const target = gameState.units.find(u => u.q === hex.q && u.r === hex.r && !u.isMine);
       if (target) {
-        socket.emit('attack_unit', { roomCode, attackerId: selectedUnit.id, targetId: target.id });
+        wsSend('attack_unit', { roomCode, attackerId: selectedUnit.id, targetId: target.id });
         movableTiles.clear();
         attackableTiles.clear();
         render();
@@ -735,7 +755,7 @@ function handleHexClick(hex) {
       if (target) {
         const dist = hexDistance(selectedUnit.q, selectedUnit.r, hex.q, hex.r);
         if (dist <= 2) {
-          socket.emit('motivate_unit', { roomCode, generalId: selectedUnit.id, targetId: target.id });
+          wsSend('motivate_unit', { roomCode, generalId: selectedUnit.id, targetId: target.id });
           setMode('select');
           return;
         }
@@ -797,7 +817,7 @@ function handleDeployClick(hex) {
     return;
   }
 
-  socket.emit('place_unit', { roomCode, unitId: selectedUnit.id, q: hex.q, r: hex.r });
+  wsSend('place_unit', { roomCode, unitId: selectedUnit.id, q: hex.q, r: hex.r });
   selectedUnit.q = hex.q;
   selectedUnit.r = hex.r;
   selectedUnit = null;
@@ -1142,7 +1162,7 @@ function renderTurnOrder(turnOrder, initiativeRolls, currentPlayerId) {
 
 function endTurn() {
   if (gameState?.currentPlayerId !== myId) return;
-  socket.emit('end_turn', { roomCode });
+  wsSend('end_turn', { roomCode });
   selectedUnit = null;
   movableTiles.clear();
   attackableTiles.clear();
@@ -1153,7 +1173,7 @@ function endTurn() {
 
 function useAbility() {
   if (!selectedUnit || !selectedUnit.isGeneral) return;
-  socket.emit('use_ability', { roomCode });
+  wsSend('use_ability', { roomCode });
 }
 
 function deploymentReady() {
@@ -1162,7 +1182,7 @@ function deploymentReady() {
     notify('Vous devez placer votre Général (★) avant d\'être prêt.');
     return;
   }
-  socket.emit('deployment_ready', { roomCode });
+  wsSend('deployment_ready', { roomCode });
   const btn = document.getElementById('btn-deploy-ready');
   btn.textContent = 'En attente des autres joueurs…';
   btn.disabled = true;
@@ -1317,7 +1337,7 @@ function sendChat() {
   const input = document.getElementById('chat-input');
   const text = input.value.trim();
   if (!text) return;
-  socket.emit('chat_message', { roomCode, text });
+  wsSend('chat_message', { roomCode, text });
   input.value = '';
 }
 
@@ -1476,7 +1496,7 @@ function renderStancePanel(unit) {
 
 function changeStance(unitId, stanceId) {
   if (!roomCode) return;
-  socket.emit('change_stance', { roomCode, unitId, stanceId });
+  wsSend('change_stance', { roomCode, unitId, stanceId });
 }
 
 // ---- COMBAT RESULT ----
@@ -1538,11 +1558,12 @@ function sendDefenseChoice(choice) {
   const attackId = overlay.dataset.attackId;
   const rc = overlay.dataset.roomCode;
   overlay.style.display = 'none';
-  socket.emit('defend_choice', { roomCode: rc, attackId, choice });
+  wsSend('defend_choice', { roomCode: rc, attackId, choice });
 }
 
-// ---- SOCKET EVENTS ----
-socket.on('connect', () => {
+// ---- WEBSOCKET EVENTS ----
+
+function onWsOpen() {
   const oldPlayerId = sessionStorage.getItem('myId');
   const rc = sessionStorage.getItem('roomCode');
 
@@ -1552,8 +1573,7 @@ socket.on('connect', () => {
   }
 
   roomCode = rc;
-  // Envoyer l'ancien ID pour que le serveur retrouve le joueur
-  socket.emit('rejoin_game', { roomCode: rc, oldPlayerId });
+  wsSend('rejoin_game', { roomCode: rc, oldPlayerId });
 
   if (deployState) {
     mode = 'deploy';
@@ -1568,147 +1588,142 @@ socket.on('connect', () => {
       camY = -y * zoom;
     }
   }
-});
+}
 
-socket.on('deployment_state', (state) => {
-  myId = socket.id;
-  deployState = state;
-  renderDeployUnitList(state.units);
-  render();
-});
-
-socket.on('phase_change', ({ phase }) => {
-  if (phase === 'battle') {
-    deployState = null;
-    sessionStorage.removeItem('deploymentState');
-    mode = 'select';
-    setMode('select');
-    document.getElementById('btn-deploy-ready').style.display = 'none';
-  }
-});
-
-socket.on('unit_move_anim', ({ unitId, fromQ, fromR, path }) => {
-  unitAnimations[unitId] = { path, fromQ, fromR, startTime: performance.now() };
-  startAnimLoop();
-});
-
-socket.on('game_state', (state) => {
-  myId = socket.id; // Mettre à jour l'ID avec le nouveau socket
-  gameState = state;
-  gameState.visibleHexes = new Set(state.visibleHexes);
-
-  // Update top bar
-  document.getElementById('top-turn').textContent = `Tour ${state.turn}`;
-  const currPlayer = state.players.find(p => p.id === state.currentPlayerId);
-  document.getElementById('top-current-player').textContent =
-    state.currentPlayerId === myId ? '⚔️ Votre tour' : `Tour de : ${currPlayer?.name || '?'}`;
-  document.getElementById('top-phase').textContent = state.phase === 'battle' ? 'Bataille' : '';
-
-  document.getElementById('sidebar-title').textContent =
-    state.currentPlayerId === myId ? 'Votre tour' : `Tour de ${currPlayer?.name || '?'}`;
-
-  // Refresh selected unit from new state
-  if (selectedUnit) {
-    const updated = state.myUnits.find(u => u.id === selectedUnit.id);
-    if (updated) {
-      selectedUnit = updated;
-      showUnitDetail(updated);
-      renderStancePanel(updated);
-      movableTiles.clear();
-      if (state.currentPlayerId === myId && updated.speedRemaining > 0 && !updated.isFleeing) {
-        computeMovableTiles(updated);
+function wsDispatch(event, data) {
+  switch (event) {
+    case 'deployment_state': {
+      myId = data.myId;
+      deployState = data;
+      renderDeployUnitList(data.units);
+      render();
+      break;
+    }
+    case 'phase_change': {
+      if (data.phase === 'battle') {
+        deployState = null;
+        sessionStorage.removeItem('deploymentState');
+        mode = 'select';
+        setMode('select');
+        document.getElementById('btn-deploy-ready').style.display = 'none';
       }
-    } else { selectedUnit = null; movableTiles.clear(); showUnitDetail(null); renderStancePanel(null); }
+      break;
+    }
+    case 'unit_move_anim': {
+      const { unitId, fromQ, fromR, path } = data;
+      unitAnimations[unitId] = { path, fromQ, fromR, startTime: performance.now() };
+      startAnimLoop();
+      break;
+    }
+    case 'game_state': {
+      myId = data.myId;
+      gameState = data;
+      gameState.visibleHexes = new Set(data.visibleHexes);
+
+      document.getElementById('top-turn').textContent = `Tour ${data.turn}`;
+      const currPlayer = data.players.find(p => p.id === data.currentPlayerId);
+      document.getElementById('top-current-player').textContent =
+        data.currentPlayerId === myId ? '⚔️ Votre tour' : `Tour de : ${currPlayer?.name || '?'}`;
+      document.getElementById('top-phase').textContent = data.phase === 'battle' ? 'Bataille' : '';
+      document.getElementById('sidebar-title').textContent =
+        data.currentPlayerId === myId ? 'Votre tour' : `Tour de ${currPlayer?.name || '?'}`;
+
+      if (selectedUnit) {
+        const updated = data.myUnits.find(u => u.id === selectedUnit.id);
+        if (updated) {
+          selectedUnit = updated;
+          showUnitDetail(updated);
+          renderStancePanel(updated);
+          movableTiles.clear();
+          if (data.currentPlayerId === myId && updated.speedRemaining > 0 && !updated.isFleeing) {
+            computeMovableTiles(updated);
+          }
+        } else { selectedUnit = null; movableTiles.clear(); showUnitDetail(null); renderStancePanel(null); }
+      }
+
+      renderTurnOrder(data.turnOrder, data.initiativeRolls, data.currentPlayerId);
+      renderUnitList();
+      updateActionButtons();
+      render();
+      break;
+    }
+    case 'turn_change': {
+      if (gameState) {
+        gameState.currentPlayerId = data.currentPlayerId;
+        gameState.turn = data.turn;
+      }
+      selectedUnit = null;
+      movableTiles.clear();
+      attackableTiles.clear();
+      updateActionButtons();
+      if (data.currentPlayerId === myId) notify('C\'est votre tour !', 'success');
+      break;
+    }
+    case 'initiative_rolled':
+      showInitiativeModal(data.rolls, data.turnOrder, data.turn);
+      break;
+    case 'combat_result': {
+      const log = data.combatLog || data;
+      addCombatLog(log);
+      showCombatResult(log);
+      addCombatHistory(log, gameState?.round || 1);
+      break;
+    }
+    case 'defense_request': {
+      showDefenseRequest(data);
+      if (data.targetQ != null && data.targetR != null) {
+        const { x, y } = hexToPixel(data.targetQ, data.targetR);
+        smoothPanTo(x, y, 700);
+      }
+      break;
+    }
+    case 'waiting_defense': {
+      const el = document.getElementById('combat-result-box');
+      if (el) { el.innerHTML = 'En attente de la réponse du défenseur…'; el.style.display = 'block'; }
+      break;
+    }
+    case 'units_fled': {
+      const el = document.getElementById('combat-result-box');
+      if (el && data.fled.length > 0) {
+        el.innerHTML = data.fled.map(f => `&#127939; ${f.unitName} a fui !`).join('<br>');
+        el.style.display = 'block';
+        setTimeout(() => { el.style.display = 'none'; }, 4000);
+      }
+      break;
+    }
+    case 'game_over':
+      document.getElementById('gameover-msg').textContent =
+        data.winnerName ? `${data.winnerName} remporte la bataille !` : 'Match nul !';
+      document.getElementById('overlay-gameover').style.display = 'flex';
+      break;
+    case 'deployment_ready_update': {
+      notify(`${data.readyCount}/${data.total} joueurs prêts…`, 'info');
+      const btn = document.getElementById('btn-deploy-ready');
+      if (btn.disabled) {
+        btn.textContent = `En attente… (${data.readyCount}/${data.total} prêts)`;
+      } else {
+        btn.textContent = `Prêt ! (${data.readyCount}/${data.total})`;
+      }
+      break;
+    }
+    case 'motivate_result':
+      if (data.success) {
+        notify(`Motivation réussie ! (Charisme ${data.charisma} ≥ D20 ${data.d20}) → ${data.targetName} regagne ${data.moralGain} moral.`, 'success');
+      } else {
+        notify(`Motivation échouée. (Charisme ${data.charisma} < D20 ${data.d20})`, 'info');
+      }
+      break;
+    case 'chat_message':
+      appendChatMessage({ authorName: data.authorName, text: data.text, isMine: data.authorId === myId });
+      break;
+    case 'error':
+      notify(data.message || String(data));
+      break;
+    case 'player_disconnected':
+      notify('Un joueur s\'est déconnecté.', 'info');
+      break;
   }
-
-  renderTurnOrder(state.turnOrder, state.initiativeRolls, state.currentPlayerId);
-  renderUnitList();
-  updateActionButtons();
-  render();
-});
-
-socket.on('turn_change', ({ currentPlayerId, turn }) => {
-  if (gameState) {
-    gameState.currentPlayerId = currentPlayerId;
-    gameState.turn = turn;
-  }
-  selectedUnit = null;
-  movableTiles.clear();
-  attackableTiles.clear();
-  updateActionButtons();
-  if (currentPlayerId === myId) notify('C\'est votre tour !', 'success');
-});
-
-socket.on('initiative_rolled', ({ rolls, turnOrder, turn }) => {
-  showInitiativeModal(rolls, turnOrder, turn);
-});
-
-socket.on('combat_result', (data) => {
-  // Support both old format (direct log) and new format ({ combatLog })
-  const log = data.combatLog || data;
-  addCombatLog(log);
-  showCombatResult(log);
-  addCombatHistory(log, gameState?.round || 1);
-});
-
-socket.on('defense_request', (data) => {
-  showDefenseRequest(data);
-  // Pan caméra vers l'unité attaquée
-  if (data.targetQ != null && data.targetR != null) {
-    const { x, y } = hexToPixel(data.targetQ, data.targetR);
-    smoothPanTo(x, y, 700);
-  }
-});
-
-socket.on('waiting_defense', () => {
-  const el = document.getElementById('combat-result-box');
-  if (el) { el.innerHTML = 'En attente de la réponse du défenseur…'; el.style.display = 'block'; }
-});
-
-socket.on('units_fled', ({ fled }) => {
-  const el = document.getElementById('combat-result-box');
-  if (el && fled.length > 0) {
-    el.innerHTML = fled.map(f => `&#127939; ${f.unitName} a fui !`).join('<br>');
-    el.style.display = 'block';
-    setTimeout(() => { el.style.display = 'none'; }, 4000);
-  }
-});
-
-socket.on('game_over', ({ winnerName }) => {
-  document.getElementById('gameover-msg').textContent =
-    winnerName ? `${winnerName} remporte la bataille !` : 'Match nul !';
-  document.getElementById('overlay-gameover').style.display = 'flex';
-});
-
-socket.on('deployment_ready_update', ({ readyCount, total }) => {
-  notify(`${readyCount}/${total} joueurs prêts…`, 'info');
-  const btn = document.getElementById('btn-deploy-ready');
-  if (btn.disabled) {
-    // Ce joueur a déjà cliqué Prêt — juste mettre à jour le texte
-    btn.textContent = `En attente… (${readyCount}/${total} prêts)`;
-  } else {
-    // Ce joueur n'a pas encore cliqué — afficher le compte sans bloquer
-    btn.textContent = `Prêt ! (${readyCount}/${total})`;
-  }
-});
-
-socket.on('motivate_result', ({ success, charisma, d20, moralGain, targetName }) => {
-  if (success) {
-    notify(`Motivation réussie ! (Charisme ${charisma} ≥ D20 ${d20}) → ${targetName} regagne ${moralGain} moral.`, 'success');
-  } else {
-    notify(`Motivation échouée. (Charisme ${charisma} < D20 ${d20})`, 'info');
-  }
-});
-
-socket.on('chat_message', ({ authorId, authorName, text }) => {
-  appendChatMessage({ authorName, text, isMine: authorId === myId });
-});
-
-socket.on('error', (msg) => notify(msg));
-
-socket.on('player_disconnected', () => {
-  notify('Un joueur s\'est déconnecté.', 'info');
-});
+}
 
 // Init
 resizeCanvas();
