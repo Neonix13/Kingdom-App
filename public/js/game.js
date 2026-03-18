@@ -575,8 +575,8 @@ function drawUnit(ctx, x, y, unit, playerId, isSelected = false) {
   ctx.fillStyle = hpRatio > 0.5 ? '#2a8c2a' : hpRatio > 0.25 ? '#c8960c' : '#a02020';
   ctx.fillRect(bx, by, barW * hpRatio, barH);
 
-  // Draw stance icon (bottom-right of hex) — only for own non-general units
-  if (unit.isMine && unit.stance && !unit.isGeneral) {
+  // Draw stance icon (bottom-right of hex) — all non-general units
+  if (unit.stance && !unit.isGeneral) {
     const icon = stanceIcons[unit.stance];
     const iconSize = HEX_SIZE * 0.4;
     const iconX = x + HEX_SIZE * 0.45;
