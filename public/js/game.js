@@ -581,11 +581,19 @@ function drawUnit(ctx, x, y, unit, playerId, isSelected = false) {
     const iconSize = HEX_SIZE * 0.4;
     const iconX = x + HEX_SIZE * 0.45;
     const iconY = y + HEX_SIZE * 0.35;
+    const r = iconSize * 0.62;
+    // Background circle + golden border
+    ctx.beginPath();
+    ctx.arc(iconX, iconY, r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(20,14,6,0.82)';
+    ctx.fill();
+    ctx.strokeStyle = unit.isMine ? '#c8960c' : '#9090c0';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
     if (icon && icon.complete && icon.naturalWidth) {
       ctx.drawImage(icon, iconX - iconSize/2, iconY - iconSize/2, iconSize, iconSize);
     } else {
-      // Fallback: text indicator
-      ctx.fillStyle = 'rgba(200,150,12,0.9)';
+      ctx.fillStyle = unit.isMine ? '#c8960c' : '#a0a0e0';
       ctx.font = `bold ${Math.round(HEX_SIZE * 0.22)}px sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
