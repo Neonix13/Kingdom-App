@@ -107,6 +107,14 @@ const stanceIcons = {};
 const stanceList = ['marche','combat','charge','percee','defense_combat','defense_distance'];
 const stanceIconFiles = { marche:'marche', combat:'combat', charge:'charge', percee:'percee', defense_combat:'def_charge', defense_distance:'def_eparse' };
 const stanceNames = { marche:'Marche', combat:'Combat', charge:'Charge', percee:'Percée', defense_combat:'Déf. combat', defense_distance:'Déf. distance' };
+const TERRAINS_DATA = {
+  plain:    { name:'Plaines',    vitesse:0,  attack_cac:0,  attack_tir:0,  defense_cac:0,  defense_tir:0,  puissance_cac:0,  puissance_tir:0,  intimidation_cac:0,  intimidation_tir:0,  esquive_cac:0,  esquive_tir:0,  precision_cac:0,  precision_tir:0,  armure:0,  moral_tour:0 },
+  forest:   { name:'Forêts',    vitesse:-1, attack_cac:-1, attack_tir:-2, defense_cac:+2, defense_tir:+2, puissance_cac:-1, puissance_tir:-2, intimidation_cac:+1, intimidation_tir:+1, esquive_cac:+2, esquive_tir:+2, precision_cac:-1, precision_tir:-2, armure:+1, moral_tour:0 },
+  river:    { name:'Fleuves',   vitesse:-1, attack_cac:-3, attack_tir:-3, defense_cac:-3, defense_tir:-3, puissance_cac:-3, puissance_tir:-2, intimidation_cac:-2, intimidation_tir:+2, esquive_cac:-2, esquive_tir:-2, precision_cac:-2, precision_tir:-2, armure:-1, moral_tour:0 },
+  road:     { name:'Routes',    vitesse:+1, attack_cac:+2, attack_tir:+1, defense_cac:0,  defense_tir:-1, puissance_cac:+1, puissance_tir:+1, intimidation_cac:+1, intimidation_tir:+1, esquive_cac:-1, esquive_tir:-2, precision_cac:+2, precision_tir:+1, armure:0,  moral_tour:0 },
+  building: { name:'Bâtiments', vitesse:-1, attack_cac:-1, attack_tir:-3, defense_cac:+4, defense_tir:+2, puissance_cac:0,  puissance_tir:-1, intimidation_cac:0,  intimidation_tir:0,  esquive_cac:+2, esquive_tir:+4, precision_cac:+1, precision_tir:+1, armure:+2, moral_tour:0 },
+  bridge:   { name:'Ponts',     vitesse:-1, attack_cac:0,  attack_tir:+1, defense_cac:+2, defense_tir:+1, puissance_cac:-1, puissance_tir:0,  intimidation_cac:+1, intimidation_tir:0,  esquive_cac:+1, esquive_tir:-2, precision_cac:+1, precision_tir:+1, armure:0,  moral_tour:0 },
+};
 const STANCES_DATA = {
   marche:           { vitesse:+1, attack_cac:-1, attack_tir:-2, defense_cac:-2, defense_tir:-1, puissance_cac:+1, puissance_tir:-1, intimidation_cac:0, intimidation_tir:0, esquive_cac:+1, esquive_tir:+2, precision_cac:0, precision_tir:-2, armure:-1, moral_tour:0 },
   combat:           { vitesse:-1, attack_cac:+1, attack_tir:+1, defense_cac:+1, defense_tir:+1, puissance_cac:+2, puissance_tir:+2, intimidation_cac:+1, intimidation_tir:+1, esquive_cac:0, esquive_tir:0, precision_cac:+1, precision_tir:+2, armure:+1, moral_tour:0 },
@@ -957,22 +965,62 @@ function showUnitDetail(unit) {
   if (!unit) { panel.style.display = 'none'; return; }
   panel.style.display = 'block';
   document.getElementById('detail-name').textContent = unit.name + (unit.isFleeing ? ' (EN FUITE)' : '');
+
+  const st = (!unit.isGeneral && unit.stance) ? (STANCES_DATA[unit.stance] || {}) : {};
+  const terrainKey = (unit.q != null && unit.r != null) ? `${unit.q},${unit.r}` : null;
+  const terrainType = terrainKey ? (terrainData[terrainKey] || 'plain') : 'plain';
+  const tr = TERRAINS_DATA[terrainType] || TERRAINS_DATA.plain;
+  const terrainName = tr.name || terrainType;
+
+  // Build a stat row with delta coloring and hover tooltip
+  const statRows = [];
+  function addStat(label, base, stKey, trKey, suffix) {
+    const sDelta = st[stKey] || 0;
+    const tDelta = trKey ? (tr[trKey] || 0) : 0;
+    const total = sDelta + tDelta;
+    let valueHtml;
+    if (total === 0) {
+      valueHtml = `<span>${base}${suffix||''}</span>`;
+    } else {
+      const effective = base + total;
+      const color = total > 0 ? '#80e080' : '#e08080';
+      const sign = total > 0 ? '+' : '';
+      valueHtml = `<span style="color:${color}" title="Base: ${base}${suffix||''}${sDelta!==0?` | Posture: ${sDelta>0?'+':''}${sDelta}`:''}${tDelta!==0?` | Terrain: ${tDelta>0?'+':''}${tDelta}`:''}">`;
+      valueHtml += `${effective}${suffix||''} <small style="opacity:0.75">(${sign}${total})</small></span>`;
+    }
+    statRows.push(`<div class="stat-row" style="cursor:default" title="${label}: base ${base}${suffix||''}${sDelta!==0?`, posture ${sDelta>0?'+':''}${sDelta}`:''}${tDelta!==0?`, terrain ${tDelta>0?'+':''}${tDelta}`:''}"><span>${label}</span>${valueHtml}</div>`);
+  }
+
   const speedLabel = unit.speedRemaining != null ? `${unit.speedRemaining}/${unit.speed}` : `${unit.speed}`;
   const stanceLabel = unit.stance ? (stanceNames[unit.stance] || unit.stance) : '—';
-  document.getElementById('detail-stats').innerHTML = `
-    <div class="stat-row"><span>Vitalité</span><span>${unit.vitality}/${unit.maxVitality}</span></div>
-    <div class="stat-row"><span>Moral</span><span>${unit.morale != null ? unit.morale : '—'}/${unit.maxMorale != null ? unit.maxMorale : '—'}</span></div>
-    <div class="stat-row"><span>Attaque</span><span>${unit.attack}</span></div>
-    <div class="stat-row"><span>Puissance</span><span>${unit.power}</span></div>
-    <div class="stat-row"><span>Défense</span><span>${unit.defense}</span></div>
-    <div class="stat-row"><span>Armure</span><span>${unit.armor}</span></div>
-    <div class="stat-row"><span>Vitesse</span><span>${speedLabel}</span></div>
-    <div class="stat-row"><span>Portée</span><span>${unit.range} case${unit.range > 1 ? 's' : ''}</span></div>
-    ${unit.visionRange > 0 ? `<div class="stat-row"><span>Vision</span><span>${unit.visionRange} cases</span></div>` : ''}
-    ${!unit.isGeneral ? `<div class="stat-row"><span>Posture</span><span>${stanceLabel}</span></div>` : ''}
-    <div class="stat-row"><span>Déplacé</span><span>${unit.hasMoved ? 'Oui' : 'Non'}</span></div>
-    <div class="stat-row"><span>Attaqué</span><span>${unit.hasAttacked ? 'Oui' : 'Non'}</span></div>
-  `;
+
+  statRows.push(`<div class="stat-row"><span>Vitalité</span><span>${unit.vitality}/${unit.maxVitality}</span></div>`);
+  statRows.push(`<div class="stat-row"><span>Moral</span><span>${unit.morale != null ? unit.morale : '—'}/${unit.maxMorale != null ? unit.maxMorale : '—'}</span></div>`);
+  if (!unit.isGeneral) {
+    addStat('Attaque cac', unit.attack, 'attack_cac', 'attack_cac');
+    addStat('Attaque tir', unit.attack, 'attack_tir', 'attack_tir');
+    addStat('Puissance cac', unit.power, 'puissance_cac', 'puissance_cac');
+    addStat('Puissance tir', unit.power, 'puissance_tir', 'puissance_tir');
+    addStat('Défense cac', unit.defense, 'defense_cac', 'defense_cac');
+    addStat('Défense tir', unit.defense, 'defense_tir', 'defense_tir');
+    addStat('Armure', unit.armor, 'armure', 'armure');
+  } else {
+    statRows.push(`<div class="stat-row"><span>Attaque</span><span>${unit.attack}</span></div>`);
+    statRows.push(`<div class="stat-row"><span>Puissance</span><span>${unit.power}</span></div>`);
+    statRows.push(`<div class="stat-row"><span>Défense</span><span>${unit.defense}</span></div>`);
+    statRows.push(`<div class="stat-row"><span>Armure</span><span>${unit.armor}</span></div>`);
+  }
+  statRows.push(`<div class="stat-row"><span>Vitesse</span><span>${speedLabel}</span></div>`);
+  statRows.push(`<div class="stat-row"><span>Portée</span><span>${unit.range} case${unit.range > 1 ? 's' : ''}</span></div>`);
+  if (unit.visionRange > 0) statRows.push(`<div class="stat-row"><span>Vision</span><span>${unit.visionRange} cases</span></div>`);
+  if (!unit.isGeneral) {
+    statRows.push(`<div class="stat-row"><span>Posture</span><span>${stanceLabel}</span></div>`);
+    statRows.push(`<div class="stat-row" style="color:#a89060;font-size:0.8em"><span>Terrain</span><span>${terrainName}</span></div>`);
+  }
+  statRows.push(`<div class="stat-row"><span>Déplacé</span><span>${unit.hasMoved ? 'Oui' : 'Non'}</span></div>`);
+  statRows.push(`<div class="stat-row"><span>Attaqué</span><span>${unit.hasAttacked ? 'Oui' : 'Non'}</span></div>`);
+
+  document.getElementById('detail-stats').innerHTML = statRows.join('');
 }
 
 function renderUnitList() {
