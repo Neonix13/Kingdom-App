@@ -332,6 +332,19 @@
     </div>
   </div>
 
+  <!-- Stance confirmation overlay -->
+  <div class="overlay" id="overlay-stance" style="display:none">
+    <div class="overlay-box" style="min-width:320px;text-align:center">
+      <h3 style="color:#c8960c;margin:0 0 10px">&#9876; Changer de posture</h3>
+      <p><b id="stance-unit-name"></b></p>
+      <p style="color:#a89060;font-size:0.9em"><span id="stance-from"></span> → <b id="stance-to"></b></p>
+      <div style="display:flex;gap:10px;justify-content:center;margin-top:14px">
+        <button class="btn" onclick="cancelStanceChange()" style="background:#3a2408;border:1px solid #7a5820;color:#e0c080;padding:8px 18px">Annuler</button>
+        <button class="btn" onclick="confirmStanceChange()" style="background:#1a3a08;border:1px solid #4a8020;color:#a0e080;padding:8px 18px">&#10003; Confirmer</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Initiative overlay -->
   <div class="overlay" id="overlay-initiative" style="display:none">
     <div class="overlay-box" style="min-width:320px">

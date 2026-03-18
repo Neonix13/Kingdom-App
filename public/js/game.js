@@ -1477,7 +1477,27 @@ function renderStancePanel(unit) {
 
 function changeStance(unitId, stanceId) {
   if (!roomCode) return;
+  const overlay = document.getElementById('overlay-stance');
+  if (!overlay) { wsSend('change_stance', { roomCode, unitId, stanceId }); return; }
+  const unit = selectedUnit || gameState?.units?.find(u => u.id === unitId);
+  document.getElementById('stance-unit-name').textContent = unit?.name || '';
+  document.getElementById('stance-from').textContent = stanceNames[unit?.stance] || unit?.stance || '?';
+  document.getElementById('stance-to').textContent = stanceNames[stanceId] || stanceId;
+  overlay.dataset.unitId = unitId;
+  overlay.dataset.stanceId = stanceId;
+  overlay.style.display = 'flex';
+}
+
+function confirmStanceChange() {
+  const overlay = document.getElementById('overlay-stance');
+  if (!overlay) return;
+  const { unitId, stanceId } = overlay.dataset;
+  overlay.style.display = 'none';
   wsSend('change_stance', { roomCode, unitId, stanceId });
+}
+
+function cancelStanceChange() {
+  document.getElementById('overlay-stance').style.display = 'none';
 }
 
 // ---- COMBAT RESULT ----
