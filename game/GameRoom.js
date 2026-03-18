@@ -486,8 +486,11 @@ class GameRoom {
       const segType = this.segmentData[edgeK];
       const segDef = segType ? SEGMENTS[segType] : null;
       if (segDef) {
-        if (segDef.vitesse_tout) { vitesseTout = true; break; }
-        stepCost += Math.max(0, -(segDef.vitesse || 0));
+        if (segDef.vitesse_fixe != null) {
+          stepCost = segDef.vitesse_fixe;
+        } else {
+          stepCost += Math.max(0, -(segDef.vitesse || 0));
+        }
       }
       moveCost += stepCost;
     }

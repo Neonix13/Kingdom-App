@@ -16,7 +16,8 @@ const SEGMENTS = {
     attack_cac: -5, attack_tir: 0,
     defense_cac: 0, defense_tir: 0,
     puissance_cac: 0, puissance_tir: 0,
-    vitesse_tout: true,       // dépense toute la vitesse max pour traverser
+    vitesse_tout: false,
+    vitesse_fixe: 3,          // coûte exactement 3 de vitesse pour traverser
     infranchissable: false,
     infranchissable_cavalerie: true,
     special: null,

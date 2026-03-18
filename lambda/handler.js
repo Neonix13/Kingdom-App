@@ -72,6 +72,10 @@ exports.handler = async (event) => {
   }
 
   if (routeKey === '$disconnect') {
+    // Wait 600ms: if this is a page refresh, rejoin_game will run first and
+    // call deleteConn(oldId). After the delay, getConn returns null → we do nothing.
+    // For permanent disconnects, the conn entry is still there → mark offline.
+    await new Promise(r => setTimeout(r, 600));
     const conn = await getConn(connectionId);
     if (conn?.roomCode) {
       const room = await getRoom(conn.roomCode);
@@ -87,8 +91,8 @@ exports.handler = async (event) => {
           }
         }
       }
+      await deleteConn(connectionId);
     }
-    await deleteConn(connectionId);
     return { statusCode: 200 };
   }
 

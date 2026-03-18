@@ -57,7 +57,7 @@ const SEGMENT_COLORS_MAP = {
 // Propriétés locales pour les vérifications de mouvement côté client
 const SEGMENT_DEFS_CLIENT = {
   river:            { vitesse: -1, vitesse_tout: false, infranchissable: false, infranchissable_cavalerie: false },
-  cliff:            { vitesse: 0,  vitesse_tout: true,  infranchissable: false, infranchissable_cavalerie: true },
+  cliff:            { vitesse: 0,  vitesse_fixe: 3, vitesse_tout: false, infranchissable: false, infranchissable_cavalerie: true },
   bridge:           { vitesse: 0,  vitesse_tout: false, infranchissable: false, infranchissable_cavalerie: false },
   passerelle:       { vitesse: 0,  vitesse_tout: false, infranchissable: false, infranchissable_cavalerie: false },
   barriere:         { vitesse: -1, vitesse_tout: false, infranchissable: false, infranchissable_cavalerie: false },
@@ -844,6 +844,7 @@ function computeMovableTiles(unit) {
     queue.sort((a, b) => a.cost - b.cost);
     const { q, r, cost } = queue.shift();
     if (cost > dist.get(`${q},${r}`)) continue;
+    if (cost >= maxSpeed) continue;
     for (const [dq, dr] of dirs) {
       const nq = q + dq, nr = r + dr;
       const key = `${nq},${nr}`;
@@ -858,20 +859,17 @@ function computeMovableTiles(unit) {
       if (segDef) {
         if (segDef.infranchissable) continue;
         if (segDef.infranchissable_cavalerie && isCavalry) continue;
-        if (segDef.vitesse_tout) {
-          const newCost = maxSpeed;
-          if (!dist.has(key) || newCost < dist.get(key)) {
-            dist.set(key, newCost);
-            movableTiles.add(key);
-            queue.push({ q: nq, r: nr, cost: newCost });
-          }
-          continue;
-        }
       }
 
       const srcKey = `${q},${r}`;
       let stepCost = terrainMoveCost(srcKey);
-      if (segDef) stepCost += Math.max(0, -(segDef.vitesse || 0));
+      if (segDef) {
+        if (segDef.vitesse_fixe != null) {
+          stepCost = segDef.vitesse_fixe;
+        } else {
+          stepCost += Math.max(0, -(segDef.vitesse || 0));
+        }
+      }
       const newCost = cost + stepCost;
       if (newCost > maxSpeed) continue;
       if (!dist.has(key) || newCost < dist.get(key)) {

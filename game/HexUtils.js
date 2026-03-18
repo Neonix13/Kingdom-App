@@ -110,7 +110,7 @@ function findPath(hexMap, unitMap, q1, r1, q2, r2, maxSpeed, playerId, unit) {
     const { q, r, cost, path } = queue.shift();
 
     if (q === q2 && r === r2) return path;
-    if (cost > maxSpeed) continue;
+    if (cost >= maxSpeed) continue;
 
     for (const [nq, nr] of hexNeighbors(q, r)) {
       const key = hexKey(nq, nr);
@@ -130,16 +130,11 @@ function findPath(hexMap, unitMap, q1, r1, q2, r2, maxSpeed, playerId, unit) {
       let stepCost = terrainMoveCost(srcTerrain);
 
       if (segDef) {
-        if (segDef.vitesse_tout) {
-          // Consumes all remaining speed
-          const newCost = maxSpeed;
-          if (!dist.has(key) || newCost < dist.get(key)) {
-            dist.set(key, newCost);
-            queue.push({ q: nq, r: nr, cost: newCost, path: [...path, [nq, nr]] });
-          }
-          continue;
+        if (segDef.vitesse_fixe != null) {
+          stepCost = segDef.vitesse_fixe;
+        } else {
+          stepCost += Math.max(0, -(segDef.vitesse || 0));
         }
-        stepCost += Math.max(0, -(segDef.vitesse || 0));
       }
 
       const newCost = cost + stepCost;
