@@ -580,6 +580,7 @@ class GameRoom {
     if (!unit) return { error: 'Unité introuvable.' };
     if (unit.isGeneral) return { error: 'Les généraux n\'ont pas de posture.' };
     if (unit.isFleeing) return { error: 'Unité en fuite.' };
+    if (unit.speedRemaining <= 0) return { error: 'Plus de vitesse disponible pour changer de posture.' };
     if (unit.stance === stanceId) return { error: 'Déjà dans cette posture.' };
     unit.speedRemaining = Math.max(0, unit.speedRemaining - 2);
     unit.stance = stanceId;

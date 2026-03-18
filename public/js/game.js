@@ -940,7 +940,7 @@ function updateActionButtons() {
   // Show/hide stance panel
   const stancePanel = document.getElementById('stance-panel');
   if (stancePanel) {
-    stancePanel.style.display = (hasUnit && isMyTurn && !isFleeing && !selectedUnit?.isGeneral && gameState?.phase === 'battle') ? 'block' : 'none';
+    stancePanel.style.display = (hasUnit && isMyTurn && !isFleeing && !selectedUnit?.isGeneral && gameState?.phase === 'battle' && selectedUnit?.speedRemaining > 0) ? 'block' : 'none';
   }
 }
 
