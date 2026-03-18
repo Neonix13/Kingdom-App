@@ -56,14 +56,14 @@ const SEGMENT_COLORS_MAP = {
 
 // Propriétés locales pour les vérifications de mouvement côté client
 const SEGMENT_DEFS_CLIENT = {
-  river:            { vitesse: -1, vitesse_tout: false, infranchissable: false, infranchissable_cavalerie: false },
-  cliff:            { vitesse: 0,  vitesse_fixe: 3, vitesse_tout: false, infranchissable: false, infranchissable_cavalerie: true },
-  bridge:           { vitesse: 0,  vitesse_tout: false, infranchissable: false, infranchissable_cavalerie: false },
-  passerelle:       { vitesse: 0,  vitesse_tout: false, infranchissable: false, infranchissable_cavalerie: false },
-  barriere:         { vitesse: -1, vitesse_tout: false, infranchissable: false, infranchissable_cavalerie: false },
-  chevaux_de_frise: { vitesse: 0,  vitesse_tout: false, infranchissable: false, infranchissable_cavalerie: false },
-  mur:              { vitesse: 0,  vitesse_tout: false, infranchissable: true,  infranchissable_cavalerie: false },
-  echelle:          { vitesse: -2, vitesse_tout: false, infranchissable: false, infranchissable_cavalerie: true },
+  river:            { name:'Rivière',         vitesse:-1,  vitesse_fixe:null, infranchissable:false, infranchissable_cavalerie:false, attack_cac:-2, attack_tir:0, defense_cac:0, defense_tir:0, puissance_cac:0, puissance_tir:0, special:null },
+  cliff:            { name:'Falaise',         vitesse:0,   vitesse_fixe:3,    infranchissable:false, infranchissable_cavalerie:true,  attack_cac:-5, attack_tir:0, defense_cac:0, defense_tir:0, puissance_cac:0, puissance_tir:0, special:null },
+  bridge:           { name:'Pont',            vitesse:0,   vitesse_fixe:null, infranchissable:false, infranchissable_cavalerie:false, attack_cac:0,  attack_tir:0, defense_cac:2, defense_tir:2, puissance_cac:0, puissance_tir:0, special:null },
+  passerelle:       { name:'Passerelle',      vitesse:0,   vitesse_fixe:null, infranchissable:false, infranchissable_cavalerie:false, attack_cac:0,  attack_tir:0, defense_cac:-1, defense_tir:-1, puissance_cac:0, puissance_tir:0, special:'Effondrement 1/4' },
+  barriere:         { name:'Barrière',        vitesse:-1,  vitesse_fixe:null, infranchissable:false, infranchissable_cavalerie:false, attack_cac:0,  attack_tir:0, defense_cac:2, defense_tir:2, puissance_cac:0, puissance_tir:0, special:null },
+  chevaux_de_frise: { name:'Chevaux de frise',vitesse:0,   vitesse_fixe:null, infranchissable:false, infranchissable_cavalerie:false, attack_cac:0,  attack_tir:0, defense_cac:4, defense_tir:4, puissance_cac:0, puissance_tir:0, special:'+5 puissance vs cavalerie' },
+  mur:              { name:'Mur',             vitesse:0,   vitesse_fixe:null, infranchissable:true,  infranchissable_cavalerie:false, attack_cac:0,  attack_tir:0, defense_cac:0, defense_tir:0, puissance_cac:0, puissance_tir:0, special:null },
+  echelle:          { name:'Échelle',         vitesse:-2,  vitesse_fixe:null, infranchissable:false, infranchissable_cavalerie:true,  attack_cac:-6, attack_tir:0, defense_cac:0, defense_tir:0, puissance_cac:0, puissance_tir:0, special:null },
 };
 
 function segmentEdgeKey(q1, r1, q2, r2) {
@@ -658,11 +658,31 @@ canvas.addEventListener('mousemove', (e) => {
     camX = camAtDrag.x + (e.clientX - dragStart.x);
     camY = camAtDrag.y + (e.clientY - dragStart.y);
     render();
+    hideTerrainTooltip();
     return;
   }
   hoveredHex = getHexUnderMouse(e);
   render();
+
+  if (showTerrain) {
+    const rect = canvas.getBoundingClientRect();
+    const worldX = (e.clientX - rect.left - canvas.width / 2 - camX) / zoom;
+    const worldY = (e.clientY - rect.top - canvas.height / 2 - camY) / zoom;
+    const nearSeg = getNearestSegment(worldX, worldY);
+    if (nearSeg) {
+      showTerrainTooltip(buildSegmentTooltip(nearSeg), e);
+    } else if (hoveredHex) {
+      const tType = terrainData[`${hoveredHex.q},${hoveredHex.r}`] || 'plain';
+      showTerrainTooltip(buildTerrainTooltip(tType), e);
+    } else {
+      hideTerrainTooltip();
+    }
+  } else {
+    hideTerrainTooltip();
+  }
 });
+
+canvas.addEventListener('mouseleave', hideTerrainTooltip);
 
 canvas.addEventListener('mouseup', () => { isDragging = false; });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
@@ -1540,6 +1560,90 @@ function renderStancePanel(unit) {
     btn.addEventListener('mouseleave', hideStanceTooltip);
     listEl.appendChild(btn);
   }
+}
+
+// ---- TERRAIN / SEGMENT TOOLTIP ----
+function buildTerrainTooltip(terrainType) {
+  const t = TERRAINS_DATA[terrainType];
+  if (!t) return '';
+  const row = (label, val) => {
+    if (val === 0) return '';
+    const cls = val > 0 ? 'tt-pos' : 'tt-neg';
+    return `<div><span class="${cls}">${val > 0 ? '+' : ''}${val}</span> ${label}</div>`;
+  };
+  return `<div class="tt-title">${t.name}</div>`
+    + row('Vitesse', t.vitesse)
+    + row('Attaque cac', t.attack_cac) + row('Attaque tir', t.attack_tir)
+    + row('Défense cac', t.defense_cac) + row('Défense tir', t.defense_tir)
+    + row('Puissance cac', t.puissance_cac) + row('Puissance tir', t.puissance_tir)
+    + row('Intimidation cac', t.intimidation_cac) + row('Intimidation tir', t.intimidation_tir)
+    + row('Esquive cac', t.esquive_cac) + row('Esquive tir', t.esquive_tir)
+    + row('Précision cac', t.precision_cac) + row('Précision tir', t.precision_tir)
+    + row('Armure', t.armure);
+}
+
+function buildSegmentTooltip(segType) {
+  const s = SEGMENT_DEFS_CLIENT[segType];
+  if (!s) return '';
+  const row = (label, val) => {
+    if (!val && val !== 0) return '';
+    if (typeof val === 'number' && val === 0) return '';
+    const cls = typeof val === 'number' ? (val > 0 ? 'tt-pos' : 'tt-neg') : 'tt-neutral';
+    const disp = typeof val === 'number' ? `${val > 0 ? '+' : ''}${val}` : val;
+    return `<div><span class="${cls}">${disp}</span> ${label}</div>`;
+  };
+  let html = `<div class="tt-title">${s.name}</div>`;
+  if (s.infranchissable) html += `<div><span class="tt-neg">Infranchissable</span></div>`;
+  if (s.infranchissable_cavalerie) html += `<div><span class="tt-neg">Cavalerie bloquée</span></div>`;
+  if (s.vitesse_fixe != null) html += `<div><span class="tt-neg">Coûte ${s.vitesse_fixe} vitesse</span></div>`;
+  else if (s.vitesse !== 0) html += row('Vitesse', s.vitesse);
+  html += row('Attaque cac', s.attack_cac) + row('Attaque tir', s.attack_tir)
+    + row('Défense cac', s.defense_cac) + row('Défense tir', s.defense_tir)
+    + row('Puissance cac', s.puissance_cac) + row('Puissance tir', s.puissance_tir);
+  if (s.special) html += `<div style="margin-top:3px;color:#c8a040;font-style:italic">${s.special}</div>`;
+  return html;
+}
+
+function distPointToSegment(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.hypot(px - ax, py - ay);
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+function getNearestSegment(worldX, worldY) {
+  const threshold = HEX_SIZE * 0.25;
+  let best = null, bestDist = threshold;
+  for (const [edgeKey, segType] of Object.entries(segmentData)) {
+    const parts = edgeKey.split('|');
+    const [q1, r1] = parts[0].split(',').map(Number);
+    const [q2, r2] = parts[1].split(',').map(Number);
+    const dq = q2 - q1, dr = r2 - r1;
+    const dirIdx = SEGMENT_EDGE_DIRS.findIndex(([d0, d1]) => d0 === dq && d1 === dr);
+    if (dirIdx === -1) continue;
+    const { x: cx, y: cy } = hexToPixel(q1, r1);
+    const corners = hexCorners(cx, cy);
+    const c1 = corners[dirIdx], c2 = corners[(dirIdx + 1) % 6];
+    const d = distPointToSegment(worldX, worldY, c1.x, c1.y, c2.x, c2.y);
+    if (d < bestDist) { bestDist = d; best = segType; }
+  }
+  return best;
+}
+
+function showTerrainTooltip(content, e) {
+  const tt = document.getElementById('terrain-tooltip');
+  if (!tt) return;
+  tt.innerHTML = content;
+  tt.style.display = 'block';
+  const x = e.clientX + 14, y = e.clientY - 8;
+  tt.style.left = Math.min(x, window.innerWidth - tt.offsetWidth - 8) + 'px';
+  tt.style.top = Math.max(8, Math.min(y, window.innerHeight - tt.offsetHeight - 8)) + 'px';
+}
+
+function hideTerrainTooltip() {
+  const tt = document.getElementById('terrain-tooltip');
+  if (tt) tt.style.display = 'none';
 }
 
 function buildStanceTooltip(stanceId) {
