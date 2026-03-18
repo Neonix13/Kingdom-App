@@ -107,6 +107,14 @@ const stanceIcons = {};
 const stanceList = ['marche','combat','charge','percee','defense_combat','defense_distance'];
 const stanceIconFiles = { marche:'marche', combat:'combat', charge:'charge', percee:'percee', defense_combat:'def_charge', defense_distance:'def_eparse' };
 const stanceNames = { marche:'Marche', combat:'Combat', charge:'Charge', percee:'Percée', defense_combat:'Déf. combat', defense_distance:'Déf. distance' };
+const STANCES_DATA = {
+  marche:           { vitesse:+1, attack_cac:-1, attack_tir:-2, defense_cac:-2, defense_tir:-1, puissance_cac:+1, puissance_tir:-1, intimidation_cac:0, intimidation_tir:0, esquive_cac:+1, esquive_tir:+2, precision_cac:0, precision_tir:-2, armure:-1, moral_tour:0 },
+  combat:           { vitesse:-1, attack_cac:+1, attack_tir:+1, defense_cac:+1, defense_tir:+1, puissance_cac:+2, puissance_tir:+2, intimidation_cac:+1, intimidation_tir:+1, esquive_cac:0, esquive_tir:0, precision_cac:+1, precision_tir:+2, armure:+1, moral_tour:0 },
+  charge:           { vitesse:+2, attack_cac:+3, attack_tir:-2, defense_cac:-1, defense_tir:-2, puissance_cac:+3, puissance_tir:-2, intimidation_cac:+2, intimidation_tir:-1, esquive_cac:+2, esquive_tir:+3, precision_cac:+3, precision_tir:-2, armure:0, moral_tour:-1 },
+  percee:           { vitesse:+1, attack_cac:+2, attack_tir:-2, defense_cac:-1, defense_tir:-2, puissance_cac:+2, puissance_tir:-2, intimidation_cac:0, intimidation_tir:0, esquive_cac:0, esquive_tir:+2, precision_cac:+2, precision_tir:-2, armure:0, moral_tour:0 },
+  defense_combat:   { vitesse:-1, attack_cac:-2, attack_tir:-1, defense_cac:+4, defense_tir:-2, puissance_cac:-1, puissance_tir:-2, intimidation_cac:-2, intimidation_tir:+1, esquive_cac:+1, esquive_tir:-1, precision_cac:0, precision_tir:-2, armure:+2, moral_tour:0 },
+  defense_distance: { vitesse:0,  attack_cac:-3, attack_tir:0,  defense_cac:-3, defense_tir:0,  puissance_cac:-2, puissance_tir:-1, intimidation_cac:-2, intimidation_tir:-1, esquive_cac:+2, esquive_tir:+4, precision_cac:-2, precision_tir:-1, armure:+1, moral_tour:0 },
+};
 for (const s of stanceList) {
   const img = new Image();
   img.src = `/icons/${stanceIconFiles[s]}.svg`;
@@ -1478,9 +1486,55 @@ function renderStancePanel(unit) {
     } else {
       btn.textContent = stanceNames[s] || s;
     }
-    btn.onclick = () => changeStance(unit.id, s);
+    btn.onclick = () => { hideStanceTooltip(); changeStance(unit.id, s); };
+    btn.addEventListener('mouseenter', e => showStanceTooltip(e, s));
+    btn.addEventListener('mousemove', positionStanceTooltip);
+    btn.addEventListener('mouseleave', hideStanceTooltip);
     listEl.appendChild(btn);
   }
+}
+
+function buildStanceTooltip(stanceId) {
+  const s = STANCES_DATA[stanceId];
+  if (!s) return '';
+  const row = (label, val) => {
+    if (val === 0) return '';
+    const cls = val > 0 ? 'tt-pos' : 'tt-neg';
+    return `<div><span class="${cls}">${val > 0 ? '+' : ''}${val}</span> ${label}</div>`;
+  };
+  return `<div class="tt-title">${stanceNames[stanceId] || stanceId}</div>`
+    + row('Vitesse', s.vitesse)
+    + row('Attaque cac', s.attack_cac) + row('Attaque tir', s.attack_tir)
+    + row('Défense cac', s.defense_cac) + row('Défense tir', s.defense_tir)
+    + row('Puissance cac', s.puissance_cac) + row('Puissance tir', s.puissance_tir)
+    + row('Intimidation cac', s.intimidation_cac) + row('Intimidation tir', s.intimidation_tir)
+    + row('Esquive cac', s.esquive_cac) + row('Esquive tir', s.esquive_tir)
+    + row('Précision cac', s.precision_cac) + row('Précision tir', s.precision_tir)
+    + row('Armure', s.armure)
+    + (s.moral_tour !== 0 ? row('Moral/tour', s.moral_tour) : '');
+}
+
+function showStanceTooltip(e, stanceId) {
+  const tt = document.getElementById('stance-tooltip');
+  if (!tt) return;
+  tt.innerHTML = buildStanceTooltip(stanceId);
+  tt.style.display = 'block';
+  positionStanceTooltip(e);
+}
+
+function positionStanceTooltip(e) {
+  const tt = document.getElementById('stance-tooltip');
+  if (!tt || tt.style.display === 'none') return;
+  const x = e.clientX + 12, y = e.clientY - 8;
+  const maxX = window.innerWidth - tt.offsetWidth - 8;
+  const maxY = window.innerHeight - tt.offsetHeight - 8;
+  tt.style.left = Math.min(x, maxX) + 'px';
+  tt.style.top = Math.max(8, Math.min(y, maxY)) + 'px';
+}
+
+function hideStanceTooltip() {
+  const tt = document.getElementById('stance-tooltip');
+  if (tt) tt.style.display = 'none';
 }
 
 function changeStance(unitId, stanceId) {

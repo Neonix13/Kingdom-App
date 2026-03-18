@@ -193,6 +193,15 @@
     .stance-btn:hover { border-color:#7a5820;color:#e0c080; }
     .stance-btn.active { border-color:#c8960c;background:#3a2408;color:#ffd700; }
     .stance-btn img { width:16px;height:16px; }
+    #stance-tooltip {
+      position:fixed; z-index:9999; pointer-events:none; display:none;
+      background:#1a0f04; border:1px solid #c8960c; border-radius:6px;
+      padding:8px 10px; font-size:0.78em; color:#e0c080; min-width:160px;
+      box-shadow:0 2px 10px rgba(0,0,0,0.7); line-height:1.7;
+    }
+    #stance-tooltip .tt-title { color:#ffd700; font-weight:bold; margin-bottom:4px; }
+    #stance-tooltip .tt-pos { color:#80e080; }
+    #stance-tooltip .tt-neg { color:#e08080; }
   </style>
 </head>
 <body>
@@ -378,6 +387,7 @@
     }
   </script>
   <script src="/js/version.js"></script>
+  <div id="stance-tooltip"></div>
   <script src="/js/hexGrid.js"></script>
   <script src="/js/game.js"></script>
   <script>document.getElementById('app-version').textContent = APP_VERSION;</script>
