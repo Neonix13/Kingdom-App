@@ -295,7 +295,7 @@ async function handleAction(apigw, connectionId, action, data) {
       if (result.error) return send(apigw, connectionId, { event: 'error', message: result.error });
       if (result.pending) {
         await saveRoom(room);
-        await send(apigw, result.targetPlayerId, { event: 'defense_request', attackId: result.attackId, attackerName: result.attackerName, targetName: result.targetName, targetQ: result.targetQ, targetR: result.targetR, roomCode });
+        await send(apigw, result.targetPlayerId, { event: 'defense_request', attackId: result.attackId, attackerName: result.attackerName, targetName: result.targetName, targetQ: result.targetQ, targetR: result.targetR, roomCode, isRanged: result.isRanged, targetTypeId: result.targetTypeId });
         await send(apigw, connectionId, { event: 'waiting_defense', attackId: result.attackId });
       }
       break;

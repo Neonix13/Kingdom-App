@@ -1542,6 +1542,16 @@ function showDefenseRequest(data) {
   overlay.style.display = 'flex';
   overlay.dataset.attackId = data.attackId;
   overlay.dataset.roomCode = data.roomCode;
+  // Ranged attack: only phalange can absorb, nobody can counter
+  const btnCounter = document.getElementById('btn-defense-counter');
+  const btnAbsorb = document.getElementById('btn-defense-absorb');
+  if (data.isRanged) {
+    if (btnCounter) btnCounter.style.display = 'none';
+    if (btnAbsorb) btnAbsorb.style.display = data.targetTypeId === 'phalange' ? '' : 'none';
+  } else {
+    if (btnCounter) btnCounter.style.display = '';
+    if (btnAbsorb) btnAbsorb.style.display = '';
+  }
   // Countdown
   let t = 20;
   const countdown = document.getElementById('defense-countdown');

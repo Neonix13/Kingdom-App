@@ -324,10 +324,10 @@
       <h3 style="color:#c8960c;margin:0 0 10px">&#9876; Vous êtes attaqué !</h3>
       <p><b id="defense-attacker-name"></b> attaque <b id="defense-target-name"></b></p>
       <p style="color:#a89060;font-size:0.9em">Choisissez votre réponse (<span id="defense-countdown">8</span>s)</p>
-      <div style="display:flex;gap:10px;justify-content:center;margin-top:12px">
+      <div id="defense-buttons" style="display:flex;gap:10px;justify-content:center;margin-top:12px">
         <button class="btn" onclick="sendDefenseChoice('rien')" style="background:#3a2408;border:1px solid #7a5820;color:#e0c080;padding:8px 14px">Rien</button>
-        <button class="btn" onclick="sendDefenseChoice('counter')" style="background:#1a3a08;border:1px solid #4a8020;color:#a0e080;padding:8px 14px">&#9876; Contre-attaquer</button>
-        <button class="btn" onclick="sendDefenseChoice('absorb')" style="background:#08203a;border:1px solid #205080;color:#80c0e0;padding:8px 14px">&#128737; Encaisser</button>
+        <button class="btn" id="btn-defense-counter" onclick="sendDefenseChoice('counter')" style="background:#1a3a08;border:1px solid #4a8020;color:#a0e080;padding:8px 14px">&#9876; Contre-attaquer</button>
+        <button class="btn" id="btn-defense-absorb" onclick="sendDefenseChoice('absorb')" style="background:#08203a;border:1px solid #205080;color:#80c0e0;padding:8px 14px">&#128737; Encaisser</button>
       </div>
     </div>
   </div>

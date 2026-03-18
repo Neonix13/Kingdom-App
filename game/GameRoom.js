@@ -645,7 +645,7 @@ class GameRoom {
     const attackId = `atk_${Date.now()}_${Math.random()}`;
     this.pendingAttacks[attackId] = { attackerPlayerId: playerId, attackerId, targetPlayerId: targetPlayer.id, targetId, dist };
 
-    return { pending: true, attackId, targetPlayerId: targetPlayer.id, attackerName: attacker.name, targetName: target.name, targetQ: target.q, targetR: target.r };
+    return { pending: true, attackId, targetPlayerId: targetPlayer.id, attackerName: attacker.name, targetName: target.name, targetQ: target.q, targetR: target.r, isRanged: dist > 1, targetTypeId: target.typeId };
   }
 
   resolveAttack(attackId, defenseChoice) {
@@ -754,7 +754,15 @@ class GameRoom {
       attacker.intimidation + (stA[`intimidation_${type}`] || 0) + (tA[`intimidation_${type}`] || 0)
     );
 
-    // Defense choice
+    // Defense choice — ranged attacks: only phalange can absorb, no counter allowed
+    if (!isCac) {
+      if (target.typeId === 'phalange' && defenseChoice === 'absorb') {
+        // allowed — handled below
+      } else {
+        defenseChoice = 'rien';
+      }
+    }
+
     let defenseRoll = null, defenseSuccess = false;
     let counterDmgReceived = 0, counterMoralDmg = 0;
 
@@ -781,8 +789,11 @@ class GameRoom {
         if (defenseChoice === 'absorb') {
           dmgReceived = Math.ceil(dmgReceived / 2);
           moralDmg = Math.ceil(moralDmg / 2);
-          counterDmgReceived = Math.ceil(rawCounter / 2);
-          counterMoralDmg = Math.ceil(rawMoral / 2);
+          // Ranged absorb (phalange): no counter damage
+          if (isCac) {
+            counterDmgReceived = Math.ceil(rawCounter / 2);
+            counterMoralDmg = Math.ceil(rawMoral / 2);
+          }
         } else {
           counterDmgReceived = rawCounter;
           counterMoralDmg = rawMoral;
