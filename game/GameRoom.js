@@ -424,6 +424,7 @@ class GameRoom {
           visibleUnits.push({
             ...u,
             isMine: p.id === playerId,
+            playerId: p.id,
           });
         }
       }
