@@ -1305,6 +1305,46 @@ function showUnitCard(unit) {
   const hpColor = hpPct > 50 ? '#2a8c2a' : hpPct > 25 ? '#c8960c' : '#a02020';
   const hpBar = `<div class="uc-pdf-hpbar-wrap"><div class="uc-pdf-hpbar" style="width:${hpPct}%;background:${hpColor}"></div></div>`;
 
+  // Modificateurs stance + terrain
+  const _st = (!unit.isGeneral && unit.stance) ? (STANCES_DATA[unit.stance] || {}) : {};
+  const _terrainKey = (unit.q != null && unit.r != null) ? `${unit.q},${unit.r}` : null;
+  const _terrainType = _terrainKey ? (terrainData[_terrainKey] || 'plain') : 'plain';
+  const _tr = TERRAINS_DATA[_terrainType] || TERRAINS_DATA.plain;
+  const _stanceName = unit.stance ? (stanceNames[unit.stance] || unit.stance) : null;
+  const _terrainName = _tr.name || _terrainType;
+
+  // Retourne { html, tip } pour une stat avec modificateurs cac/tir (ou single si cac===tir)
+  function _mod(base, stCacKey, stTirKey, trCacKey, trTirKey) {
+    const sCac = _st[stCacKey] || 0, sTir = stTirKey ? (_st[stTirKey] || 0) : sCac;
+    const tCac = trCacKey ? (_tr[trCacKey] || 0) : 0, tTir = trTirKey ? (_tr[trTirKey] || 0) : tCac;
+    const dCac = sCac + tCac, dTir = sTir + tTir;
+
+    const tipParts = [`Base : ${base}`];
+    if (_stanceName && (sCac !== 0 || sTir !== 0)) {
+      tipParts.push(`Posture (${_stanceName}) : ${sCac >= 0 ? '+' : ''}${sCac} cac / ${sTir >= 0 ? '+' : ''}${sTir} tir`);
+    }
+    if (_terrainType !== 'plain' && (tCac !== 0 || tTir !== 0)) {
+      tipParts.push(`Terrain (${_terrainName}) : ${tCac >= 0 ? '+' : ''}${tCac} cac / ${tTir >= 0 ? '+' : ''}${tTir} tir`);
+    }
+    const tip = tipParts.join(' | ');
+
+    if (dCac === 0 && dTir === 0) return { html: String(base), tip };
+
+    const fmt = (base, d) => {
+      const eff = base + d;
+      const color = d > 0 ? '#2e7d32' : '#c62828';
+      const sign = d > 0 ? '+' : '';
+      return `<span style="color:${color};font-weight:bold">${eff}<sup style="font-size:0.6em">(${sign}${d})</sup></span>`;
+    };
+
+    if (dCac === dTir) return { html: fmt(base, dCac), tip };
+    return { html: `${fmt(base, dCac)}<span style="color:#888;font-size:0.75em"> / ${fmt(base, dTir)}</span>`, tip };
+  }
+
+  function _statDiv(label, html, tip) {
+    return `<div class="uc-pdf-stat" title="${tip.replace(/"/g, '&quot;')}"><div class="uc-pdf-stat-label">${label}</div><div class="uc-pdf-stat-value">${html}</div></div>`;
+  }
+
   // Stats — fiche spéciale pour les généraux
   let statsHtml;
   if (unit.isGeneral) {
@@ -1324,20 +1364,24 @@ function showUnitCard(unit) {
     const r3 = row3.map(s => `<div class="uc-pdf-stat"><div class="uc-pdf-stat-label">${s.label}</div><div class="uc-pdf-stat-value">${s.value}</div></div>`).join('');
     statsHtml = vit + r2 + r3;
   } else {
-    const stats = [
-      { label: 'Vitalité',    value: `${unit.vitality}/${unit.maxVitality}` },
-      { label: 'Morale',      value: `${unit.morale ?? '—'}/${unit.maxMorale ?? '—'}` },
-      { label: 'Attaque',     value: unit.attack },
-      { label: 'Défense',     value: unit.defense },
-      { label: 'Puissance',   value: unit.power },
-      { label: 'Intimidation',value: unit.intimidation ?? 0 },
-      { label: 'Armure',      value: unit.armor },
-      { label: 'Vitesse',     value: unit.speed },
-    ];
-    if (unit.range > 1) stats.push({ label: 'Portée', value: `${unit.range} cases` });
-    statsHtml = stats.map(s =>
-      `<div class="uc-pdf-stat"><div class="uc-pdf-stat-label">${s.label}</div><div class="uc-pdf-stat-value">${s.value}</div></div>`
-    ).join('');
+    const atk  = _mod(unit.attack,           'attack_cac',       'attack_tir',       'attack_cac',       'attack_tir');
+    const def  = _mod(unit.defense,          'defense_cac',      'defense_tir',      'defense_cac',      'defense_tir');
+    const pui  = _mod(unit.power,            'puissance_cac',    'puissance_tir',    'puissance_cac',    'puissance_tir');
+    const inti = _mod(unit.intimidation ?? 0,'intimidation_cac', 'intimidation_tir', 'intimidation_cac', 'intimidation_tir');
+    const arm  = _mod(unit.armor,            'armure',           null,               'armure',           null);
+    const spd  = _mod(unit.speed,            'vitesse',          null,               'vitesse',          null);
+
+    statsHtml = [
+      `<div class="uc-pdf-stat" style="grid-column:1/-1"><div class="uc-pdf-stat-label">Vitalité</div><div class="uc-pdf-stat-value">${unit.vitality}/${unit.maxVitality}</div></div>`,
+      `<div class="uc-pdf-stat" style="grid-column:1/-1"><div class="uc-pdf-stat-label">Morale</div><div class="uc-pdf-stat-value">${unit.morale ?? '—'}/${unit.maxMorale ?? '—'}</div></div>`,
+      _statDiv('Attaque',      atk.html,  atk.tip),
+      _statDiv('Défense',      def.html,  def.tip),
+      _statDiv('Puissance',    pui.html,  pui.tip),
+      _statDiv('Intimidation', inti.html, inti.tip),
+      _statDiv('Armure',       arm.html,  arm.tip),
+      _statDiv('Vitesse',      spd.html,  spd.tip),
+    ].join('');
+    if (unit.range > 1) statsHtml += `<div class="uc-pdf-stat"><div class="uc-pdf-stat-label">Portée</div><div class="uc-pdf-stat-value">${unit.range} cases</div></div>`;
   }
 
   // Bonus / capacités
