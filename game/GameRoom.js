@@ -20,7 +20,7 @@ class GameRoom {
     this.hostId = hostId;
     this.players = [];
     this.phase = 'lobby'; // lobby | army_building | deployment | battle | ended
-    this.budget = 1000;
+    this.budget = 2500;
     this.hexMap = {};
     this.unitMap = {}; // hexKey -> unit
     this.turn = 1;
@@ -751,9 +751,8 @@ class GameRoom {
     let dmgReceived = Math.max(0, Math.floor((dmgInflicted - armorAbsorb) / 10));
 
     // Intimidation → moral damage
-    let moralDmg = Math.max(0,
-      attacker.intimidation + (stA[`intimidation_${type}`] || 0) + (tA[`intimidation_${type}`] || 0)
-    );
+    const effectiveIntimidation = attacker.intimidation + (stA[`intimidation_${type}`] || 0) + (tA[`intimidation_${type}`] || 0);
+    let moralDmg = Math.max(0, Math.floor(attacker.vitality * effectiveIntimidation / 10));
 
     // Defense choice — ranged attacks: only phalange can absorb, no counter allowed
     if (!isCac) {
@@ -785,7 +784,8 @@ class GameRoom {
         const atkArmor = Math.max(0, attacker.armor + (stA.armure || 0) + (tA.armure || 0));
         const atkArmorAbsorb = attacker.vitality * atkArmor;
         const rawCounter = Math.max(0, counterRaw - atkArmorAbsorb);
-        const rawMoral = Math.max(0, target.intimidation + (stD[`intimidation_${type}`] || 0) + (tD[`intimidation_${type}`] || 0));
+        const effectiveCounterIntimidation = target.intimidation + (stD[`intimidation_${type}`] || 0) + (tD[`intimidation_${type}`] || 0);
+        const rawMoral = Math.max(0, Math.floor(target.vitality * effectiveCounterIntimidation / 10));
 
         if (defenseChoice === 'absorb') {
           dmgReceived = Math.ceil(dmgReceived / 2);
