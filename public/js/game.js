@@ -322,6 +322,7 @@ let hoveredHex = null;
 let movableTiles = new Set();
 let attackableTiles = new Set();
 let rangeTiles = new Set();
+let rangeCenter = null;
 let deployTiles = new Set();
 
 // Camera — centrée sur la carte image au démarrage
@@ -410,7 +411,6 @@ function render() {
         let stroke = isVisible ? `rgba(${gridColorRGB},${gridOpacity})` : 'rgba(0,0,0,0)';
         if (isVisible && movableTiles.has(key)) fill = 'rgba(40,120,20,0.35)';
         if (isVisible && attackableTiles.has(key)) fill = 'rgba(180,30,10,0.35)';
-        if (isVisible && rangeTiles.has(key)) stroke = 'rgba(255,220,0,0.7)';
         if (isHovered && isVisible) stroke = '#c8960c';
         drawHex(ctx, x, y, fill, stroke, 1, gridThickness);
       }
@@ -434,6 +434,31 @@ function render() {
         drawHex(ctx, x, y, fill, stroke, 1, gridThickness);
       }
     }
+  }
+
+  if (rangeTiles.size > 0 && rangeCenter) {
+    const dirs = SEGMENT_EDGE_DIRS;
+    const interior = new Set(rangeTiles);
+    interior.add(`${rangeCenter.q},${rangeCenter.r}`);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,220,0,0.9)';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (const key of rangeTiles) {
+      const [q, r] = key.split(',').map(Number);
+      const { x, y } = hexToPixel(q, r);
+      const corners = hexCorners(x, y);
+      for (let i = 0; i < 6; i++) {
+        const [dq, dr] = dirs[i];
+        if (!interior.has(`${q + dq},${r + dr}`)) {
+          ctx.moveTo(corners[i].x, corners[i].y);
+          ctx.lineTo(corners[(i + 1) % 6].x, corners[(i + 1) % 6].y);
+        }
+      }
+    }
+    ctx.stroke();
+    ctx.restore();
   }
 
   // Draw units
@@ -762,7 +787,7 @@ function handleHexClick(hex) {
       wsSend('move_unit', { roomCode, unitId: selectedUnit.id, targetQ: hex.q, targetR: hex.r });
       movableTiles.clear();
       attackableTiles.clear();
-      rangeTiles.clear();
+      rangeTiles.clear(); rangeCenter = null;
       render();
       return;
     }
@@ -774,7 +799,7 @@ function handleHexClick(hex) {
         wsSend('attack_unit', { roomCode, attackerId: selectedUnit.id, targetId: target.id });
         movableTiles.clear();
         attackableTiles.clear();
-        rangeTiles.clear();
+        rangeTiles.clear(); rangeCenter = null;
         render();
         return;
       }
@@ -806,7 +831,7 @@ function handleHexClick(hex) {
     selectedUnit = null;
     movableTiles.clear();
     attackableTiles.clear();
-    rangeTiles.clear();
+    rangeTiles.clear(); rangeCenter = null;
     updateActionButtons();
     showUnitDetail(null);
     render();
@@ -861,7 +886,7 @@ function selectUnit(unit) {
   selectedUnit = unit;
   movableTiles.clear();
   attackableTiles.clear();
-  rangeTiles.clear();
+  rangeTiles.clear(); rangeCenter = null;
 
   if (gameState?.currentPlayerId === myId && unit.speedRemaining > 0 && !unit.isFleeing) {
     computeMovableTiles(unit);
@@ -949,6 +974,7 @@ function computeAttackableTiles(unit) {
 
 function computeRangeTiles(unit) {
   const dirs = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
+  rangeCenter = { q: unit.q, r: unit.r };
   const visited = new Set();
   const queue = [{ q: unit.q, r: unit.r, d: 0 }];
   visited.add(`${unit.q},${unit.r}`);
@@ -975,7 +1001,7 @@ function setMode(newMode) {
   if (newMode !== 'move') movableTiles.clear();
   if (newMode !== 'attack') {
     attackableTiles.clear();
-    rangeTiles.clear();
+    rangeTiles.clear(); rangeCenter = null;
   } else if (selectedUnit) {
     computeAttackableTiles(selectedUnit);
   }
@@ -1261,7 +1287,7 @@ function endTurn() {
   selectedUnit = null;
   movableTiles.clear();
   attackableTiles.clear();
-  rangeTiles.clear();
+  rangeTiles.clear(); rangeCenter = null;
   setMode('select');
   const stancePanel = document.getElementById('stance-panel');
   if (stancePanel) stancePanel.style.display = 'none';
@@ -1938,7 +1964,7 @@ function wsDispatch(event, data) {
           renderStancePanel(updated);
           movableTiles.clear();
           attackableTiles.clear();
-          rangeTiles.clear();
+          rangeTiles.clear(); rangeCenter = null;
           if (data.currentPlayerId === myId && updated.speedRemaining > 0 && !updated.isFleeing) {
             computeMovableTiles(updated);
           }
@@ -1948,7 +1974,7 @@ function wsDispatch(event, data) {
           if (updated.range > 1) {
             computeRangeTiles(updated);
           }
-        } else { selectedUnit = null; movableTiles.clear(); attackableTiles.clear(); rangeTiles.clear(); showUnitDetail(null); renderStancePanel(null); }
+        } else { selectedUnit = null; movableTiles.clear(); attackableTiles.clear(); rangeTiles.clear(); rangeCenter = null; showUnitDetail(null); renderStancePanel(null); }
       }
 
       renderTurnOrder(data.turnOrder, data.initiativeRolls, data.currentPlayerId);
@@ -1965,7 +1991,7 @@ function wsDispatch(event, data) {
       selectedUnit = null;
       movableTiles.clear();
       attackableTiles.clear();
-      rangeTiles.clear();
+      rangeTiles.clear(); rangeCenter = null;
       updateActionButtons();
       if (data.currentPlayerId === myId) notify('C\'est votre tour !', 'success');
       break;
