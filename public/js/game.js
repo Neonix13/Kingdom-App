@@ -1107,7 +1107,6 @@ function updateActionButtons() {
   document.getElementById('btn-motivate').style.display = canMotivate ? 'block' : 'none';
   const endDisplay = isMyTurn ? 'block' : 'none';
   const deployDisplay = (mode === 'deploy') ? 'block' : 'none';
-  document.getElementById('btn-deploy-ready').style.display = deployDisplay;
   document.getElementById('btn-end-turn-global').style.display = endDisplay;
   document.getElementById('btn-end-turn-center').style.display = endDisplay;
   const noActionsLeft = isMyTurn && gameState?.units.filter(u => u.playerId === myId).every(u => u.speedRemaining <= 0);
@@ -1454,7 +1453,6 @@ function deploymentReady() {
     return;
   }
   wsSend('deployment_ready', { roomCode });
-  const btn = document.getElementById('btn-deploy-ready');
   btn.textContent = 'En attente des autres joueurs…';
   btn.disabled = true;
 }
@@ -2066,7 +2064,6 @@ function onWsOpen() {
     mode = 'deploy';
     setMode('deploy');
     document.getElementById('sidebar-title').textContent = 'Déploiement';
-    document.getElementById('btn-deploy-ready').style.display = 'block';
     document.getElementById('btn-deploy-ready-center').style.display = 'block';
     renderDeployUnitList(deployState.units);
     resizeCanvas();
@@ -2095,7 +2092,6 @@ function wsDispatch(event, data) {
         sessionStorage.removeItem('deploymentState');
         mode = 'select';
         setMode('select');
-        document.getElementById('btn-deploy-ready').style.display = 'none';
       }
       break;
     }
@@ -2209,7 +2205,6 @@ function wsDispatch(event, data) {
       break;
     case 'deployment_ready_update': {
       notify(`${data.readyCount}/${data.total} joueurs prêts…`, 'info');
-      const btn = document.getElementById('btn-deploy-ready');
       if (btn.disabled) {
         btn.textContent = `En attente… (${data.readyCount}/${data.total} prêts)`;
       } else {

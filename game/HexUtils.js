@@ -149,11 +149,8 @@ function findPath(hexMap, unitMap, q1, r1, q2, r2, maxSpeed, playerId, unit) {
   return null;
 }
 
-const Q_MAP_MIN = 0;
-const Q_MAP_MAX = 57;
-const DEPLOY_OFFSET = 5;      // décalage depuis la rivière vers chaque camp
-const DEPLOY_SPACING = 12;    // espacement entre zones du même côté
-const DEPLOY_MAX_TILES = 61;  // nombre max de tuiles par zone (rayon 4 circulaire = 61)
+const DEPLOY_MAX_TILES = 61;  // nombre max de tuiles par zone (≈ rayon 4)
+const DEPLOY_CIRCLE_RADIUS = 15; // rayon du cercle de placement des centres de zone
 
 // BFS flood-fill depuis un centre, bloqué par segments infranchissables et tuiles rivière.
 // Retourne les tuiles dans l'ordre croissant de distance, jusqu'à maxTiles.
@@ -176,9 +173,6 @@ function _deployZoneBFS(centerQ, centerR, maxTiles) {
       const nq = q + dq, nr = r + dr;
       const nk = `${nq},${nr}`;
       if (visited.has(nk)) continue;
-      // Hors carte → ignorer
-      if (!(td[nk] !== undefined || true)) { visited.add(nk); continue; }
-      // Segment infranchissable → bloqué
       const edgeK = segmentEdgeKey(q, r, nq, nr);
       const segType = sd[edgeK];
       const segDef = segType ? SEGMENT_DEFS[segType] : null;
@@ -193,38 +187,41 @@ function _deployZoneBFS(centerQ, centerR, maxTiles) {
 function getStartingZones(numPlayers, mapRadius) {
   const td = getTerrainData();
 
-  // Trouver les cases rivière dans la zone centrale de la carte
-  const riverTiles = [];
-  for (const [key, type] of Object.entries(td)) {
-    if (type !== 'river') continue;
+  // Calculer le centre de la carte à partir des tuiles existantes
+  const allKeys = Object.keys(td);
+  let sumQ = 0, sumR = 0;
+  for (const key of allKeys) {
     const [q, r] = key.split(',').map(Number);
-    if (q >= 10 && q <= 45) riverTiles.push({ q, r });
+    sumQ += q; sumR += r;
+  }
+  const centerQ = sumQ / allKeys.length;
+  const centerR = sumR / allKeys.length;
+
+  // Construire un index des tuiles valides (non-rivière) pour snap rapide
+  const validHexes = [];
+  for (const [key, type] of Object.entries(td)) {
+    if (type === 'river') continue;
+    const [q, r] = key.split(',').map(Number);
+    validHexes.push({ q, r });
   }
 
-  let crossQ, crossR;
-  if (riverTiles.length > 0) {
-    const pick = riverTiles[Math.floor(Math.random() * riverTiles.length)];
-    crossQ = pick.q; crossR = pick.r;
-  } else {
-    crossQ = Math.round((Q_MAP_MIN + Q_MAP_MAX) / 2);
-    crossR = Math.round(21 - 0.43 * crossQ);
-  }
+  // Rotation aléatoire pour varier les parties
+  const angleOffset = Math.random() * Math.PI * 2;
 
-  // Répartir les joueurs sur deux côtés (pairs = Nord, impairs = Sud)
-  const northIndices = [], southIndices = [];
+  // Placer N centres équidistants sur un cercle autour du centre de la carte
+  // En coordonnées axiales flat-top : x ≈ q, y ≈ r + q/2
+  const centers = [];
   for (let i = 0; i < numPlayers; i++) {
-    if (i % 2 === 0) northIndices.push(i); else southIndices.push(i);
-  }
-
-  // Calculer les centres
-  const centers = new Array(numPlayers);
-  for (let j = 0; j < northIndices.length; j++) {
-    const qOff = Math.round((j - (northIndices.length - 1) / 2) * DEPLOY_SPACING);
-    centers[northIndices[j]] = { q: crossQ + qOff, r: crossR - DEPLOY_OFFSET };
-  }
-  for (let j = 0; j < southIndices.length; j++) {
-    const qOff = Math.round((j - (southIndices.length - 1) / 2) * DEPLOY_SPACING);
-    centers[southIndices[j]] = { q: crossQ + qOff, r: crossR + DEPLOY_OFFSET };
+    const angle = angleOffset + i * (Math.PI * 2 / numPlayers);
+    const targetQ = centerQ + Math.cos(angle) * DEPLOY_CIRCLE_RADIUS;
+    const targetR = centerR + Math.sin(angle) * DEPLOY_CIRCLE_RADIUS;
+    // Snap au hex valide le plus proche
+    let best = null, bestDist = Infinity;
+    for (const h of validHexes) {
+      const d = hexDistance(h.q, h.r, Math.round(targetQ), Math.round(targetR));
+      if (d < bestDist) { bestDist = d; best = h; }
+    }
+    centers.push(best || { q: Math.round(targetQ), r: Math.round(targetR) });
   }
 
   // BFS pour chaque zone
@@ -237,7 +234,6 @@ function getStartingZones(numPlayers, mapRadius) {
   return centers.map((c, i) => ({
     q: c.q,
     r: c.r,
-    crossR,
     tiles: truncated[i],
   }));
 }
