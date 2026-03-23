@@ -203,6 +203,16 @@
     #stance-tooltip .tt-pos, #terrain-tooltip .tt-pos { color:#80e080; }
     #stance-tooltip .tt-neg, #terrain-tooltip .tt-neg { color:#e08080; }
     #terrain-tooltip .tt-neutral { color:#a89060; }
+    #turn-popup {
+      position:fixed; top:50%; left:50%; transform:translate(-50%,-50%) scale(0.8);
+      background:rgba(15,8,2,0.92); border:2px solid #c8960c; border-radius:12px;
+      padding:22px 48px; text-align:center; z-index:9000; pointer-events:none;
+      opacity:0; transition:opacity 0.25s, transform 0.25s;
+    }
+    #turn-popup.visible { opacity:1; transform:translate(-50%,-50%) scale(1); }
+    #turn-popup-name { font-size:1.8em; font-weight:bold; color:#ffd700; letter-spacing:1px; }
+    #turn-popup-sub  { font-size:1em; color:#a89060; margin-top:6px; }
+
     .tt-grid { border-collapse:collapse; width:100%; margin:4px 0 2px; font-size:0.9em; }
     .tt-grid th { color:#a89060; font-weight:normal; padding:1px 6px; text-align:center; font-size:0.85em; }
     .tt-grid td { padding:1px 6px; text-align:center; }
@@ -381,6 +391,11 @@
   </div>
 
   <!-- Game Over overlay -->
+  <div id="turn-popup">
+    <div id="turn-popup-name"></div>
+    <div id="turn-popup-sub"></div>
+  </div>
+
   <div class="overlay" id="overlay-gameover" style="display:none">
     <div class="overlay-box" style="text-align:center">
       <h2>Fin de Bataille</h2>

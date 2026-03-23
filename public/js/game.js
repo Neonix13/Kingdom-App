@@ -1256,6 +1256,20 @@ function toggleCoords() {
   render();
 }
 
+let turnPopupTimer = null;
+function showTurnPopup(name, sub, color) {
+  const el = document.getElementById('turn-popup');
+  const nameEl = document.getElementById('turn-popup-name');
+  const subEl = document.getElementById('turn-popup-sub');
+  if (!el) return;
+  nameEl.textContent = name;
+  nameEl.style.color = color || '#ffd700';
+  subEl.textContent = sub || '';
+  el.classList.add('visible');
+  if (turnPopupTimer) clearTimeout(turnPopupTimer);
+  turnPopupTimer = setTimeout(() => el.classList.remove('visible'), 3000);
+}
+
 function togglePing() {
   pingMode = !pingMode;
   document.getElementById('tool-ping').classList.toggle('active', pingMode);
@@ -2082,7 +2096,11 @@ function wsDispatch(event, data) {
       attackableTiles.clear();
       rangeTiles.clear(); rangeCenter = null;
       updateActionButtons();
-      if (data.currentPlayerId === myId) notify('C\'est votre tour !', 'success');
+      const tcPlayer = gameState?.players.find(p => p.id === data.currentPlayerId);
+      const tcColor = tcPlayer?.color || '#ffd700';
+      const tcName = data.currentPlayerId === myId ? 'Votre tour !' : `Tour de ${tcPlayer?.name || '?'}`;
+      const tcSub = `Jour ${data.turn}`;
+      showTurnPopup(tcName, tcSub, tcColor);
       break;
     }
     case 'initiative_rolled':
