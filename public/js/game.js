@@ -31,6 +31,9 @@ mapImage.src = '/img/map.webp';
 // Chargement des terrains
 let terrainData = {};
 let showTerrain = false;
+let showCoords = false;
+let pingMode = false;
+const activePings = []; // { q, r, color, startTime }
 let gridOpacity = 0.25;
 let gridThickness = 1;
 let gridColorRGB = '180,140,60';
@@ -506,6 +509,35 @@ function render() {
   // Segments (arêtes entre tuiles) — visibles quand le toggle terrain est actif
   if (showTerrain) drawSegments(ctx);
 
+  // Pings
+  drawPings(ctx);
+
+  // Coordonnées Q,R sur chaque case
+  if (showCoords) {
+    ctx.save();
+    ctx.font = `bold ${Math.round(HEX_SIZE * 0.22)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const state = gameState || (deployState ? { phase: 'deployment' } : null);
+    if (state) {
+      const S = Math.sqrt(3);
+      const qMin = Math.floor((-canvas.width / 2 - camX) / zoom / (HEX_SIZE * 1.5)) - 1;
+      const qMax = Math.ceil((canvas.width / 2 - camX) / zoom / (HEX_SIZE * 1.5)) + 1;
+      for (let q = qMin; q <= qMax; q++) {
+        const rMin2 = Math.floor(((-canvas.height / 2 - camY) / zoom - HEX_SIZE * S / 2 * q) / (HEX_SIZE * S)) - 1;
+        const rMax2 = Math.ceil(((canvas.height / 2 - camY) / zoom - HEX_SIZE * S / 2 * q) / (HEX_SIZE * S)) + 1;
+        for (let r = rMin2; r <= rMax2; r++) {
+          const { x, y } = hexToPixel(q, r);
+          ctx.fillStyle = 'rgba(0,0,0,0.6)';
+          ctx.fillText(`${q},${r}`, x + 0.5, y + 0.5);
+          ctx.fillStyle = 'rgba(255,220,100,0.9)';
+          ctx.fillText(`${q},${r}`, x, y);
+        }
+      }
+    }
+    ctx.restore();
+  }
+
   ctx.restore();
 }
 
@@ -674,6 +706,11 @@ canvas.addEventListener('mousedown', (e) => {
     isDragging = true;
     dragStart = { x: e.clientX, y: e.clientY };
     camAtDrag = { x: camX, y: camY };
+    return;
+  }
+  if (pingMode) {
+    const hex = getHexUnderMouse(e);
+    if (hex && roomCode) wsSend('ping', { roomCode, q: hex.q, r: hex.r });
     return;
   }
   const hex = getHexUnderMouse(e);
@@ -1216,6 +1253,49 @@ function toggleTerrain() {
   render();
 }
 
+function toggleCoords() {
+  showCoords = !showCoords;
+  document.getElementById('tool-coords').classList.toggle('active', showCoords);
+  render();
+}
+
+function togglePing() {
+  pingMode = !pingMode;
+  document.getElementById('tool-ping').classList.toggle('active', pingMode);
+  canvas.style.cursor = pingMode ? 'crosshair' : '';
+}
+
+function drawPings(ctx) {
+  const now = performance.now();
+  const DURATION = 1800;
+  for (let i = activePings.length - 1; i >= 0; i--) {
+    const p = activePings[i];
+    const elapsed = now - p.startTime;
+    if (elapsed > DURATION) { activePings.splice(i, 1); continue; }
+    const t = elapsed / DURATION;
+    const { x, y } = hexToPixel(p.q, p.r);
+    const maxR = HEX_SIZE * 1.2;
+    const radius = maxR * t;
+    const alpha = 1 - t;
+    ctx.save();
+    ctx.strokeStyle = p.color;
+    ctx.lineWidth = 3;
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    // 2ème anneau décalé
+    const radius2 = maxR * Math.max(0, t - 0.3);
+    if (radius2 > 0) {
+      ctx.beginPath();
+      ctx.arc(x, y, radius2, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  if (activePings.length > 0) requestAnimationFrame(() => render());
+}
+
 function showInitiativeModal(rolls, turnOrder, turn) {
   const overlay = document.getElementById('overlay-initiative');
   const content = document.getElementById('initiative-content');
@@ -1507,19 +1587,19 @@ function sendChat() {
   input.value = '';
 }
 
-function appendChatMessage({ authorName, text, isMine, isSystem }) {
+function appendChatMessage({ authorName, text, isMine, isSystem, authorId }) {
   const container = document.getElementById('chat-messages');
   const div = document.createElement('div');
   if (isSystem) {
     div.className = 'chat-msg system';
     div.textContent = text;
   } else {
+    const color = authorId && gameState ? (gameState.players.find(p => p.id === authorId)?.color || '#c8960c') : '#c8960c';
     div.className = `chat-msg ${isMine ? 'mine' : 'other'}`;
-    div.innerHTML = `<span class="chat-author">${authorName} : </span><span class="chat-text">${text}</span>`;
+    div.innerHTML = `<span class="chat-author" style="color:${color}">${authorName} : </span><span class="chat-text">${text}</span>`;
   }
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
-  // Badge si l'onglet n'est pas actif
   const pane = document.getElementById('pane-chat');
   if (!pane.classList.contains('active')) {
     document.getElementById('tab-chat').classList.add('unread');
@@ -2051,8 +2131,13 @@ function wsDispatch(event, data) {
       }
       break;
     case 'chat_message':
-      appendChatMessage({ authorName: data.authorName, text: data.text, isMine: data.authorId === myId });
+      appendChatMessage({ authorName: data.authorName, text: data.text, isMine: data.authorId === myId, authorId: data.authorId });
       break;
+    case 'ping': {
+      activePings.push({ q: data.q, r: data.r, color: data.color || '#ffd700', startTime: performance.now() });
+      render();
+      break;
+    }
     case 'error':
       notify(data.message || String(data));
       break;

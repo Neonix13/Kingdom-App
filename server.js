@@ -311,6 +311,16 @@ function handleAction(ws, connectionId, action, data) {
       break;
     }
 
+    case 'ping': {
+      const { roomCode, q, r } = data;
+      const room = rooms[roomCode];
+      if (!room) return;
+      const player = room.getPlayer(connectionId);
+      if (!player) return;
+      broadcast(room, { event: 'ping', q, r, color: player.color || '#ffd700' });
+      break;
+    }
+
     case 'use_ability': {
       const { roomCode, targetHex, targetId } = data;
       const room = rooms[roomCode];
