@@ -1110,12 +1110,9 @@ function showUnitDetail(unit) {
   statRows.push(`<div class="stat-row"><span>Vitalité</span><span>${unit.vitality}/${unit.maxVitality}</span></div>`);
   statRows.push(`<div class="stat-row"><span>Moral</span><span>${unit.morale != null ? unit.morale : '—'}/${unit.maxMorale != null ? unit.maxMorale : '—'}</span></div>`);
   if (!unit.isGeneral) {
-    addStat('Attaque cac', unit.attack, 'attack_cac', 'attack_cac');
-    addStat('Attaque tir', unit.attack, 'attack_tir', 'attack_tir');
-    addStat('Puissance cac', unit.power, 'puissance_cac', 'puissance_cac');
-    addStat('Puissance tir', unit.power, 'puissance_tir', 'puissance_tir');
-    addStat('Défense cac', unit.defense, 'defense_cac', 'defense_cac');
-    addStat('Défense tir', unit.defense, 'defense_tir', 'defense_tir');
+    addStat('Attaque', unit.attack, 'attack_cac', 'attack_cac');
+    addStat('Puissance', unit.power, 'puissance_cac', 'puissance_cac');
+    addStat('Défense', unit.defense, 'defense_cac', 'defense_cac');
     addStat('Armure', unit.armor, 'armure', 'armure');
   } else {
     statRows.push(`<div class="stat-row"><span>Attaque</span><span>${unit.attack}</span></div>`);
