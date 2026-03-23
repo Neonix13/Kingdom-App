@@ -514,6 +514,10 @@ class GameRoom {
 
   _initUnitSpeedForTurn(unit) {
     if (unit.q === null) return;
+    if (unit.isFleeing) {
+      unit.speedRemaining = Math.floor(unit.speed / 2);
+      return;
+    }
     const stance = unit.isGeneral ? {} : this._getStanceMods(unit);
     const terrain = this._getTerrainMods(unit.q, unit.r);
     unit.speedRemaining = Math.max(0, unit.speed + (stance.vitesse || 0) + terrain.vitesse);
@@ -587,30 +591,27 @@ class GameRoom {
     return { ok: true };
   }
 
-  motivateUnit(playerId, generalId, targetId) {
+  motivateUnit(playerId, generalId) {
     const player = this.getPlayer(playerId);
     if (!player) return { error: 'Joueur introuvable.' };
     const general = player.units.find(u => u.id === generalId && u.isGeneral);
     if (!general) return { error: 'Général introuvable.' };
     if (general.hasAttacked) return { error: 'Le général a déjà agi ce tour.' };
 
-    const target = player.units.find(u => u.id === targetId);
-    if (!target) return { error: 'Unité amie introuvable.' };
-    if (target.isGeneral) return { error: 'Ne peut pas motiver un général.' };
-
-    const dist = hexDistance(general.q, general.r, target.q, target.r);
-    if (dist > 2) return { error: 'Unité hors de portée (max 2 cases).' };
-
-    // Jet de Charisme vs D20
     const generalData = GENERALS.find(g => g.id === general.generalId);
     const charisma = generalData ? generalData.charisma : 10;
+    const range = Math.round(charisma / 3);
+    const targets = player.units.filter(u => !u.isGeneral && hexDistance(general.q, general.r, u.q, u.r) <= range);
+    if (targets.length === 0) return { error: 'Aucune unité à portée.' };
+
     const d20 = Math.floor(Math.random() * 20) + 1;
     const success = charisma >= d20;
-
+    const moralGain = success ? (general.intimidation || 5) : 0;
     if (success) {
-      const moralGain = general.intimidation || 5;
-      target.morale = Math.min(target.maxMorale, target.morale + moralGain);
-      if (target.isFleeing && target.morale > 0) target.isFleeing = false;
+      for (const t of targets) {
+        t.morale = Math.min(t.maxMorale, t.morale + moralGain);
+        if (t.isFleeing && t.morale > 0) t.isFleeing = false;
+      }
     }
 
     // Coût : toute la vitesse restante min 1
@@ -618,7 +619,7 @@ class GameRoom {
     general.speedRemaining = Math.max(0, general.speedRemaining - speedCost);
     general.hasAttacked = true;
 
-    return { ok: true, success, charisma, d20, moralGain: success ? (general.intimidation || 5) : 0, targetName: target.name };
+    return { ok: true, success, charisma, d20, range, moralGain, count: targets.length };
   }
 
   initiateCombat(playerId, attackerId, targetId) {

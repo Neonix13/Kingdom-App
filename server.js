@@ -288,11 +288,11 @@ function handleAction(ws, connectionId, action, data) {
     }
 
     case 'motivate_unit': {
-      const { roomCode, generalId, targetId } = data;
+      const { roomCode, generalId } = data;
       const room = rooms[roomCode];
       if (!room || room.phase !== 'battle') return;
       if (room.getCurrentPlayerId() !== connectionId) return send(connectionId, { event: 'error', message: 'Ce n\'est pas votre tour.' });
-      const result = room.motivateUnit(connectionId, generalId, targetId);
+      const result = room.motivateUnit(connectionId, generalId);
       if (result.error) return send(connectionId, { event: 'error', message: result.error });
       send(connectionId, { event: 'motivate_result', ...result });
       room.players.forEach(p => send(p.id, { event: 'game_state', ...room.getGameState(p.id) }));

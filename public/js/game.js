@@ -326,6 +326,8 @@ let movableTiles = new Set();
 let attackableTiles = new Set();
 let rangeTiles = new Set();
 let rangeCenter = null;
+let motivateTiles = new Set();
+let motivateCenter = null;
 let deployTiles = new Set();
 
 // Camera — centrée sur la carte image au démarrage
@@ -449,6 +451,31 @@ function render() {
     ctx.lineCap = 'round';
     ctx.beginPath();
     for (const key of rangeTiles) {
+      const [q, r] = key.split(',').map(Number);
+      const { x, y } = hexToPixel(q, r);
+      const corners = hexCorners(x, y);
+      for (let i = 0; i < 6; i++) {
+        const [dq, dr] = dirs[i];
+        if (!interior.has(`${q + dq},${r + dr}`)) {
+          ctx.moveTo(corners[i].x, corners[i].y);
+          ctx.lineTo(corners[(i + 1) % 6].x, corners[(i + 1) % 6].y);
+        }
+      }
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  if (motivateTiles.size > 0 && motivateCenter) {
+    const dirs = SEGMENT_EDGE_DIRS;
+    const interior = new Set(motivateTiles);
+    interior.add(`${motivateCenter.q},${motivateCenter.r}`);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(80,180,255,0.9)';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (const key of motivateTiles) {
       const [q, r] = key.split(',').map(Number);
       const { x, y } = hexToPixel(q, r);
       const corners = hexCorners(x, y);
@@ -824,7 +851,7 @@ function handleHexClick(hex) {
       wsSend('move_unit', { roomCode, unitId: selectedUnit.id, targetQ: hex.q, targetR: hex.r });
       movableTiles.clear();
       attackableTiles.clear();
-      rangeTiles.clear(); rangeCenter = null;
+      rangeTiles.clear(); rangeCenter = null; motivateTiles.clear(); motivateCenter = null;
       render();
       return;
     }
@@ -836,26 +863,12 @@ function handleHexClick(hex) {
         wsSend('attack_unit', { roomCode, attackerId: selectedUnit.id, targetId: target.id });
         movableTiles.clear();
         attackableTiles.clear();
-        rangeTiles.clear(); rangeCenter = null;
+        rangeTiles.clear(); rangeCenter = null; motivateTiles.clear(); motivateCenter = null;
         render();
         return;
       }
     }
 
-    // Mode motiver → cliquer une unité amie à portée
-    if (mode === 'motivate') {
-      const target = gameState?.units.find(u => u.q === hex.q && u.r === hex.r && u.isMine && !u.isGeneral);
-      if (target) {
-        const dist = hexDistance(selectedUnit.q, selectedUnit.r, hex.q, hex.r);
-        if (dist <= 2) {
-          wsSend('motivate_unit', { roomCode, generalId: selectedUnit.id, targetId: target.id });
-          setMode('select');
-          return;
-        }
-      }
-      setMode('select');
-      return;
-    }
 
     // Clic sur une autre unité alliée → changer de sélection
     const ally = gameState?.units.find(u => u.q === hex.q && u.r === hex.r && u.isMine);
@@ -868,7 +881,7 @@ function handleHexClick(hex) {
     selectedUnit = null;
     movableTiles.clear();
     attackableTiles.clear();
-    rangeTiles.clear(); rangeCenter = null;
+    rangeTiles.clear(); rangeCenter = null; motivateTiles.clear(); motivateCenter = null;
     updateActionButtons();
     showUnitDetail(null);
     render();
@@ -923,7 +936,7 @@ function selectUnit(unit) {
   selectedUnit = unit;
   movableTiles.clear();
   attackableTiles.clear();
-  rangeTiles.clear(); rangeCenter = null;
+  rangeTiles.clear(); rangeCenter = null; motivateTiles.clear(); motivateCenter = null;
 
   if (gameState?.currentPlayerId === myId && unit.speedRemaining > 0 && !unit.isFleeing) {
     computeMovableTiles(unit);
@@ -933,6 +946,9 @@ function selectUnit(unit) {
   }
   if (unit.range > 1) {
     computeRangeTiles(unit);
+  }
+  if (unit.isGeneral) {
+    computeMotivateTiles(unit);
   }
 
   updateActionButtons();
@@ -1030,6 +1046,29 @@ function computeRangeTiles(unit) {
   }
 }
 
+function computeMotivateTiles(unit) {
+  if (!unit.charisma) return;
+  const range = Math.round(unit.charisma / 3);
+  const dirs = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
+  motivateCenter = { q: unit.q, r: unit.r };
+  const visited = new Set();
+  const queue = [{ q: unit.q, r: unit.r, d: 0 }];
+  visited.add(`${unit.q},${unit.r}`);
+  while (queue.length) {
+    const { q, r, d } = queue.shift();
+    if (d > 0) motivateTiles.add(`${q},${r}`);
+    if (d >= range) continue;
+    for (const [dq, dr] of dirs) {
+      const nq = q + dq, nr = r + dr;
+      const nk = `${nq},${nr}`;
+      if (!visited.has(nk)) {
+        visited.add(nk);
+        queue.push({ q: nq, r: nr, d: d + 1 });
+      }
+    }
+  }
+}
+
 function setMode(newMode) {
   mode = newMode;
   const indicator = document.getElementById('mode-indicator');
@@ -1038,7 +1077,7 @@ function setMode(newMode) {
   if (newMode !== 'move') movableTiles.clear();
   if (newMode !== 'attack') {
     attackableTiles.clear();
-    rangeTiles.clear(); rangeCenter = null;
+    rangeTiles.clear(); rangeCenter = null; motivateTiles.clear(); motivateCenter = null;
   } else if (selectedUnit) {
     computeAttackableTiles(selectedUnit);
   }
@@ -1378,10 +1417,15 @@ function endTurn() {
   selectedUnit = null;
   movableTiles.clear();
   attackableTiles.clear();
-  rangeTiles.clear(); rangeCenter = null;
+  rangeTiles.clear(); rangeCenter = null; motivateTiles.clear(); motivateCenter = null;
   setMode('select');
   const stancePanel = document.getElementById('stance-panel');
   if (stancePanel) stancePanel.style.display = 'none';
+}
+
+function motivateAll() {
+  if (!selectedUnit || !selectedUnit.isGeneral) return;
+  wsSend('motivate_unit', { roomCode, generalId: selectedUnit.id });
 }
 
 function useAbility() {
@@ -2067,7 +2111,7 @@ function wsDispatch(event, data) {
           renderStancePanel(updated);
           movableTiles.clear();
           attackableTiles.clear();
-          rangeTiles.clear(); rangeCenter = null;
+          rangeTiles.clear(); rangeCenter = null; motivateTiles.clear(); motivateCenter = null;
           if (data.currentPlayerId === myId && updated.speedRemaining > 0 && !updated.isFleeing) {
             computeMovableTiles(updated);
           }
@@ -2077,7 +2121,7 @@ function wsDispatch(event, data) {
           if (updated.range > 1) {
             computeRangeTiles(updated);
           }
-        } else { selectedUnit = null; movableTiles.clear(); attackableTiles.clear(); rangeTiles.clear(); rangeCenter = null; showUnitDetail(null); renderStancePanel(null); }
+        } else { selectedUnit = null; movableTiles.clear(); attackableTiles.clear(); rangeTiles.clear(); rangeCenter = null; motivateTiles.clear(); motivateCenter = null; showUnitDetail(null); renderStancePanel(null); }
       }
 
       renderTurnOrder(data.turnOrder, data.initiativeRolls, data.currentPlayerId);
@@ -2094,13 +2138,20 @@ function wsDispatch(event, data) {
       selectedUnit = null;
       movableTiles.clear();
       attackableTiles.clear();
-      rangeTiles.clear(); rangeCenter = null;
+      rangeTiles.clear(); rangeCenter = null; motivateTiles.clear(); motivateCenter = null;
       updateActionButtons();
       const tcPlayer = gameState?.players.find(p => p.id === data.currentPlayerId);
       const tcColor = tcPlayer?.color || '#ffd700';
       const tcName = data.currentPlayerId === myId ? 'Votre tour !' : `Tour de ${tcPlayer?.name || '?'}`;
       const tcSub = `Jour ${data.turn}`;
-      showTurnPopup(tcName, tcSub, tcColor);
+      if (data.currentPlayerId === myId) {
+        const myGeneral = gameState?.units.find(u => u.playerId === myId && u.isGeneral);
+        if (myGeneral) { const { x, y } = hexToPixel(myGeneral.q, myGeneral.r); smoothPanTo(x, y); }
+        const canAct = gameState?.units.some(u => u.playerId === myId && !u.isGeneral && (u.speedRemaining > 0 || !u.hasAttacked));
+        if (canAct) showTurnPopup(tcName, tcSub, tcColor);
+      } else {
+        showTurnPopup(tcName, tcSub, tcColor);
+      }
       break;
     }
     case 'initiative_rolled':
@@ -2152,7 +2203,7 @@ function wsDispatch(event, data) {
     }
     case 'motivate_result':
       if (data.success) {
-        notify(`Motivation réussie ! (Charisme ${data.charisma} ≥ D20 ${data.d20}) → ${data.targetName} regagne ${data.moralGain} moral.`, 'success');
+        notify(`Motivation réussie ! (Charisme ${data.charisma} ≥ D20 ${data.d20}) → ${data.count} unité(s) regagnent ${data.moralGain} moral.`, 'success');
       } else {
         notify(`Motivation échouée. (Charisme ${data.charisma} < D20 ${data.d20})`, 'info');
       }
