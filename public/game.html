@@ -318,7 +318,6 @@
             <button class="btn btn-danger" id="btn-attack" onclick="setMode('attack')" style="display:none">Attaquer</button>
             <button class="btn btn-primary" id="btn-ability" onclick="useAbility()" style="display:none">Capacité active</button>
             <button class="btn btn-warning" id="btn-motivate" onclick="motivateAll()" style="display:none">Motiver</button>
-            <button class="btn btn-success" id="btn-end-turn" onclick="endTurn()" style="display:none">Fin du tour</button>
             <button class="btn btn-success" id="btn-deploy-ready" onclick="deploymentReady()" style="display:none">Prêt !</button>
           </div>
         </div>
@@ -341,6 +340,16 @@
       </div>
     </div>
   </div>
+
+  <style>
+    @keyframes pulse-end-turn {
+      0%,100% { box-shadow:0 2px 12px #000a, inset 0 0 0px 0px #4090ff00; transform:translateX(-50%) scale(1); }
+      50% { box-shadow:0 0 24px 6px #4a802088, inset 0 0 18px 4px #4090ffaa; transform:translateX(-50%) scale(1.06); }
+    }
+    #btn-end-turn-center.pulse, #btn-deploy-ready-center.pulse { animation:pulse-end-turn 1.2s ease-in-out infinite; }
+  </style>
+  <button id="btn-end-turn-center" onclick="endTurn()" style="display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:300;padding:12px 36px;font-size:1.1em;font-weight:bold;background:#1a3a08;border:2px solid #4a8020;color:#a0e080;border-radius:8px;cursor:pointer;letter-spacing:1px;box-shadow:0 2px 12px #000a">Fin du tour</button>
+  <button id="btn-deploy-ready-center" onclick="deploymentReady()" style="display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:300;padding:12px 36px;font-size:1.1em;font-weight:bold;background:#1a3a08;border:2px solid #4a8020;color:#a0e080;border-radius:8px;cursor:pointer;letter-spacing:1px;box-shadow:0 2px 12px #000a">Prêt !</button>
 
   <div id="combat-result-box" style="display:none;position:fixed;top:80px;left:50%;transform:translateX(-50%);background:#1a0f04ee;border:1px solid #c8960c;color:#e0c080;padding:12px 18px;border-radius:6px;font-size:0.9em;z-index:500;max-width:400px;line-height:1.6"></div>
 

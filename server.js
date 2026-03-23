@@ -242,7 +242,7 @@ function handleAction(ws, connectionId, action, data) {
       const result = room.initiateCombat(connectionId, attackerId, targetId);
       if (result.error) return send(connectionId, { event: 'error', message: result.error });
       if (result.pending) {
-        send(result.targetPlayerId, { event: 'defense_request', attackId: result.attackId, attackerName: result.attackerName, targetName: result.targetName, targetQ: result.targetQ, targetR: result.targetR, roomCode });
+        send(result.targetPlayerId, { event: 'defense_request', attackId: result.attackId, attackerName: result.attackerName, targetName: result.targetName, targetQ: result.targetQ, targetR: result.targetR, isRanged: result.isRanged, targetTypeId: result.targetTypeId, roomCode });
         send(connectionId, { event: 'waiting_defense', attackId: result.attackId });
         send(result.targetPlayerId, { event: 'defense_timer', attackId: result.attackId, seconds: 20 });
         setTimeout(() => {

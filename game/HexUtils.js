@@ -151,13 +151,49 @@ function findPath(hexMap, unitMap, q1, r1, q2, r2, maxSpeed, playerId, unit) {
 
 const Q_MAP_MIN = 0;
 const Q_MAP_MAX = 57;
-const DEPLOY_RADIUS = 4; // rayon de la zone de déploiement (en cases)
-const DEPLOY_OFFSET = 4; // décalage depuis la rivière vers chaque camp
+const DEPLOY_OFFSET = 5;      // décalage depuis la rivière vers chaque camp
+const DEPLOY_SPACING = 12;    // espacement entre zones du même côté
+const DEPLOY_MAX_TILES = 61;  // nombre max de tuiles par zone (rayon 4 circulaire = 61)
+
+// BFS flood-fill depuis un centre, bloqué par segments infranchissables et tuiles rivière.
+// Retourne les tuiles dans l'ordre croissant de distance, jusqu'à maxTiles.
+function _deployZoneBFS(centerQ, centerR, maxTiles) {
+  const td = getTerrainData();
+  const sd = getSegmentData();
+  const DIRS = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
+  const visited = new Set();
+  const tiles = [];
+  const queue = [{ q: centerQ, r: centerR, d: 0 }];
+  visited.add(`${centerQ},${centerR}`);
+
+  while (queue.length && tiles.length < maxTiles) {
+    const { q, r, d } = queue.shift();
+    const terrain = td[`${q},${r}`] || 'plain';
+    if (terrain !== 'river') tiles.push({ q, r });
+    if (tiles.length >= maxTiles) break;
+
+    for (const [dq, dr] of DIRS) {
+      const nq = q + dq, nr = r + dr;
+      const nk = `${nq},${nr}`;
+      if (visited.has(nk)) continue;
+      // Hors carte → ignorer
+      if (!(td[nk] !== undefined || true)) { visited.add(nk); continue; }
+      // Segment infranchissable → bloqué
+      const edgeK = segmentEdgeKey(q, r, nq, nr);
+      const segType = sd[edgeK];
+      const segDef = segType ? SEGMENT_DEFS[segType] : null;
+      if (segDef?.infranchissable) { visited.add(nk); continue; }
+      visited.add(nk);
+      queue.push({ q: nq, r: nr, d: d + 1 });
+    }
+  }
+  return tiles;
+}
 
 function getStartingZones(numPlayers, mapRadius) {
   const td = getTerrainData();
 
-  // Trouver les cases rivière dans la zone centrale de la carte (éviter les bords)
+  // Trouver les cases rivière dans la zone centrale de la carte
   const riverTiles = [];
   for (const [key, type] of Object.entries(td)) {
     if (type !== 'river') continue;
@@ -165,29 +201,45 @@ function getStartingZones(numPlayers, mapRadius) {
     if (q >= 10 && q <= 45) riverTiles.push({ q, r });
   }
 
-  // Choisir un point de traversée aléatoire dans la rivière
   let crossQ, crossR;
   if (riverTiles.length > 0) {
     const pick = riverTiles[Math.floor(Math.random() * riverTiles.length)];
-    crossQ = pick.q;
-    crossR = pick.r;
+    crossQ = pick.q; crossR = pick.r;
   } else {
-    // Fallback si pas de terrain
     crossQ = Math.round((Q_MAP_MIN + Q_MAP_MAX) / 2);
     crossR = Math.round(21 - 0.43 * crossQ);
   }
 
-  const zones = [];
+  // Répartir les joueurs sur deux côtés (pairs = Nord, impairs = Sud)
+  const northIndices = [], southIndices = [];
   for (let i = 0; i < numPlayers; i++) {
-    if (i % 2 === 0) {
-      // Équipe paire → Nord de la rivière
-      zones.push({ q: crossQ, r: crossR - DEPLOY_OFFSET, crossR, radius: DEPLOY_RADIUS, type: 'circle' });
-    } else {
-      // Équipe impaire → Sud de la rivière
-      zones.push({ q: crossQ, r: crossR + DEPLOY_OFFSET, crossR, radius: DEPLOY_RADIUS, type: 'circle' });
-    }
+    if (i % 2 === 0) northIndices.push(i); else southIndices.push(i);
   }
-  return zones;
+
+  // Calculer les centres
+  const centers = new Array(numPlayers);
+  for (let j = 0; j < northIndices.length; j++) {
+    const qOff = Math.round((j - (northIndices.length - 1) / 2) * DEPLOY_SPACING);
+    centers[northIndices[j]] = { q: crossQ + qOff, r: crossR - DEPLOY_OFFSET };
+  }
+  for (let j = 0; j < southIndices.length; j++) {
+    const qOff = Math.round((j - (southIndices.length - 1) / 2) * DEPLOY_SPACING);
+    centers[southIndices[j]] = { q: crossQ + qOff, r: crossR + DEPLOY_OFFSET };
+  }
+
+  // BFS pour chaque zone
+  const tileSets = centers.map(c => _deployZoneBFS(c.q, c.r, DEPLOY_MAX_TILES));
+
+  // Égaliser : toutes les zones ont le même nombre de tuiles (la plus petite)
+  const minTiles = Math.min(...tileSets.map(t => t.length));
+  const truncated = tileSets.map(t => t.slice(0, minTiles));
+
+  return centers.map((c, i) => ({
+    q: c.q,
+    r: c.r,
+    crossR,
+    tiles: truncated[i],
+  }));
 }
 
 module.exports = { hexDistance, hexKey, hexNeighbors, hexesInRange, generateHexMap, findPath, getStartingZones, segmentEdgeKey, getSegmentData };

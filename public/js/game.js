@@ -318,6 +318,12 @@ function getAnimatedPos(unit) {
   return { x: fromPos.x + (toPos.x - fromPos.x) * t, y: fromPos.y + (toPos.y - fromPos.y) * t };
 }
 if (deployState) deployState = JSON.parse(deployState);
+function buildZoneTileSet(state) {
+  if (state?.startingZone?.tiles && !(state.startingZone.tileSet instanceof Set)) {
+    state.startingZone.tileSet = new Set(state.startingZone.tiles.map(t => `${t.q},${t.r}`));
+  }
+}
+if (deployState) buildZoneTileSet(deployState);
 
 let mode = 'select'; // select | move | attack | deploy
 let selectedUnit = null;
@@ -430,7 +436,7 @@ function render() {
         const imgY = MAP_HEX_SIZE * (S / 2 * q + S * r) + MAP_ORIG_Y;
         if (imgX < 0 || imgX > MAP_IMG_W || imgY < 0 || imgY > MAP_IMG_H) continue;
         const { x, y } = hexToPixel(q, r);
-        const inZone = startZone ? hexDistance(q, r, startZone.q, startZone.r) <= startZone.radius : false;
+        const inZone = startZone?.tileSet ? startZone.tileSet.has(`${q},${r}`) : (startZone ? hexDistance(q, r, startZone.q, startZone.r) <= (startZone.radius || 4) : false);
         const isHovered = hoveredHex && hoveredHex.q === q && hoveredHex.r === r;
         let fill = inZone ? 'rgba(40,120,20,0.25)' : 'rgba(0,0,0,0)';
         let stroke = inZone ? `rgba(80,200,40,${Math.min(1, gridOpacity * 2)})` : `rgba(${gridColorRGB},${gridOpacity * 0.6})`;
@@ -914,7 +920,7 @@ function handleDeployClick(hex) {
   if (!selectedUnit) return;
 
   const zone = deployState.startingZone;
-  const inDeployZone = hexDistance(hex.q, hex.r, zone.q, zone.r) <= zone.radius;
+  const inDeployZone = zone.tileSet ? zone.tileSet.has(`${hex.q},${hex.r}`) : hexDistance(hex.q, hex.r, zone.q, zone.r) <= (zone.radius || 4);
 
   if (!inDeployZone) {
     // Clic hors zone → déselectionner
@@ -929,6 +935,7 @@ function handleDeployClick(hex) {
   selectedUnit.r = hex.r;
   selectedUnit = null;
   renderDeployUnitList(deployState.units);
+  updateActionButtons();
   render();
 }
 
@@ -1048,7 +1055,7 @@ function computeRangeTiles(unit) {
 
 function computeMotivateTiles(unit) {
   if (!unit.charisma) return;
-  const range = Math.round(unit.charisma / 3);
+  const range = Math.floor(unit.charisma / 5);
   const dirs = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
   motivateCenter = { q: unit.q, r: unit.r };
   const visited = new Set();
@@ -1100,10 +1107,17 @@ function updateActionButtons() {
   document.getElementById('btn-motivate').style.display = canMotivate ? 'block' : 'none';
   const endDisplay = isMyTurn ? 'block' : 'none';
   const deployDisplay = (mode === 'deploy') ? 'block' : 'none';
-  document.getElementById('btn-end-turn').style.display = endDisplay;
   document.getElementById('btn-deploy-ready').style.display = deployDisplay;
   document.getElementById('btn-end-turn-global').style.display = endDisplay;
+  document.getElementById('btn-end-turn-center').style.display = endDisplay;
+  const noActionsLeft = isMyTurn && gameState?.units.filter(u => u.playerId === myId).every(u => u.speedRemaining <= 0);
+  const btnCenter = document.getElementById('btn-end-turn-center');
+  if (noActionsLeft) btnCenter.classList.add('pulse'); else btnCenter.classList.remove('pulse');
   document.getElementById('btn-deploy-ready-global').style.display = deployDisplay;
+  const btnDeployCenter = document.getElementById('btn-deploy-ready-center');
+  btnDeployCenter.style.display = deployDisplay;
+  const allPlaced = deployState?.units.length > 0 && deployState.units.every(u => u.q !== null);
+  if (allPlaced) btnDeployCenter.classList.add('pulse'); else btnDeployCenter.classList.remove('pulse');
 
   // Show/hide stance panel
   const stancePanel = document.getElementById('stance-panel');
@@ -2053,6 +2067,7 @@ function onWsOpen() {
     setMode('deploy');
     document.getElementById('sidebar-title').textContent = 'Déploiement';
     document.getElementById('btn-deploy-ready').style.display = 'block';
+    document.getElementById('btn-deploy-ready-center').style.display = 'block';
     renderDeployUnitList(deployState.units);
     resizeCanvas();
     if (deployState.startingZone) {
@@ -2069,6 +2084,7 @@ function wsDispatch(event, data) {
       myId = data.myId;
       sessionStorage.setItem('myId', myId);
       deployState = data;
+      buildZoneTileSet(deployState);
       renderDeployUnitList(data.units);
       render();
       break;

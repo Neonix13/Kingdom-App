@@ -272,8 +272,8 @@ class GameRoom {
     if (!player) return { error: 'Joueur introuvable.' };
 
     const zone = player.startingZone;
-    const inZone = hexDistance(q, r, zone.q, zone.r) <= zone.radius;
-    if (!inZone) return { error: 'Hors de la zone de déploiement.' };
+    const tileSet = new Set((zone.tiles || []).map(t => `${t.q},${t.r}`));
+    if (!tileSet.has(`${q},${r}`)) return { error: 'Hors de la zone de déploiement.' };
 
     const key = hexKey(q, r);
     if (!this.hexMap[key]) return { error: 'Case invalide.' };
@@ -600,7 +600,7 @@ class GameRoom {
 
     const generalData = GENERALS.find(g => g.id === general.generalId);
     const charisma = generalData ? generalData.charisma : 10;
-    const range = Math.round(charisma / 3);
+    const range = Math.floor(charisma / 5);
     const targets = player.units.filter(u => !u.isGeneral && hexDistance(general.q, general.r, u.q, u.r) <= range);
     if (targets.length === 0) return { error: 'Aucune unité à portée.' };
 
