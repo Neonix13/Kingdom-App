@@ -1741,17 +1741,17 @@ function renderStancePanel(unit) {
 }
 
 // ---- TERRAIN / SEGMENT TOOLTIP ----
-function ttGrid(rows) {
-  // rows = [ [label, cacVal, tirVal], ... ] — null = skip row
+function ttGrid(rows, showTir = true) {
   const cell = (val) => {
     if (val === null || val === undefined || val === 0) return `<td style="color:#555">—</td>`;
     const cls = val > 0 ? 'tt-pos' : 'tt-neg';
     return `<td class="${cls}">${val > 0 ? '+' : ''}${val}</td>`;
   };
-  let html = `<table class="tt-grid"><thead><tr><th></th><th>Cac</th><th>Tir</th></tr></thead><tbody>`;
+  let html = `<table class="tt-grid"><thead><tr><th></th><th>Cac</th>${showTir ? '<th>Tir</th>' : ''}</tr></thead><tbody>`;
   for (const [label, cac, tir] of rows) {
-    if (cac === 0 && tir === 0) continue;
-    html += `<tr><td class="tt-label">${label}</td>${cell(cac)}${cell(tir)}</tr>`;
+    if (!showTir && cac === 0) continue;
+    if (showTir && cac === 0 && tir === 0) continue;
+    html += `<tr><td class="tt-label">${label}</td>${cell(cac)}${showTir ? cell(tir) : ''}</tr>`;
   }
   html += `</tbody></table>`;
   return html;
@@ -1839,6 +1839,7 @@ function hideTerrainTooltip() {
 function buildStanceTooltip(stanceId) {
   const s = STANCES_DATA[stanceId];
   if (!s) return '';
+  const isRanged = selectedUnit?.range > 1;
   const cell1 = (v) => { if (!v) return ''; const cls = v > 0 ? 'tt-pos' : 'tt-neg'; return `<span class="${cls}">${v > 0?'+':''}${v}</span>`; };
   let html = `<div class="tt-title">${stanceNames[stanceId] || stanceId}</div>`;
   html += ttGrid([
@@ -1848,7 +1849,7 @@ function buildStanceTooltip(stanceId) {
     ['Intimidation', s.intimidation_cac, s.intimidation_tir],
     ['Esquive',      s.esquive_cac,      s.esquive_tir],
     ['Précision',    s.precision_cac,    s.precision_tir],
-  ]);
+  ], isRanged);
   if (s.vitesse    !== 0) html += `<div class="tt-extra">${cell1(s.vitesse)} Vitesse</div>`;
   if (s.armure     !== 0) html += `<div class="tt-extra">${cell1(s.armure)} Armure</div>`;
   if (s.moral_tour !== 0) html += `<div class="tt-extra">${cell1(s.moral_tour)} Moral/tour</div>`;
