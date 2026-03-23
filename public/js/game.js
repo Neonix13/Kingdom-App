@@ -1741,44 +1741,56 @@ function renderStancePanel(unit) {
 }
 
 // ---- TERRAIN / SEGMENT TOOLTIP ----
+function ttGrid(rows) {
+  // rows = [ [label, cacVal, tirVal], ... ] — null = skip row
+  const cell = (val) => {
+    if (val === null || val === undefined || val === 0) return `<td style="color:#555">—</td>`;
+    const cls = val > 0 ? 'tt-pos' : 'tt-neg';
+    return `<td class="${cls}">${val > 0 ? '+' : ''}${val}</td>`;
+  };
+  let html = `<table class="tt-grid"><thead><tr><th></th><th>Cac</th><th>Tir</th></tr></thead><tbody>`;
+  for (const [label, cac, tir] of rows) {
+    if (cac === 0 && tir === 0) continue;
+    html += `<tr><td class="tt-label">${label}</td>${cell(cac)}${cell(tir)}</tr>`;
+  }
+  html += `</tbody></table>`;
+  return html;
+}
+
 function buildTerrainTooltip(terrainType) {
   const t = TERRAINS_DATA[terrainType];
   if (!t) return '';
-  const row = (label, val) => {
-    if (val === 0) return '';
-    const cls = val > 0 ? 'tt-pos' : 'tt-neg';
-    return `<div><span class="${cls}">${val > 0 ? '+' : ''}${val}</span> ${label}</div>`;
-  };
-  return `<div class="tt-title">${t.name}</div>`
-    + row('Vitesse', t.vitesse)
-    + row('Attaque cac', t.attack_cac) + row('Attaque tir', t.attack_tir)
-    + row('Défense cac', t.defense_cac) + row('Défense tir', t.defense_tir)
-    + row('Puissance cac', t.puissance_cac) + row('Puissance tir', t.puissance_tir)
-    + row('Intimidation cac', t.intimidation_cac) + row('Intimidation tir', t.intimidation_tir)
-    + row('Esquive cac', t.esquive_cac) + row('Esquive tir', t.esquive_tir)
-    + row('Précision cac', t.precision_cac) + row('Précision tir', t.precision_tir)
-    + row('Armure', t.armure);
+  const val = (v) => v === 0 ? 0 : v;
+  const cell1 = (v) => { if (!v) return ''; const cls = v > 0 ? 'tt-pos' : 'tt-neg'; return `<span class="${cls}">${v > 0?'+':''}${v}</span>`; };
+  let html = `<div class="tt-title">${t.name}</div>`;
+  html += ttGrid([
+    ['Attaque',      t.attack_cac,      t.attack_tir],
+    ['Défense',      t.defense_cac,     t.defense_tir],
+    ['Puissance',    t.puissance_cac,   t.puissance_tir],
+    ['Intimidation', t.intimidation_cac,t.intimidation_tir],
+    ['Esquive',      t.esquive_cac,     t.esquive_tir],
+    ['Précision',    t.precision_cac,   t.precision_tir],
+  ]);
+  if (t.vitesse !== 0) html += `<div class="tt-extra">${cell1(t.vitesse)} Vitesse</div>`;
+  if (t.armure  !== 0) html += `<div class="tt-extra">${cell1(t.armure)} Armure</div>`;
+  return html;
 }
 
 function buildSegmentTooltip(segType) {
   const s = SEGMENT_DEFS_CLIENT[segType];
   if (!s) return '';
-  const row = (label, val) => {
-    if (!val && val !== 0) return '';
-    if (typeof val === 'number' && val === 0) return '';
-    const cls = typeof val === 'number' ? (val > 0 ? 'tt-pos' : 'tt-neg') : 'tt-neutral';
-    const disp = typeof val === 'number' ? `${val > 0 ? '+' : ''}${val}` : val;
-    return `<div><span class="${cls}">${disp}</span> ${label}</div>`;
-  };
+  const cell1 = (v) => { if (!v) return ''; const cls = v > 0 ? 'tt-pos' : 'tt-neg'; return `<span class="${cls}">${v > 0?'+':''}${v}</span>`; };
   let html = `<div class="tt-title">${s.name}</div>`;
-  if (s.infranchissable) html += `<div><span class="tt-neg">Infranchissable</span></div>`;
-  if (s.infranchissable_cavalerie) html += `<div><span class="tt-neg">Cavalerie bloquée</span></div>`;
-  if (s.vitesse_fixe != null) html += `<div><span class="tt-neg">Coûte ${s.vitesse_fixe} vitesse</span></div>`;
-  else if (s.vitesse !== 0) html += row('Vitesse', s.vitesse);
-  html += row('Attaque cac', s.attack_cac) + row('Attaque tir', s.attack_tir)
-    + row('Défense cac', s.defense_cac) + row('Défense tir', s.defense_tir)
-    + row('Puissance cac', s.puissance_cac) + row('Puissance tir', s.puissance_tir);
-  if (s.special) html += `<div style="margin-top:3px;color:#c8a040;font-style:italic">${s.special}</div>`;
+  html += ttGrid([
+    ['Attaque',   s.attack_cac,   s.attack_tir],
+    ['Défense',   s.defense_cac,  s.defense_tir],
+    ['Puissance', s.puissance_cac,s.puissance_tir],
+  ]);
+  if (s.infranchissable)           html += `<div class="tt-extra"><span class="tt-neg">Infranchissable</span></div>`;
+  if (s.infranchissable_cavalerie) html += `<div class="tt-extra"><span class="tt-neg">Cavalerie bloquée</span></div>`;
+  if (s.vitesse_fixe != null)      html += `<div class="tt-extra"><span class="tt-neg">Coûte ${s.vitesse_fixe} vitesse</span></div>`;
+  else if (s.vitesse !== 0)        html += `<div class="tt-extra">${cell1(s.vitesse)} Vitesse</div>`;
+  if (s.special) html += `<div class="tt-extra" style="color:#c8a040;font-style:italic">${s.special}</div>`;
   return html;
 }
 
@@ -1827,21 +1839,20 @@ function hideTerrainTooltip() {
 function buildStanceTooltip(stanceId) {
   const s = STANCES_DATA[stanceId];
   if (!s) return '';
-  const row = (label, val) => {
-    if (val === 0) return '';
-    const cls = val > 0 ? 'tt-pos' : 'tt-neg';
-    return `<div><span class="${cls}">${val > 0 ? '+' : ''}${val}</span> ${label}</div>`;
-  };
-  return `<div class="tt-title">${stanceNames[stanceId] || stanceId}</div>`
-    + row('Vitesse', s.vitesse)
-    + row('Attaque cac', s.attack_cac) + row('Attaque tir', s.attack_tir)
-    + row('Défense cac', s.defense_cac) + row('Défense tir', s.defense_tir)
-    + row('Puissance cac', s.puissance_cac) + row('Puissance tir', s.puissance_tir)
-    + row('Intimidation cac', s.intimidation_cac) + row('Intimidation tir', s.intimidation_tir)
-    + row('Esquive cac', s.esquive_cac) + row('Esquive tir', s.esquive_tir)
-    + row('Précision cac', s.precision_cac) + row('Précision tir', s.precision_tir)
-    + row('Armure', s.armure)
-    + (s.moral_tour !== 0 ? row('Moral/tour', s.moral_tour) : '');
+  const cell1 = (v) => { if (!v) return ''; const cls = v > 0 ? 'tt-pos' : 'tt-neg'; return `<span class="${cls}">${v > 0?'+':''}${v}</span>`; };
+  let html = `<div class="tt-title">${stanceNames[stanceId] || stanceId}</div>`;
+  html += ttGrid([
+    ['Attaque',      s.attack_cac,       s.attack_tir],
+    ['Défense',      s.defense_cac,      s.defense_tir],
+    ['Puissance',    s.puissance_cac,    s.puissance_tir],
+    ['Intimidation', s.intimidation_cac, s.intimidation_tir],
+    ['Esquive',      s.esquive_cac,      s.esquive_tir],
+    ['Précision',    s.precision_cac,    s.precision_tir],
+  ]);
+  if (s.vitesse    !== 0) html += `<div class="tt-extra">${cell1(s.vitesse)} Vitesse</div>`;
+  if (s.armure     !== 0) html += `<div class="tt-extra">${cell1(s.armure)} Armure</div>`;
+  if (s.moral_tour !== 0) html += `<div class="tt-extra">${cell1(s.moral_tour)} Moral/tour</div>`;
+  return html;
 }
 
 function showStanceTooltip(e, stanceId) {
