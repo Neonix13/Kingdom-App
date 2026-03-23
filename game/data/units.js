@@ -169,9 +169,9 @@ const UNITS = {
     armor: 9,
     intimidation: 3,
     speed: 3,
-    range: 5,
+    range: 4,
     cost: 900,
-    bonus: 'Attaque à 500m. L\'unité attaquée ne fait pas de test de défense.',
+    bonus: 'Attaque à 400m. L\'unité attaquée ne fait pas de test de défense.',
     bonusType: 'ranged_no_defense',
   },
 
