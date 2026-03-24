@@ -1380,12 +1380,16 @@ function showInitiativeModal(rolls, turnOrder, turn) {
   content.innerHTML = html;
   overlay.style.display = 'flex';
   if (window._initiativeTimer) clearTimeout(window._initiativeTimer);
-  window._initiativeTimer = setTimeout(closeInitiativeModal, 8000);
 }
 
 function closeInitiativeModal() {
   document.getElementById('overlay-initiative').style.display = 'none';
   if (window._initiativeTimer) clearTimeout(window._initiativeTimer);
+  if (window._pendingTurnPopupAfterInitiative) {
+    const fn = window._pendingTurnPopupAfterInitiative;
+    window._pendingTurnPopupAfterInitiative = null;
+    fn();
+  }
 }
 
 function renderTurnOrder(turnOrder, initiativeRolls, currentPlayerId) {
@@ -2156,8 +2160,7 @@ function wsDispatch(event, data) {
       if (pendingTurnPopup && pendingTurnPopup.playerId === data.currentPlayerId) {
         const ptp = pendingTurnPopup;
         pendingTurnPopup = null;
-        const delay = ptp.newRound ? 8000 : 0;
-        setTimeout(() => {
+        const showPopup = () => {
           const ptpPlayer = gameState?.players.find(p => p.id === ptp.playerId);
           const ptpColor = ptpPlayer?.color || '#ffd700';
           const ptpName = ptp.playerId === myId ? 'Votre tour !' : `Tour de ${ptpPlayer?.name || '?'}`;
@@ -2170,7 +2173,13 @@ function wsDispatch(event, data) {
           } else {
             showTurnPopup(ptpName, ptpSub, ptpColor);
           }
-        }, delay);
+        };
+        const initiativeOpen = document.getElementById('overlay-initiative').style.display !== 'none';
+        if (ptp.newRound && initiativeOpen) {
+          window._pendingTurnPopupAfterInitiative = showPopup;
+        } else {
+          showPopup();
+        }
       }
       break;
     }
