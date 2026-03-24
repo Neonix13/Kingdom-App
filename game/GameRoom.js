@@ -399,7 +399,9 @@ class GameRoom {
       if (unit.q === null) continue;
       const unitTerrain = this.terrainData[hexKey(unit.q, unit.r)] || 'plain';
       const inForest = unitTerrain === 'forest';
-      const range = inForest ? 2 : Math.max(3, unit.visionRange);
+      const baseRange = inForest ? 2 : Math.max(3, unit.visionRange);
+      const myHeight = this.heightData[hexKey(unit.q, unit.r)] || 0;
+      const maxRange = baseRange + myHeight; // portée max possible (cible au niveau 0)
       // BFS bloqué par segments infranchissables
       const visited = new Map(); // key -> distance
       const queue = [{ q: unit.q, r: unit.r, d: 0 }];
@@ -408,16 +410,18 @@ class GameRoom {
         const { q, r, d } = queue.shift();
         const key = hexKey(q, r);
         if (!this.hexMap[key]) continue;
+        const targetHeight = this.heightData[key] || 0;
+        const effectiveRange = baseRange + Math.max(0, myHeight - targetHeight);
         if (!inForest && this.terrainData[key] === 'forest' && d > 2) continue;
-        visible.add(key);
-        if (d >= range) continue;
+        if (d <= effectiveRange) visible.add(key);
+        if (d >= maxRange) continue;
         for (const [dq, dr] of DIRS) {
           const nq = q + dq, nr = r + dr;
           const nk = hexKey(nq, nr);
           if (visited.has(nk)) continue;
           const edgeK = segmentEdgeKey(q, r, nq, nr);
           const segDef = sd[edgeK] ? SEGMENT_DEFS[sd[edgeK]] : null;
-          if (segDef?.infranchissable) { visited.set(nk, range + 1); continue; }
+          if (segDef?.infranchissable) { visited.set(nk, maxRange + 1); continue; }
           visited.set(nk, d + 1);
           queue.push({ q: nq, r: nr, d: d + 1 });
         }
