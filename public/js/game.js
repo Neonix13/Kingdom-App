@@ -1173,7 +1173,7 @@ function showUnitDetail(unit) {
     statRows.push(`<div class="stat-row"><span>Armure</span><span>${unit.armor}</span></div>`);
   }
   statRows.push(`<div class="stat-row"><span>Vitesse</span><span>${speedLabel}</span></div>`);
-  statRows.push(`<div class="stat-row"><span>Portée</span><span>${unit.range} case${unit.range > 1 ? 's' : ''}</span></div>`);
+  if (unit.range > 1) statRows.push(`<div class="stat-row"><span>Portée</span><span>${unit.range} cases</span></div>`);
   if (unit.visionRange > 0) statRows.push(`<div class="stat-row"><span>Vision</span><span>${unit.visionRange} cases</span></div>`);
   if (!unit.isGeneral) {
     statRows.push(`<div class="stat-row"><span>Posture</span><span>${stanceLabel}</span></div>`);
@@ -1835,6 +1835,7 @@ function buildTerrainTooltip(terrainType) {
   const val = (v) => v === 0 ? 0 : v;
   const cell1 = (v) => { if (!v) return ''; const cls = v > 0 ? 'tt-pos' : 'tt-neg'; return `<span class="${cls}">${v > 0?'+':''}${v}</span>`; };
   let html = `<div class="tt-title">${t.name}</div>`;
+  const showTirT = selectedUnit?.range > 1;
   html += ttGrid([
     ['Attaque',      t.attack_cac,      t.attack_tir],
     ['Défense',      t.defense_cac,     t.defense_tir],
@@ -1842,7 +1843,7 @@ function buildTerrainTooltip(terrainType) {
     ['Intimidation', t.intimidation_cac,t.intimidation_tir],
     ['Esquive',      t.esquive_cac,     t.esquive_tir],
     ['Précision',    t.precision_cac,   t.precision_tir],
-  ]);
+  ], showTirT);
   if (t.vitesse !== 0) html += `<div class="tt-extra">${cell1(t.vitesse)} Vitesse</div>`;
   if (t.armure  !== 0) html += `<div class="tt-extra">${cell1(t.armure)} Armure</div>`;
   return html;
@@ -1857,7 +1858,7 @@ function buildSegmentTooltip(segType) {
     ['Attaque',   s.attack_cac,   s.attack_tir],
     ['Défense',   s.defense_cac,  s.defense_tir],
     ['Puissance', s.puissance_cac,s.puissance_tir],
-  ]);
+  ], selectedUnit?.range > 1);
   if (s.infranchissable)           html += `<div class="tt-extra"><span class="tt-neg">Infranchissable</span></div>`;
   if (s.infranchissable_cavalerie) html += `<div class="tt-extra"><span class="tt-neg">Cavalerie bloquée</span></div>`;
   if (s.vitesse_fixe != null)      html += `<div class="tt-extra"><span class="tt-neg">Coûte ${s.vitesse_fixe} vitesse</span></div>`;

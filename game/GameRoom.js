@@ -1,6 +1,6 @@
 const GENERALS = require('./data/generals');
 const UNITS = require('./data/units');
-const { hexDistance, hexKey, hexesInRange, generateHexMap, findPath, getStartingZones, segmentEdgeKey } = require('./HexUtils');
+const { hexDistance, hexKey, hexesInRange, generateHexMap, findPath, getStartingZones, segmentEdgeKey, getSegmentData, SEGMENT_DEFS } = require('./HexUtils');
 const STANCES = require('./data/stances');
 const TERRAINS = require('./data/terrains');
 const SEGMENTS = require('./data/segments');
@@ -39,6 +39,7 @@ class GameRoom {
   _loadStaticData() {
     try { this.terrainData = JSON.parse(fs.readFileSync(nodePath.join(__dirname, '../public/terrain.json'), 'utf8')); } catch(e) { this.terrainData = {}; }
     try { this.segmentData = JSON.parse(fs.readFileSync(nodePath.join(__dirname, '../public/segments.json'), 'utf8')); } catch(e) { this.segmentData = {}; }
+    try { this.heightData = JSON.parse(fs.readFileSync(nodePath.join(__dirname, '../height.json'), 'utf8')); } catch(e) { this.heightData = {}; }
   }
 
   addPlayer(id, name) {
@@ -392,21 +393,34 @@ class GameRoom {
     if (!player) return new Set();
     const visible = new Set();
 
+    const sd = getSegmentData();
+    const DIRS = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
     for (const unit of player.units) {
       if (unit.q === null) continue;
       const unitTerrain = this.terrainData[hexKey(unit.q, unit.r)] || 'plain';
       const inForest = unitTerrain === 'forest';
-      // En forêt : vision réduite à 1. Hors forêt : vision normale mais forêts visibles max à 2
       const range = inForest ? 2 : Math.max(3, unit.visionRange);
-      const hexes = hexesInRange(unit.q, unit.r, range);
-      for (const [hq, hr] of hexes) {
-        const key = hexKey(hq, hr);
+      // BFS bloqué par segments infranchissables
+      const visited = new Map(); // key -> distance
+      const queue = [{ q: unit.q, r: unit.r, d: 0 }];
+      visited.set(hexKey(unit.q, unit.r), 0);
+      while (queue.length) {
+        const { q, r, d } = queue.shift();
+        const key = hexKey(q, r);
         if (!this.hexMap[key]) continue;
-        // Hors forêt : les cases forêt ne sont visibles qu'à rayon ≤ 2
-        if (!inForest && this.terrainData[key] === 'forest') {
-          if (hexDistance(unit.q, unit.r, hq, hr) > 2) continue;
-        }
+        if (!inForest && this.terrainData[key] === 'forest' && d > 2) continue;
         visible.add(key);
+        if (d >= range) continue;
+        for (const [dq, dr] of DIRS) {
+          const nq = q + dq, nr = r + dr;
+          const nk = hexKey(nq, nr);
+          if (visited.has(nk)) continue;
+          const edgeK = segmentEdgeKey(q, r, nq, nr);
+          const segDef = sd[edgeK] ? SEGMENT_DEFS[sd[edgeK]] : null;
+          if (segDef?.infranchissable) { visited.set(nk, range + 1); continue; }
+          visited.set(nk, d + 1);
+          queue.push({ q: nq, r: nr, d: d + 1 });
+        }
       }
     }
     return visible;
@@ -733,11 +747,17 @@ class GameRoom {
     // Segment on the edge between attacker and target (only for adjacent melee)
     const segDef = isCac ? this._getSegmentDef(attacker.q, attacker.r, target.q, target.r) : null;
 
+    // Bonus/malus de hauteur
+    const hA = this.heightData[hexKey(attacker.q, attacker.r)] || 0;
+    const hD = this.heightData[hexKey(target.q, target.r)] || 0;
+    const heightDiff = hA - hD;
+
     // Attack effective (généraux utilisent force comme base d'attaque)
     const attackBase = attacker.isGeneral ? attacker.force : attacker.attack;
     const attackTotal = attackBase
       + (stA[`attack_${type}`] || 0) + (tA[`attack_${type}`] || 0) + (segDef ? (segDef[`attack_${type}`] || 0) : 0)
-      - (stD[`esquive_${type}`] || 0) - (tD[`esquive_${type}`] || 0);
+      - (stD[`esquive_${type}`] || 0) - (tD[`esquive_${type}`] || 0)
+      + heightDiff;
     const attackD20 = Math.floor(Math.random() * 20) + 1;
     const hit = attackTotal >= attackD20;
 
@@ -749,6 +769,9 @@ class GameRoom {
         dmgInflicted += Math.floor(Math.random() * dieFaces) + 1;
       }
     }
+
+    // Multiplicateur de hauteur sur les dégâts : (1 + heightDiff / 10)
+    if (hit) dmgInflicted = Math.round(dmgInflicted * (1 + heightDiff / 10));
 
     // Armor absorption: Vitalite_def × Armure_def_effective
     const effectiveArmor = Math.max(0, target.armor + (stD.armure || 0) + (tD.armure || 0));
@@ -776,7 +799,8 @@ class GameRoom {
       const defBase = target.isGeneral ? target.force : target.defense;
       const defTotal = defBase
         + (stD[`defense_${type}`] || 0) + (tD[`defense_${type}`] || 0) + (segDef ? (segDef[`defense_${type}`] || 0) : 0)
-        - (stA[`precision_${type}`] || 0) - (tA[`precision_${type}`] || 0);
+        - (stA[`precision_${type}`] || 0) - (tA[`precision_${type}`] || 0)
+        - heightDiff;
       defenseRoll = Math.floor(Math.random() * 20) + 1;
       defenseSuccess = defTotal >= defenseRoll;
 
@@ -788,7 +812,7 @@ class GameRoom {
         }
         const atkArmor = Math.max(0, attacker.armor + (stA.armure || 0) + (tA.armure || 0));
         const atkArmorAbsorb = attacker.vitality * atkArmor;
-        const rawCounter = Math.max(0, counterRaw - atkArmorAbsorb);
+        const rawCounter = Math.max(0, Math.round((counterRaw - atkArmorAbsorb) * (1 + (hD - hA) / 10)));
         const effectiveCounterIntimidation = target.intimidation + (stD[`intimidation_${type}`] || 0) + (tD[`intimidation_${type}`] || 0);
         const rawMoral = Math.max(0, Math.floor(target.vitality * effectiveCounterIntimidation / 10));
 
