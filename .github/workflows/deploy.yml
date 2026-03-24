@@ -32,12 +32,10 @@ jobs:
           sam deploy \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset \
+            --resolve-s3 \
             --stack-name kingdom-battleground \
             --capabilities CAPABILITY_IAM \
-            --region ${{ secrets.AWS_REGION }} \
-            --parameter-overrides "" \
-            --output-format json \
-            2>&1 | tee sam_output.txt
+            --region ${{ secrets.AWS_REGION }}
 
       - name: Récupérer les outputs CloudFormation
         id: cfn
