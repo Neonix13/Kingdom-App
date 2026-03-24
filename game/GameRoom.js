@@ -195,7 +195,7 @@ class GameRoom {
 
   startDeployment() {
     this.phase = 'deployment';
-    const zones = getStartingZones(this.players.length, MAP_RADIUS);
+    const zones = getStartingZones(this.players.length, MAP_RADIUS, this.budget);
     this.players.forEach((p, i) => {
       p.startingZone = zones[i];
       p.isReady = false;
