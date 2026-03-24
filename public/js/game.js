@@ -1662,7 +1662,8 @@ function appendChatMessage({ authorName, text, isMine, isSystem, authorId }) {
     div.className = 'chat-msg system';
     div.textContent = text;
   } else {
-    const color = authorId && gameState ? (gameState.players.find(p => p.id === authorId)?.color || '#c8960c') : '#c8960c';
+    const players = gameState?.players || deployState?.players || [];
+    const color = authorId ? (players.find(p => p.id === authorId)?.color || '#c8960c') : '#c8960c';
     div.className = `chat-msg ${isMine ? 'mine' : 'other'}`;
     div.innerHTML = `<span class="chat-author" style="color:${color}">${authorName} : </span><span class="chat-text">${text}</span>`;
   }
@@ -2083,7 +2084,17 @@ function wsDispatch(event, data) {
       sessionStorage.setItem('myId', myId);
       deployState = data;
       buildZoneTileSet(deployState);
+      if (mode !== 'deploy') {
+        mode = 'deploy';
+        setMode('deploy');
+        document.getElementById('sidebar-title').textContent = 'Déploiement';
+        if (deployState.startingZone) {
+          const { x, y } = hexToPixel(deployState.startingZone.q, deployState.startingZone.r);
+          smoothPanTo(x, y, 600);
+        }
+      }
       renderDeployUnitList(data.units);
+      updateActionButtons();
       render();
       break;
     }

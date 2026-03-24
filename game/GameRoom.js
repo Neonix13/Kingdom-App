@@ -213,6 +213,7 @@ class GameRoom {
       placedUnits: player.placedUnits,
       generalData: general,
       occupiedHexes: this._getAllOccupiedHexes(),
+      players: this.players.map(p => ({ id: p.id, name: p.name, color: p.color || '#4a90d9' })),
     };
   }
 
