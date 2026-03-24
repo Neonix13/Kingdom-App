@@ -1022,11 +1022,15 @@ function computeMovableTiles(unit) {
 
 function computeAttackableTiles(unit) {
   if (!gameState) return;
+  const hd = gameState.heightData || {};
+  const hA = hd[`${unit.q},${unit.r}`] || 0;
 
   for (const u of gameState.units) {
     if (u.isMine) continue;
     const dist = hexDistance(unit.q, unit.r, u.q, u.r);
-    if (dist <= unit.range) {
+    const hT = hd[`${u.q},${u.r}`] || 0;
+    const effectiveRange = (unit.range || 1) + Math.max(0, hA - hT);
+    if (dist <= effectiveRange) {
       attackableTiles.add(`${u.q},${u.r}`);
     }
   }
@@ -1035,13 +1039,18 @@ function computeAttackableTiles(unit) {
 function computeRangeTiles(unit) {
   const dirs = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
   rangeCenter = { q: unit.q, r: unit.r };
+  const hd = gameState?.heightData || {};
+  const hA = hd[`${unit.q},${unit.r}`] || 0;
+  const maxRange = (unit.range || 1) + hA; // portée max si cible au niveau 0
   const visited = new Set();
   const queue = [{ q: unit.q, r: unit.r, d: 0 }];
   visited.add(`${unit.q},${unit.r}`);
   while (queue.length) {
     const { q, r, d } = queue.shift();
+    const hT = hd[`${q},${r}`] || 0;
+    const effectiveRange = (unit.range || 1) + Math.max(0, hA - hT);
     if (d > 0) rangeTiles.add(`${q},${r}`);
-    if (d >= unit.range) continue;
+    if (d >= effectiveRange || d >= maxRange) continue;
     for (const [dq, dr] of dirs) {
       const nq = q + dq, nr = r + dr;
       const nk = `${nq},${nr}`;

@@ -149,7 +149,7 @@ function findPath(hexMap, unitMap, q1, r1, q2, r2, maxSpeed, playerId, unit) {
   return null;
 }
 
-const TERRAIN_DEPLOY_PENALTY = { forest: 1, mountain: 2, swamp: 2, hill: 1 };
+const TERRAIN_DEPLOY_PENALTY = { forest: 5, mountain: 5, swamp: 5, hill: 2 };
 const DEPLOY_CENTER_EXCLUSION = 3;
 const DEPLOY_INTER_ZONE_EXCLUSION = 8;
 const DEPLOY_BORDER_EXCLUSION = 12;
@@ -204,7 +204,7 @@ function getStartingZones(numPlayers, mapRadius, budget) {
 
   const validHexes = [];
   for (const [key, type] of Object.entries(td)) {
-    if (type === 'river') continue;
+    if (type === 'river' || type === 'forest') continue;
     const [q, r] = key.split(',').map(Number);
     validHexes.push({ q, r });
   }

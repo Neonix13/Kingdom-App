@@ -474,6 +474,7 @@ class GameRoom {
       initiativeRolls: this.initiativeRolls,
       activeEffects: this.activeEffects.filter(e => e.targetPlayerId === playerId),
       winner: this.winner,
+      heightData: this.heightData,
     };
   }
 
@@ -659,7 +660,10 @@ class GameRoom {
     if (!target) return { error: 'Cible introuvable.' };
 
     const dist = hexDistance(attacker.q, attacker.r, target.q, target.r);
-    if (dist > attacker.range) return { error: `Cible hors de portée (distance: ${dist}, portée: ${attacker.range}).` };
+    const hA = this.heightData[hexKey(attacker.q, attacker.r)] || 0;
+    const hT = this.heightData[hexKey(target.q, target.r)] || 0;
+    const effectiveRange = (attacker.range || 1) + Math.max(0, hA - hT);
+    if (dist > effectiveRange) return { error: `Cible hors de portée (distance: ${dist}, portée: ${effectiveRange}).` };
 
     // Deduct speed (all remaining, min 1)
     const speedCost = Math.max(1, attacker.speedRemaining);
