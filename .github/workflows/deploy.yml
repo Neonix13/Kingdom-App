@@ -1,0 +1,85 @@
+name: Deploy to AWS
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: SAM Build
+        run: sam build --template template.yaml
+
+      - name: SAM Deploy
+        run: |
+          sam deploy \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --stack-name kingdom-battleground \
+            --capabilities CAPABILITY_IAM \
+            --region ${{ secrets.AWS_REGION }} \
+            --parameter-overrides "" \
+            --output-format json \
+            2>&1 | tee sam_output.txt
+
+      - name: Récupérer les outputs CloudFormation
+        id: cfn
+        run: |
+          BUCKET=$(aws cloudformation describe-stacks \
+            --stack-name kingdom-battleground \
+            --query "Stacks[0].Outputs[?OutputKey=='S3BucketName'].OutputValue" \
+            --output text)
+          WS_URL=$(aws cloudformation describe-stacks \
+            --stack-name kingdom-battleground \
+            --query "Stacks[0].Outputs[?OutputKey=='WebSocketURL'].OutputValue" \
+            --output text)
+          CF_URL=$(aws cloudformation describe-stacks \
+            --stack-name kingdom-battleground \
+            --query "Stacks[0].Outputs[?OutputKey=='FrontendURL'].OutputValue" \
+            --output text)
+          echo "bucket=$BUCKET" >> $GITHUB_OUTPUT
+          echo "ws_url=$WS_URL" >> $GITHUB_OUTPUT
+          echo "cf_url=$CF_URL" >> $GITHUB_OUTPUT
+          echo "WebSocket : $WS_URL"
+          echo "Frontend  : $CF_URL"
+
+      - name: Injecter l'URL WebSocket dans les fichiers frontend
+        run: |
+          WS_URL="${{ steps.cfn.outputs.ws_url }}"
+          sed -i "s|wss://[^'\"]*execute-api[^'\"]*|$WS_URL|g" public/index.html
+          sed -i "s|wss://[^'\"]*execute-api[^'\"]*|$WS_URL|g" public/game.html
+
+      - name: Upload frontend vers S3
+        run: |
+          aws s3 sync public/ s3://${{ steps.cfn.outputs.bucket }}/ \
+            --delete \
+            --exclude "*.map"
+
+      - name: Invalider le cache CloudFront
+        run: |
+          DIST_ID=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?contains(Origins.Items[0].DomainName, '${{ steps.cfn.outputs.bucket }}')].Id" \
+            --output text)
+          if [ -n "$DIST_ID" ]; then
+            aws cloudfront create-invalidation --distribution-id $DIST_ID --paths "/*"
+          fi
+
+      - name: URL de la partie
+        run: echo "🎮 ${{ steps.cfn.outputs.cf_url }}"
