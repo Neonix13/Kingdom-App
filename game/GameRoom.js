@@ -24,6 +24,7 @@ class GameRoom {
     this.hexMap = {};
     this.unitMap = {}; // hexKey -> unit
     this.turn = 1;
+    this.manche = 1;
     this.turnOrder = [];       // IDs des joueurs dans l'ordre d'initiative
     this.initiativeRolls = {}; // playerId -> { d20, strategy, total, playerName, generalName }
     this.currentTurnIndex = 0;
@@ -173,7 +174,7 @@ class GameRoom {
       intimidation: data.intimidation,
       speed: data.speed,
       range: data.range,
-      visionRange: 2,
+      visionRange: 3,
       hasMoved: false,
       hasAttacked: false,
       q: null,
@@ -223,6 +224,7 @@ class GameRoom {
       phase: this.phase,
       budget: this.budget,
       turn: this.turn,
+      manche: this.manche,
       turnOrder: this.turnOrder,
       initiativeRolls: this.initiativeRolls,
       currentTurnIndex: this.currentTurnIndex,
@@ -394,7 +396,7 @@ class GameRoom {
       const unitTerrain = this.terrainData[hexKey(unit.q, unit.r)] || 'plain';
       const inForest = unitTerrain === 'forest';
       // En forêt : vision réduite à 1. Hors forêt : vision normale mais forêts visibles max à 2
-      const range = inForest ? 1 : Math.max(2, unit.visionRange);
+      const range = inForest ? 2 : Math.max(3, unit.visionRange);
       const hexes = hexesInRange(unit.q, unit.r, range);
       for (const [hq, hr] of hexes) {
         const key = hexKey(hq, hr);
@@ -433,6 +435,7 @@ class GameRoom {
     return {
       phase: this.phase,
       turn: this.turn,
+      manche: this.manche,
       currentPlayerId: this.getCurrentPlayerId(),
       myId: playerId,
       budget: this.budget,
@@ -917,10 +920,12 @@ class GameRoom {
     }
 
     this.currentTurnIndex++;
+    this.manche++;
 
     const newRound = this.currentTurnIndex >= this.turnOrder.length;
     if (newRound) {
       this.turn++;
+      this.manche = 1;
       this.activeEffects = this.activeEffects
         .map(e => ({ ...e, turnsLeft: e.turnsLeft - 1 }))
         .filter(e => e.turnsLeft > 0);

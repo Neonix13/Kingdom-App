@@ -1309,6 +1309,7 @@ function toggleCoords() {
 }
 
 let turnPopupTimer = null;
+let pendingTurnPopup = null;
 function showTurnPopup(name, sub, color) {
   const el = document.getElementById('turn-popup');
   const nameEl = document.getElementById('turn-popup-name');
@@ -2107,7 +2108,7 @@ function wsDispatch(event, data) {
       gameState = data;
       gameState.visibleHexes = new Set(data.visibleHexes);
 
-      document.getElementById('top-turn').textContent = `Tour ${data.turn}`;
+      document.getElementById('top-turn').textContent = `Tour ${data.turn} · Manche ${data.manche || 1}`;
       const currPlayer = data.players.find(p => p.id === data.currentPlayerId);
       document.getElementById('top-current-player').textContent =
         data.currentPlayerId === myId ? '⚔️ Votre tour' : `Tour de : ${currPlayer?.name || '?'}`;
@@ -2140,6 +2141,25 @@ function wsDispatch(event, data) {
       renderUnitList();
       updateActionButtons();
       render();
+      if (pendingTurnPopup && pendingTurnPopup.playerId === data.currentPlayerId) {
+        const ptp = pendingTurnPopup;
+        pendingTurnPopup = null;
+        const delay = ptp.newRound ? 8000 : 0;
+        setTimeout(() => {
+          const ptpPlayer = gameState?.players.find(p => p.id === ptp.playerId);
+          const ptpColor = ptpPlayer?.color || '#ffd700';
+          const ptpName = ptp.playerId === myId ? 'Votre tour !' : `Tour de ${ptpPlayer?.name || '?'}`;
+          const ptpSub = `Tour ${ptp.turn} · Manche ${ptp.manche || 1}`;
+          if (ptp.playerId === myId) {
+            const myGeneral = gameState?.units?.find(u => u.playerId === myId && u.isGeneral);
+            if (myGeneral) { const { x, y } = hexToPixel(myGeneral.q, myGeneral.r); smoothPanTo(x, y); }
+            const canAct = gameState?.units?.some(u => u.playerId === myId && (u.speedRemaining > 0 || !u.hasAttacked));
+            if (canAct) showTurnPopup(ptpName, ptpSub, ptpColor);
+          } else {
+            showTurnPopup(ptpName, ptpSub, ptpColor);
+          }
+        }, delay);
+      }
       break;
     }
     case 'turn_change': {
@@ -2152,18 +2172,7 @@ function wsDispatch(event, data) {
       attackableTiles.clear();
       rangeTiles.clear(); rangeCenter = null; motivateTiles.clear(); motivateCenter = null;
       updateActionButtons();
-      const tcPlayer = gameState?.players.find(p => p.id === data.currentPlayerId);
-      const tcColor = tcPlayer?.color || '#ffd700';
-      const tcName = data.currentPlayerId === myId ? 'Votre tour !' : `Tour de ${tcPlayer?.name || '?'}`;
-      const tcSub = `Jour ${data.turn}`;
-      if (data.currentPlayerId === myId) {
-        const myGeneral = gameState?.units.find(u => u.playerId === myId && u.isGeneral);
-        if (myGeneral) { const { x, y } = hexToPixel(myGeneral.q, myGeneral.r); smoothPanTo(x, y); }
-        const canAct = gameState?.units.some(u => u.playerId === myId && !u.isGeneral && (u.speedRemaining > 0 || !u.hasAttacked));
-        if (canAct) showTurnPopup(tcName, tcSub, tcColor);
-      } else {
-        showTurnPopup(tcName, tcSub, tcColor);
-      }
+      pendingTurnPopup = { playerId: data.currentPlayerId, turn: data.turn, manche: data.manche, newRound: data.manche === 1 };
       break;
     }
     case 'initiative_rolled':

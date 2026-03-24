@@ -340,7 +340,7 @@ function handleAction(ws, connectionId, action, data) {
       if (room.getCurrentPlayerId() !== connectionId) return send(connectionId, { event: 'error', message: 'Ce n\'est pas votre tour.' });
       const { newRound, fled } = room.endTurn();
       if (newRound) broadcast(room, { event: 'initiative_rolled', rolls: room.initiativeRolls, turnOrder: room.turnOrder, turn: room.turn });
-      broadcast(room, { event: 'turn_change', currentPlayerId: room.getCurrentPlayerId(), turn: room.turn });
+      broadcast(room, { event: 'turn_change', currentPlayerId: room.getCurrentPlayerId(), turn: room.turn, manche: room.manche });
       if (fled && fled.length > 0) broadcast(room, { event: 'units_fled', fled });
       room.players.forEach(p => send(p.id, { event: 'game_state', ...room.getGameState(p.id) }));
       break;
