@@ -127,7 +127,7 @@ class GameRoom {
       power: generalData.weapon.damage,
       armor: generalData.armor,
       maxArmor: generalData.armor,
-      intimidation: 5,
+      intimidation: Math.floor(generalData.charisma / 2),
       speed: 3,
       range: 1,
       visionRange: generalData.strategy, // 1 hex = 100m
