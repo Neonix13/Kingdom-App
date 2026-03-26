@@ -7,7 +7,7 @@ let _terrainData = null;
 function getTerrainData() {
   if (!_terrainData) {
     try {
-      _terrainData = JSON.parse(fs.readFileSync(path.join(__dirname, '../public/terrain.json'), 'utf8'));
+      _terrainData = JSON.parse(fs.readFileSync(path.join(__dirname, '../public/data/terrain.json'), 'utf8'));
     } catch(e) { _terrainData = {}; }
   }
   return _terrainData;
@@ -18,7 +18,7 @@ let _segmentData = null;
 function getSegmentData() {
   if (!_segmentData) {
     try {
-      _segmentData = JSON.parse(fs.readFileSync(path.join(__dirname, '../public/segments.json'), 'utf8'));
+      _segmentData = JSON.parse(fs.readFileSync(path.join(__dirname, '../public/data/segments.json'), 'utf8'));
     } catch(e) { _segmentData = {}; }
   }
   return _segmentData;

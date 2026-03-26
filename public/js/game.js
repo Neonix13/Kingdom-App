@@ -37,11 +37,11 @@ const activePings = []; // { q, r, color, startTime }
 let gridOpacity = 0.25;
 let gridThickness = 1;
 let gridColorRGB = '180,140,60';
-fetch('/terrain.json').then(r => r.json()).then(d => { terrainData = d; render(); }).catch(() => {});
+fetch('/data/terrain.json').then(r => r.json()).then(d => { terrainData = d; render(); }).catch(() => {});
 
 // Chargement des segments
 let segmentData = {};
-fetch('/segments.json').then(r => r.json()).then(d => { segmentData = d; render(); }).catch(() => {});
+fetch('/data/segments.json').then(r => r.json()).then(d => { segmentData = d; render(); }).catch(() => {});
 
 // Edge i = between corners[i] and corners[(i+1)%6], direction to neighbor i
 const SEGMENT_EDGE_DIRS = [[1,0],[0,1],[-1,1],[-1,0],[0,-1],[1,-1]];

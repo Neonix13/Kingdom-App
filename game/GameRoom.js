@@ -37,9 +37,9 @@ class GameRoom {
   }
 
   _loadStaticData() {
-    try { this.terrainData = JSON.parse(fs.readFileSync(nodePath.join(__dirname, '../public/terrain.json'), 'utf8')); } catch(e) { this.terrainData = {}; }
-    try { this.segmentData = JSON.parse(fs.readFileSync(nodePath.join(__dirname, '../public/segments.json'), 'utf8')); } catch(e) { this.segmentData = {}; }
-    try { this.heightData = JSON.parse(fs.readFileSync(nodePath.join(__dirname, '../height.json'), 'utf8')); } catch(e) { this.heightData = {}; }
+    try { this.terrainData = JSON.parse(fs.readFileSync(nodePath.join(__dirname, '../public/data/terrain.json'), 'utf8')); } catch(e) { this.terrainData = {}; }
+    try { this.segmentData = JSON.parse(fs.readFileSync(nodePath.join(__dirname, '../public/data/segments.json'), 'utf8')); } catch(e) { this.segmentData = {}; }
+    try { this.heightData = JSON.parse(fs.readFileSync(nodePath.join(__dirname, '../public/data/height.json'), 'utf8')); } catch(e) { this.heightData = {}; }
   }
 
   addPlayer(id, name) {
