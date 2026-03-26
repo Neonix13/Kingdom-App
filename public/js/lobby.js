@@ -346,9 +346,9 @@ function renderArmyBuilder() {
       </div>
       <div class="unit-cost">${u.cost} or/unité</div>
       <div class="unit-qty">
-        <button onclick="changeQty('${u.id}', -1)">−</button>
+        <button onclick="changeQty('${u.id}', -1)" ondblclick="event.stopPropagation()">−</button>
         <span id="qty-${u.id}">0</span>
-        <button onclick="changeQty('${u.id}', 1)">+</button>
+        <button onclick="changeQty('${u.id}', 1)" ondblclick="event.stopPropagation()">+</button>
       </div>
     `;
     div.ondblclick = (e) => { e.stopPropagation(); showUnitCardLobby(u); };

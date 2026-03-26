@@ -2136,10 +2136,10 @@ function wsDispatch(event, data) {
       document.getElementById('top-turn').textContent = `Tour ${data.turn} · Manche ${data.manche || 1}`;
       const currPlayer = data.players.find(p => p.id === data.currentPlayerId);
       document.getElementById('top-current-player').textContent =
-        data.currentPlayerId === myId ? '⚔️ Votre tour' : `Tour de : ${currPlayer?.name || '?'}`;
+        data.currentPlayerId === myId ? '⚔️ Votre manche' : `Manche de : ${currPlayer?.name || '?'}`;
       document.getElementById('top-phase').textContent = data.phase === 'battle' ? 'Bataille' : '';
       document.getElementById('sidebar-title').textContent =
-        data.currentPlayerId === myId ? 'Votre tour' : `Tour de ${currPlayer?.name || '?'}`;
+        data.currentPlayerId === myId ? 'Votre manche' : `Manche de ${currPlayer?.name || '?'}`;
 
       if (selectedUnit) {
         const updated = data.myUnits.find(u => u.id === selectedUnit.id);
@@ -2172,7 +2172,7 @@ function wsDispatch(event, data) {
         const showPopup = () => {
           const ptpPlayer = gameState?.players.find(p => p.id === ptp.playerId);
           const ptpColor = ptpPlayer?.color || '#ffd700';
-          const ptpName = ptp.playerId === myId ? 'Votre tour !' : `Tour de ${ptpPlayer?.name || '?'}`;
+          const ptpName = ptp.playerId === myId ? 'Votre manche !' : `Manche de ${ptpPlayer?.name || '?'}`;
           const ptpSub = `Tour ${ptp.turn} · Manche ${ptp.manche || 1}`;
           if (ptp.playerId === myId) {
             const myGeneral = gameState?.units?.find(u => u.playerId === myId && u.isGeneral);

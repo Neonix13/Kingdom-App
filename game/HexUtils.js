@@ -149,50 +149,52 @@ function findPath(hexMap, unitMap, q1, r1, q2, r2, maxSpeed, playerId, unit) {
   return null;
 }
 
-const TERRAIN_DEPLOY_PENALTY = { forest: 5, mountain: 5, swamp: 5, hill: 2 };
+// Coût terrain pour le déploiement : base radiale + léger modificateur terrain
+// La distance au centre est le facteur dominant → forme circulaire
+// Le modificateur terrain est faible → légère préférence plaines/routes
+const TERRAIN_DEPLOY_MOD = { road: -2, plain: 0, building: 1, forest: 4, river: 999 };
+const DEPLOY_RADIAL_SCALE = 10; // poids de la distance au centre
 const DEPLOY_CENTER_EXCLUSION = 3;
 const DEPLOY_INTER_ZONE_EXCLUSION = 8;
 const DEPLOY_BORDER_EXCLUSION = 12;
 
-// Dijkstra depuis un centre de déploiement.
-// Évite rivière, segments infranchissables, et forbiddenKeys.
-// Pénalise les terrains/segments spéciaux.
+// Expansion radiale depuis un centre de déploiement.
+// Priorité = distance_hexagonale_au_centre × SCALE + modificateur_terrain
+// → forme proche d'un cercle, avec préférence légère pour plaines/routes
 function _deployZoneDijkstra(centerQ, centerR, maxTiles, forbiddenKeys) {
   const td = getTerrainData();
   const sd = getSegmentData();
   const DIRS = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
-  const dist = new Map();
+  const visited = new Set();
   const tiles = [];
-  const heap = [{ q: centerQ, r: centerR, cost: 0 }];
-  dist.set(`${centerQ},${centerR}`, 0);
+  const heap = [{ q: centerQ, r: centerR, priority: 0 }];
 
   while (heap.length && tiles.length < maxTiles) {
-    heap.sort((a, b) => a.cost - b.cost);
-    const { q, r, cost } = heap.shift();
+    heap.sort((a, b) => a.priority - b.priority);
+    const { q, r } = heap.shift();
     const key = `${q},${r}`;
-    if (dist.get(key) < cost) continue;
+    if (visited.has(key)) continue;
     const terrain = td[key] || 'plain';
     if (terrain === 'river') continue;
     if (forbiddenKeys && forbiddenKeys.has(key)) continue;
+    visited.add(key);
     tiles.push({ q, r });
     if (tiles.length >= maxTiles) break;
 
     for (const [dq, dr] of DIRS) {
       const nq = q + dq, nr = r + dr;
       const nk = `${nq},${nr}`;
-      if (!td[nk]) continue;
+      if (!td[nk] || visited.has(nk)) continue;
       const edgeK = segmentEdgeKey(q, r, nq, nr);
       const segType = sd[edgeK];
       const segDef = segType ? SEGMENT_DEFS[segType] : null;
       if (segDef?.infranchissable) continue;
       const nTerrain = td[nk] || 'plain';
       if (nTerrain === 'river') continue;
-      const stepCost = 1 + (TERRAIN_DEPLOY_PENALTY[nTerrain] || 0) + (segDef ? 3 : 0);
-      const newCost = cost + stepCost;
-      if (!dist.has(nk) || newCost < dist.get(nk)) {
-        dist.set(nk, newCost);
-        heap.push({ q: nq, r: nr, cost: newCost });
-      }
+      const radialDist = hexDistance(nq, nr, centerQ, centerR);
+      const terrainMod = TERRAIN_DEPLOY_MOD[nTerrain] ?? 0;
+      const priority = radialDist * DEPLOY_RADIAL_SCALE + terrainMod;
+      heap.push({ q: nq, r: nr, priority });
     }
   }
   return tiles;

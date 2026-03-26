@@ -12,15 +12,6 @@ const GENERALS = [
     force: 15,
     strategy: 16,
     charisma: 18,
-    activeAbility: {
-      name: 'Sourire du Monstre',
-      description: 'Augmente la puissance de l\'armée de 2 pendant 2 tours. Si l\'armée ennemie est en infériorité numérique, réduit le moral de chaque unité adverse de 1.',
-      cooldown: 3,
-    },
-    passiveAbility: {
-      name: 'Oiseau Colossale',
-      description: 'Les généraux ennemis ont -3 en Force, Stratégie et Charisme. Les unités de l\'armée d\'Ou Ki ont +1 d\'intimidation.',
-    },
     citation: '«Ne l\'as-tu pas encore compris ? La guerre, c\'est amusant !»',
   },
   {
@@ -36,15 +27,6 @@ const GENERALS = [
     force: 18,
     strategy: 12,
     charisma: 16,
-    activeAbility: {
-      name: 'Poing du Titan',
-      description: 'Réduit l\'armure d\'une armée ennemie de 1 pendant 2 tours. Les unités ciblées éliminées octroient +1 de puissance à l\'unité jusqu\'à la fin de la journée.',
-      cooldown: 3,
-    },
-    passiveAbility: {
-      name: 'Force Inégalée',
-      description: 'Augmente la puissance des unités de l\'armée de Mou Bu de 1.',
-    },
     citation: '«Ce n\'est pas la stratégie qui gagne les guerres… c\'est la force !»',
   },
   {
@@ -60,15 +42,6 @@ const GENERALS = [
     force: 13,
     strategy: 17,
     charisma: 16,
-    activeAbility: {
-      name: 'L\'Architecte de la Guerre',
-      description: 'Réduit l\'attaque et la vitesse d\'une armée ennemie de 2 pendant 3 tours, et augmente la portée des unités à distance de l\'armée de 200m pendant 2 tours.',
-      cooldown: 4,
-    },
-    passiveAbility: {
-      name: 'Forteresse Imprenable',
-      description: 'Les unités de l\'armée d\'Ou Sen gagnent 2 d\'armure et subissent 1 d\'intimidation en moins en position défensive.',
-    },
     citation: '«La guerre n\'est pas un duel de force… mais un jeu d\'esprit où le perdant ne se relève jamais.»',
   },
   {
@@ -84,15 +57,6 @@ const GENERALS = [
     force: 14,
     strategy: 16,
     charisma: 16,
-    activeAbility: {
-      name: 'Tactiques Infernales',
-      description: 'Choisit 3 unités qui peuvent se déployer n\'importe où sur le champ de bataille. Ces unités gagnent 2 de puissance et 1 d\'intimidation pour la journée et ne subissent pas de malus d\'éloignement.',
-      cooldown: 5,
-    },
-    passiveAbility: {
-      name: 'Terreur Psychologique',
-      description: 'Augmente l\'intimidation des unités de 1 par embuscade réussie jusqu\'à la fin de la bataille.',
-    },
     citation: '«La guerre n\'a jamais eu de règles. Ce sont juste les idiots qui s\'en inventent.»',
   },
   {
@@ -108,15 +72,6 @@ const GENERALS = [
     force: 11,
     strategy: 18,
     charisma: 17,
-    activeAbility: {
-      name: 'Vision du Sage',
-      description: 'Révèle l\'emplacement d\'une unité ennemie en embuscade.',
-      cooldown: 2,
-    },
-    passiveAbility: {
-      name: 'Maître de la Guerre Totale',
-      description: 'Lors d\'un conflit, si une unité de l\'armée est en avantage, elle reçoit un bonus de 1 en attaque ou en défense.',
-    },
     citation: '«Gagner une guerre sans combattre est la plus grande des victoires.»',
   },
   {
@@ -132,15 +87,6 @@ const GENERALS = [
     force: 13,
     strategy: 16,
     charisma: 14,
-    activeAbility: {
-      name: 'Piège Mortel',
-      description: 'Toute l\'armée de Kei Sha recule instantanément de 2 cases et obtient un bonus de 1 de défense pendant les 2 prochains tours.',
-      cooldown: 4,
-    },
-    passiveAbility: {
-      name: 'Danse de la Guerre',
-      description: 'Chaque fois qu\'une unité de l\'armée de Kei Sha défend, l\'unité adverse qui attaque perd 1 de vitalité en ignorant l\'armure.',
-    },
     citation: '«La guerre est un art, et seuls les plus fins stratèges en maîtrisent toutes les nuances.»',
   },
   {
@@ -156,15 +102,6 @@ const GENERALS = [
     force: 17,
     strategy: 15,
     charisma: 16,
-    activeAbility: {
-      name: 'Forteresse Inviolable',
-      description: 'Les unités de l\'armée en position de défense gagnent 5 d\'armure pendant 2 tours et annule la charge d\'une unité.',
-      cooldown: 4,
-    },
-    passiveAbility: {
-      name: 'Loyauté Absolue',
-      description: 'Lorsqu\'une unité alliée est détruite, les unités alliées dans un rayon de 400m regagnent 1 de vitalité.',
-    },
     citation: '«Tant que Zhao aura besoin de moi, je resterai son bouclier.»',
   },
   {
@@ -180,15 +117,6 @@ const GENERALS = [
     force: 17,
     strategy: 16,
     charisma: 18,
-    activeAbility: {
-      name: 'Furie Martial',
-      description: 'Si une unité ennemie possède 12 de vitalité ou moins et se trouve au corps à corps avec Ren Pa, détruit cette unité peu importe son type.',
-      cooldown: 3,
-    },
-    passiveAbility: {
-      name: 'Volonté Indomptable',
-      description: 'La troupe de Ren Pa continue de se battre pendant 1 tour après avoir été démoralisée.',
-    },
     citation: '«Un vrai guerrier ne fuit jamais la bataille. Seuls les faibles se cachent derrière les mots.»',
   },
   {
@@ -204,15 +132,6 @@ const GENERALS = [
     force: 14,
     strategy: 17,
     charisma: 16,
-    activeAbility: {
-      name: 'Rempart Inébranlable',
-      description: 'Les unités de l\'armée de Go Kei obtiennent 3 de défense et 2 de puissance supplémentaires en position de défense pendant 2 tours.',
-      cooldown: 3,
-    },
-    passiveAbility: {
-      name: 'Gardien de Wei',
-      description: 'Lorsqu\'une unité de l\'armée de Go Kei tue une unité ennemie en position de défense, l\'unité gagne 1 de puissance et 1 de défense jusqu\'à la fin de la bataille.',
-    },
     citation: '«Un général qui se précipite vers la bataille a déjà perdu. Celui qui attend son heure triomphe sans effort.»',
   },
   {
@@ -228,15 +147,6 @@ const GENERALS = [
     force: 10,
     strategy: 18,
     charisma: 14,
-    activeAbility: {
-      name: 'Esprit Tactique Inégalé',
-      description: 'À la fin d\'un tour, Go Hou Mei peut rejouer un de ses officiers ainsi que la troupe sous son commandement, mais ne peut pas attaquer.',
-      cooldown: 3,
-    },
-    passiveAbility: {
-      name: 'Génie Militaire',
-      description: 'Si Go Hou Mei réussit le test de Stratégie et commence le tour, ses unités ont +1 d\'attaque et de défense.',
-    },
     citation: '«La guerre est un jeu d\'échecs où chaque mouvement détermine le vainqueur avant même que l\'ennemi ne s\'en rende compte.»',
   },
   {
@@ -252,15 +162,6 @@ const GENERALS = [
     force: 18,
     strategy: 12,
     charisma: 16,
-    activeAbility: {
-      name: 'Rugissement du Lion',
-      description: 'Toutes les troupes ennemies (à l\'exception des officiers) perdent 1 d\'intimidation dans un rayon de 1000m autour de Gai Mou.',
-      cooldown: 3,
-    },
-    passiveAbility: {
-      name: 'Fierté Inflexible',
-      description: 'Lors d\'un combat impliquant une unité de l\'armée de Gai Mou, si l\'unité adverse est en supériorité numérique (plus de vitalité), l\'unité alliée obtient un bonus de 1 de puissance.',
-    },
     citation: '«Que ce soit dix, cent ou mille ennemis… je les écraserai tous de mes propres mains !»',
   },
 ];
