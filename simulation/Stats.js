@@ -44,19 +44,25 @@ class Stats {
       // If p2 wins, g1 vs g2 gets 0 (the reverse matchup g2 vs g1 is separate)
     }
 
-    // Convert to win rates
+    // Convert to win rates with CI
     const winRates = {};
+    const ci95 = {};
     for (const gA of GENERAL_IDS) {
       winRates[gA] = {};
+      ci95[gA] = {};
       for (const gB of GENERAL_IDS) {
-        if (counts[gA][gB] === 0) {
+        const n = counts[gA][gB];
+        if (n === 0) {
           winRates[gA][gB] = null;
+          ci95[gA][gB] = null;
         } else {
-          winRates[gA][gB] = Math.round((matrix[gA][gB] / counts[gA][gB]) * 1000) / 10;
+          const p = matrix[gA][gB] / n;
+          winRates[gA][gB] = Math.round(p * 1000) / 10;
+          ci95[gA][gB] = Math.round(1.96 * Math.sqrt(p * (1 - p) / n) * 1000) / 10;
         }
       }
     }
-    return { winRates, counts };
+    return { winRates, ci95, counts };
   }
 
   getGeneralReport() {
@@ -91,6 +97,9 @@ class Stats {
       const r = report[g];
       r.avgTurns = r.totalGames > 0 ? Math.round(r.totalTurns / r.totalGames * 10) / 10 : 0;
       r.winRate = r.totalGames > 0 ? Math.round((r.wins / r.totalGames) * 1000) / 10 : 0;
+      r.ci95 = r.totalGames > 0
+        ? Math.round(1.96 * Math.sqrt((r.winRate / 100) * (1 - r.winRate / 100) / r.totalGames) * 1000) / 10
+        : 0;
       r.name = GENERALS.find(gen => gen.id === g)?.name || g;
     }
 
@@ -163,6 +172,10 @@ class Stats {
       s.survivalRate = s.totalDeployed > 0
         ? Math.round((s.totalSurvived / s.totalDeployed) * 1000) / 10
         : 0;
+      const p = s.survivalRate / 100;
+      s.survivalCI95 = s.totalDeployed > 0
+        ? Math.round(1.96 * Math.sqrt(p * (1 - p) / s.totalDeployed) * 1000) / 10
+        : 0;
       s.avgHpLostPercent = s.totalDeployed > 0
         ? Math.round((s.totalDamageTaken / (s.totalDeployed * (UNITS[typeId]?.maxVitality || 100))) * 1000) / 10
         : 0;
@@ -230,11 +243,11 @@ class Stats {
     const sorted = Object.entries(generalReport)
       .sort((a, b) => b[1].winRate - a[1].winRate);
 
-    console.log('--- GENERAL WIN RATES ---');
+    console.log('--- GENERAL WIN RATES (95% CI) ---');
     console.log('');
-    for (const [id, r] of sorted) {
+    for (const [, r] of sorted) {
       const bar = '█'.repeat(Math.round(r.winRate / 2.5)) + '░'.repeat(40 - Math.round(r.winRate / 2.5));
-      console.log(`  ${r.name.padEnd(14)} ${r.winRate.toFixed(1).padStart(5)}%  ${bar}  (${r.wins}W/${r.losses}L/${r.draws}D, ${r.totalGames} games)`);
+      console.log(`  ${r.name.padEnd(14)} ${r.winRate.toFixed(1).padStart(5)}% ±${r.ci95.toFixed(1)}%  ${bar}  (${r.wins}W/${r.losses}L/${r.draws}D, n=${r.totalGames})`);
     }
 
     // Flag outliers
@@ -245,12 +258,12 @@ class Stats {
     }
 
     const unitEff = this.getUnitEfficiency();
-    console.log('\n--- UNIT SURVIVAL RATES ---');
+    console.log('\n--- UNIT SURVIVAL RATES (95% CI) ---');
     const unitSorted = Object.entries(unitEff)
       .filter(([id]) => id !== 'general')
       .sort((a, b) => b[1].survivalRate - a[1].survivalRate);
-    for (const [id, s] of unitSorted) {
-      console.log(`  ${s.name.padEnd(18)} Survival: ${s.survivalRate.toFixed(1).padStart(5)}%  AvgHPLost: ${s.avgHpLostPercent.toFixed(1).padStart(5)}%  (${s.totalDeployed} deployed)`);
+    for (const [, s] of unitSorted) {
+      console.log(`  ${s.name.padEnd(18)} Survival: ${s.survivalRate.toFixed(1).padStart(5)}% ±${s.survivalCI95.toFixed(1)}%  AvgHPLost: ${s.avgHpLostPercent.toFixed(1).padStart(5)}%  (n=${s.totalDeployed})`);
     }
 
     // Matchup matrix

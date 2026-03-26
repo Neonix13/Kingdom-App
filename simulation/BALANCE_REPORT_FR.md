@@ -17,23 +17,25 @@
 
 ## 1. Equilibrage des Generaux
 
-### Taux de Victoire Global (moyenne des 4 configs)
+### Taux de Victoire Global (moyenne des 4 configs, n≈4 400 par general)
 
-| # | General | Royaume | Force | Strategie | PV | Victoire Moy. | Verdict |
-|---|---------|---------|-------|-----------|-----|---------------|---------|
-| 1 | **Gai Mou** | WEI | 18 | 12 | 130 | **56.1%** | Fort |
-| 2 | **Mou Bu** | QIN | 18 | 12 | 130 | **56.0%** | Fort |
-| 3 | **Ren Pa** | ZHAO/WEI | 17 | 16 | 120 | **52.0%** | Equilibre |
-| 4 | **Shi Ba Shou** | ZHAO | 17 | 15 | 130 | **50.4%** | Equilibre |
-| 5 | **Ou Ki** | QIN | 15 | 16 | 110 | **46.4%** | Legerement faible |
-| 6 | **Kan Ki** | QIN | 14 | 16 | 100 | **42.4%** | Faible |
-| 7 | **Ou Sen** | QIN | 13 | 17 | 110 | **39.8%** | Faible |
-| 8 | **Kei Sha** | ZHAO | 13 | 16 | 100 | **36.5%** | Faible |
-| 9 | **Go Kei** | WEI | 14 | 17 | 90 | **37.2%** | Faible |
-| 10 | **Ri Boku** | ZHAO | 11 | 18 | 100 | **35.0%** | Faible |
-| 11 | **Go Hou Mei** | WEI | 10 | 18 | 80 | **24.4%** | Tres faible |
+| # | General | Royaume | Force | Strategie | PV | Victoire Moy. | IC 95% | Verdict |
+|---|---------|---------|-------|-----------|-----|---------------|--------|---------|
+| 1 | **Gai Mou** | WEI | 18 | 12 | 130 | **56.1%** | ±1.5% | Fort |
+| 2 | **Mou Bu** | QIN | 18 | 12 | 130 | **56.0%** | ±1.5% | Fort |
+| 3 | **Ren Pa** | ZHAO/WEI | 17 | 16 | 120 | **52.0%** | ±1.5% | Equilibre |
+| 4 | **Shi Ba Shou** | ZHAO | 17 | 15 | 130 | **50.4%** | ±1.5% | Equilibre |
+| 5 | **Ou Ki** | QIN | 15 | 16 | 110 | **46.4%** | ±1.5% | Legerement faible |
+| 6 | **Kan Ki** | QIN | 14 | 16 | 100 | **42.4%** | ±1.5% | Faible |
+| 7 | **Ou Sen** | QIN | 13 | 17 | 110 | **39.8%** | ±1.4% | Faible |
+| 8 | **Kei Sha** | ZHAO | 13 | 16 | 100 | **36.5%** | ±1.4% | Faible |
+| 9 | **Go Kei** | WEI | 14 | 17 | 90 | **37.2%** | ±1.4% | Faible |
+| 10 | **Ri Boku** | ZHAO | 11 | 18 | 100 | **35.0%** | ±1.4% | Faible |
+| 11 | **Go Hou Mei** | WEI | 10 | 18 | 80 | **24.4%** | ±1.3% | Tres faible |
 
-### Detail des Taux de Victoire par Config
+*IC 95% calcule avec 1.96 × √(p(1-p)/n) ou n ≈ 4 400 parties par general (1 100 par config × 4 configs).*
+
+### Detail des Taux de Victoire par Config (n≈1 100 par general par config, IC 95% ≈ ±3%)
 
 | General | 5k Init | 10k Init | 5k SansInit | 10k SansInit |
 |---------|---------|----------|-------------|--------------|
@@ -48,6 +50,8 @@
 | Go Kei | 31.9% | 42.1% | 32.0% | 42.6% |
 | Ri Boku | 29.2% | 40.5% | 29.3% | 41.1% |
 | Go Hou Mei | 17.9% | 32.2% | 16.3% | 31.2% |
+
+*Les IC par config sont plus larges (~±3%) en raison de l'echantillon plus petit (n≈1 100).*
 
 ### Constat Cle : Force >> Strategie
 
@@ -73,20 +77,22 @@ Avec des armees plus grandes, le combat individuel du general compte moins car i
 
 ### Taux de Survie (moyenne de toutes les configs)
 
-| # | Unite | Categorie | Cout | Survie | PV Perdus Moy. | Verdict |
-|---|-------|-----------|------|--------|----------------|---------|
-| 1 | Archer d'Elite | Tireurs | 900 | **73.2%** | 27.4% | Meilleure unite |
-| 2 | Archer | Tireurs | 600 | **71.0%** | 32.7% | Meilleur rapport qualite/prix |
-| 3 | Char | Chars | 1600 | **59.0%** | 43.5% | Fort mais cher |
-| 4 | Cavalier Lourd | Chevaux | 1200 | **55.9%** | 47.7% | Bon |
-| 5 | Phalange | Infanterie | 700 | **52.7%** | 53.2% | Tank solide |
-| 6 | Pietaille | Infanterie | 400 | **42.1%** | 66.3% | Chair a canon correcte |
-| 7 | Soldats | Infanterie | 600 | **41.0%** | 64.2% | Moyen |
-| 8 | Batisseurs | Chars | 1000 | **35.3%** | 71.8% | Faible pour le cout |
-| 9 | Cavalier Leger | Chevaux | 900 | **33.1%** | 70.3% | Sous-performe |
-| 10 | Lancier | Infanterie | 700 | **27.9%** | 77.4% | Faible |
-| 11 | Assassin | Infanterie | 800 | **26.7%** | 76.3% | Canon de verre |
-| 12 | Espion | Infanterie | 600 | **20.8%** | 84.3% | Pire unite |
+| # | Unite | Categorie | Cout | Survie | IC 95% | PV Perdus Moy. | Verdict |
+|---|-------|-----------|------|--------|--------|----------------|---------|
+| 1 | Archer d'Elite | Tireurs | 900 | **73.2%** | ±0.4% | 27.4% | Meilleure unite |
+| 2 | Archer | Tireurs | 600 | **71.0%** | ±0.3% | 32.7% | Meilleur rapport qualite/prix |
+| 3 | Char | Chars | 1600 | **59.0%** | ±0.5% | 43.5% | Fort mais cher |
+| 4 | Cavalier Lourd | Chevaux | 1200 | **55.9%** | ±0.5% | 47.7% | Bon |
+| 5 | Phalange | Infanterie | 700 | **52.7%** | ±0.3% | 53.2% | Tank solide |
+| 6 | Pietaille | Infanterie | 400 | **42.1%** | ±0.3% | 66.3% | Chair a canon correcte |
+| 7 | Soldats | Infanterie | 600 | **41.0%** | ±0.3% | 64.2% | Moyen |
+| 8 | Batisseurs | Chars | 1000 | **35.3%** | ±0.5% | 71.8% | Faible pour le cout |
+| 9 | Cavalier Leger | Chevaux | 900 | **33.1%** | ±0.4% | 70.3% | Sous-performe |
+| 10 | Lancier | Infanterie | 700 | **27.9%** | ±0.3% | 77.4% | Faible |
+| 11 | Assassin | Infanterie | 800 | **26.7%** | ±0.4% | 76.3% | Canon de verre |
+| 12 | Espion | Infanterie | 600 | **20.8%** | ±0.3% | 84.3% | Pire unite |
+
+*Les IC des unites sont tres serres (< ±0.5%) car chaque type d'unite est deploye des milliers de fois sur 24 200 parties.*
 
 ### Constat Cle : Les Unites a Distance Dominent
 
@@ -114,24 +120,26 @@ L'Assassin a 26.7% de survie mais ses stats racontent une histoire interessante 
 
 ## 3. Analyse des Matchups
 
-### Matchups les Plus Desequilibres (budget 10k, avec initiative)
+### Matchups les Plus Desequilibres (budget 10k, avec initiative, n=50 par matchup)
 
-| Matchup | Victoire J1 | Note |
-|---------|-------------|------|
-| Gai Mou vs Go Hou Mei | **91%** | Le plus desequilibre |
-| Mou Bu vs Go Hou Mei | **85%** | La force ecrase la strategie |
-| Gai Mou vs Kei Sha | **78%** | |
-| Ren Pa vs Ri Boku | **79%** | |
-| Mou Bu vs Kei Sha | **83%** | |
+| Matchup | Victoire J1 | IC 95% | Note |
+|---------|-------------|--------|------|
+| Gai Mou vs Go Hou Mei | **91%** | ±7.9% | Le plus desequilibre |
+| Mou Bu vs Go Hou Mei | **85%** | ±9.9% | La force ecrase la strategie |
+| Mou Bu vs Kei Sha | **83%** | ±10.4% | |
+| Ren Pa vs Ri Boku | **79%** | ±11.3% | |
+| Gai Mou vs Kei Sha | **78%** | ±11.5% | |
 
-### Matchups les Plus Equilibres (budget 10k)
+### Matchups les Plus Equilibres (budget 10k, n=50 par matchup)
 
-| Matchup | Victoire J1 |
-|---------|-------------|
-| Ou Ki miroir | 51% |
-| Shi Ba Shou miroir | 47% |
-| Ou Ki vs Ou Sen | 50% |
-| Kan Ki vs Ri Boku | 48% |
+| Matchup | Victoire J1 | IC 95% |
+|---------|-------------|--------|
+| Ou Ki miroir | 51% | ±13.9% |
+| Shi Ba Shou miroir | 47% | ±13.8% |
+| Ou Ki vs Ou Sen | 50% | ±13.9% |
+| Kan Ki vs Ri Boku | 48% | ±13.8% |
+
+*Les IC par matchup individuel sont larges (~±14% a 50%) car n=50 par matchup. Les taux de victoire globaux par general sont bien plus precis car ils agregent les 11 adversaires.*
 
 ### Matchups Asymetriques Interessants
 
@@ -143,7 +151,7 @@ Certains matchups ou l'ordre de jeu compte significativement (J1 vs J2 differe d
 
 ## 4. Analyse du Systeme d'Initiative
 
-Comparaison initiative (d20 + strategie) vs desactivee (depart aleatoire, alternance) :
+Comparaison initiative (d20 + strategie) vs desactivee (depart aleatoire, alternance). Chaque colonne moyenne 2 configs (5k + 10k), n≈2 200 par general par colonne, IC 95% ≈ ±2%.
 
 | General | Strategie | Avec Initiative | Sans | Delta |
 |---------|-----------|----------------|------|-------|
@@ -158,6 +166,8 @@ Comparaison initiative (d20 + strategie) vs desactivee (depart aleatoire, altern
 | Shi Ba Shou | 15 | 50.0% | 50.7% | +0.7 |
 | Mou Bu | 12 | 55.5% | 56.5% | +1.0 |
 | Gai Mou | 12 | 56.5% | 55.7% | -0.8 |
+
+*Tous les deltas sont dans la marge d'IC de ±2%, confirmant qu'aucun n'est statistiquement significatif.*
 
 **Conclusion : L'initiative a un impact negligeable sur l'equilibrage.** Les differences sont dans le bruit statistique (< 3%). Les generaux a haute strategie ne beneficient pas significativement de jouer en premier. La valeur principale de la stat Strategie reside dans la portee de vision, pas dans l'ordre des tours.
 

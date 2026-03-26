@@ -17,23 +17,25 @@
 
 ## 1. General Balance
 
-### Overall Win Rates (all 4 configs averaged)
+### Overall Win Rates (all 4 configs averaged, n≈4,400 per general)
 
-| # | General | Kingdom | Force | Strategy | HP | Avg Win% | Verdict |
-|---|---------|---------|-------|----------|-----|----------|---------|
-| 1 | **Gai Mou** | WEI | 18 | 12 | 130 | **56.1%** | Strong |
-| 2 | **Mou Bu** | QIN | 18 | 12 | 130 | **56.0%** | Strong |
-| 3 | **Ren Pa** | ZHAO/WEI | 17 | 16 | 120 | **52.0%** | Balanced |
-| 4 | **Shi Ba Shou** | ZHAO | 17 | 15 | 130 | **50.4%** | Balanced |
-| 5 | **Ou Ki** | QIN | 15 | 16 | 110 | **46.4%** | Slightly weak |
-| 6 | **Kan Ki** | QIN | 14 | 16 | 100 | **42.4%** | Weak |
-| 7 | **Ou Sen** | QIN | 13 | 17 | 110 | **39.8%** | Weak |
-| 8 | **Kei Sha** | ZHAO | 13 | 16 | 100 | **36.5%** | Weak |
-| 9 | **Go Kei** | WEI | 14 | 17 | 90 | **37.2%** | Weak |
-| 10 | **Ri Boku** | ZHAO | 11 | 18 | 100 | **35.0%** | Weak |
-| 11 | **Go Hou Mei** | WEI | 10 | 18 | 80 | **24.4%** | Very weak |
+| # | General | Kingdom | Force | Strategy | HP | Avg Win% | 95% CI | Verdict |
+|---|---------|---------|-------|----------|-----|----------|--------|---------|
+| 1 | **Gai Mou** | WEI | 18 | 12 | 130 | **56.1%** | ±1.5% | Strong |
+| 2 | **Mou Bu** | QIN | 18 | 12 | 130 | **56.0%** | ±1.5% | Strong |
+| 3 | **Ren Pa** | ZHAO/WEI | 17 | 16 | 120 | **52.0%** | ±1.5% | Balanced |
+| 4 | **Shi Ba Shou** | ZHAO | 17 | 15 | 130 | **50.4%** | ±1.5% | Balanced |
+| 5 | **Ou Ki** | QIN | 15 | 16 | 110 | **46.4%** | ±1.5% | Slightly weak |
+| 6 | **Kan Ki** | QIN | 14 | 16 | 100 | **42.4%** | ±1.5% | Weak |
+| 7 | **Ou Sen** | QIN | 13 | 17 | 110 | **39.8%** | ±1.4% | Weak |
+| 8 | **Kei Sha** | ZHAO | 13 | 16 | 100 | **36.5%** | ±1.4% | Weak |
+| 9 | **Go Kei** | WEI | 14 | 17 | 90 | **37.2%** | ±1.4% | Weak |
+| 10 | **Ri Boku** | ZHAO | 11 | 18 | 100 | **35.0%** | ±1.4% | Weak |
+| 11 | **Go Hou Mei** | WEI | 10 | 18 | 80 | **24.4%** | ±1.3% | Very weak |
 
-### Win Rate Breakdown by Config
+*95% CI computed as 1.96 × √(p(1-p)/n) where n ≈ 4,400 games per general (1,100 per config × 4 configs).*
+
+### Win Rate Breakdown by Config (n≈1,100 per general per config, 95% CI ≈ ±3%)
 
 | General | 5k Init | 10k Init | 5k NoInit | 10k NoInit |
 |---------|---------|----------|-----------|------------|
@@ -48,6 +50,8 @@
 | Go Kei | 31.9% | 42.1% | 32.0% | 42.6% |
 | Ri Boku | 29.2% | 40.5% | 29.3% | 41.1% |
 | Go Hou Mei | 17.9% | 32.2% | 16.3% | 31.2% |
+
+*Per-config CIs are wider (~±3%) due to smaller sample size (n≈1,100).*
 
 ### Key Finding: Force >> Strategy
 
@@ -73,20 +77,22 @@ With larger armies, individual general combat matters less because the general i
 
 ### Survival Rates (averaged across all configs)
 
-| # | Unit | Category | Cost | Survival | Avg HP Lost | Verdict |
-|---|------|----------|------|----------|-------------|---------|
-| 1 | Archer d'Elite | Tireurs | 900 | **73.2%** | 27.4% | Best unit |
-| 2 | Archer | Tireurs | 600 | **71.0%** | 32.7% | Best value |
-| 3 | Char | Chars | 1600 | **59.0%** | 43.5% | Strong but expensive |
-| 4 | Cavalier Lourd | Chevaux | 1200 | **55.9%** | 47.7% | Good |
-| 5 | Phalange | Infanterie | 700 | **52.7%** | 53.2% | Solid tank |
-| 6 | Pietaille | Infanterie | 400 | **42.1%** | 66.3% | Decent fodder |
-| 7 | Soldats | Infanterie | 600 | **41.0%** | 64.2% | Average |
-| 8 | Batisseurs | Chars | 1000 | **35.3%** | 71.8% | Weak for cost |
-| 9 | Cavalier Leger | Chevaux | 900 | **33.1%** | 70.3% | Underperforming |
-| 10 | Lancier | Infanterie | 700 | **27.9%** | 77.4% | Weak |
-| 11 | Assassin | Infanterie | 800 | **26.7%** | 76.3% | Glass cannon |
-| 12 | Espion | Infanterie | 600 | **20.8%** | 84.3% | Worst unit |
+| # | Unit | Category | Cost | Survival | 95% CI | Avg HP Lost | Verdict |
+|---|------|----------|------|----------|--------|-------------|---------|
+| 1 | Archer d'Elite | Tireurs | 900 | **73.2%** | ±0.4% | 27.4% | Best unit |
+| 2 | Archer | Tireurs | 600 | **71.0%** | ±0.3% | 32.7% | Best value |
+| 3 | Char | Chars | 1600 | **59.0%** | ±0.5% | 43.5% | Strong but expensive |
+| 4 | Cavalier Lourd | Chevaux | 1200 | **55.9%** | ±0.5% | 47.7% | Good |
+| 5 | Phalange | Infanterie | 700 | **52.7%** | ±0.3% | 53.2% | Solid tank |
+| 6 | Pietaille | Infanterie | 400 | **42.1%** | ±0.3% | 66.3% | Decent fodder |
+| 7 | Soldats | Infanterie | 600 | **41.0%** | ±0.3% | 64.2% | Average |
+| 8 | Batisseurs | Chars | 1000 | **35.3%** | ±0.5% | 71.8% | Weak for cost |
+| 9 | Cavalier Leger | Chevaux | 900 | **33.1%** | ±0.4% | 70.3% | Underperforming |
+| 10 | Lancier | Infanterie | 700 | **27.9%** | ±0.3% | 77.4% | Weak |
+| 11 | Assassin | Infanterie | 800 | **26.7%** | ±0.4% | 76.3% | Glass cannon |
+| 12 | Espion | Infanterie | 600 | **20.8%** | ±0.3% | 84.3% | Worst unit |
+
+*Unit CIs are very tight (< ±0.5%) because each unit type is deployed thousands of times across 24,200 games.*
 
 ### Key Finding: Ranged Units Dominate
 
@@ -114,24 +120,26 @@ The Assassin has 26.7% survival but its stats tell an interesting story: highest
 
 ## 3. Matchup Analysis
 
-### Most Lopsided Matchups (10k budget, with initiative)
+### Most Lopsided Matchups (10k budget, with initiative, n=50 per matchup)
 
-| Matchup | P1 Win% | Note |
-|---------|---------|------|
-| Gai Mou vs Go Hou Mei | **91%** | Most lopsided |
-| Mou Bu vs Go Hou Mei | **85%** | Force crushes strategy |
-| Gai Mou vs Kei Sha | **78%** | |
-| Ren Pa vs Ri Boku | **79%** | |
-| Mou Bu vs Kei Sha | **83%** | |
+| Matchup | P1 Win% | 95% CI | Note |
+|---------|---------|--------|------|
+| Gai Mou vs Go Hou Mei | **91%** | ±7.9% | Most lopsided |
+| Mou Bu vs Go Hou Mei | **85%** | ±9.9% | Force crushes strategy |
+| Mou Bu vs Kei Sha | **83%** | ±10.4% | |
+| Ren Pa vs Ri Boku | **79%** | ±11.3% | |
+| Gai Mou vs Kei Sha | **78%** | ±11.5% | |
 
-### Most Balanced Matchups (10k budget)
+### Most Balanced Matchups (10k budget, n=50 per matchup)
 
-| Matchup | P1 Win% |
-|---------|---------|
-| Ou Ki mirror | 51% |
-| Shi Ba Shou mirror | 47% |
-| Ou Ki vs Ou Sen | 50% |
-| Kan Ki vs Ri Boku | 48% |
+| Matchup | P1 Win% | 95% CI |
+|---------|---------|--------|
+| Ou Ki mirror | 51% | ±13.9% |
+| Shi Ba Shou mirror | 47% | ±13.8% |
+| Ou Ki vs Ou Sen | 50% | ±13.9% |
+| Kan Ki vs Ri Boku | 48% | ±13.8% |
+
+*Individual matchup CIs are wide (~±14% at 50%) because n=50 per matchup. The overall general win rates are much more precise because they aggregate across all 11 opponents.*
 
 ### Interesting Asymmetric Matchups
 
@@ -143,7 +151,7 @@ Some matchups where order matters significantly (P1 vs P2 differs by > 15%):
 
 ## 4. Initiative System Analysis
 
-Comparing initiative (d20 + strategy) vs disabled (random start, alternating):
+Comparing initiative (d20 + strategy) vs disabled (random start, alternating). Each column averages 2 configs (5k + 10k), n≈2,200 per general per column, 95% CI ≈ ±2%.
 
 | General | Strategy | With Initiative | Without | Delta |
 |---------|----------|----------------|---------|-------|
@@ -158,6 +166,8 @@ Comparing initiative (d20 + strategy) vs disabled (random start, alternating):
 | Shi Ba Shou | 15 | 50.0% | 50.7% | +0.7 |
 | Mou Bu | 12 | 55.5% | 56.5% | +1.0 |
 | Gai Mou | 12 | 56.5% | 55.7% | -0.8 |
+
+*All deltas are within the ±2% CI margin, confirming that none are statistically significant.*
 
 **Conclusion: Initiative has negligible impact on balance.** The differences are within noise (< 3%). High-strategy generals don't benefit meaningfully from going first. The strategy stat's value is primarily in vision range, not turn order.
 
