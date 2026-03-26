@@ -58,7 +58,7 @@ function drawHex(ctx, cx, cy, fillColor, strokeColor, alpha = 1, lineWidth = 1) 
 
 // Angle de rotation (en radians) pour chaque orientation (0-5)
 // L'image par défaut pointe vers le bas (direction [0,1] = index 5 = angle 0)
-const FACING_ANGLES = [Math.PI / 3, 2 * Math.PI / 3, Math.PI, -2 * Math.PI / 3, -Math.PI / 3, 0];
+const FACING_ANGLES = [-Math.PI / 3, -2 * Math.PI / 3, Math.PI, 2 * Math.PI / 3, Math.PI / 3, 0];
 
 function hexFacingClient(q1, r1, q2, r2) {
   const DIRS = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];

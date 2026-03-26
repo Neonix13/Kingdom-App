@@ -179,7 +179,7 @@ function renderGenerals(takenList) {
     div.className = `general-card${taken ? ' taken' : ''}${sel ? ' selected' : ''}`;
     const imgEntry = GENERAL_IMAGE1_MAP[g.id];
     const imgHtml = imgEntry
-      ? `<img src="/assets/GENERAL IMAGE 1-1/${encodeURIComponent(imgEntry.file)}.${imgEntry.ext}" style="width:100%;aspect-ratio:1/1;object-fit:cover;object-position:top;border-radius:4px;margin-bottom:6px;display:block">`
+      ? `<img src="/assets/unites/GENERAL IMAGE 1-1/${encodeURIComponent(imgEntry.file)}.${imgEntry.ext}" style="width:100%;aspect-ratio:1/1;object-fit:cover;object-position:top;border-radius:4px;margin-bottom:6px;display:block">`
       : '';
     div.innerHTML = `
       ${imgHtml}
@@ -197,7 +197,7 @@ function renderGenerals(takenList) {
 function showGeneralCard(g) {
   const imgEntry = GENERAL_IMAGE1_MAP[g.id];
   const imgHtml = imgEntry
-    ? `<img class="uc-pdf-img" src="/assets/GENERAL IMAGE 1-1/${encodeURIComponent(imgEntry.file)}.${imgEntry.ext}" alt="${g.name}">`
+    ? `<img class="uc-pdf-img" src="/assets/unites/GENERAL IMAGE 1-1/${encodeURIComponent(imgEntry.file)}.${imgEntry.ext}" alt="${g.name}">`
     : `<div class="uc-pdf-img-placeholder" style="font-size:52px;flex-direction:column;gap:8px">★<span style="font-size:14px;color:#7a5820">${g.name}</span></div>`;
 
   const row2 = [
@@ -248,7 +248,7 @@ function closeGeneralCard() {
 function showUnitCardLobby(u) {
   const imgEntry = UNIT_IMAGE1_MAP[u.id];
   const imgHtml = imgEntry
-    ? `<img class="uc-pdf-img" src="/assets/UNIT IMAGE 1-1/${encodeURIComponent(imgEntry.file)}.${imgEntry.ext}" alt="${u.name}">`
+    ? `<img class="uc-pdf-img" src="/assets/unites/UNIT IMAGE 1-1/${encodeURIComponent(imgEntry.file)}.${imgEntry.ext}" alt="${u.name}">`
     : `<div class="uc-pdf-img-placeholder">${u.name.charAt(0)}</div>`;
 
   const stats = [
@@ -333,7 +333,7 @@ function renderArmyBuilder() {
     div.className = 'unit-card';
     const imgEntry = UNIT_IMAGE1_MAP[u.id];
     const imgHtml = imgEntry
-      ? `<img src="/assets/UNIT IMAGE 1-1/${encodeURIComponent(imgEntry.file)}.${imgEntry.ext}" style="width:100%;aspect-ratio:1/1;object-fit:cover;object-position:top;border-radius:4px;margin-bottom:6px;display:block">`
+      ? `<img src="/assets/unites/UNIT IMAGE 1-1/${encodeURIComponent(imgEntry.file)}.${imgEntry.ext}" style="width:100%;aspect-ratio:1/1;object-fit:cover;object-position:top;border-radius:4px;margin-bottom:6px;display:block">`
       : '';
     div.innerHTML = `
       ${imgHtml}

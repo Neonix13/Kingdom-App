@@ -1569,7 +1569,7 @@ function showUnitCard(unit) {
     if (src) {
       imgHtml = `<img class="uc-pdf-img" src="${src}" alt="${unit.name}">`;
     } else if (imgToken) {
-      imgHtml = `<img class="uc-pdf-img" src="/assets/UNIT TOKEN/${encodeURIComponent(imgToken)}.png" alt="${unit.name}">`;
+      imgHtml = `<img class="uc-pdf-img" src="/assets/unites/UNIT TOKEN/${encodeURIComponent(imgToken)}.png" alt="${unit.name}">`;
     } else {
       imgHtml = `<div class="uc-pdf-img-placeholder">${unit.name.charAt(0)}</div>`;
     }
