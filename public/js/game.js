@@ -425,7 +425,7 @@ function render() {
         const { x, y } = hexToPixel(q, r);
         const isVisible = visibleSet.has(key);
         const isHovered = hoveredHex && hoveredHex.q === q && hoveredHex.r === r;
-        let fill = isVisible ? 'rgba(0,0,0,0)' : 'rgba(0,0,0,0.72)';
+        let fill = isVisible ? 'rgba(0,0,0,0)' : 'rgba(0,0,0,0.05)';
         let stroke = isVisible ? `rgba(${gridColorRGB},${gridOpacity})` : 'rgba(0,0,0,0)';
         if (isVisible && movableTiles.has(key)) fill = 'rgba(40,120,20,0.35)';
         if (isVisible && attackableTiles.has(key)) fill = 'rgba(180,30,10,0.35)';
@@ -445,7 +445,7 @@ function render() {
         const { x, y } = hexToPixel(q, r);
         const inZone = startZone?.tileSet ? startZone.tileSet.has(`${q},${r}`) : (startZone ? hexDistance(q, r, startZone.q, startZone.r) <= (startZone.radius || 4) : false);
         const isHovered = hoveredHex && hoveredHex.q === q && hoveredHex.r === r;
-        let fill = inZone ? 'rgba(60,180,30,0.12)' : (startZone ? 'rgba(0,0,0,0.72)' : 'rgba(0,0,0,0)');
+        let fill = inZone ? 'rgba(60,180,30,0.12)' : (startZone ? 'rgba(0,0,0,0.05)' : 'rgba(0,0,0,0)');
         let stroke = inZone ? 'rgba(100,240,60,0.85)' : (startZone ? 'rgba(0,0,0,0)' : `rgba(${gridColorRGB},${gridOpacity * 0.6})`);
         if (inZone && isHovered) fill = 'rgba(80,220,50,0.25)';
         if (isHovered && !inZone) stroke = 'rgba(200,160,80,0.5)';
@@ -1008,7 +1008,7 @@ function findPathClient(fromQ, fromR, toQ, toR, maxSpeed, unit) {
   if (fromQ === toQ && fromR === toR) return [];
   const isCavalry = unit && (unit.category === 'Chevaux' || unit.category === 'Chars');
   const occupiedKeys = new Set((gameState?.units || []).filter(u => !(u.q === fromQ && u.r === fromR)).map(u => `${u.q},${u.r}`));
-  const TERRAIN_COST = { plain: 1, road: 1, forest: 2, river: 2, building: 1, bridge: 1 };
+  const TERRAIN_COST = { plain: 1, road: 0.5, forest: 2, river: 2, building: 1, bridge: 1 };
   const DIRS = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
   const dist = new Map();
   const prev = new Map();
@@ -1188,7 +1188,7 @@ function selectUnit(unit) {
 
 function terrainMoveCost(key) {
   const t = terrainData[key] || 'plain';
-  const costs = { plain: 1, road: 1, forest: 2, river: 2, building: 1, bridge: 1 };
+  const costs = { plain: 1, road: 0.5, forest: 2, river: 2, building: 1, bridge: 1 };
   return costs[t] ?? 1;
 }
 
