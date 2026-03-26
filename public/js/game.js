@@ -438,13 +438,37 @@ function render() {
         const { x, y } = hexToPixel(q, r);
         const inZone = startZone?.tileSet ? startZone.tileSet.has(`${q},${r}`) : (startZone ? hexDistance(q, r, startZone.q, startZone.r) <= (startZone.radius || 4) : false);
         const isHovered = hoveredHex && hoveredHex.q === q && hoveredHex.r === r;
-        let fill = inZone ? 'rgba(40,120,20,0.25)' : 'rgba(0,0,0,0)';
-        let stroke = inZone ? `rgba(80,200,40,${Math.min(1, gridOpacity * 2)})` : `rgba(${gridColorRGB},${gridOpacity * 0.6})`;
-        if (inZone && isHovered) fill = 'rgba(60,180,30,0.4)';
+        let fill = inZone ? 'rgba(60,180,30,0.4)' : 'rgba(0,0,0,0)';
+        let stroke = inZone ? 'rgba(100,240,60,0.85)' : `rgba(${gridColorRGB},${gridOpacity * 0.6})`;
+        if (inZone && isHovered) fill = 'rgba(80,220,50,0.6)';
         if (isHovered && !inZone) stroke = 'rgba(200,160,80,0.5)';
         drawHex(ctx, x, y, fill, stroke, 1, gridThickness);
       }
     }
+  }
+
+  // Contour de la zone de déploiement
+  if (startZone?.tileSet && startZone.tileSet.size > 0) {
+    const dirs = SEGMENT_EDGE_DIRS;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(100,255,60,0.95)';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (const key of startZone.tileSet) {
+      const [q, r] = key.split(',').map(Number);
+      const { x, y } = hexToPixel(q, r);
+      const corners = hexCorners(x, y);
+      for (let i = 0; i < 6; i++) {
+        const [dq, dr] = dirs[i];
+        if (!startZone.tileSet.has(`${q + dq},${r + dr}`)) {
+          ctx.moveTo(corners[i].x, corners[i].y);
+          ctx.lineTo(corners[(i + 1) % 6].x, corners[(i + 1) % 6].y);
+        }
+      }
+    }
+    ctx.stroke();
+    ctx.restore();
   }
 
   if (rangeTiles.size > 0 && rangeCenter) {
@@ -2145,6 +2169,7 @@ function onWsOpen() {
       camX = -x * zoom;
       camY = -y * zoom;
     }
+    render();
   }
 }
 
