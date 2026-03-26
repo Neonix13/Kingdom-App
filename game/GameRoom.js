@@ -217,7 +217,6 @@ class GameRoom {
       generalData: general,
       occupiedHexes: this._getAllOccupiedHexes(),
       players: this.players.map(p => ({ id: p.id, name: p.name, color: p.color || '#4a90d9' })),
-      allZones: this.players.filter(p => p.id !== playerId && p.startingZone).map(p => ({ playerId: p.id, color: p.color || '#4a90d9', zone: p.startingZone })),
     };
   }
 

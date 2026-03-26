@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kingdom Battleground — Replay Viewer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a0a0a; color: #c8a060; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
+    #top-bar {
+      position: fixed; top: 0; left: 0; right: 0; height: 48px; z-index: 100;
+      background: rgba(18,8,4,0.95); border-bottom: 2px solid #3a2408;
+      display: flex; align-items: center; padding: 0 16px; gap: 12px;
+    }
+    #top-bar h1 { font-size: 14px; color: #ffd700; white-space: nowrap; }
+    #top-bar .info { font-size: 12px; color: #7a5820; }
+    #top-bar .info strong { color: #c8a060; }
+    #controls {
+      position: fixed; bottom: 0; left: 0; right: 0; height: 80px; z-index: 100;
+      background: rgba(18,8,4,0.95); border-top: 2px solid #3a2408;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+    }
+    #controls .row { display: flex; align-items: center; gap: 10px; }
+    #controls button {
+      background: #1a0f04; border: 1px solid #3a2408; color: #c8a84b; padding: 6px 14px;
+      border-radius: 5px; cursor: pointer; font-size: 13px; font-weight: bold;
+    }
+    #controls button:hover { background: #2a1a08; border-color: #7a5820; }
+    #controls button:disabled { opacity: 0.3; cursor: default; }
+    #controls button.active { background: #3a2408; border-color: #c8960c; color: #ffd700; }
+    #timeline {
+      width: 80%; max-width: 800px; height: 6px; -webkit-appearance: none; appearance: none;
+      background: #1a0f04; border-radius: 3px; outline: none; cursor: pointer;
+    }
+    #timeline::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 14px; height: 14px; background: #ffd700;
+      border-radius: 50%; cursor: grab;
+    }
+    #frame-info { font-size: 11px; color: #7a5820; min-width: 120px; text-align: center; }
+    #canvas-container { position: fixed; top: 48px; left: 0; right: 0; bottom: 80px; }
+    canvas { display: block; width: 100%; height: 100%; }
+    #sidebar {
+      position: fixed; top: 48px; right: 0; width: 280px; bottom: 80px; z-index: 50;
+      background: rgba(18,8,4,0.93); border-left: 2px solid #3a2408; overflow-y: auto;
+      padding: 10px; font-size: 12px;
+    }
+    #sidebar h3 { color: #ffd700; font-size: 13px; margin: 8px 0 4px; }
+    .unit-card {
+      background: #1a0f04; border: 1px solid #2a1608; border-radius: 5px;
+      padding: 5px 8px; margin: 3px 0; display: flex; align-items: center; gap: 8px;
+    }
+    .unit-card .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .unit-card .name { flex: 1; color: #c8a060; font-weight: bold; font-size: 11px; }
+    .unit-card .hp { font-size: 10px; color: #7a5820; }
+    .unit-card.dead { opacity: 0.35; }
+    .unit-card.general { border-color: #ffd700; }
+    .action-log { font-size: 11px; color: #a89060; padding: 2px 0; border-bottom: 1px solid #1a0d04; }
+    .action-log .action-type { font-weight: bold; color: #c8960c; }
+    #drop-zone {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 200;
+      background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 16px;
+    }
+    #drop-zone.hidden { display: none; }
+    #drop-zone h2 { color: #ffd700; font-size: 20px; }
+    #drop-zone p { color: #7a5820; font-size: 14px; }
+    #drop-zone label {
+      background: #3a2408; color: #ffd700; padding: 12px 28px; border-radius: 8px;
+      cursor: pointer; font-size: 14px; font-weight: bold; border: 2px solid #7a5820;
+    }
+    #drop-zone label:hover { background: #4a3418; }
+    #drop-zone input { display: none; }
+  </style>
+</head>
+<body>
+  <div id="top-bar">
+    <h1>REPLAY VIEWER</h1>
+    <span class="info" id="matchup-info"></span>
+    <span class="info" id="result-info"></span>
+  </div>
+
+  <div id="canvas-container">
+    <canvas id="replay-canvas"></canvas>
+  </div>
+
+  <div id="sidebar">
+    <h3>Actions</h3>
+    <div id="action-list"></div>
+    <h3>Player 1</h3>
+    <div id="p1-units"></div>
+    <h3>Player 2</h3>
+    <div id="p2-units"></div>
+  </div>
+
+  <div id="controls">
+    <div class="row">
+      <button id="btn-start" title="Go to start">⏮</button>
+      <button id="btn-prev" title="Previous frame">◀</button>
+      <button id="btn-play" title="Play/Pause">▶</button>
+      <button id="btn-next" title="Next frame">▶▏</button>
+      <button id="btn-end" title="Go to end">⏭</button>
+      <span id="frame-info">Frame 0 / 0</span>
+      <label style="font-size:11px;color:#7a5820;">Speed:
+        <select id="speed-select" style="background:#1a0f04;color:#c8a060;border:1px solid #3a2408;border-radius:3px;padding:2px;">
+          <option value="2000">0.5x</option>
+          <option value="1000">1x</option>
+          <option value="500" selected>2x</option>
+          <option value="200">5x</option>
+          <option value="50">20x</option>
+        </select>
+      </label>
+    </div>
+    <input type="range" id="timeline" min="0" max="0" value="0">
+  </div>
+
+  <div id="drop-zone">
+    <h2>Load Replay</h2>
+    <p>Drop a replay JSON file here or click to browse</p>
+    <label>Choose File <input type="file" id="file-input" accept=".json"></label>
+  </div>
+
+  <script src="/js/hexGrid.js"></script>
+  <script>
+    // === STATE ===
+    let replay = null;
+    let currentFrame = 0;
+    let playing = false;
+    let playInterval = null;
+    let camX = 0, camY = 0, zoom = 0.45;
+    let isDragging = false, dragStartX = 0, dragStartY = 0, camAtDragX = 0, camAtDragY = 0;
+    let terrainData = {}, segmentData = {};
+
+    const canvas = document.getElementById('replay-canvas');
+    const ctx = canvas.getContext('2d');
+    const mapImage = new Image();
+    mapImage.src = '/assets/img/map.webp';
+    mapImage.onload = () => render();
+
+    // Load terrain & segment data
+    fetch('/data/terrain.json').then(r => r.json()).then(d => { terrainData = d; render(); }).catch(() => {});
+    fetch('/data/segments.json').then(r => r.json()).then(d => { segmentData = d; render(); }).catch(() => {});
+
+    const TERRAIN_COLORS = {
+      forest: 'rgba(30,100,20,0.5)', river: 'rgba(40,120,220,0.5)',
+      building: 'rgba(140,100,60,0.5)', road: 'rgba(200,170,100,0.3)',
+      bridge: 'rgba(220,140,30,0.5)',
+    };
+    const SEGMENT_COLORS = {
+      river:'#4a90d9', cliff:'#8888aa', bridge:'#e8a040', passerelle:'#c8b060',
+      barriere:'#4a8040', chevaux_de_frise:'#c04040', mur:'#606060', echelle:'#a07840',
+    };
+    const SEGMENT_EDGE_DIRS = [[1,0],[0,1],[-1,1],[-1,0],[0,-1],[1,-1]];
+    const PLAYER_COLORS = { p1: '#4a90d9', p2: '#d94a4a' };
+    // === FILE LOADING ===
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+
+    document.addEventListener('dragover', e => { e.preventDefault(); });
+    document.addEventListener('drop', e => {
+      e.preventDefault();
+      const file = e.dataTransfer.files[0];
+      if (file) loadFile(file);
+    });
+    fileInput.addEventListener('change', e => {
+      if (e.target.files[0]) loadFile(e.target.files[0]);
+    });
+
+    // Also support loading via URL param
+    const urlParams = new URLSearchParams(window.location.search);
+    const replayPath = urlParams.get('file');
+    if (replayPath) {
+      fetch(replayPath).then(r => r.json()).then(data => { initReplay(data); }).catch(e => console.error('Failed to load replay:', e));
+    }
+
+    function loadFile(file) {
+      const reader = new FileReader();
+      reader.onload = e => {
+        try {
+          const data = JSON.parse(e.target.result);
+          initReplay(data);
+        } catch (err) { alert('Invalid replay JSON: ' + err.message); }
+      };
+      reader.readAsText(file);
+    }
+
+    function initReplay(data) {
+      replay = data;
+      currentFrame = 0;
+      dropZone.classList.add('hidden');
+
+      // Update UI
+      const g1 = replay.players[0], g2 = replay.players[1];
+      document.getElementById('matchup-info').innerHTML =
+        `<strong>${g1.name}</strong> (${g1.generalId}) vs <strong>${g2.name}</strong> (${g2.generalId}) — Budget: ${replay.budget}`;
+      document.getElementById('result-info').innerHTML = replay.isDraw
+        ? '<strong style="color:#c8960c;">DRAW</strong>'
+        : `Winner: <strong style="color:#ffd700;">${replay.winner === 'p1' ? g1.name : g2.name}</strong>`;
+
+      const timeline = document.getElementById('timeline');
+      timeline.max = replay.frames.length - 1;
+      timeline.value = 0;
+
+      PLAYER_COLORS.p1 = g1.color || '#4a90d9';
+      PLAYER_COLORS.p2 = g2.color || '#d94a4a';
+
+      buildTurnIndex();
+
+      // Center camera on first units
+      centerCameraOnUnits(replay.frames[0].units);
+      render();
+      updateSidebar();
+    }
+
+    function centerCameraOnUnits(units) {
+      if (!units || units.length === 0) return;
+      let sumX = 0, sumY = 0, count = 0;
+      for (const u of units) {
+        if (u.q === null) continue;
+        const { x, y } = hexToPixel(u.q, u.r);
+        sumX += x; sumY += y; count++;
+      }
+      if (count === 0) return;
+      camX = -(sumX / count) * zoom;
+      camY = -(sumY / count) * zoom;
+    }
+
+    // === CONTROLS ===
+    // Build turn index: list of frame indices that are end_turn or key boundaries
+    let turnFrames = []; // indices of end_turn frames (player turn boundaries)
+
+    function buildTurnIndex() {
+      turnFrames = [0]; // always include frame 0 (deployment)
+      if (!replay) return;
+      for (let i = 0; i < replay.frames.length; i++) {
+        if (replay.frames[i].type === 'end_turn' || replay.frames[i].type === 'battle_start') {
+          turnFrames.push(i);
+        }
+      }
+      // Include last frame
+      const last = replay.frames.length - 1;
+      if (turnFrames[turnFrames.length - 1] !== last) turnFrames.push(last);
+    }
+
+    function nextTurnFrame(from) {
+      for (const idx of turnFrames) {
+        if (idx > from) return idx;
+      }
+      return replay ? replay.frames.length - 1 : 0;
+    }
+
+    function prevTurnFrame(from) {
+      for (let i = turnFrames.length - 1; i >= 0; i--) {
+        if (turnFrames[i] < from) return turnFrames[i];
+      }
+      return 0;
+    }
+
+    document.getElementById('btn-start').onclick = () => { goToFrame(0); };
+    document.getElementById('btn-prev').onclick = () => { goToFrame(prevTurnFrame(currentFrame)); };
+    document.getElementById('btn-next').onclick = () => { goToFrame(nextTurnFrame(currentFrame)); };
+    document.getElementById('btn-end').onclick = () => { goToFrame(replay ? replay.frames.length - 1 : 0); };
+    document.getElementById('btn-play').onclick = togglePlay;
+    document.getElementById('timeline').oninput = e => { goToFrame(parseInt(e.target.value)); };
+    document.getElementById('speed-select').onchange = () => { if (playing) { stopPlay(); startPlay(); } };
+
+    function goToFrame(idx) {
+      if (!replay) return;
+      currentFrame = Math.max(0, Math.min(replay.frames.length - 1, idx));
+      document.getElementById('timeline').value = currentFrame;
+      render();
+      updateSidebar();
+      updateFrameInfo();
+    }
+
+    function togglePlay() {
+      if (playing) { stopPlay(); } else { startPlay(); }
+    }
+
+    function startPlay() {
+      playing = true;
+      document.getElementById('btn-play').textContent = '⏸';
+      document.getElementById('btn-play').classList.add('active');
+      const speed = parseInt(document.getElementById('speed-select').value);
+      playInterval = setInterval(() => {
+        if (currentFrame >= replay.frames.length - 1) { stopPlay(); return; }
+        goToFrame(nextTurnFrame(currentFrame));
+      }, speed);
+    }
+
+    function stopPlay() {
+      playing = false;
+      document.getElementById('btn-play').textContent = '▶';
+      document.getElementById('btn-play').classList.remove('active');
+      if (playInterval) { clearInterval(playInterval); playInterval = null; }
+    }
+
+    function updateFrameInfo() {
+      if (!replay) return;
+      const frame = replay.frames[currentFrame];
+      const turnIdx = turnFrames.indexOf(currentFrame);
+      const totalTurns = turnFrames.length;
+      let label = turnIdx >= 0 ? `Turn ${turnIdx + 1} / ${totalTurns}` : `Frame ${currentFrame + 1}`;
+      if (frame.turn) label += ` — Round ${frame.turn}`;
+      if (frame.currentPlayerId && replay.players) {
+        const p = replay.players.find(p => p.id === frame.currentPlayerId);
+        if (p) label += ` — ${p.name}`;
+      }
+      if (frame.type === 'deployment') label += ' [deployment]';
+      else if (frame.type === 'battle_start') label += ' [battle start]';
+      else if (frame.winner) label += ` [${frame.winner === 'p1' ? replay.players[0].name : replay.players[1].name} wins]`;
+      document.getElementById('frame-info').textContent = label;
+    }
+
+    // === RENDERING ===
+    function resizeCanvas() {
+      const container = document.getElementById('canvas-container');
+      canvas.width = container.clientWidth;
+      canvas.height = container.clientHeight;
+      render();
+    }
+    window.addEventListener('resize', resizeCanvas);
+    setTimeout(resizeCanvas, 50);
+
+    function render() {
+      if (!canvas.width) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#0a0a0a';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.save();
+      ctx.imageSmoothingEnabled = true;
+      ctx.translate(canvas.width / 2 + camX, canvas.height / 2 + camY);
+      ctx.scale(zoom, zoom);
+
+      // Draw map
+      if (mapImage.complete && mapImage.naturalWidth) {
+        ctx.drawImage(mapImage,
+          -MAP_ORIG_X * MAP_SCALE, -MAP_ORIG_Y * MAP_SCALE,
+          MAP_IMG_W * MAP_SCALE, MAP_IMG_H * MAP_SCALE);
+      }
+
+      // Draw hex grid
+      drawHexGrid();
+
+      // Draw segments
+      drawSegments();
+
+      // Draw units
+      if (replay && replay.frames[currentFrame]) {
+        drawUnits(replay.frames[currentFrame].units);
+      }
+
+      ctx.restore();
+    }
+
+    function drawHexGrid() {
+      const viewLeft = (-canvas.width / 2 - camX) / zoom;
+      const viewRight = (canvas.width / 2 - camX) / zoom;
+      const viewTop = (-canvas.height / 2 - camY) / zoom;
+      const viewBottom = (canvas.height / 2 - camY) / zoom;
+
+      for (const [key, type] of Object.entries(terrainData)) {
+        const [q, r] = key.split(',').map(Number);
+        const { x, y } = hexToPixel(q, r);
+        if (x < viewLeft - 40 || x > viewRight + 40 || y < viewTop - 40 || y > viewBottom + 40) continue;
+
+        // Terrain overlay
+        const color = TERRAIN_COLORS[type];
+        if (color) {
+          drawHex(ctx, x, y, color, 'transparent', 1);
+        }
+
+        // Grid line
+        drawHex(ctx, x, y, 'transparent', `rgba(180,140,60,0.15)`, 1, 0.5);
+      }
+    }
+
+    function drawSegments() {
+      ctx.save();
+      ctx.lineCap = 'round';
+      for (const [edgeKey, segType] of Object.entries(segmentData)) {
+        const color = SEGMENT_COLORS[segType];
+        if (!color) continue;
+        const parts = edgeKey.split('|');
+        const [q1, r1] = parts[0].split(',').map(Number);
+        const [q2, r2] = parts[1].split(',').map(Number);
+        const dq = q2 - q1, dr = r2 - r1;
+        const dirIdx = SEGMENT_EDGE_DIRS.findIndex(([d0, d1]) => d0 === dq && d1 === dr);
+        if (dirIdx === -1) continue;
+        const { x: cx, y: cy } = hexToPixel(q1, r1);
+        const corners = hexCorners(cx, cy);
+        const c1 = corners[dirIdx], c2 = corners[(dirIdx + 1) % 6];
+        ctx.strokeStyle = color;
+        ctx.lineWidth = HEX_SIZE * 0.13;
+        ctx.beginPath();
+        ctx.moveTo(c1.x, c1.y);
+        ctx.lineTo(c2.x, c2.y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawUnits(units) {
+      if (!units) return;
+      for (const u of units) {
+        if (u.q === null) continue;
+        const { x, y } = hexToPixel(u.q, u.r);
+        const color = PLAYER_COLORS[u.playerId] || '#888';
+        const radius = u.isGeneral ? HEX_SIZE * 0.55 : HEX_SIZE * 0.45;
+
+        ctx.save();
+        ctx.translate(x, y);
+
+        // Rotation for facing
+        const angle = FACING_ANGLES[u.facing ?? 5] || 0;
+        ctx.rotate(angle);
+
+        // Body
+        if (u.isGeneral) {
+          drawStar(ctx, 0, 0, radius, 5);
+          ctx.fillStyle = color;
+          ctx.fill();
+          ctx.strokeStyle = '#ffd700';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        } else {
+          ctx.beginPath();
+          ctx.arc(0, 0, radius, 0, Math.PI * 2);
+          ctx.fillStyle = color;
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        }
+
+        // Facing indicator (triangle)
+        ctx.beginPath();
+        ctx.moveTo(radius + 3, 0);
+        ctx.lineTo(radius - 4, -5);
+        ctx.lineTo(radius - 4, 5);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.fill();
+
+        ctx.restore();
+
+        // Label (unit initial) — not rotated
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.fillStyle = '#fff';
+        ctx.font = `bold ${Math.round(radius * 0.9)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const initial = u.isGeneral ? '★' : (u.name ? u.name[0] : '?');
+        ctx.fillText(initial, 0, 1);
+        ctx.restore();
+
+        // HP bar
+        const barWidth = radius * 2.2;
+        const barHeight = 3;
+        const barY = y + radius + 5;
+        const hpRatio = u.vitality / u.maxVitality;
+        const hpColor = hpRatio > 0.5 ? '#4a4' : hpRatio > 0.25 ? '#aa4' : '#a44';
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(x - barWidth / 2, barY, barWidth, barHeight);
+        ctx.fillStyle = hpColor;
+        ctx.fillRect(x - barWidth / 2, barY, barWidth * hpRatio, barHeight);
+
+        // Fleeing indicator
+        if (u.isFleeing) {
+          ctx.fillStyle = 'rgba(255,120,0,0.4)';
+          ctx.beginPath();
+          ctx.arc(x, y, radius + 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Stance label
+        if (u.stance && !u.isGeneral) {
+          ctx.fillStyle = 'rgba(0,0,0,0.7)';
+          ctx.font = `bold 7px sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.fillText(u.stance.substring(0, 3).toUpperCase(), x, y + radius + 14);
+        }
+      }
+    }
+
+    function drawStar(ctx, cx, cy, r, points) {
+      ctx.beginPath();
+      for (let i = 0; i < points * 2; i++) {
+        const angle = (i * Math.PI / points) - Math.PI / 2;
+        const dist = i % 2 === 0 ? r : r * 0.45;
+        const px = cx + Math.cos(angle) * dist;
+        const py = cy + Math.sin(angle) * dist;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+    }
+
+    // === SIDEBAR ===
+    function formatAction(a) {
+      if (a.type === 'move') return `${a.unitName} moved to (${a.toQ},${a.toR})`;
+      if (a.type === 'attack') {
+        const hit = a.combatLog?.hit ? 'HIT' : 'MISS';
+        const dmg = a.combatLog?.dmgReceived || 0;
+        let desc = `${a.unitName} &rarr; ${a.targetName} [${hit}${dmg ? ', -' + dmg + ' HP' : ''}]`;
+        if (a.combatLog?.targetKilled) desc += ' KILLED!';
+        return desc;
+      }
+      if (a.type === 'stance') return `${a.unitName} stance: ${a.from} &rarr; ${a.to}`;
+      if (a.type === 'motivate') return `${a.unitName} motivates (${a.success ? 'success' : 'fail'})`;
+      return a.type;
+    }
+
+    function collectTurnActions(frameIdx) {
+      const actions = [];
+      // Scan backwards from frameIdx to find all actions in this turn
+      for (let i = frameIdx; i >= 0; i--) {
+        const f = replay.frames[i];
+        if (f.type === 'action' && f.action) {
+          actions.unshift(f.action);
+        } else if (i < frameIdx && (f.type === 'end_turn' || f.type === 'battle_start' || f.type === 'deployment')) {
+          break;
+        }
+      }
+      return actions;
+    }
+
+    function updateSidebar() {
+      if (!replay) return;
+      const frame = replay.frames[currentFrame];
+      if (!frame || !frame.units) return;
+
+      const actionDiv = document.getElementById('action-list');
+
+      if (frame.type === 'deployment') {
+        actionDiv.innerHTML = '<div class="action-log"><span class="action-type">[deployment]</span> Initial positions</div>';
+      } else if (frame.type === 'battle_start') {
+        actionDiv.innerHTML = `<div class="action-log"><span class="action-type">[battle]</span> Battle begins! Order: ${frame.turnOrder?.join(', ')}</div>`;
+      } else {
+        const actions = collectTurnActions(currentFrame);
+        if (actions.length > 0) {
+          actionDiv.innerHTML = actions.map(a =>
+            `<div class="action-log"><span class="action-type">[${a.type}]</span> ${formatAction(a)}</div>`
+          ).join('');
+        } else {
+          const who = frame.currentPlayerId && replay.players
+            ? (replay.players.find(p => p.id === frame.currentPlayerId)?.name || '?')
+            : '?';
+          actionDiv.innerHTML = `<div class="action-log"><span class="action-type">[turn]</span> ${who}'s turn (no actions)</div>`;
+        }
+      }
+
+      // Unit cards
+      for (const pid of ['p1', 'p2']) {
+        const container = document.getElementById(pid + '-units');
+        const units = frame.units.filter(u => u.playerId === pid);
+        container.innerHTML = units.map(u => {
+          const dead = u.vitality <= 0 || u.q === null;
+          const hpPct = Math.round((u.vitality / u.maxVitality) * 100);
+          const morale = u.morale !== null ? ` M:${u.morale}` : '';
+          return `<div class="unit-card${dead ? ' dead' : ''}${u.isGeneral ? ' general' : ''}">
+            <div class="dot" style="background:${PLAYER_COLORS[pid]}"></div>
+            <span class="name">${u.name}</span>
+            <span class="hp">${u.vitality}/${u.maxVitality} (${hpPct}%)${morale}</span>
+          </div>`;
+        }).join('');
+      }
+    }
+
+    // === PAN & ZOOM ===
+    canvas.addEventListener('mousedown', e => {
+      isDragging = true;
+      dragStartX = e.clientX; dragStartY = e.clientY;
+      camAtDragX = camX; camAtDragY = camY;
+    });
+    window.addEventListener('mousemove', e => {
+      if (!isDragging) return;
+      camX = camAtDragX + (e.clientX - dragStartX);
+      camY = camAtDragY + (e.clientY - dragStartY);
+      render();
+    });
+    window.addEventListener('mouseup', () => { isDragging = false; });
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+      zoom *= factor;
+      zoom = Math.max(0.1, Math.min(3, zoom));
+      render();
+    }, { passive: false });
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', e => {
+      if (e.key === 'ArrowRight' || e.key === 'l') goToFrame(nextTurnFrame(currentFrame));
+      else if (e.key === 'ArrowLeft' || e.key === 'h') goToFrame(prevTurnFrame(currentFrame));
+      else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+      else if (e.key === 'Home') goToFrame(0);
+      else if (e.key === 'End') goToFrame(replay ? replay.frames.length - 1 : 0);
+    });
+
+    updateFrameInfo();
+  </script>
+</body>
+</html>

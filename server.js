@@ -9,6 +9,7 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/simulation/results', express.static(path.join(__dirname, 'simulation/results')));
 
 const rooms = {};
 const connections = {}; // connectionId -> ws
