@@ -3,7 +3,7 @@ const { DynamoDBDocumentClient, GetCommand, PutCommand, DeleteCommand } = requir
 const { ApiGatewayManagementApiClient, PostToConnectionCommand } = require('@aws-sdk/client-apigatewaymanagementapi');
 const GameRoom = require('../game/GameRoom');
 
-const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}), { marshallOptions: { removeUndefinedValues: true } });
 const ROOMS_TABLE = process.env.ROOMS_TABLE || 'KingdomRooms';
 const CONNECTIONS_TABLE = process.env.CONNECTIONS_TABLE || 'KingdomConnections';
 const TTL_ROOM = () => Math.floor(Date.now() / 1000) + 86400 * 3;
