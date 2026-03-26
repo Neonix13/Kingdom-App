@@ -1,6 +1,6 @@
 const GENERALS = require('./data/generals');
 const UNITS = require('./data/units');
-const { hexDistance, hexKey, hexesInRange, generateHexMap, findPath, getStartingZones, segmentEdgeKey, getSegmentData, SEGMENT_DEFS } = require('./HexUtils');
+const { hexDistance, hexKey, hexesInRange, generateHexMap, findPath, getStartingZones, segmentEdgeKey, getSegmentData, SEGMENT_DEFS, hexFacing, hexFacingRanged } = require('./HexUtils');
 const STANCES = require('./data/stances');
 const TERRAINS = require('./data/terrains');
 const SEGMENTS = require('./data/segments');
@@ -146,6 +146,7 @@ class GameRoom {
       citation: generalData.citation,
       speedRemaining: 0,
       isFleeing: false,
+      facing: 5,
     };
 
     player.units = [generalUnit, ...units];
@@ -186,6 +187,7 @@ class GameRoom {
       stance: 'marche',
       speedRemaining: 0,
       isFleeing: false,
+      facing: 5,
     };
   }
 
@@ -298,6 +300,16 @@ class GameRoom {
 
     unit.q = q;
     unit.r = r;
+
+    const enemyCenters = this.players
+      .filter(p => p.id !== playerId && p.startingZone)
+      .map(p => p.startingZone);
+    if (enemyCenters.length > 0) {
+      const bq = Math.round(enemyCenters.reduce((s, z) => s + z.q, 0) / enemyCenters.length);
+      const br = Math.round(enemyCenters.reduce((s, z) => s + z.r, 0) / enemyCenters.length);
+      unit.facing = hexFacing(q, r, bq, br);
+    }
+
     return { ok: true };
   }
 
@@ -522,6 +534,13 @@ class GameRoom {
     unit.speedRemaining = Math.max(0, unit.speedRemaining - moveCost);
     this.unitMap[hexKey(targetQ, targetR)] = unit;
 
+    if (path.length > 0) {
+      const last = path.length - 1;
+      const prevQ = last === 0 ? fromQ : path[last - 1][0];
+      const prevR = last === 0 ? fromR : path[last - 1][1];
+      unit.facing = hexFacing(prevQ, prevR, path[last][0], path[last][1]);
+    }
+
     return { ok: true, unitId: unit.id, fromQ, fromR, path };
   }
 
@@ -597,6 +616,17 @@ class GameRoom {
       unit.hasMoved = true;
     }
     return fled;
+  }
+
+  rotateFacing(playerId, unitId, facing) {
+    if (facing < 0 || facing > 5) return { error: 'Orientation invalide.' };
+    const player = this.getPlayer(playerId);
+    const unit = player?.units.find(u => u.id === unitId);
+    if (!unit) return { error: 'Unité introuvable.' };
+    if (unit.speedRemaining <= 0) return { error: 'Plus de vitesse disponible.' };
+    unit.speedRemaining = Math.max(0, unit.speedRemaining - 1);
+    unit.facing = facing;
+    return { ok: true };
   }
 
   changeStance(playerId, unitId, stanceId) {
@@ -690,6 +720,16 @@ class GameRoom {
     if (!attacker || !target) return { error: 'Unité disparue.' };
 
     const isCac = dist <= 1;
+
+    if (isCac) {
+      attacker.facing = hexFacing(attacker.q, attacker.r, target.q, target.r);
+    } else {
+      attacker.facing = hexFacingRanged(attacker.q, attacker.r, target.q, target.r);
+    }
+    if (defenseChoice === 'contre_attaque' || defenseChoice === 'encaissement') {
+      target.facing = hexFacing(target.q, target.r, attacker.q, attacker.r);
+    }
+
     const result = this._resolveCombat(attacker, target, isCac, defenseChoice);
 
     // Apply to target

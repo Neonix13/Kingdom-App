@@ -275,4 +275,30 @@ function getStartingZones(numPlayers, mapRadius, budget) {
   }));
 }
 
-module.exports = { hexDistance, hexKey, hexNeighbors, hexesInRange, generateHexMap, findPath, getStartingZones, segmentEdgeKey, getSegmentData, SEGMENT_DEFS };
+const DIRS = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
+
+function hexFacing(q1, r1, q2, r2) {
+  const dq = q2 - q1, dr = r2 - r1;
+  if (dq === 0 && dr === 0) return 5;
+  const px = 1.5 * dq;
+  const py = Math.sqrt(3) * dr + Math.sqrt(3) / 2 * dq;
+  let best = 5, bestDot = -Infinity;
+  for (let i = 0; i < 6; i++) {
+    const [ddq, ddr] = DIRS[i];
+    const dot = px * (1.5 * ddq) + py * (Math.sqrt(3) * ddr + Math.sqrt(3) / 2 * ddq);
+    if (dot > bestDot) { bestDot = dot; best = i; }
+  }
+  return best;
+}
+
+function hexFacingRanged(q, r, targetQ, targetR) {
+  let best = 5, bestDist = Infinity;
+  for (let i = 0; i < 6; i++) {
+    const [dq, dr] = DIRS[i];
+    const d = hexDistance(q + dq, r + dr, targetQ, targetR);
+    if (d < bestDist) { bestDist = d; best = i; }
+  }
+  return best;
+}
+
+module.exports = { hexDistance, hexKey, hexNeighbors, hexesInRange, generateHexMap, findPath, getStartingZones, segmentEdgeKey, getSegmentData, SEGMENT_DEFS, hexFacing, hexFacingRanged };

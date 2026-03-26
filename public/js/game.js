@@ -586,7 +586,7 @@ function getGeneralIdForUnit(unit) {
   return null;
 }
 
-function drawTokenImage(ctx, img, x, y, radius, tintColor, tintOpacity = 0.25, overlayColor = null) {
+function drawTokenImage(ctx, img, x, y, radius, tintColor, tintOpacity = 0.25, overlayColor = null, rotAngle = 0) {
   const RES = 4; // suréchantillonnage pour éviter le flou au zoom
   const size = Math.ceil(radius * 2 * RES);
   const off = document.createElement('canvas');
@@ -597,7 +597,11 @@ function drawTokenImage(ctx, img, x, y, radius, tintColor, tintOpacity = 0.25, o
   o.beginPath();
   o.arc(radius * RES, radius * RES, radius * RES, 0, Math.PI * 2);
   o.clip();
-  o.drawImage(img, 0, 0, size, size);
+  o.save();
+  o.translate(radius * RES, radius * RES);
+  o.rotate(rotAngle);
+  o.drawImage(img, -radius * RES, -radius * RES, size, size);
+  o.restore();
   o.globalCompositeOperation = 'source-atop';
   if (tintColor) {
     const r = parseInt(tintColor.slice(1,3),16);
@@ -613,9 +617,21 @@ function drawTokenImage(ctx, img, x, y, radius, tintColor, tintOpacity = 0.25, o
   ctx.drawImage(off, x - radius, y - radius, radius * 2, radius * 2);
 }
 
+function getAnimatedFacing(unit) {
+  const a = unitAnimations[unit.id];
+  if (!a) return unit.facing ?? 5;
+  const elapsed = performance.now() - a.startTime;
+  const step = Math.floor(elapsed / ANIM_STEP_MS);
+  if (step >= a.path.length) return unit.facing ?? 5;
+  const prevQ = step === 0 ? a.fromQ : a.path[step - 1][0];
+  const prevR = step === 0 ? a.fromR : a.path[step - 1][1];
+  return hexFacingClient(prevQ, prevR, a.path[step][0], a.path[step][1]);
+}
+
 function drawUnit(ctx, x, y, unit, playerId, isSelected = false) {
   const color = getPlayerColor(playerId);
   const size = HEX_SIZE * 0.55;
+  const rotAngle = FACING_ANGLES[getAnimatedFacing(unit)];
 
   ctx.save();
 
@@ -638,7 +654,7 @@ function drawUnit(ctx, x, y, unit, playerId, isSelected = false) {
     const gid = getGeneralIdForUnit(unit);
     const img = gid ? generalTokenImages[gid] : null;
     if (img && img.complete && img.naturalWidth) {
-      drawTokenImage(ctx, img, x, y, tokenR, color, 0.15, overlayColor);
+      drawTokenImage(ctx, img, x, y, tokenR, color, 0.15, overlayColor, rotAngle);
     } else {
       drawStar(ctx, x, y, 5, size, size * 0.45);
       ctx.fillStyle = color;
@@ -655,7 +671,7 @@ function drawUnit(ctx, x, y, unit, playerId, isSelected = false) {
   } else {
     const img = unit.typeId ? unitTokenImages[unit.typeId] : null;
     if (img && img.complete && img.naturalWidth) {
-      drawTokenImage(ctx, img, x, y, tokenR, color, 0.25, overlayColor);
+      drawTokenImage(ctx, img, x, y, tokenR, color, 0.25, overlayColor, rotAngle);
     } else {
       ctx.beginPath();
       ctx.arc(x, y, size, 0, Math.PI * 2);
@@ -782,7 +798,48 @@ canvas.addEventListener('mousemove', (e) => {
 canvas.addEventListener('mouseleave', hideTerrainTooltip);
 
 canvas.addEventListener('mouseup', () => { isDragging = false; });
-canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  if (gameState?.phase !== 'battle' || gameState?.currentPlayerId !== myId) return;
+  const hex = getHexUnderMouse(e);
+  const unit = gameState.units.find(u => u.q === hex.q && u.r === hex.r && u.isMine);
+  if (!unit) return;
+  if (unit.speedRemaining <= 0) { showToast('Plus de vitesse disponible.'); return; }
+  showFacingPopup(unit, e.clientX, e.clientY);
+});
+
+function showFacingPopup(unit, clientX, clientY) {
+  document.getElementById('facing-popup')?.remove();
+  const popup = document.createElement('div');
+  popup.id = 'facing-popup';
+  // Layout 3x2 : NW(3) N(2) NE(1) / SW(4) S(5) SE(0)
+  const dirs = [
+    { idx: 3, label: '↖' }, { idx: 2, label: '↑' }, { idx: 1, label: '↗' },
+    { idx: 4, label: '↙' }, { idx: 5, label: '↓' }, { idx: 0, label: '↘' },
+  ];
+  Object.assign(popup.style, {
+    position: 'fixed', left: `${clientX - 54}px`, top: `${clientY - 40}px`,
+    display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '3px',
+    background: 'rgba(10,5,0,0.95)', border: '1px solid #5a3c10',
+    borderRadius: '8px', padding: '6px', zIndex: '1000',
+  });
+  for (const { idx, label } of dirs) {
+    const btn = document.createElement('button');
+    btn.textContent = label;
+    Object.assign(btn.style, {
+      background: unit.facing === idx ? '#5a3c10' : '#2a1408',
+      color: '#e8d5a0', border: '1px solid #5a3c10', borderRadius: '4px',
+      cursor: 'pointer', fontSize: '18px', width: '34px', height: '34px',
+    });
+    btn.onclick = () => {
+      wsSend('rotate_facing', { roomCode, unitId: unit.id, facing: idx });
+      popup.remove();
+    };
+    popup.appendChild(btn);
+  }
+  document.body.appendChild(popup);
+  setTimeout(() => document.addEventListener('click', () => popup.remove(), { once: true }), 0);
+}
 
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();

@@ -380,6 +380,18 @@ async function handleAction(apigw, connectionId, action, data) {
       break;
     }
 
+    case 'rotate_facing': {
+      const { roomCode, unitId, facing } = data;
+      const room = await getRoom(roomCode);
+      if (!room || room.phase !== 'battle') return;
+      if (room.getCurrentPlayerId() !== connectionId) return send(apigw, connectionId, { event: 'error', message: 'Ce n\'est pas votre tour.' });
+      const result = room.rotateFacing(connectionId, unitId, facing);
+      if (result.error) return send(apigw, connectionId, { event: 'error', message: result.error });
+      await saveRoom(room);
+      for (const p of room.players) await send(apigw, p.id, { event: 'game_state', ...room.getGameState(p.id) });
+      break;
+    }
+
     case 'end_turn': {
       const { roomCode } = data;
       const room = await getRoom(roomCode);

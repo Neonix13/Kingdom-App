@@ -56,6 +56,25 @@ function drawHex(ctx, cx, cy, fillColor, strokeColor, alpha = 1, lineWidth = 1) 
   ctx.restore();
 }
 
+// Angle de rotation (en radians) pour chaque orientation (0-5)
+// L'image par défaut pointe vers le bas (direction [0,1] = index 5 = angle 0)
+const FACING_ANGLES = [Math.PI / 3, 2 * Math.PI / 3, Math.PI, -2 * Math.PI / 3, -Math.PI / 3, 0];
+
+function hexFacingClient(q1, r1, q2, r2) {
+  const DIRS = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
+  const dq = q2 - q1, dr = r2 - r1;
+  if (dq === 0 && dr === 0) return 5;
+  const px = 1.5 * dq;
+  const py = Math.sqrt(3) * dr + Math.sqrt(3) / 2 * dq;
+  let best = 5, bestDot = -Infinity;
+  for (let i = 0; i < 6; i++) {
+    const [ddq, ddr] = DIRS[i];
+    const dot = px * (1.5 * ddq) + py * (Math.sqrt(3) * ddr + Math.sqrt(3) / 2 * ddq);
+    if (dot > bestDot) { bestDot = dot; best = i; }
+  }
+  return best;
+}
+
 function hexDistance(q1, r1, q2, r2) {
   return (Math.abs(q1 - q2) + Math.abs(q1 + r1 - q2 - r2) + Math.abs(r1 - r2)) / 2;
 }

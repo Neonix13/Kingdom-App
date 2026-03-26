@@ -276,6 +276,17 @@ function handleAction(ws, connectionId, action, data) {
       break;
     }
 
+    case 'rotate_facing': {
+      const { roomCode, unitId, facing } = data;
+      const room = rooms[roomCode];
+      if (!room || room.phase !== 'battle') return;
+      if (room.getCurrentPlayerId() !== connectionId) return send(connectionId, { event: 'error', message: 'Ce n\'est pas votre tour.' });
+      const result = room.rotateFacing(connectionId, unitId, facing);
+      if (result.error) return send(connectionId, { event: 'error', message: result.error });
+      room.players.forEach(p => send(p.id, { event: 'game_state', ...room.getGameState(p.id) }));
+      break;
+    }
+
     case 'change_stance': {
       const { roomCode, unitId, stanceId } = data;
       const room = rooms[roomCode];
