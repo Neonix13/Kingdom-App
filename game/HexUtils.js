@@ -149,11 +149,10 @@ function findPath(hexMap, unitMap, q1, r1, q2, r2, maxSpeed, playerId, unit) {
   return null;
 }
 
-// Coût terrain pour le déploiement : base radiale + léger modificateur terrain
-// La distance au centre est le facteur dominant → forme circulaire
-// Le modificateur terrain est faible → légère préférence plaines/routes
-const TERRAIN_DEPLOY_MOD = { road: -2, plain: 0, building: 1, forest: 4, river: 999 };
-const DEPLOY_RADIAL_SCALE = 10; // poids de la distance au centre
+// Coût terrain pour le déploiement : uniquement distance radiale (forme circulaire)
+// Les routes n'ont plus de préférence pour éviter les zones en tentacules
+const TERRAIN_DEPLOY_MOD = { road: 0, plain: 0, building: 0, forest: 0, river: 999 };
+const DEPLOY_RADIAL_SCALE = 100; // poids élevé → forme quasi-circulaire
 const DEPLOY_CENTER_EXCLUSION = 3;
 const DEPLOY_INTER_ZONE_EXCLUSION = 8;
 const DEPLOY_BORDER_EXCLUSION = 12;
