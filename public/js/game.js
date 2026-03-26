@@ -322,6 +322,11 @@ function buildZoneTileSet(state) {
   if (state?.startingZone?.tiles && !(state.startingZone.tileSet instanceof Set)) {
     state.startingZone.tileSet = new Set(state.startingZone.tiles.map(t => `${t.q},${t.r}`));
   }
+  for (const z of (state?.allZones || [])) {
+    if (z.zone?.tiles && !(z.zone.tileSet instanceof Set)) {
+      z.zone.tileSet = new Set(z.zone.tiles.map(t => `${t.q},${t.r}`));
+    }
+  }
 }
 if (deployState) buildZoneTileSet(deployState);
 
@@ -330,6 +335,8 @@ let selectedUnit = null;
 let hoveredHex = null;
 let movableTiles = new Set();
 let attackableTiles = new Set();
+let pendingMoveTarget = null; // {q, r} — destination en attente de confirmation
+let pendingMovePath = [];    // [{q,r},...] — chemin prévisualisé
 let rangeTiles = new Set();
 let rangeCenter = null;
 let motivateTiles = new Set();
@@ -471,6 +478,49 @@ function render() {
     ctx.restore();
   }
 
+  // Zones des autres joueurs (opacité réduite)
+  for (const z of (deployState?.allZones || [])) {
+    if (!z.zone?.tileSet || z.zone.tileSet.size === 0) continue;
+    const dirs = SEGMENT_EDGE_DIRS;
+    // Remplissage (hors forêt)
+    ctx.save();
+    ctx.fillStyle = `${z.color}22`;
+    for (const key of z.zone.tileSet) {
+      if (terrainData[key] === 'forest') continue;
+      const [q, r] = key.split(',').map(Number);
+      const { x, y } = hexToPixel(q, r);
+      const pts = hexCorners(x, y);
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < 6; i++) ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+    // Contour (bords vers forêt ou hors-zone traités comme bord extérieur)
+    ctx.save();
+    ctx.strokeStyle = `${z.color}99`;
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (const key of z.zone.tileSet) {
+      if (terrainData[key] === 'forest') continue;
+      const [q, r] = key.split(',').map(Number);
+      const { x, y } = hexToPixel(q, r);
+      const corners = hexCorners(x, y);
+      for (let i = 0; i < 6; i++) {
+        const [dq, dr] = dirs[i];
+        const nk = `${q + dq},${r + dr}`;
+        if (!z.zone.tileSet.has(nk) || terrainData[nk] === 'forest') {
+          ctx.moveTo(corners[i].x, corners[i].y);
+          ctx.lineTo(corners[(i + 1) % 6].x, corners[(i + 1) % 6].y);
+        }
+      }
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
   if (rangeTiles.size > 0 && rangeCenter) {
     const dirs = SEGMENT_EDGE_DIRS;
     const interior = new Set(rangeTiles);
@@ -565,6 +615,36 @@ function render() {
 
   // Segments (arêtes entre tuiles) — visibles quand le toggle terrain est actif
   if (showTerrain) drawSegments(ctx);
+
+  // Chemin de déplacement en attente de confirmation
+  if (pendingMovePath.length > 0 && pendingMoveTarget) {
+    ctx.save();
+    // Surligner les cases du chemin
+    for (const step of pendingMovePath) {
+      const { x, y } = hexToPixel(step.q, step.r);
+      drawHex(ctx, x, y, 'rgba(255,200,0,0.25)', 'rgba(255,200,0,0.7)', 1, 2);
+    }
+    // Destination (case finale)
+    const { x: dx, y: dy } = hexToPixel(pendingMoveTarget.q, pendingMoveTarget.r);
+    drawHex(ctx, dx, dy, 'rgba(255,200,0,0.45)', 'rgba(255,220,0,1)', 1, 3);
+    // Ligne reliant le centre du token à la destination
+    if (selectedUnit) {
+      const anim = unitAnimations[selectedUnit.id];
+      const from = anim ? getAnimatedPos(selectedUnit) : hexToPixel(selectedUnit.q, selectedUnit.r);
+      ctx.strokeStyle = 'rgba(255,220,0,0.6)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(from.x, from.y);
+      for (const step of pendingMovePath) {
+        const { x, y } = hexToPixel(step.q, step.r);
+        ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
+  }
 
   // Pings
   drawPings(ctx);
@@ -923,6 +1003,55 @@ function getHexUnderMouse(e) {
   return pixelToHex(mx, my);
 }
 
+// ---- PATHFINDING CLIENT ----
+function findPathClient(fromQ, fromR, toQ, toR, maxSpeed, unit) {
+  if (fromQ === toQ && fromR === toR) return [];
+  const isCavalry = unit && (unit.category === 'Chevaux' || unit.category === 'Chars');
+  const occupiedKeys = new Set((gameState?.units || []).filter(u => !(u.q === fromQ && u.r === fromR)).map(u => `${u.q},${u.r}`));
+  const TERRAIN_COST = { plain: 1, road: 1, forest: 2, river: 2, building: 1, bridge: 1 };
+  const DIRS = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
+  const dist = new Map();
+  const prev = new Map();
+  const queue = [{ q: fromQ, r: fromR, cost: 0 }];
+  dist.set(`${fromQ},${fromR}`, 0);
+  while (queue.length) {
+    queue.sort((a, b) => a.cost - b.cost);
+    const { q, r, cost } = queue.shift();
+    if (q === toQ && r === toR) {
+      const path = [];
+      let cur = `${toQ},${toR}`;
+      while (prev.has(cur)) { const [cq, cr] = cur.split(',').map(Number); path.unshift({ q: cq, r: cr }); cur = prev.get(cur); }
+      return path;
+    }
+    if (cost >= maxSpeed) continue;
+    for (const [dq, dr] of DIRS) {
+      const nq = q + dq, nr = r + dr;
+      const nk = `${nq},${nr}`;
+      if (!gameState?.visibleHexes?.has(nk) && !(nq === toQ && nr === toR)) continue;
+      if (occupiedKeys.has(nk) && !(nq === toQ && nr === toR)) continue;
+      const edgeK = segmentEdgeKey(q, r, nq, nr);
+      const segType = segmentData[edgeK];
+      const segDef = segType ? SEGMENT_DEFS_CLIENT[segType] : null;
+      if (segDef?.infranchissable) continue;
+      if (segDef?.infranchissable_cavalerie && isCavalry) continue;
+      const srcTerrain = terrainData[`${q},${r}`] || 'plain';
+      let stepCost = TERRAIN_COST[srcTerrain] ?? 1;
+      if (segDef) {
+        if (segDef.vitesse_fixe != null) stepCost = segDef.vitesse_fixe;
+        else stepCost += Math.max(0, -(segDef.vitesse || 0));
+      }
+      const newCost = cost + stepCost;
+      if (newCost > maxSpeed) continue;
+      if (!dist.has(nk) || newCost < dist.get(nk)) {
+        dist.set(nk, newCost);
+        prev.set(nk, `${q},${r}`);
+        queue.push({ q: nq, r: nr, cost: newCost });
+      }
+    }
+  }
+  return null; // pas de chemin
+}
+
 // ---- GAME LOGIC ----
 function handleHexClick(hex) {
   const key = `${hex.q},${hex.r}`;
@@ -933,12 +1062,21 @@ function handleHexClick(hex) {
   }
 
   if (selectedUnit) {
-    // Clic sur case de déplacement → déplacer
+    // Clic sur case de déplacement
     if (movableTiles.has(key)) {
-      wsSend('move_unit', { roomCode, unitId: selectedUnit.id, targetQ: hex.q, targetR: hex.r });
-      movableTiles.clear();
-      attackableTiles.clear();
-      rangeTiles.clear(); rangeCenter = null; motivateTiles.clear(); motivateCenter = null;
+      if (pendingMoveTarget && pendingMoveTarget.q === hex.q && pendingMoveTarget.r === hex.r) {
+        // 2e clic sur la même case → confirmer le déplacement
+        wsSend('move_unit', { roomCode, unitId: selectedUnit.id, targetQ: hex.q, targetR: hex.r });
+        pendingMoveTarget = null;
+        pendingMovePath = [];
+        movableTiles.clear();
+        attackableTiles.clear();
+        rangeTiles.clear(); rangeCenter = null; motivateTiles.clear(); motivateCenter = null;
+      } else {
+        // 1er clic → prévisualiser le chemin
+        pendingMoveTarget = { q: hex.q, r: hex.r };
+        pendingMovePath = findPathClient(selectedUnit.q, selectedUnit.r, hex.q, hex.r, selectedUnit.speedRemaining, selectedUnit) || [];
+      }
       render();
       return;
     }
@@ -950,6 +1088,7 @@ function handleHexClick(hex) {
         wsSend('attack_unit', { roomCode, attackerId: selectedUnit.id, targetId: target.id });
         movableTiles.clear();
         attackableTiles.clear();
+        pendingMoveTarget = null; pendingMovePath = [];
         rangeTiles.clear(); rangeCenter = null; motivateTiles.clear(); motivateCenter = null;
         render();
         return;
@@ -966,6 +1105,7 @@ function handleHexClick(hex) {
 
     // Clic hors portée → déselectionner
     selectedUnit = null;
+    pendingMoveTarget = null; pendingMovePath = [];
     movableTiles.clear();
     attackableTiles.clear();
     rangeTiles.clear(); rangeCenter = null; motivateTiles.clear(); motivateCenter = null;
@@ -1022,6 +1162,7 @@ function handleDeployClick(hex) {
 
 function selectUnit(unit) {
   selectedUnit = unit;
+  pendingMoveTarget = null; pendingMovePath = [];
   movableTiles.clear();
   attackableTiles.clear();
   rangeTiles.clear(); rangeCenter = null; motivateTiles.clear(); motivateCenter = null;
