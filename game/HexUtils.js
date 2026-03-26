@@ -90,7 +90,7 @@ function generateHexMap(radius) {
 
 // Terrain movement cost: entering a tile costs max(1, 1 - vitesse_modifier)
 function terrainMoveCost(terrain) {
-  const costs = { plain: 1, road: 0.5, forest: 2, river: 2, building: 1, bridge: 1 };
+  const costs = { plain: 1, road: 0.33, forest: 2, river: 2, building: 1, bridge: 1 };
   return costs[terrain] ?? 1;
 }
 
@@ -155,7 +155,7 @@ const DEPLOY_BORDER_EXCLUSION = 12;
 
 // Coûts de terrain pour l'expansion de zone de déploiement
 // Faibles → inclus tôt → blob compact qui préfère plaines/routes
-const TERRAIN_ZONE_COST = { plain: 1, road: 0.5, building: 1, forest: 2.5, river: 999 };
+const TERRAIN_ZONE_COST = { plain: 1, road: 0.33, building: 1, forest: 2.5, river: 999 };
 
 // Expansion blob : Dijkstra avec coût cumulé de traversal depuis le centre.
 // Les hexes adjacents sont explorés en premier → forme compacte (blob).

@@ -1008,7 +1008,7 @@ function findPathClient(fromQ, fromR, toQ, toR, maxSpeed, unit) {
   if (fromQ === toQ && fromR === toR) return [];
   const isCavalry = unit && (unit.category === 'Chevaux' || unit.category === 'Chars');
   const occupiedKeys = new Set((gameState?.units || []).filter(u => !(u.q === fromQ && u.r === fromR)).map(u => `${u.q},${u.r}`));
-  const TERRAIN_COST = { plain: 1, road: 0.5, forest: 2, river: 2, building: 1, bridge: 1 };
+  const TERRAIN_COST = { plain: 1, road: 0.33, forest: 2, river: 2, building: 1, bridge: 1 };
   const DIRS = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
   const dist = new Map();
   const prev = new Map();
@@ -1188,7 +1188,7 @@ function selectUnit(unit) {
 
 function terrainMoveCost(key) {
   const t = terrainData[key] || 'plain';
-  const costs = { plain: 1, road: 0.5, forest: 2, river: 2, building: 1, bridge: 1 };
+  const costs = { plain: 1, road: 0.33, forest: 2, river: 2, building: 1, bridge: 1 };
   return costs[t] ?? 1;
 }
 
