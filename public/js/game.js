@@ -171,13 +171,13 @@ const UNIT_IMAGE1_MAP = {
 function img1Url(map, key, folder) {
   const entry = map[key];
   if (!entry) return null;
-  return `/assets/${folder}/${encodeURIComponent(entry.file)}.${entry.ext}`;
+  return `/assets/unites/${folder}/${encodeURIComponent(entry.file)}.${entry.ext}`;
 }
 
 const generalTokenImages = {};
 for (const [id, name] of Object.entries(GENERAL_TOKEN_MAP)) {
   const img = new Image();
-  img.src = `/assets/GENERAL TOKEN/${encodeURIComponent(name)}.png`;
+  img.src = `/assets/unites/GENERAL TOKEN/${encodeURIComponent(name)}.png`;
   img.onload = () => render();
   generalTokenImages[id] = img;
 }
@@ -200,7 +200,7 @@ const UNIT_TOKEN_MAP = {
 const unitTokenImages = {};
 for (const [id, name] of Object.entries(UNIT_TOKEN_MAP)) {
   const img = new Image();
-  img.src = `/assets/UNIT TOKEN/${encodeURIComponent(name)}.png`;
+  img.src = `/assets/unites/UNIT TOKEN/${encodeURIComponent(name)}.png`;
   img.onload = () => render();
   unitTokenImages[id] = img;
 }
@@ -1420,7 +1420,7 @@ function renderTurnOrder(turnOrder, initiativeRolls, currentPlayerId) {
     const gid = playerData?.generalId;
     const imgToken = gid ? GENERAL_TOKEN_MAP[gid] : null;
     const img1Src = img1Url(GENERAL_IMAGE1_MAP, gid, 'GENERAL IMAGE 1-1');
-    const imgTokenSrc = imgToken ? `/assets/GENERAL TOKEN/${encodeURIComponent(imgToken)}.png` : null;
+    const imgTokenSrc = imgToken ? `/assets/unites/GENERAL TOKEN/${encodeURIComponent(imgToken)}.png` : null;
     let portraitHtml;
     if (img1Src) {
       portraitHtml = `<img class="to-portrait" src="${img1Src}">`;
