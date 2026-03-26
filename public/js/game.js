@@ -438,9 +438,9 @@ function render() {
         const { x, y } = hexToPixel(q, r);
         const inZone = startZone?.tileSet ? startZone.tileSet.has(`${q},${r}`) : (startZone ? hexDistance(q, r, startZone.q, startZone.r) <= (startZone.radius || 4) : false);
         const isHovered = hoveredHex && hoveredHex.q === q && hoveredHex.r === r;
-        let fill = inZone ? 'rgba(60,180,30,0.4)' : 'rgba(0,0,0,0)';
-        let stroke = inZone ? 'rgba(100,240,60,0.85)' : `rgba(${gridColorRGB},${gridOpacity * 0.6})`;
-        if (inZone && isHovered) fill = 'rgba(80,220,50,0.6)';
+        let fill = inZone ? 'rgba(60,180,30,0.35)' : (startZone ? 'rgba(0,0,0,0.72)' : 'rgba(0,0,0,0)');
+        let stroke = inZone ? 'rgba(100,240,60,0.85)' : (startZone ? 'rgba(0,0,0,0)' : `rgba(${gridColorRGB},${gridOpacity * 0.6})`);
+        if (inZone && isHovered) fill = 'rgba(80,220,50,0.55)';
         if (isHovered && !inZone) stroke = 'rgba(200,160,80,0.5)';
         drawHex(ctx, x, y, fill, stroke, 1, gridThickness);
       }
