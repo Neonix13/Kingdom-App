@@ -87,6 +87,13 @@
   </div>
 
   <div class="section">
+    <h2>🚀 Dernier déploiement AWS</h2>
+    <div id="deploy-status" style="padding:10px 14px;border-radius:6px;background:#3a2408;border:1px solid #5a3c10;color:#a89060;font-size:0.9em;">
+      Chargement…
+    </div>
+  </div>
+
+  <div class="section">
     <h2>🔧 GitHub</h2>
     <a href="https://github.com/Neonix13/Kingdom-App/actions" target="_blank">
       GitHub Actions
@@ -101,5 +108,27 @@
   <div class="warn">
     ⚠️ <strong>Si la version en ligne ne fonctionne pas :</strong> attends quelques minutes que CloudFront propage les mises à jour (invalidation en cours).
   </div>
+  <script>
+    fetch('https://api.github.com/repos/Neonix13/Kingdom-App/actions/runs?status=success&per_page=1')
+      .then(r => r.json())
+      .then(data => {
+        const run = data.workflow_runs?.[0];
+        const el = document.getElementById('deploy-status');
+        if (!run) { el.textContent = 'Aucun déploiement trouvé.'; return; }
+        const date = new Date(run.updated_at);
+        const diff = Math.floor((Date.now() - date) / 60000);
+        const diffStr = diff < 60 ? `il y a ${diff} min` : diff < 1440 ? `il y a ${Math.floor(diff/60)}h` : `il y a ${Math.floor(diff/1440)}j`;
+        const commit = run.head_commit?.message?.split('\n')[0] || '—';
+        el.style.borderColor = '#2a5c2a';
+        el.style.background = '#0f1a0f';
+        el.style.color = '#80c080';
+        el.innerHTML = `✅ <strong>Succès</strong> — ${diffStr}<br>
+          <span style="color:#7a9060;font-size:0.85em">${date.toLocaleDateString('fr-FR')} à ${date.toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'})}</span><br>
+          <span style="color:#5a7050;font-size:0.8em">📝 ${commit}</span>`;
+      })
+      .catch(() => {
+        document.getElementById('deploy-status').textContent = 'Impossible de contacter GitHub.';
+      });
+  </script>
 </body>
 </html>
