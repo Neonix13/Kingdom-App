@@ -26,7 +26,7 @@ const ctx = canvas.getContext('2d');
 
 // Chargement de la carte
 const mapImage = new Image();
-mapImage.src = '/img/map.webp';
+mapImage.src = '/assets/img/map.webp';
 
 // Chargement des terrains
 let terrainData = {};
@@ -128,7 +128,7 @@ const STANCES_DATA = {
 };
 for (const s of stanceList) {
   const img = new Image();
-  img.src = `/icons/${stanceIconFiles[s]}.svg`;
+  img.src = `/assets/icons/${stanceIconFiles[s]}.svg`;
   img.onload = () => render();
   stanceIcons[s] = img;
 }
