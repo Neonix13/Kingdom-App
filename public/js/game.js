@@ -322,6 +322,11 @@ function buildZoneTileSet(state) {
   if (state?.startingZone?.tiles && !(state.startingZone.tileSet instanceof Set)) {
     state.startingZone.tileSet = new Set(state.startingZone.tiles.map(t => `${t.q},${t.r}`));
   }
+  for (const z of (state?.allZones || [])) {
+    if (z.zone?.tiles && !(z.zone.tileSet instanceof Set)) {
+      z.zone.tileSet = new Set(z.zone.tiles.map(t => `${t.q},${t.r}`));
+    }
+  }
 }
 if (deployState) buildZoneTileSet(deployState);
 
@@ -335,6 +340,8 @@ let rangeCenter = null;
 let motivateTiles = new Set();
 let motivateCenter = null;
 let deployTiles = new Set();
+let pendingMoveTarget = null;
+let pendingMovePath = [];
 
 // Camera — centrée sur la carte image au démarrage
 const MAP_CENTER_WORLD_X = (MAP_IMG_W / 2 - MAP_ORIG_X) * MAP_SCALE; // ≈ 1344
@@ -418,7 +425,7 @@ function render() {
         const { x, y } = hexToPixel(q, r);
         const isVisible = visibleSet.has(key);
         const isHovered = hoveredHex && hoveredHex.q === q && hoveredHex.r === r;
-        let fill = isVisible ? 'rgba(0,0,0,0)' : 'rgba(0,0,0,0.72)';
+        let fill = isVisible ? 'rgba(0,0,0,0)' : 'rgba(0,0,0,0.05)';
         let stroke = isVisible ? `rgba(${gridColorRGB},${gridOpacity})` : 'rgba(0,0,0,0)';
         if (isVisible && movableTiles.has(key)) fill = 'rgba(40,120,20,0.35)';
         if (isVisible && attackableTiles.has(key)) fill = 'rgba(180,30,10,0.35)';
@@ -438,13 +445,78 @@ function render() {
         const { x, y } = hexToPixel(q, r);
         const inZone = startZone?.tileSet ? startZone.tileSet.has(`${q},${r}`) : (startZone ? hexDistance(q, r, startZone.q, startZone.r) <= (startZone.radius || 4) : false);
         const isHovered = hoveredHex && hoveredHex.q === q && hoveredHex.r === r;
-        let fill = inZone ? 'rgba(40,120,20,0.25)' : 'rgba(0,0,0,0)';
-        let stroke = inZone ? `rgba(80,200,40,${Math.min(1, gridOpacity * 2)})` : `rgba(${gridColorRGB},${gridOpacity * 0.6})`;
-        if (inZone && isHovered) fill = 'rgba(60,180,30,0.4)';
+        let fill = inZone ? 'rgba(60,180,30,0.12)' : (startZone ? 'rgba(0,0,0,0.05)' : 'rgba(0,0,0,0)');
+        let stroke = inZone ? 'rgba(100,240,60,0.85)' : (startZone ? 'rgba(0,0,0,0)' : `rgba(${gridColorRGB},${gridOpacity * 0.6})`);
+        if (inZone && isHovered) fill = 'rgba(80,220,50,0.25)';
         if (isHovered && !inZone) stroke = 'rgba(200,160,80,0.5)';
         drawHex(ctx, x, y, fill, stroke, 1, gridThickness);
       }
     }
+  }
+
+  // Contour de la zone de déploiement du joueur
+  if (startZone?.tileSet && startZone.tileSet.size > 0) {
+    const dirs = SEGMENT_EDGE_DIRS;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(100,255,60,0.95)';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (const key of startZone.tileSet) {
+      const [q, r] = key.split(',').map(Number);
+      const { x, y } = hexToPixel(q, r);
+      const corners = hexCorners(x, y);
+      for (let i = 0; i < 6; i++) {
+        const [dq, dr] = dirs[i];
+        if (!startZone.tileSet.has(`${q + dq},${r + dr}`)) {
+          ctx.moveTo(corners[i].x, corners[i].y);
+          ctx.lineTo(corners[(i + 1) % 6].x, corners[(i + 1) % 6].y);
+        }
+      }
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Zones des autres joueurs (opacité réduite, forêts masquées)
+  for (const z of (deployState?.allZones || [])) {
+    if (!z.zone?.tileSet || z.zone.tileSet.size === 0) continue;
+    const dirs = SEGMENT_EDGE_DIRS;
+    ctx.save();
+    ctx.fillStyle = `${z.color}22`;
+    for (const key of z.zone.tileSet) {
+      if (terrainData[key] === 'forest') continue;
+      const [q, r] = key.split(',').map(Number);
+      const { x, y } = hexToPixel(q, r);
+      const pts = hexCorners(x, y);
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < 6; i++) ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+    ctx.save();
+    ctx.strokeStyle = `${z.color}99`;
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (const key of z.zone.tileSet) {
+      if (terrainData[key] === 'forest') continue;
+      const [q, r] = key.split(',').map(Number);
+      const { x, y } = hexToPixel(q, r);
+      const corners = hexCorners(x, y);
+      for (let i = 0; i < 6; i++) {
+        const [dq, dr] = dirs[i];
+        const nk = `${q + dq},${r + dr}`;
+        if (!z.zone.tileSet.has(nk) || terrainData[nk] === 'forest') {
+          ctx.moveTo(corners[i].x, corners[i].y);
+          ctx.lineTo(corners[(i + 1) % 6].x, corners[(i + 1) % 6].y);
+        }
+      }
+    }
+    ctx.stroke();
+    ctx.restore();
   }
 
   if (rangeTiles.size > 0 && rangeCenter) {
@@ -541,6 +613,32 @@ function render() {
 
   // Segments (arêtes entre tuiles) — visibles quand le toggle terrain est actif
   if (showTerrain) drawSegments(ctx);
+
+  // Chemin de déplacement en attente de confirmation
+  if (pendingMovePath.length > 0 && pendingMoveTarget) {
+    ctx.save();
+    for (const step of pendingMovePath) {
+      const { x, y } = hexToPixel(step.q, step.r);
+      drawHex(ctx, x, y, 'rgba(255,200,0,0.25)', 'rgba(255,200,0,0.7)', 1, 2);
+    }
+    const { x: dx, y: dy } = hexToPixel(pendingMoveTarget.q, pendingMoveTarget.r);
+    drawHex(ctx, dx, dy, 'rgba(255,200,0,0.45)', 'rgba(255,220,0,1)', 1, 3);
+    if (selectedUnit) {
+      const from = hexToPixel(selectedUnit.q, selectedUnit.r);
+      ctx.strokeStyle = 'rgba(255,220,0,0.6)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(from.x, from.y);
+      for (const step of pendingMovePath) {
+        const { x, y } = hexToPixel(step.q, step.r);
+        ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
+  }
 
   // Pings
   drawPings(ctx);
@@ -909,12 +1007,19 @@ function handleHexClick(hex) {
   }
 
   if (selectedUnit) {
-    // Clic sur case de déplacement → déplacer
+    // Clic sur case de déplacement → 1er clic = aperçu, 2e clic = confirmer
     if (movableTiles.has(key)) {
-      wsSend('move_unit', { roomCode, unitId: selectedUnit.id, targetQ: hex.q, targetR: hex.r });
-      movableTiles.clear();
-      attackableTiles.clear();
-      rangeTiles.clear(); rangeCenter = null; motivateTiles.clear(); motivateCenter = null;
+      if (pendingMoveTarget && pendingMoveTarget.q === hex.q && pendingMoveTarget.r === hex.r) {
+        wsSend('move_unit', { roomCode, unitId: selectedUnit.id, targetQ: hex.q, targetR: hex.r });
+        pendingMoveTarget = null;
+        pendingMovePath = [];
+        movableTiles.clear();
+        attackableTiles.clear();
+        rangeTiles.clear(); rangeCenter = null; motivateTiles.clear(); motivateCenter = null;
+      } else {
+        pendingMoveTarget = { q: hex.q, r: hex.r };
+        pendingMovePath = findPathClient(selectedUnit, hex.q, hex.r);
+      }
       render();
       return;
     }
@@ -942,6 +1047,8 @@ function handleHexClick(hex) {
 
     // Clic hors portée → déselectionner
     selectedUnit = null;
+    pendingMoveTarget = null;
+    pendingMovePath = [];
     movableTiles.clear();
     attackableTiles.clear();
     rangeTiles.clear(); rangeCenter = null; motivateTiles.clear(); motivateCenter = null;
@@ -998,6 +1105,8 @@ function handleDeployClick(hex) {
 
 function selectUnit(unit) {
   selectedUnit = unit;
+  pendingMoveTarget = null;
+  pendingMovePath = [];
   movableTiles.clear();
   attackableTiles.clear();
   rangeTiles.clear(); rangeCenter = null; motivateTiles.clear(); motivateCenter = null;
@@ -1023,8 +1132,64 @@ function selectUnit(unit) {
 
 function terrainMoveCost(key) {
   const t = terrainData[key] || 'plain';
-  const costs = { plain: 1, road: 1, forest: 2, river: 2, building: 1, bridge: 1 };
+  const costs = { plain: 1, road: 0.33, forest: 2, river: 2, building: 1, bridge: 1 };
   return costs[t] ?? 1;
+}
+
+function findPathClient(unit, targetQ, targetR) {
+  const maxSpeed = unit.speedRemaining != null ? unit.speedRemaining : unit.speed;
+  const isCavalry = unit.category === 'Chevaux' || unit.category === 'Chars';
+  const dirs = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
+  const dist = new Map();
+  const prev = new Map();
+  const startKey = `${unit.q},${unit.r}`;
+  const targetKey = `${targetQ},${targetR}`;
+  dist.set(startKey, 0);
+  const queue = [{ q: unit.q, r: unit.r, cost: 0 }];
+
+  while (queue.length > 0) {
+    queue.sort((a, b) => a.cost - b.cost);
+    const { q, r, cost } = queue.shift();
+    const key = `${q},${r}`;
+    if (cost > (dist.get(key) ?? Infinity)) continue;
+    if (key === targetKey) break;
+    if (cost >= maxSpeed) continue;
+    for (const [dq, dr] of dirs) {
+      const nq = q + dq, nr = r + dr;
+      const nk = `${nq},${nr}`;
+      if (!movableTiles.has(nk) && nk !== targetKey) continue;
+      const occupant = gameState?.units.find(u => u.q === nq && u.r === nr);
+      if (occupant && nk !== targetKey) continue;
+      const edgeK = segmentEdgeKey(q, r, nq, nr);
+      const segType = segmentData[edgeK];
+      const segDef = segType ? SEGMENT_DEFS_CLIENT[segType] : null;
+      if (segDef?.infranchissable) continue;
+      if (segDef?.infranchissable_cavalerie && isCavalry) continue;
+      let stepCost = terrainMoveCost(key);
+      if (segDef) {
+        if (segDef.vitesse_fixe != null) stepCost = segDef.vitesse_fixe;
+        else stepCost += Math.max(0, -(segDef.vitesse || 0));
+      }
+      const newCost = cost + stepCost;
+      if (newCost > maxSpeed) continue;
+      if (!dist.has(nk) || newCost < dist.get(nk)) {
+        dist.set(nk, newCost);
+        prev.set(nk, { q, r });
+        queue.push({ q: nq, r: nr, cost: newCost });
+      }
+    }
+  }
+
+  if (!prev.has(targetKey) && targetKey !== startKey) return [];
+  const path = [];
+  let cur = targetKey;
+  while (cur && cur !== startKey) {
+    const [cq, cr] = cur.split(',').map(Number);
+    path.unshift({ q: cq, r: cr });
+    const p = prev.get(cur);
+    cur = p ? `${p.q},${p.r}` : null;
+  }
+  return path;
 }
 
 function computeMovableTiles(unit) {
@@ -1499,6 +1664,8 @@ function endTurn() {
   if (gameState?.currentPlayerId !== myId) return;
   wsSend('end_turn', { roomCode });
   selectedUnit = null;
+  pendingMoveTarget = null;
+  pendingMovePath = [];
   movableTiles.clear();
   attackableTiles.clear();
   rangeTiles.clear(); rangeCenter = null; motivateTiles.clear(); motivateCenter = null;
@@ -2145,6 +2312,7 @@ function onWsOpen() {
       camX = -x * zoom;
       camY = -y * zoom;
     }
+    render();
   }
 }
 
