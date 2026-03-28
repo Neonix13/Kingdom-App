@@ -153,54 +153,11 @@ const DEPLOY_CENTER_EXCLUSION = 3;
 const DEPLOY_INTER_ZONE_EXCLUSION = 8;
 const DEPLOY_BORDER_EXCLUSION = 12;
 
-// Coûts de terrain pour l'expansion de zone de déploiement
-const TERRAIN_ZONE_COST = { plain: 1, road: 0.33, building: 1, forest: 2.5, river: 999 };
-
-// Expansion blob : Dijkstra avec coût cumulé de traversal depuis le centre.
-// Blob compact qui préfère routes/plaines, forêts repoussées en périphérie.
-function _deployZoneBlob(centerQ, centerR, maxTiles, forbiddenKeys) {
-  const td = getTerrainData();
-  const sd = getSegmentData();
-  const DIRS = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
-  const dist = new Map();
-  const heap = [{ q: centerQ, r: centerR, cost: 0 }];
-  dist.set(`${centerQ},${centerR}`, 0);
-  const tiles = [];
-
-  while (heap.length && tiles.length < maxTiles) {
-    heap.sort((a, b) => a.cost - b.cost);
-    const { q, r, cost } = heap.shift();
-    const key = `${q},${r}`;
-    if (tiles.some(t => t.q === q && t.r === r)) continue;
-    const terrain = td[key] || 'plain';
-    if (terrain === 'river') continue;
-    if (forbiddenKeys && forbiddenKeys.has(key)) continue;
-    tiles.push({ q, r });
-    if (tiles.length >= maxTiles) break;
-
-    for (const [dq, dr] of DIRS) {
-      const nq = q + dq, nr = r + dr;
-      const nk = `${nq},${nr}`;
-      if (!td[nk]) continue;
-      const edgeK = segmentEdgeKey(q, r, nq, nr);
-      const segDef = sd[edgeK] ? SEGMENT_DEFS[sd[edgeK]] : null;
-      if (segDef?.infranchissable) continue;
-      const nTerrain = td[nk] || 'plain';
-      if (nTerrain === 'river') continue;
-      const stepCost = TERRAIN_ZONE_COST[nTerrain] ?? 1;
-      const newCost = cost + stepCost;
-      if (!dist.has(nk) || newCost < dist.get(nk)) {
-        dist.set(nk, newCost);
-        heap.push({ q: nq, r: nr, cost: newCost });
-      }
-    }
-  }
-  return tiles;
-}
-
 function getStartingZones(numPlayers, mapRadius, budget) {
   const td = getTerrainData();
+  const sd = getSegmentData();
   const maxTiles = Math.max(5, Math.floor((budget || 2500) / 1000) * 5);
+  const DIRS_6 = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
 
   const validHexes = [];
   for (const [key, type] of Object.entries(td)) {
@@ -242,34 +199,60 @@ function getStartingZones(numPlayers, mapRadius, budget) {
     playerCenters.push(best || { q: targetQ, r: targetR });
   }
 
-  // Tuiles interdites : trop proches du point central
-  const centralExcluded = new Set();
-  for (const { q, r } of validHexes) {
-    if (hexDistance(q, r, centralHex.q, centralHex.r) < DEPLOY_CENTER_EXCLUSION)
-      centralExcluded.add(`${q},${r}`);
-  }
+  // Pour chaque joueur : scorer toutes les tuiles et prendre les meilleures
+  const zoneTiles = playerCenters.map((center, pi) => {
+    const otherCenters = playerCenters.filter((_, i) => i !== pi);
 
-  // Construire les zones (on demande 2x maxTiles pour avoir de la marge avant filtrage)
-  const zoneTiles = playerCenters.map(c =>
-    _deployZoneBlob(c.q, c.r, maxTiles * 2, centralExcluded)
-  );
+    // BFS depuis le centre : tuiles atteignables sans franchir un segment infranchissable
+    const reachableWithout = new Set();
+    const bfsQ = [{ q: center.q, r: center.r }];
+    reachableWithout.add(`${center.q},${center.r}`);
+    while (bfsQ.length > 0) {
+      const { q, r } = bfsQ.shift();
+      for (const [dq, dr] of DIRS_6) {
+        const nq = q + dq, nr = r + dr;
+        const nk = `${nq},${nr}`;
+        if (reachableWithout.has(nk) || !td[nk]) continue;
+        const segDef = sd[segmentEdgeKey(q, r, nq, nr)];
+        if (segDef && SEGMENT_DEFS[segDef]?.infranchissable) continue;
+        reachableWithout.add(nk);
+        bfsQ.push({ q: nq, r: nr });
+      }
+    }
 
-  // Supprimer les tuiles trop proches d'une autre zone
-  const filtered = zoneTiles.map((tiles, pi) =>
-    tiles.filter(t =>
-      !zoneTiles.some((other, pj) => {
-        if (pj === pi) return false;
-        return other.some(ot => hexDistance(t.q, t.r, ot.q, ot.r) < DEPLOY_INTER_ZONE_EXCLUSION);
-      })
-    )
-  );
+    // Score de chaque tuile (plus bas = meilleur)
+    const scored = [];
+    for (const [key, terrain] of Object.entries(td)) {
+      const [q, r] = key.split(',').map(Number);
+      let score = hexDistance(q, r, center.q, center.r) || 0.01;
 
-  // Égaliser à la plus petite zone, tronquer à maxTiles
-  const minTiles = Math.min(maxTiles, ...filtered.map(t => t.length));
+      if (terrain === 'road') score *= 0.9;
+      else if (terrain === 'forest' || terrain === 'building' || terrain === 'bridge') score *= 2;
+      else if (terrain === 'river') score *= 3;
+      // plain : ×1
+
+      if (!reachableWithout.has(key)) score *= 2;
+
+      if (hexDistance(q, r, centralHex.q, centralHex.r) < DEPLOY_CENTER_EXCLUSION) score *= 10;
+
+      for (const other of otherCenters) {
+        if (hexDistance(q, r, other.q, other.r) < DEPLOY_INTER_ZONE_EXCLUSION) {
+          score *= 11;
+          break;
+        }
+      }
+
+      scored.push({ q, r, score });
+    }
+
+    scored.sort((a, b) => a.score - b.score);
+    return scored.slice(0, maxTiles).map(({ q, r }) => ({ q, r }));
+  });
+
   return playerCenters.map((c, i) => ({
     q: c.q,
     r: c.r,
-    tiles: filtered[i].slice(0, minTiles),
+    tiles: zoneTiles[i],
   }));
 }
 
