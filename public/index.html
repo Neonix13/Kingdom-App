@@ -30,6 +30,20 @@
       <p>Battleground — Stratégie au Tour par Tour</p>
     </div>
 
+    <!-- Outils d'édition (localhost uniquement) -->
+    <div id="dev-tools-card" style="display:none">
+      <div class="card">
+        <h2>Outils d'édition</h2>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <a href="/terrain-editor.html" class="btn" style="text-align:center;text-decoration:none">Éditeur de terrains</a>
+          <a href="/segment-editor.html" class="btn" style="text-align:center;text-decoration:none">Éditeur de segments</a>
+          <a href="/height-editor.html" class="btn" style="text-align:center;text-decoration:none">Éditeur de hauteurs</a>
+          <a href="/calibration.html" class="btn" style="text-align:center;text-decoration:none">Calibration</a>
+          <a href="/deploy-debug.html" class="btn" style="text-align:center;text-decoration:none">Debug déploiement</a>
+        </div>
+      </div>
+    </div>
+
     <!-- Écran d'accueil -->
     <div id="screen-home">
       <div class="card">
@@ -132,6 +146,7 @@
   <script>
     if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
       document.getElementById('dev-links').style.display = 'flex';
+      document.getElementById('dev-tools-card').style.display = 'block';
     }
   </script>
 
