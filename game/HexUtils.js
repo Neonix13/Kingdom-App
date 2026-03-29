@@ -154,34 +154,30 @@ const DEPLOY_INTER_ZONE_EXCLUSION = 8;
 const DEPLOY_BORDER_EXCLUSION = 13; // + numPlayers dynamiquement dans getStartingZones
 
 function getStartingZones(numPlayers, mapRadius, budget) {
-  const td = getTerrainData();
   const sd = getSegmentData();
   const maxTiles = Math.floor(4 * (budget || 2500) / 1000 + 2);
   const centerExclusion = 3 + numPlayers;
   const borderExclusion = 13 + numPlayers;
   const DIRS_6 = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
 
-  const validHexes = [];
-  for (const [key, type] of Object.entries(td)) {
-    if (type === 'river' || type === 'forest') continue;
-    const [q, r] = key.split(',').map(Number);
-    validHexes.push({ q, r });
-  }
+  // Toutes les tuiles de la carte (y compris plaines)
+  const hexMap = generateHexMap();
+  const allHexes = Object.values(hexMap);
 
   // Extrêmes de la carte pour estimer le bord
   let minQ = Infinity, maxQ = -Infinity, minR = Infinity, maxR = -Infinity;
-  for (const { q, r } of validHexes) {
+  for (const { q, r } of allHexes) {
     if (q < minQ) minQ = q; if (q > maxQ) maxQ = q;
     if (r < minR) minR = r; if (r > maxR) maxR = r;
   }
 
   // Point central aléatoire loin des bords
-  const centerCandidates = validHexes.filter(({ q, r }) =>
+  const centerCandidates = allHexes.filter(({ q, r }) =>
     q >= minQ + borderExclusion && q <= maxQ - borderExclusion &&
     r >= minR + borderExclusion && r <= maxR - borderExclusion
   );
   const centralHex = centerCandidates[Math.floor(Math.random() * centerCandidates.length)]
-    || validHexes[Math.floor(Math.random() * validHexes.length)];
+    || allHexes[Math.floor(Math.random() * allHexes.length)];
 
   // Rayon du cercle de déploiement (augmente avec le nombre de joueurs)
   const deployRadius = 3 + numPlayers;
@@ -195,7 +191,7 @@ function getStartingZones(numPlayers, mapRadius, budget) {
     const targetQ = centralHex.q + Math.round(deployRadius * (2 / S) * Math.cos(angle));
     const targetR = centralHex.r + Math.round(deployRadius * (Math.sin(angle) - Math.cos(angle) / S));
     let best = null, bestDist = Infinity;
-    for (const h of validHexes) {
+    for (const h of allHexes) {
       const d = hexDistance(h.q, h.r, targetQ, targetR);
       if (d < bestDist) { bestDist = d; best = h; }
     }
@@ -215,7 +211,7 @@ function getStartingZones(numPlayers, mapRadius, budget) {
         const s = stepsMap.get(`${q},${r}`);
         for (const [dq, dr] of DIRS_6) {
           const nq = q + dq, nr = r + dr, nk = `${nq},${nr}`;
-          if (!td[nk] || stepsMap.has(nk)) continue;
+          if (!hexMap[nk] || stepsMap.has(nk)) continue;
           stepsMap.set(nk, s + 1);
           next.push({ q: nq, r: nr });
         }
@@ -231,7 +227,7 @@ function getStartingZones(numPlayers, mapRadius, budget) {
         const k = `${q},${r}`, s = stepsMap.get(k), cross = crossMap.get(k) ?? 0;
         for (const [dq, dr] of DIRS_6) {
           const nq = q + dq, nr = r + dr, nk = `${nq},${nr}`;
-          if (!td[nk] || stepsMap.get(nk) !== s + 1) continue;
+          if (!hexMap[nk] || stepsMap.get(nk) !== s + 1) continue;
           const segType = sd[segmentEdgeKey(q, r, nq, nr)];
           const newCross = cross + (segType ? 1 : 0);
           if (!crossMap.has(nk) || newCross < crossMap.get(nk)) crossMap.set(nk, newCross);
@@ -243,8 +239,8 @@ function getStartingZones(numPlayers, mapRadius, budget) {
 
     // Score de chaque tuile (plus bas = meilleur)
     const scored = [];
-    for (const [key, terrain] of Object.entries(td)) {
-      const [q, r] = key.split(',').map(Number);
+    for (const { q, r, terrain } of allHexes) {
+      const key = `${q},${r}`;
       const pxDist = Math.sqrt(
         (MAP_HEX_SIZE * 1.5 * (q - center.q)) ** 2 +
         (MAP_HEX_SIZE * (Math.sqrt(3) / 2 * q + Math.sqrt(3) * r - Math.sqrt(3) / 2 * center.q - Math.sqrt(3) * center.r)) ** 2
@@ -254,7 +250,6 @@ function getStartingZones(numPlayers, mapRadius, budget) {
       if (terrain === 'road') score *= 0.9;
       else if (terrain === 'forest' || terrain === 'building' || terrain === 'bridge') score *= 1.2;
       else if (terrain === 'river') score *= 1.3;
-      // plain : ×1
 
       const cross = crossMap.get(key) ?? 0;
       if (cross > 0) score *= Math.pow(1.2, cross);
