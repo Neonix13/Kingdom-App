@@ -12,6 +12,7 @@ const wss = new WebSocket.Server({ server });
 
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/simulation/results', express.static(path.join(__dirname, 'simulation/results')));
+app.get('/data/stances.json', (req, res) => res.json(require('./game/data/stances')));
 
 const rooms = {};
 const connections = {}; // connectionId -> ws

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Stances — Kingdom Battleground</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #111; color: #e8d5a0; font-family: 'Segoe UI', sans-serif; padding: 32px 24px; }
+    h1 { color: #c8960c; font-size: 1.4em; margin-bottom: 6px; }
+    p.sub { color: #7a6040; font-size: 0.85em; margin-bottom: 28px; }
+
+    .table-wrap { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; min-width: 900px; font-size: 0.82em; }
+
+    thead tr th {
+      background: #2a1a08;
+      color: #c8960c;
+      padding: 8px 10px;
+      text-align: center;
+      border: 1px solid #3a2808;
+      white-space: nowrap;
+    }
+    thead tr th.group-cac { color: #e07040; }
+    thead tr th.group-tir { color: #60a8e0; }
+    thead tr th.group-label { color: #a08040; font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.05em; background: #1e1208; }
+
+    tbody tr td {
+      padding: 7px 10px;
+      border: 1px solid #2a1a08;
+      text-align: center;
+      white-space: nowrap;
+    }
+    tbody tr:nth-child(odd) td { background: #1a1008; }
+    tbody tr:nth-child(even) td { background: #150d06; }
+    tbody tr:hover td { background: #2a1808; }
+
+    td.stance-name {
+      text-align: left;
+      font-weight: bold;
+      color: #e8d5a0;
+      padding-left: 14px;
+      min-width: 160px;
+    }
+    .stance-icon { font-size: 1.1em; margin-right: 6px; }
+
+    .pos { color: #5dbd60; font-weight: bold; }
+    .neg { color: #e05050; font-weight: bold; }
+    .zero { color: #444; }
+
+    .desc-row td {
+      text-align: left;
+      color: #8a7050;
+      font-size: 0.78em;
+      padding: 4px 14px 10px;
+      border-top: none;
+      font-style: italic;
+    }
+
+    .separator { background: #2a1a08; height: 2px; }
+
+    h2.section { color: #8a7050; font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.08em; margin: 28px 0 12px; }
+  </style>
+</head>
+<body>
+  <h1>⚔ Tableau des Stances</h1>
+  <p class="sub">Les modificateurs s'ajoutent aux statistiques de base de l'unité. <span style="color:#e07040">■ Corps à corps</span> &nbsp;·&nbsp; <span style="color:#60a8e0">■ Distance</span></p>
+
+  <div class="table-wrap">
+    <table id="stance-table">
+      <thead>
+        <tr>
+          <th rowspan="2" style="text-align:left;padding-left:14px">Stance</th>
+          <th rowspan="2">Vitesse</th>
+          <th colspan="2" class="group-label">Attaque</th>
+          <th colspan="2" class="group-label">Défense</th>
+          <th colspan="2" class="group-label">Puissance</th>
+          <th colspan="2" class="group-label">Intimidation</th>
+          <th colspan="2" class="group-label">Esquive</th>
+          <th colspan="2" class="group-label">Précision</th>
+          <th rowspan="2">Armure</th>
+          <th rowspan="2" title="Régénération armure par tour">Armure/t</th>
+          <th rowspan="2" title="Régénération moral par tour">Moral/t</th>
+          <th rowspan="2" title="Régénération vitalité par tour">Vita/t</th>
+        </tr>
+        <tr>
+          <th class="group-cac">CAC</th><th class="group-tir">TIR</th>
+          <th class="group-cac">CAC</th><th class="group-tir">TIR</th>
+          <th class="group-cac">CAC</th><th class="group-tir">TIR</th>
+          <th class="group-cac">CAC</th><th class="group-tir">TIR</th>
+          <th class="group-cac">CAC</th><th class="group-tir">TIR</th>
+          <th class="group-cac">CAC</th><th class="group-tir">TIR</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <script>
+    const STANCES_META = {
+      marche:           { icon: '🚶', desc: 'Déplacement rapide, combat réduit. Favorise la mobilité et l\'esquive.' },
+      combat:           { icon: '⚔️',  desc: 'Posture offensive équilibrée. Bonus sur toutes les stats de combat.' },
+      charge:           { icon: '🐴', desc: 'Assaut brutal à grande vitesse. Très offensif, défense réduite.' },
+      percee:           { icon: '🗡️',  desc: 'Percée concentrée en corps à corps. Moins efficace à distance.' },
+      defense_combat:   { icon: '🛡️',  desc: 'Résistance au choc en mêlée. Grosse défense CAC, attaque réduite.' },
+      defense_distance: { icon: '🏹', desc: 'Dispersion pour éviter les tirs. Très mauvais en CAC, esquive distance excellente.' },
+    };
+
+    const FIELDS = [
+      'vitesse',
+      'attack_cac','attack_tir',
+      'defense_cac','defense_tir',
+      'puissance_cac','puissance_tir',
+      'intimidation_cac','intimidation_tir',
+      'esquive_cac','esquive_tir',
+      'precision_cac','precision_tir',
+      'armure','armure_tour','moral_tour','vitalite_tour',
+    ];
+
+    function fmt(v) {
+      if (v === 0) return `<span class="zero">—</span>`;
+      return v > 0 ? `<span class="pos">+${v}</span>` : `<span class="neg">${v}</span>`;
+    }
+
+    fetch('/data/stances.json')
+      .then(r => r.ok ? r.json() : null)
+      .catch(() => null)
+      .then(data => {
+        // Fallback inline si pas de JSON serveur
+        const STANCES = data || {
+          marche:           { vitesse:+1, attack_cac:-1, attack_tir:-2, defense_cac:-2, defense_tir:-1, puissance_cac:+1, puissance_tir:-1, intimidation_cac:0, intimidation_tir:0, esquive_cac:+1, esquive_tir:+2, precision_cac:0, precision_tir:-2, armure:-1, armure_tour:0, moral_tour:0, vitalite_tour:0 },
+          combat:           { vitesse:-1, attack_cac:+1, attack_tir:+1, defense_cac:+1, defense_tir:+1, puissance_cac:+2, puissance_tir:+2, intimidation_cac:+1, intimidation_tir:+1, esquive_cac:0, esquive_tir:0, precision_cac:+1, precision_tir:+2, armure:+1, armure_tour:0, moral_tour:0, vitalite_tour:0 },
+          charge:           { vitesse:+2, attack_cac:+3, attack_tir:-2, defense_cac:-1, defense_tir:-2, puissance_cac:+3, puissance_tir:-2, intimidation_cac:+2, intimidation_tir:-1, esquive_cac:+2, esquive_tir:+3, precision_cac:+3, precision_tir:-2, armure:0, armure_tour:0, moral_tour:-1, vitalite_tour:0 },
+          percee:           { vitesse:+1, attack_cac:+2, attack_tir:-2, defense_cac:-1, defense_tir:-2, puissance_cac:+2, puissance_tir:-2, intimidation_cac:0, intimidation_tir:0, esquive_cac:0, esquive_tir:+2, precision_cac:+2, precision_tir:-2, armure:0, armure_tour:0, moral_tour:0, vitalite_tour:0 },
+          defense_combat:   { vitesse:-1, attack_cac:-2, attack_tir:-1, defense_cac:+4, defense_tir:-2, puissance_cac:-1, puissance_tir:-2, intimidation_cac:-2, intimidation_tir:+1, esquive_cac:+1, esquive_tir:-1, precision_cac:0, precision_tir:-2, armure:+2, armure_tour:0, moral_tour:0, vitalite_tour:0 },
+          defense_distance: { vitesse:0, attack_cac:-3, attack_tir:0, defense_cac:-3, defense_tir:0, puissance_cac:-2, puissance_tir:-1, intimidation_cac:-2, intimidation_tir:-1, esquive_cac:+2, esquive_tir:+4, precision_cac:-2, precision_tir:-1, armure:+1, armure_tour:0, moral_tour:0, vitalite_tour:0 },
+        };
+
+        const tbody = document.getElementById('tbody');
+        for (const [id, s] of Object.entries(STANCES)) {
+          const meta = STANCES_META[id] || { icon: '·', desc: '' };
+          const tr = document.createElement('tr');
+          const cells = FIELDS.map(f => `<td>${fmt(s[f] ?? 0)}</td>`).join('');
+          tr.innerHTML = `<td class="stance-name"><span class="stance-icon">${meta.icon}</span>${s.name || id}</td>${cells}`;
+          tbody.appendChild(tr);
+          if (meta.desc) {
+            const tr2 = document.createElement('tr');
+            tr2.className = 'desc-row';
+            tr2.innerHTML = `<td colspan="${FIELDS.length + 1}">${meta.desc}</td>`;
+            tbody.appendChild(tr2);
+          }
+        }
+      });
+  </script>
+</body>
+</html>
