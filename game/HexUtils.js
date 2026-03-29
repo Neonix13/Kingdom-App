@@ -149,14 +149,16 @@ function findPath(hexMap, unitMap, q1, r1, q2, r2, maxSpeed, playerId, unit) {
   return null;
 }
 
-const DEPLOY_CENTER_EXCLUSION = 3;
+const DEPLOY_CENTER_EXCLUSION = 0; // remplacé par 3+N dynamiquement
 const DEPLOY_INTER_ZONE_EXCLUSION = 8;
-const DEPLOY_BORDER_EXCLUSION = 12;
+const DEPLOY_BORDER_EXCLUSION = 13; // + numPlayers dynamiquement dans getStartingZones
 
 function getStartingZones(numPlayers, mapRadius, budget) {
   const td = getTerrainData();
   const sd = getSegmentData();
-  const maxTiles = Math.max(5, Math.floor((budget || 2500) / 1000) * 5);
+  const maxTiles = Math.floor(4 * (budget || 2500) / 1000 + 2);
+  const centerExclusion = 3 + numPlayers;
+  const borderExclusion = 13 + numPlayers;
   const DIRS_6 = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
 
   const validHexes = [];
@@ -175,22 +177,23 @@ function getStartingZones(numPlayers, mapRadius, budget) {
 
   // Point central aléatoire loin des bords
   const centerCandidates = validHexes.filter(({ q, r }) =>
-    q >= minQ + DEPLOY_BORDER_EXCLUSION && q <= maxQ - DEPLOY_BORDER_EXCLUSION &&
-    r >= minR + DEPLOY_BORDER_EXCLUSION && r <= maxR - DEPLOY_BORDER_EXCLUSION
+    q >= minQ + borderExclusion && q <= maxQ - borderExclusion &&
+    r >= minR + borderExclusion && r <= maxR - borderExclusion
   );
   const centralHex = centerCandidates[Math.floor(Math.random() * centerCandidates.length)]
     || validHexes[Math.floor(Math.random() * validHexes.length)];
 
   // Rayon du cercle de déploiement (augmente avec le nombre de joueurs)
-  const deployRadius = 10 + numPlayers * 4;
+  const deployRadius = 3 + numPlayers;
 
   // Placer N centres équidistants sur le cercle autour du point central
   const angleOffset = Math.random() * Math.PI * 2;
   const playerCenters = [];
   for (let i = 0; i < numPlayers; i++) {
     const angle = angleOffset + i * (Math.PI * 2 / numPlayers);
-    const targetQ = centralHex.q + Math.round(Math.cos(angle) * deployRadius);
-    const targetR = centralHex.r + Math.round(Math.sin(angle) * deployRadius);
+    const S = Math.sqrt(3);
+    const targetQ = centralHex.q + Math.round(deployRadius * (2 / S) * Math.cos(angle));
+    const targetR = centralHex.r + Math.round(deployRadius * (Math.sin(angle) - Math.cos(angle) / S));
     let best = null, bestDist = Infinity;
     for (const h of validHexes) {
       const d = hexDistance(h.q, h.r, targetQ, targetR);
@@ -203,41 +206,64 @@ function getStartingZones(numPlayers, mapRadius, budget) {
   const zoneTiles = playerCenters.map((center, pi) => {
     const otherCenters = playerCenters.filter((_, i) => i !== pi);
 
-    // BFS depuis le centre : tuiles atteignables sans franchir un segment infranchissable
-    const reachableWithout = new Set();
-    const bfsQ = [{ q: center.q, r: center.r }];
-    reachableWithout.add(`${center.q},${center.r}`);
-    while (bfsQ.length > 0) {
-      const { q, r } = bfsQ.shift();
-      for (const [dq, dr] of DIRS_6) {
-        const nq = q + dq, nr = r + dr;
-        const nk = `${nq},${nr}`;
-        if (reachableWithout.has(nk) || !td[nk]) continue;
-        const segDef = sd[segmentEdgeKey(q, r, nq, nr)];
-        if (segDef && SEGMENT_DEFS[segDef]?.infranchissable) continue;
-        reachableWithout.add(nk);
-        bfsQ.push({ q: nq, r: nr });
+    // Passe 1 : BFS — distance minimale (en pas) depuis le centre
+    const stepsMap = new Map([[`${center.q},${center.r}`, 0]]);
+    let frontier = [center];
+    while (frontier.length > 0) {
+      const next = [];
+      for (const { q, r } of frontier) {
+        const s = stepsMap.get(`${q},${r}`);
+        for (const [dq, dr] of DIRS_6) {
+          const nq = q + dq, nr = r + dr, nk = `${nq},${nr}`;
+          if (!td[nk] || stepsMap.has(nk)) continue;
+          stepsMap.set(nk, s + 1);
+          next.push({ q: nq, r: nr });
+        }
       }
+      frontier = next;
+    }
+    // Passe 2 : segments traversés sur le chemin le plus court (DP en ordre BFS)
+    const crossMap = new Map([[`${center.q},${center.r}`, 0]]);
+    frontier = [center];
+    while (frontier.length > 0) {
+      const next = [], inNext = new Set();
+      for (const { q, r } of frontier) {
+        const k = `${q},${r}`, s = stepsMap.get(k), cross = crossMap.get(k) ?? 0;
+        for (const [dq, dr] of DIRS_6) {
+          const nq = q + dq, nr = r + dr, nk = `${nq},${nr}`;
+          if (!td[nk] || stepsMap.get(nk) !== s + 1) continue;
+          const segType = sd[segmentEdgeKey(q, r, nq, nr)];
+          const newCross = cross + (segType ? 1 : 0);
+          if (!crossMap.has(nk) || newCross < crossMap.get(nk)) crossMap.set(nk, newCross);
+          if (!inNext.has(nk)) { inNext.add(nk); next.push({ q: nq, r: nr }); }
+        }
+      }
+      frontier = next;
     }
 
     // Score de chaque tuile (plus bas = meilleur)
     const scored = [];
     for (const [key, terrain] of Object.entries(td)) {
       const [q, r] = key.split(',').map(Number);
-      let score = hexDistance(q, r, center.q, center.r) || 0.01;
+      const pxDist = Math.sqrt(
+        (MAP_HEX_SIZE * 1.5 * (q - center.q)) ** 2 +
+        (MAP_HEX_SIZE * (Math.sqrt(3) / 2 * q + Math.sqrt(3) * r - Math.sqrt(3) / 2 * center.q - Math.sqrt(3) * center.r)) ** 2
+      ) / MAP_HEX_SIZE || 0.01;
+      let score = pxDist * (1 + (Math.random() - 0.5) * 0.3);
 
       if (terrain === 'road') score *= 0.9;
-      else if (terrain === 'forest' || terrain === 'building' || terrain === 'bridge') score *= 2;
-      else if (terrain === 'river') score *= 3;
+      else if (terrain === 'forest' || terrain === 'building' || terrain === 'bridge') score *= 1.2;
+      else if (terrain === 'river') score *= 1.3;
       // plain : ×1
 
-      if (!reachableWithout.has(key)) score *= 2;
+      const cross = crossMap.get(key) ?? 0;
+      if (cross > 0) score *= Math.pow(1.2, cross);
 
-      if (hexDistance(q, r, centralHex.q, centralHex.r) < DEPLOY_CENTER_EXCLUSION) score *= 10;
+      if (hexDistance(q, r, centralHex.q, centralHex.r) < centerExclusion) score *= 4;
 
       for (const other of otherCenters) {
         if (hexDistance(q, r, other.q, other.r) < DEPLOY_INTER_ZONE_EXCLUSION) {
-          score *= 11;
+          score *= 5;
           break;
         }
       }
@@ -246,7 +272,22 @@ function getStartingZones(numPlayers, mapRadius, budget) {
     }
 
     scored.sort((a, b) => a.score - b.score);
-    return scored.slice(0, maxTiles).map(({ q, r }) => ({ q, r }));
+
+    // Raffinement itératif : ×2 si la tuile est isolée (aucun voisin dans la zone)
+    let selectedKeys = new Set(scored.slice(0, maxTiles).map(s => `${s.q},${s.r}`));
+    for (let iter = 0; iter < 20; iter++) {
+      const adjusted = scored.map(s => {
+        if (!selectedKeys.has(`${s.q},${s.r}`)) return s;
+        const isolated = !DIRS_6.some(([dq, dr]) => selectedKeys.has(`${s.q + dq},${s.r + dr}`));
+        return isolated ? { ...s, score: s.score * 2 } : s;
+      });
+      adjusted.sort((a, b) => a.score - b.score);
+      const newKeys = new Set(adjusted.slice(0, maxTiles).map(s => `${s.q},${s.r}`));
+      const changed = [...newKeys].some(k => !selectedKeys.has(k));
+      selectedKeys = newKeys;
+      if (!changed) break;
+    }
+    return [...selectedKeys].map(k => { const [q, r] = k.split(',').map(Number); return { q, r }; });
   });
 
   return playerCenters.map((c, i) => ({
