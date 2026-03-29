@@ -83,8 +83,12 @@
         <div class="generals-grid" id="generals-grid"></div>
       </div>
 
-      <div class="mt-16 flex gap-8">
-        <button class="btn btn-success flex-1" id="start-btn" onclick="startGame()" style="display:none">
+      <div class="mt-16 flex gap-8" id="host-actions" style="display:none;flex-wrap:wrap;align-items:center">
+        <select id="ai-general-select" style="background:#333;color:#fff;border:1px solid #555;border-radius:4px;padding:6px 8px;font-size:0.9em"></select>
+        <button class="btn" onclick="addAI()" style="background:#555;color:#fff">
+          🤖 Ajouter un Bot
+        </button>
+        <button class="btn btn-success flex-1" id="start-btn" onclick="startGame()">
           Lancer la bataille
         </button>
       </div>

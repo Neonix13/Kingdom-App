@@ -165,6 +165,19 @@ function selectGeneral(id) {
   wsSend('select_general', { roomCode, generalId: id });
 }
 
+function addAI() {
+  const select = document.getElementById('ai-general-select');
+  const generalId = select?.value || null;
+  wsSend('add_ai', { roomCode, generalId });
+}
+
+function updateAIGeneralSelect(takenGenerals) {
+  const select = document.getElementById('ai-general-select');
+  if (!select) return;
+  const available = GENERALS_DATA.filter(g => !takenGenerals.includes(g.id));
+  select.innerHTML = available.map(g => `<option value="${g.id}">${g.name} (${g.kingdom})</option>`).join('');
+}
+
 function startGame() {
   wsSend('start_game', { roomCode });
 }
@@ -307,6 +320,14 @@ function renderPlayerList(players, hostId) {
         <span class="text-muted" style="font-size:0.85em">${genName}</span>
         <span class="ready-icon">${p.generalId ? '⚔️' : ''}</span>
       `;
+    } else if (p.isBot) {
+      li.innerHTML = `
+        <span class="player-badge" style="background:#555">Bot</span>
+        <div style="width:16px;height:16px;border-radius:50%;background:${color};flex-shrink:0;border:1px solid rgba(255,255,255,0.3)"></div>
+        <span>${p.name}</span>
+        <span class="text-muted" style="font-size:0.85em">${genName}</span>
+        <span class="ready-icon">${p.generalId ? '⚔️' : ''}</span>
+      `;
     } else {
       li.innerHTML = `
         <span class="player-badge${p.id === hostId ? ' host' : ''}">${p.id === hostId ? 'Host' : 'Joueur'}</span>
@@ -406,7 +427,8 @@ function wsDispatch(event, data) {
       sessionStorage.setItem('lobbyRoomCode', roomCode);
       document.getElementById('room-code-display').textContent = data.roomCode;
       document.getElementById('budget-card').style.display = 'block';
-      document.getElementById('start-btn').style.display = 'block';
+      document.getElementById('host-actions').style.display = 'flex';
+      updateAIGeneralSelect([]);
       show('screen-lobby');
       break;
     }
@@ -427,7 +449,8 @@ function wsDispatch(event, data) {
       renderGenerals(data.takenGenerals);
       if (data.hostId === myId) {
         document.getElementById('budget-card').style.display = 'block';
-        document.getElementById('start-btn').style.display = 'block';
+        document.getElementById('host-actions').style.display = 'flex';
+        updateAIGeneralSelect(data.takenGenerals);
       }
       const me = data.players.find(p => p.id === myId);
       if (me && me.generalId) selectedGeneral = me.generalId;

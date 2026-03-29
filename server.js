@@ -3,6 +3,8 @@ const http = require('http');
 const path = require('path');
 const WebSocket = require('ws');
 const GameRoom = require('./game/GameRoom');
+const AIAgent = require('./simulation/AIAgent');
+const GENERALS = require('./game/data/generals');
 
 const app = express();
 const server = http.createServer(app);
@@ -33,6 +35,133 @@ function send(connectionId, data) {
 
 function broadcast(room, data) {
   for (const p of room.players) send(p.id, data);
+}
+
+function runBotArmy(room) {
+  for (const p of room.players) {
+    if (!p.isBot || p.armySubmitted) continue;
+    const agent = new AIAgent(p.id);
+    const army = agent.buildArmy(room.budget, p.generalId);
+    room.submitArmy(p.id, army);
+  }
+}
+
+function runBotDeployment(room) {
+  for (const p of room.players) {
+    if (!p.isBot || p.isReady) continue;
+    const agent = new AIAgent(p.id);
+    agent.deploy(room);
+    room.setDeploymentReady(p.id);
+  }
+}
+
+const pendingDefenseCallbacks = {};
+const _delay = ms => new Promise(r => setTimeout(r, ms));
+
+function runBotTurn(room) {
+  if (room.phase !== 'battle') return;
+  const currentId = room.getCurrentPlayerId();
+  const player = room.getPlayer(currentId);
+  if (!player || !player.isBot) return;
+  _executeBotTurnAsync(room).catch(e => console.error('Bot turn error:', e));
+}
+
+async function _doBotAttack(room, agent, botId, unit, target) {
+  const result = room.initiateCombat(botId, unit.id, target.id);
+  if (!result.pending) return;
+  const targetPlayer = room.players.find(p => p.units.some(u => u.id === target.id));
+  if (targetPlayer && !targetPlayer.isBot) {
+    send(result.targetPlayerId, { event: 'defense_request', attackId: result.attackId, attackerName: result.attackerName, targetName: result.targetName, targetQ: result.targetQ, targetR: result.targetR, isRanged: result.isRanged, targetTypeId: result.targetTypeId });
+    send(result.targetPlayerId, { event: 'defense_timer', attackId: result.attackId, seconds: 20 });
+    const choice = await new Promise(resolve => {
+      pendingDefenseCallbacks[result.attackId] = resolve;
+      setTimeout(() => { if (pendingDefenseCallbacks[result.attackId]) { delete pendingDefenseCallbacks[result.attackId]; resolve('rien'); } }, 20000);
+    });
+    const resolved = room.resolveAttack(result.attackId, choice);
+    if (resolved.ok) {
+      room.players.forEach(p => { send(p.id, { event: 'combat_result', combatLog: resolved.combatLog }); send(p.id, { event: 'game_state', ...room.getGameState(p.id) }); });
+      if (room.phase === 'ended') broadcast(room, { event: 'game_over', winnerId: room.winner, winnerName: room.getPlayer(room.winner)?.name });
+    }
+  } else {
+    const defAgent = new AIAgent(result.targetPlayerId);
+    const choice = defAgent.chooseDefense(result, room);
+    const resolved = room.resolveAttack(result.attackId, choice);
+    if (resolved.ok) {
+      room.players.forEach(p => { send(p.id, { event: 'combat_result', combatLog: resolved.combatLog }); send(p.id, { event: 'game_state', ...room.getGameState(p.id) }); });
+    }
+  }
+  await _delay(600);
+}
+
+async function _executeBotTurnAsync(room) {
+  const currentId = room.getCurrentPlayerId();
+  const player = room.getPlayer(currentId);
+  if (!player || !player.isBot || room.phase !== 'battle') return;
+  await _delay(800);
+
+  const agent = new AIAgent(currentId);
+  agent._visibleCache = room.getVisibleHexes(currentId);
+  const sortedUnits = agent._sortUnitsByPriority(player.units);
+
+  for (const unit of sortedUnits) {
+    if (room.phase !== 'battle') break;
+    if (unit.q === null || unit.speedRemaining <= 0) continue;
+    const enemies = agent._getEnemyUnits(room);
+
+    // Stance
+    if (!unit.isGeneral && !unit.isFleeing && unit.speedRemaining >= 2) {
+      const best = agent._chooseBestStance(unit, enemies);
+      if (best && best !== unit.stance) {
+        room.changeStance(currentId, unit.id, best);
+        room.players.forEach(p => send(p.id, { event: 'game_state', ...room.getGameState(p.id) }));
+        await _delay(200);
+      }
+    }
+
+    // Attack before move
+    if (!unit.hasAttacked) {
+      const attackable = agent._getAttackableEnemies(unit, enemies, room);
+      if (attackable.length > 0) {
+        await _doBotAttack(room, agent, currentId, unit, agent._pickBestTarget(attackable));
+        if (room.phase === 'ended') break;
+        continue;
+      }
+    }
+
+    // Move
+    if (unit.speedRemaining > 0) {
+      const fromQ = unit.q, fromR = unit.r;
+      const moved = enemies.length === 0 ? agent._moveTowardEnemyZone(room, unit) : agent._moveTowardEnemy(room, unit, enemies);
+      if (moved) {
+        room.players.forEach(p => { send(p.id, { event: 'unit_move_anim', unitId: unit.id, fromQ, fromR, path: [{ q: unit.q, r: unit.r }] }); send(p.id, { event: 'game_state', ...room.getGameState(p.id) }); });
+        await _delay(400);
+        if (!unit.hasAttacked) {
+          const newEnemies = agent._getEnemyUnits(room);
+          const attackable = agent._getAttackableEnemies(unit, newEnemies, room);
+          if (attackable.length > 0) {
+            await _doBotAttack(room, agent, currentId, unit, agent._pickBestTarget(attackable));
+            if (room.phase === 'ended') break;
+          }
+        }
+      }
+    }
+
+    // General: motivate
+    if (unit.isGeneral) {
+      const r2 = room.motivateUnit(currentId, unit.id);
+      if (r2.ok) { room.players.forEach(p => send(p.id, { event: 'game_state', ...room.getGameState(p.id) })); await _delay(200); }
+    }
+  }
+
+  agent._visibleCache = null;
+  if (room.phase !== 'battle') return;
+  const { newRound, fled } = room.endTurn();
+  if (newRound) broadcast(room, { event: 'initiative_rolled', rolls: room.initiativeRolls, turnOrder: room.turnOrder, turn: room.turn });
+  broadcast(room, { event: 'turn_change', currentPlayerId: room.getCurrentPlayerId(), turn: room.turn, manche: room.manche });
+  if (fled && fled.length > 0) broadcast(room, { event: 'units_fled', fled });
+  room.players.forEach(p => send(p.id, { event: 'game_state', ...room.getGameState(p.id) }));
+  if (room.phase === 'ended') broadcast(room, { event: 'game_over', winnerId: room.winner, winnerName: room.getPlayer(room.winner)?.name });
+  runBotTurn(room);
 }
 
 wss.on('connection', (ws) => {
@@ -153,6 +282,29 @@ function handleAction(ws, connectionId, action, data) {
       break;
     }
 
+    case 'add_ai': {
+      const { roomCode, generalId: requestedGeneralId } = data;
+      const room = rooms[roomCode];
+      if (!room || room.hostId !== connectionId || room.phase !== 'lobby') return;
+      if (room.players.length >= 8) return send(connectionId, { event: 'error', message: 'Salle pleine.' });
+      const botId = 'bot_' + generateId();
+      room.addPlayer(botId, '🤖 IA');
+      const bot = room.getPlayer(botId);
+      bot.isBot = true;
+      bot.color = '#888888';
+      const taken = room.players.filter(p => p.id !== botId).map(p => p.generalId).filter(Boolean);
+      if (requestedGeneralId && !taken.includes(requestedGeneralId) && GENERALS.find(g => g.id === requestedGeneralId)) {
+        bot.generalId = requestedGeneralId;
+      } else {
+        const available = GENERALS.filter(g => !taken.includes(g.id));
+        if (available.length > 0) bot.generalId = available[Math.floor(Math.random() * available.length)].id;
+      }
+      const botGeneral = GENERALS.find(g => g.id === bot.generalId);
+      bot.name = `🤖 ${botGeneral?.name || 'IA'}`;
+      broadcast(room, { event: 'room_update', ...room.getLobbyState() });
+      break;
+    }
+
     case 'start_game': {
       const { roomCode } = data;
       const room = rooms[roomCode];
@@ -162,6 +314,7 @@ function handleAction(ws, connectionId, action, data) {
       room.startGame();
       broadcast(room, { event: 'phase_change', phase: 'army_building', budget: room.budget });
       broadcast(room, { event: 'room_update', ...room.getLobbyState() });
+      runBotArmy(room);
       break;
     }
 
@@ -178,6 +331,16 @@ function handleAction(ws, connectionId, action, data) {
           send(p.id, { event: 'phase_change', phase: 'deployment' });
           send(p.id, { event: 'deployment_state', ...room.getDeploymentState(p.id) });
         });
+        runBotDeployment(room);
+        if (room.allDeployed()) {
+          room.startBattle();
+          room.players.forEach(p => {
+            send(p.id, { event: 'phase_change', phase: 'battle' });
+            send(p.id, { event: 'initiative_rolled', rolls: room.initiativeRolls, turnOrder: room.turnOrder, turn: room.turn });
+            send(p.id, { event: 'game_state', ...room.getGameState(p.id) });
+          });
+          runBotTurn(room);
+        }
       }
       break;
     }
@@ -213,6 +376,7 @@ function handleAction(ws, connectionId, action, data) {
             send(p.id, { event: 'game_state', ...room.getGameState(p.id) });
           });
           console.log(`[deployment_ready] Bataille démarrée!`);
+          runBotTurn(room);
         } catch (e) {
           console.error('[deployment_ready] ERREUR:', e.stack || e.message);
           send(connectionId, { event: 'error', message: 'Erreur au démarrage: ' + e.message });
@@ -243,12 +407,11 @@ function handleAction(ws, connectionId, action, data) {
       const result = room.initiateCombat(connectionId, attackerId, targetId);
       if (result.error) return send(connectionId, { event: 'error', message: result.error });
       if (result.pending) {
-        send(result.targetPlayerId, { event: 'defense_request', attackId: result.attackId, attackerName: result.attackerName, targetName: result.targetName, targetQ: result.targetQ, targetR: result.targetR, isRanged: result.isRanged, targetTypeId: result.targetTypeId, roomCode });
-        send(connectionId, { event: 'waiting_defense', attackId: result.attackId });
-        send(result.targetPlayerId, { event: 'defense_timer', attackId: result.attackId, seconds: 20 });
-        setTimeout(() => {
-          if (!room.pendingAttacks[result.attackId]) return;
-          const resolved = room.resolveAttack(result.attackId, 'rien');
+        const targetPlayer = room.getPlayer(result.targetPlayerId);
+        if (targetPlayer?.isBot) {
+          const agent = new AIAgent(result.targetPlayerId);
+          const choice = agent.chooseDefense(result, room);
+          const resolved = room.resolveAttack(result.attackId, choice);
           if (resolved.ok) {
             room.players.forEach(p => {
               send(p.id, { event: 'combat_result', combatLog: resolved.combatLog });
@@ -256,7 +419,22 @@ function handleAction(ws, connectionId, action, data) {
             });
             if (room.phase === 'ended') broadcast(room, { event: 'game_over', winnerId: room.winner, winnerName: room.getPlayer(room.winner)?.name });
           }
-        }, 20000);
+        } else {
+          send(result.targetPlayerId, { event: 'defense_request', attackId: result.attackId, attackerName: result.attackerName, targetName: result.targetName, targetQ: result.targetQ, targetR: result.targetR, isRanged: result.isRanged, targetTypeId: result.targetTypeId, roomCode });
+          send(connectionId, { event: 'waiting_defense', attackId: result.attackId });
+          send(result.targetPlayerId, { event: 'defense_timer', attackId: result.attackId, seconds: 20 });
+          setTimeout(() => {
+            if (!room.pendingAttacks[result.attackId]) return;
+            const resolved = room.resolveAttack(result.attackId, 'rien');
+            if (resolved.ok) {
+              room.players.forEach(p => {
+                send(p.id, { event: 'combat_result', combatLog: resolved.combatLog });
+                send(p.id, { event: 'game_state', ...room.getGameState(p.id) });
+              });
+              if (room.phase === 'ended') broadcast(room, { event: 'game_over', winnerId: room.winner, winnerName: room.getPlayer(room.winner)?.name });
+            }
+          }, 20000);
+        }
       }
       break;
     }
@@ -265,6 +443,12 @@ function handleAction(ws, connectionId, action, data) {
       const { roomCode, attackId, choice } = data;
       const room = rooms[roomCode];
       if (!room) return;
+      // If the attacker was a bot, hand off to the bot's async callback
+      if (pendingDefenseCallbacks[attackId]) {
+        pendingDefenseCallbacks[attackId](choice || 'rien');
+        delete pendingDefenseCallbacks[attackId];
+        return;
+      }
       const resolved = room.resolveAttack(attackId, choice || 'rien');
       if (resolved.error) return send(connectionId, { event: 'error', message: resolved.error });
       if (resolved.ok) {
@@ -355,6 +539,7 @@ function handleAction(ws, connectionId, action, data) {
       broadcast(room, { event: 'turn_change', currentPlayerId: room.getCurrentPlayerId(), turn: room.turn, manche: room.manche });
       if (fled && fled.length > 0) broadcast(room, { event: 'units_fled', fled });
       room.players.forEach(p => send(p.id, { event: 'game_state', ...room.getGameState(p.id) }));
+      runBotTurn(room);
       break;
     }
   }

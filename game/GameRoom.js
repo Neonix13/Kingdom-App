@@ -1,6 +1,6 @@
 const GENERALS = require('./data/generals');
 const UNITS = require('./data/units');
-const { hexDistance, hexKey, hexesInRange, generateHexMap, findPath, getStartingZones, segmentEdgeKey, getSegmentData, SEGMENT_DEFS, hexFacing, hexFacingRanged } = require('./HexUtils');
+const { hexDistance, hexKey, hexNeighbors, hexesInRange, generateHexMap, findPath, getStartingZones, segmentEdgeKey, getSegmentData, SEGMENT_DEFS, hexFacing, hexFacingRanged } = require('./HexUtils');
 const STANCES = require('./data/stances');
 const TERRAINS = require('./data/terrains');
 const SEGMENTS = require('./data/segments');
@@ -75,6 +75,7 @@ class GameRoom {
         generalId: p.generalId,
         isReady: p.isReady,
         isEliminated: p.isEliminated,
+        isBot: p.isBot || false,
         color: p.color || '#4a90d9',
       })),
       takenGenerals: this.players.filter(p => p.generalId && !p.offline).map(p => p.generalId),
@@ -606,6 +607,22 @@ class GameRoom {
         delete this.unitMap[hexKey(unit.q, unit.r)];
         fled.push({ unitId: unit.id, unitName: unit.name });
         if (unit.isGeneral) { player.isEliminated = true; this._checkVictory(); }
+      } else if (this.unitMap[hexKey(targetQ, targetR)]) {
+        // Target occupied — find nearest free tile away from center
+        const neighbors = hexNeighbors(unit.q, unit.r);
+        const awayFirst = neighbors.slice().sort((a, b) => hexDistance(0,0,b[0],b[1]) - hexDistance(0,0,a[0],a[1]));
+        let moved = false;
+        for (const [nq, nr] of awayFirst) {
+          const nk = hexKey(nq, nr);
+          if (this.hexMap[nk] && !this.unitMap[nk]) {
+            delete this.unitMap[hexKey(unit.q, unit.r)];
+            unit.q = nq; unit.r = nr;
+            this.unitMap[nk] = unit;
+            moved = true;
+            break;
+          }
+        }
+        // If no free tile found, unit stays put
       } else {
         // Move toward edge
         delete this.unitMap[hexKey(unit.q, unit.r)];
