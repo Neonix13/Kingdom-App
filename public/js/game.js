@@ -935,7 +935,7 @@ canvas.addEventListener('mousemove', (e) => {
     hoveredUnitVisible = null;
     clearTimeout(hoverTimer);
     if (hoveredUnit) {
-      hoverTimer = setTimeout(() => { hoveredUnitVisible = hoveredUnit; render(); }, 2000);
+      hoverTimer = setTimeout(() => { hoveredUnitVisible = hoveredUnit; render(); }, 1000);
     }
   }
   render();
