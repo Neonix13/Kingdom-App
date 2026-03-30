@@ -782,7 +782,7 @@ function drawUnit(ctx, x, y, unit, playerId, isSelected = false, isHovered = fal
     const gid = getGeneralIdForUnit(unit);
     const img = gid ? generalTokenImages[gid] : null;
     if (img && img.complete && img.naturalWidth) {
-      drawTokenImage(ctx, img, x, y, tokenR, color, 0.15, overlayColor, rotAngle);
+      drawTokenImage(ctx, img, x, y, tokenR, color, 0.25, overlayColor, rotAngle);
     } else {
       drawStar(ctx, x, y, 5, size, size * 0.45);
       ctx.fillStyle = color;
@@ -799,7 +799,7 @@ function drawUnit(ctx, x, y, unit, playerId, isSelected = false, isHovered = fal
   } else {
     const img = unit.typeId ? unitTokenImages[unit.typeId] : null;
     if (img && img.complete && img.naturalWidth) {
-      drawTokenImage(ctx, img, x, y, tokenR, color, 0.25, overlayColor, rotAngle);
+      drawTokenImage(ctx, img, x, y, tokenR, color, 0.35, overlayColor, rotAngle);
     } else {
       ctx.beginPath();
       ctx.arc(x, y, size, 0, Math.PI * 2);
