@@ -426,10 +426,15 @@ class AIAgent {
 
     const dist = hexDistance(unit.q, unit.r, nearestEnemy.q, nearestEnemy.r);
 
+    // Repos si très blessé et ennemi loin
+    const hpRatio = unit.vitality / unit.maxVitality;
+    const moraleRatio = unit.morale / (unit.maxMorale || 1);
+    if (dist > 5 && (hpRatio < 0.4 || moraleRatio < 0.3)) return 'repos';
+
     if (unit.category === 'Chevaux' || unit.category === 'Chars') {
       if (dist > 3) return 'charge';
       if (dist <= 1) return 'combat';
-      return 'percee';
+      return 'combat';
     }
 
     if (unit.category === 'Tireurs') {
@@ -440,7 +445,7 @@ class AIAgent {
     // Infantry
     if (dist > 4) return 'marche';
     if (dist <= 1) return 'combat';
-    if (dist <= 2) return 'percee';
+    if (dist <= 2) return 'combat';
     return 'marche';
   }
 
