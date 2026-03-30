@@ -415,6 +415,33 @@ function render() {
   const qMax = Math.ceil((MAP_IMG_W - MAP_ORIG_X) / (MAP_HEX_SIZE * 1.5)) + 1;
 
   if (gameState && gameState.phase === 'battle') {
+    // Brouillard de guerre : voile sombre sur les hexes non-visibles
+    if (visibleSet.size > 0) {
+      ctx.save();
+      // Découpe en clip les hexes visibles (trou dans le brouillard)
+      const fogPath = new Path2D();
+      // Rectangle couvrant toute la carte
+      fogPath.rect(
+        -MAP_ORIG_X * MAP_SCALE - HEX_SIZE * 2,
+        -MAP_ORIG_Y * MAP_SCALE - HEX_SIZE * 2,
+        MAP_IMG_W * MAP_SCALE + HEX_SIZE * 4,
+        MAP_IMG_H * MAP_SCALE + HEX_SIZE * 4
+      );
+      // Perce un trou pour chaque hex visible
+      for (const key of visibleSet) {
+        const [vq, vr] = key.split(',').map(Number);
+        const { x: vx, y: vy } = hexToPixel(vq, vr);
+        fogPath.moveTo(vx + HEX_SIZE, vy);
+        for (let i = 1; i <= 6; i++) {
+          const a = Math.PI / 3 * i;
+          fogPath.lineTo(vx + HEX_SIZE * Math.cos(a), vy + HEX_SIZE * Math.sin(a));
+        }
+      }
+      ctx.fillStyle = 'rgba(0,0,0,0.78)';
+      ctx.fill(fogPath, 'evenodd');
+      ctx.restore();
+    }
+
     for (let q = qMin; q <= qMax; q++) {
       const rMin2 = Math.floor((-MAP_ORIG_Y - MAP_HEX_SIZE * S / 2 * q) / (MAP_HEX_SIZE * S)) - 1;
       const rMax2 = Math.ceil((MAP_IMG_H - MAP_ORIG_Y - MAP_HEX_SIZE * S / 2 * q) / (MAP_HEX_SIZE * S)) + 1;
@@ -426,7 +453,7 @@ function render() {
         const { x, y } = hexToPixel(q, r);
         const isVisible = visibleSet.has(key);
         const isHovered = hoveredHex && hoveredHex.q === q && hoveredHex.r === r;
-        let fill = isVisible ? 'rgba(0,0,0,0)' : 'rgba(0,0,0,0.05)';
+        let fill = 'rgba(0,0,0,0)';
         let stroke = isVisible ? `rgba(${gridColorRGB},${gridOpacity})` : 'rgba(0,0,0,0)';
         if (isVisible && movableTiles.has(key)) fill = 'rgba(40,120,20,0.35)';
         if (isVisible && attackableTiles.has(key)) fill = 'rgba(180,30,10,0.35)';
