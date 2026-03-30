@@ -855,12 +855,6 @@ function drawUnit(ctx, x, y, unit, playerId, isSelected = false, isHovered = fal
 
   // Hover overlay : assombrit le token et affiche le nom
   if (isHovered) {
-    const hoverR = HEX_SIZE * 0.95;
-    ctx.beginPath();
-    ctx.arc(x, y, hoverR, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    ctx.fill();
-
     const label = unit.name;
     const fontSize = Math.round(HEX_SIZE * 0.38);
     ctx.font = `bold ${fontSize}px sans-serif`;
