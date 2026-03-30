@@ -333,6 +333,7 @@ if (deployState) buildZoneTileSet(deployState);
 let mode = 'select'; // select | move | attack | deploy
 let selectedUnit = null;
 let hoveredHex = null;
+let hoveredUnit = null;
 let movableTiles = new Set();
 let attackableTiles = new Set();
 let rangeTiles = new Set();
@@ -578,7 +579,7 @@ function render() {
     for (const u of myUnits) {
       if (u.q === null) continue;
       const { x, y } = hexToPixel(u.q, u.r);
-      drawUnit(ctx, x, y, u, myId);
+      drawUnit(ctx, x, y, u, myId, false, hoveredUnit?.id === u.id);
     }
   }
 
@@ -594,7 +595,7 @@ function render() {
       drawHex(ctx, x, y, 'transparent', '#ffd70060', 0.5);
     }
 
-    drawUnit(ctx, x, y, u, u.playerId, isSelected);
+    drawUnit(ctx, x, y, u, u.playerId, isSelected, hoveredUnit?.id === u.id);
   }
 
   // Arbres par dessus les unités
@@ -726,7 +727,7 @@ function getAnimatedFacing(unit) {
   return hexFacingClient(prevQ, prevR, a.path[step][0], a.path[step][1]);
 }
 
-function drawUnit(ctx, x, y, unit, playerId, isSelected = false) {
+function drawUnit(ctx, x, y, unit, playerId, isSelected = false, isHovered = false) {
   const color = getPlayerColor(playerId);
   const size = HEX_SIZE * 0.55;
   const rotAngle = FACING_ANGLES[getAnimatedFacing(unit)];
@@ -823,6 +824,31 @@ function drawUnit(ctx, x, y, unit, playerId, isSelected = false) {
     }
   }
 
+  // Hover overlay : assombrit le token et affiche le nom
+  if (isHovered) {
+    const hoverR = HEX_SIZE * 0.95;
+    ctx.beginPath();
+    ctx.arc(x, y, hoverR, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fill();
+
+    const label = unit.name;
+    const fontSize = Math.round(HEX_SIZE * 0.38);
+    ctx.font = `bold ${fontSize}px sans-serif`;
+    const textW = ctx.measureText(label).width;
+    const padX = 8, padY = 4;
+    const bw = textW + padX * 2, bh = fontSize + padY * 2;
+    const bx = x - bw / 2, by = y - bh / 2;
+    ctx.fillStyle = 'rgba(0,0,0,0.75)';
+    ctx.beginPath();
+    ctx.roundRect(bx, by, bw, bh, 4);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, x, y);
+  }
+
   ctx.restore();
 }
 
@@ -873,6 +899,8 @@ canvas.addEventListener('mousemove', (e) => {
     return;
   }
   hoveredHex = getHexUnderMouse(e);
+  const allUnits = [...(gameState?.units || []), ...(deployState?.units || [])];
+  hoveredUnit = hoveredHex ? allUnits.find(u => u.q === hoveredHex.q && u.r === hoveredHex.r) || null : null;
   render();
 
   if (showTerrain) {
