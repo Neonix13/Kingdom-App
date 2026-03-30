@@ -148,6 +148,7 @@ class GameRoom {
       speedRemaining: 0,
       isFleeing: false,
       facing: 5,
+      damageDealt: 0,
     };
 
     player.units = [generalUnit, ...units];
@@ -189,6 +190,7 @@ class GameRoom {
       speedRemaining: 0,
       isFleeing: false,
       facing: 5,
+      damageDealt: 0,
     };
   }
 
@@ -752,6 +754,7 @@ class GameRoom {
     // Apply to target
     target.vitality = Math.max(0, target.vitality - result.dmgReceived);
     target.armor = Math.max(0, target.armor - 1);
+    attacker.damageDealt = (attacker.damageDealt || 0) + result.dmgReceived;
     if (!target.isGeneral) {
       target.morale = Math.max(0, target.morale - result.moralDmg);
       if (target.morale <= 0 && !target.isFleeing) { target.stance = 'marche'; target.isFleeing = true; }
@@ -761,6 +764,7 @@ class GameRoom {
     if (result.counterDmgReceived > 0) {
       attacker.vitality = Math.max(0, attacker.vitality - result.counterDmgReceived);
       attacker.armor = Math.max(0, attacker.armor - 1);
+      target.damageDealt = (target.damageDealt || 0) + result.counterDmgReceived;
     }
     if (result.counterMoralDmg > 0 && !attacker.isGeneral) {
       attacker.morale = Math.max(0, attacker.morale - result.counterMoralDmg);

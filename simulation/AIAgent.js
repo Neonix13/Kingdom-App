@@ -19,10 +19,15 @@ class AIAgent {
     const forceRatio = general ? general.force / 18 : 0.5;
     const strategyRatio = general ? general.strategy / 18 : 0.5;
 
+    // Ratios de base par catégorie, avec variation aléatoire
+    function randRatio(base, spread) {
+      return Math.max(0.05, base + (Math.random() - 0.5) * spread);
+    }
+
     const pools = [
-      { ratio: 0.25 + forceRatio * 0.05, types: ['soldats', 'phalange', 'lancier', 'espion', 'assassin'] },
-      { ratio: 0.20 + strategyRatio * 0.05, types: ['archer', 'archer_elite'] },
-      { ratio: 0.25, types: ['cavalier_leger', 'cavalier_lourd', 'char', 'batisseurs'] },
+      { ratio: randRatio(0.25 + forceRatio * 0.1, 0.15), types: ['soldats', 'phalange', 'lancier', 'espion', 'assassin'] },
+      { ratio: randRatio(0.20 + strategyRatio * 0.1, 0.15), types: ['archer', 'archer_elite'] },
+      { ratio: randRatio(0.30, 0.20), types: ['cavalier_leger', 'cavalier_lourd', 'char', 'batisseurs'] },
     ];
 
     // Normalize ratios
@@ -36,7 +41,6 @@ class AIAgent {
       const poolBudget = Math.floor(budget * pool.ratio);
       let poolSpent = 0;
 
-      // Filter types affordable within pool budget
       const affordableTypes = pool.types.filter(t => UNITS[t].cost <= poolBudget);
       if (affordableTypes.length === 0) continue;
 
@@ -45,11 +49,7 @@ class AIAgent {
         const unit = UNITS[typeId];
         if (poolSpent + unit.cost > poolBudget) break;
         const existing = army.find(a => a.typeId === typeId);
-        if (existing) {
-          existing.count++;
-        } else {
-          army.push({ typeId, count: 1 });
-        }
+        if (existing) { existing.count++; } else { army.push({ typeId, count: 1 }); }
         poolSpent += unit.cost;
         spent += unit.cost;
       }
@@ -60,11 +60,7 @@ class AIAgent {
     if (remaining >= UNITS.pietaille.cost) {
       const count = Math.floor(remaining / UNITS.pietaille.cost);
       const existing = army.find(a => a.typeId === 'pietaille');
-      if (existing) {
-        existing.count += count;
-      } else {
-        army.push({ typeId: 'pietaille', count });
-      }
+      if (existing) { existing.count += count; } else { army.push({ typeId: 'pietaille', count }); }
     }
 
     return army;

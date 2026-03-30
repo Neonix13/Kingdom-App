@@ -115,9 +115,11 @@ class Stats {
         totalDeployed: 0,
         totalSurvived: 0,
         totalDamageTaken: 0,
+        totalDamageDealt: 0,
         totalMoraleLost: 0,
         survivalRate: 0,
         avgHpLostPercent: 0,
+        avgDamageDealt: 0,
       };
     }
     // Also track general stats
@@ -127,8 +129,10 @@ class Stats {
       totalDeployed: 0,
       totalSurvived: 0,
       totalDamageTaken: 0,
+      totalDamageDealt: 0,
       survivalRate: 0,
       avgHpLostPercent: 0,
+      avgDamageDealt: 0,
     };
 
     for (const game of this.games) {
@@ -156,6 +160,9 @@ class Stats {
           }
           const hpLost = finalU ? (u.maxVitality - finalU.vitality) : u.maxVitality;
           stats[typeId].totalDamageTaken += hpLost;
+          if (finalU) {
+            stats[typeId].totalDamageDealt += finalU.damageDealt || 0;
+          }
           if (!u.isGeneral && finalU) {
             const moraleLost = u.maxMorale ? (u.maxMorale - (finalU.morale || 0)) : 0;
             if (stats[typeId].totalMoraleLost !== undefined) {
@@ -178,6 +185,9 @@ class Stats {
         : 0;
       s.avgHpLostPercent = s.totalDeployed > 0
         ? Math.round((s.totalDamageTaken / (s.totalDeployed * (UNITS[typeId]?.maxVitality || 100))) * 1000) / 10
+        : 0;
+      s.avgDamageDealt = s.totalDeployed > 0
+        ? Math.round(s.totalDamageDealt / s.totalDeployed)
         : 0;
     }
 
@@ -263,7 +273,8 @@ class Stats {
       .filter(([id]) => id !== 'general')
       .sort((a, b) => b[1].survivalRate - a[1].survivalRate);
     for (const [, s] of unitSorted) {
-      console.log(`  ${s.name.padEnd(18)} Survival: ${s.survivalRate.toFixed(1).padStart(5)}% ±${s.survivalCI95.toFixed(1)}%  AvgHPLost: ${s.avgHpLostPercent.toFixed(1).padStart(5)}%  (n=${s.totalDeployed})`);
+      const avgRcv = s.totalDeployed > 0 ? Math.round(s.totalDamageTaken / s.totalDeployed) : 0;
+      console.log(`  ${s.name.padEnd(18)} Survival: ${s.survivalRate.toFixed(1).padStart(5)}% ±${s.survivalCI95.toFixed(1)}%  DmgInfligé: ${String(s.avgDamageDealt).padStart(4)}  DmgReçu: ${String(avgRcv).padStart(4)}  (n=${s.totalDeployed})`);
     }
 
     // Matchup matrix

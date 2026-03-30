@@ -12,7 +12,7 @@ function getArg(name, defaultVal) {
 }
 
 const gamesPerMatchup = parseInt(getArg('games', '10'));
-const budget = parseInt(getArg('budget', '2500'));
+const budget = parseInt(getArg('budget', '10000'));
 const threadCount = parseInt(getArg('threads', '4'));
 const outputDir = getArg('output', path.join(__dirname, 'results'));
 const noInitiative = args.includes('--no-initiative');

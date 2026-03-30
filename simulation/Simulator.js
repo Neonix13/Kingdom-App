@@ -234,6 +234,7 @@ class Simulator {
           stance: u.stance || null,
           isFleeing: u.isFleeing,
           alive: u.vitality > 0,
+          damageDealt: u.damageDealt || 0,
         })),
         totalVitality: p.units.reduce((s, u) => s + u.vitality, 0),
         totalMaxVitality: p.units.reduce((s, u) => s + u.maxVitality, 0),
