@@ -107,9 +107,9 @@ treeImage.onload = () => render();
 
 // Stance icons
 const stanceIcons = {};
-const stanceList = ['marche','combat','charge','percee','defense_combat','defense_distance'];
-const stanceIconFiles = { marche:'marche', combat:'combat', charge:'charge', percee:'percee', defense_combat:'def_charge', defense_distance:'def_eparse' };
-const stanceNames = { marche:'Marche', combat:'Combat', charge:'Charge', percee:'Percée', defense_combat:'Déf. combat', defense_distance:'Déf. distance' };
+const stanceList = ['marche','combat','charge','repos','defense_combat','defense_distance'];
+const stanceIconFiles = { marche:'marche', combat:'combat', charge:'charge', repos:'repos', defense_combat:'def_charge', defense_distance:'def_eparse' };
+const stanceNames = { marche:'Marche', combat:'Combat', charge:'Charge', repos:'Repos', defense_combat:'Déf. combat', defense_distance:'Déf. distance' };
 const TERRAINS_DATA = {
   plain:    { name:'Plaines',    vitesse:0,  attack_cac:0,  attack_tir:0,  defense_cac:0,  defense_tir:0,  puissance_cac:0,  puissance_tir:0,  intimidation_cac:0,  intimidation_tir:0,  esquive_cac:0,  esquive_tir:0,  precision_cac:0,  precision_tir:0,  armure:0,  moral_tour:0 },
   forest:   { name:'Forêts',    vitesse:-1, attack_cac:-1, attack_tir:-2, defense_cac:+2, defense_tir:+2, puissance_cac:-1, puissance_tir:-2, intimidation_cac:+1, intimidation_tir:+1, esquive_cac:+2, esquive_tir:+2, precision_cac:-1, precision_tir:-2, armure:+1, moral_tour:0 },
@@ -122,7 +122,7 @@ const STANCES_DATA = {
   marche:           { vitesse:+1, attack_cac:-1, attack_tir:-2, defense_cac:-2, defense_tir:-1, puissance_cac:+1, puissance_tir:-1, intimidation_cac:0, intimidation_tir:0, esquive_cac:+1, esquive_tir:+2, precision_cac:0, precision_tir:-2, armure:-1, moral_tour:0 },
   combat:           { vitesse:-1, attack_cac:+1, attack_tir:+1, defense_cac:+1, defense_tir:+1, puissance_cac:+2, puissance_tir:+2, intimidation_cac:+1, intimidation_tir:+1, esquive_cac:0, esquive_tir:0, precision_cac:+1, precision_tir:+2, armure:+1, moral_tour:0 },
   charge:           { vitesse:+2, attack_cac:+3, attack_tir:-2, defense_cac:-1, defense_tir:-2, puissance_cac:+3, puissance_tir:-2, intimidation_cac:+2, intimidation_tir:-1, esquive_cac:+2, esquive_tir:+3, precision_cac:+3, precision_tir:-2, armure:0, moral_tour:-1 },
-  percee:           { vitesse:+1, attack_cac:+2, attack_tir:-2, defense_cac:-1, defense_tir:-2, puissance_cac:+2, puissance_tir:-2, intimidation_cac:0, intimidation_tir:0, esquive_cac:0, esquive_tir:+2, precision_cac:+2, precision_tir:-2, armure:0, moral_tour:0 },
+  repos:            { vitesse:-1, attack_cac:-2, attack_tir:-2, defense_cac:-2, defense_tir:-2, puissance_cac:-2, puissance_tir:-1, intimidation_cac:-2, intimidation_tir:-1, esquive_cac:0, esquive_tir:-2, precision_cac:-1, precision_tir:-1, armure:0, moral_tour:+10 },
   defense_combat:   { vitesse:-1, attack_cac:-2, attack_tir:-1, defense_cac:+4, defense_tir:-2, puissance_cac:-1, puissance_tir:-2, intimidation_cac:-2, intimidation_tir:+1, esquive_cac:+1, esquive_tir:-1, precision_cac:0, precision_tir:-2, armure:+2, moral_tour:0 },
   defense_distance: { vitesse:0,  attack_cac:-3, attack_tir:0,  defense_cac:-3, defense_tir:0,  puissance_cac:-2, puissance_tir:-1, intimidation_cac:-2, intimidation_tir:-1, esquive_cac:+2, esquive_tir:+4, precision_cac:-2, precision_tir:-1, armure:+1, moral_tour:0 },
 };
@@ -1958,7 +1958,7 @@ function formatHistoryEntry({ log, round }) {
   const b = log.breakdown || {};
   const hit = log.hit;
   const defLabels = { none: 'Rien', counter: 'Contre-attaque', absorb: 'Encaisse' };
-  const stanceNames2 = { marche:'Marche', combat:'Combat', charge:'Charge', percee:'Percée', def_combat:'Déf. Combat', def_distance:'Déf. Distance' };
+  const stanceNames2 = { marche:'Marche', combat:'Combat', charge:'Charge', repos:'Repos', defense_combat:'Déf. Combat', defense_distance:'Déf. Distance' };
 
   // Header line
   const hitBadge = hit
