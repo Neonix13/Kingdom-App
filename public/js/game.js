@@ -334,6 +334,8 @@ let mode = 'select'; // select | move | attack | deploy
 let selectedUnit = null;
 let hoveredHex = null;
 let hoveredUnit = null;
+let hoveredUnitVisible = null;
+let hoverTimer = null;
 let movableTiles = new Set();
 let attackableTiles = new Set();
 let rangeTiles = new Set();
@@ -606,7 +608,7 @@ function render() {
     for (const u of myUnits) {
       if (u.q === null) continue;
       const { x, y } = hexToPixel(u.q, u.r);
-      drawUnit(ctx, x, y, u, myId, false, hoveredUnit?.id === u.id);
+      drawUnit(ctx, x, y, u, myId, false, hoveredUnitVisible?.id === u.id);
     }
   }
 
@@ -622,7 +624,7 @@ function render() {
       drawHex(ctx, x, y, 'transparent', '#ffd70060', 0.5);
     }
 
-    drawUnit(ctx, x, y, u, u.playerId, isSelected, hoveredUnit?.id === u.id);
+    drawUnit(ctx, x, y, u, u.playerId, isSelected, hoveredUnitVisible?.id === u.id);
   }
 
   // Arbres par dessus les unités
@@ -927,7 +929,15 @@ canvas.addEventListener('mousemove', (e) => {
   }
   hoveredHex = getHexUnderMouse(e);
   const allUnits = [...(gameState?.units || []), ...(deployState?.units || [])];
-  hoveredUnit = hoveredHex ? allUnits.find(u => u.q === hoveredHex.q && u.r === hoveredHex.r) || null : null;
+  const newUnit = hoveredHex ? allUnits.find(u => u.q === hoveredHex.q && u.r === hoveredHex.r) || null : null;
+  if (newUnit?.id !== hoveredUnit?.id) {
+    hoveredUnit = newUnit;
+    hoveredUnitVisible = null;
+    clearTimeout(hoverTimer);
+    if (hoveredUnit) {
+      hoverTimer = setTimeout(() => { hoveredUnitVisible = hoveredUnit; render(); }, 2000);
+    }
+  }
   render();
 
   if (showTerrain) {
