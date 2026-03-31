@@ -90,7 +90,7 @@ function generateHexMap(radius) {
 
 // Terrain movement cost: entering a tile costs max(1, 1 - vitesse_modifier)
 function terrainMoveCost(terrain) {
-  const costs = { plain: 1, road: 0.33, forest: 2, river: 2, building: 1, bridge: 1 };
+  const costs = { plain: 1, road: 0.66, forest: 1.5, river: 2, building: 1, bridge: 1 };
   return costs[terrain] ?? 1;
 }
 

@@ -129,7 +129,7 @@ class GameRoom {
       armor: generalData.armor,
       maxArmor: generalData.armor,
       intimidation: Math.floor(generalData.charisma / 2),
-      speed: 3,
+      speed: 4,
       range: 1,
       visionRange: generalData.strategy, // 1 hex = 100m
       hasMoved: false,
@@ -416,7 +416,8 @@ class GameRoom {
       const inForest = unitTerrain === 'forest';
       const baseRange = inForest ? 2 : Math.max(3, unit.visionRange);
       const myHeight = this.heightData[hexKey(unit.q, unit.r)] || 0;
-      const maxRange = baseRange + myHeight; // portée max possible (cible au niveau 0)
+      const heightBonus = unit.isGeneral ? myHeight * 2 : myHeight;
+      const maxRange = baseRange + heightBonus;
       // BFS bloqué par segments infranchissables
       const visited = new Map(); // key -> distance
       const queue = [{ q: unit.q, r: unit.r, d: 0 }];
@@ -426,8 +427,11 @@ class GameRoom {
         const key = hexKey(q, r);
         if (!this.hexMap[key]) continue;
         const targetHeight = this.heightData[key] || 0;
-        const effectiveRange = baseRange + Math.max(0, myHeight - targetHeight);
-        if (!inForest && this.terrainData[key] === 'forest' && d > 2) continue;
+        const effectiveRange = unit.isGeneral
+          ? baseRange + myHeight * 2
+          : baseRange + Math.max(0, myHeight - targetHeight);
+        const isLowerForest = this.terrainData[key] === 'forest' && targetHeight < myHeight;
+        if (!inForest && this.terrainData[key] === 'forest' && d > 2 && !(unit.isGeneral && isLowerForest)) continue;
         if (d <= effectiveRange) visible.add(key);
         if (d >= maxRange) continue;
         for (const [dq, dr] of DIRS) {
@@ -678,7 +682,7 @@ class GameRoom {
 
     const d20 = Math.floor(Math.random() * 20) + 1;
     const success = charisma >= d20;
-    const moralGain = success ? (general.intimidation || 5) : 0;
+    const moralGain = success ? (general.intimidation || 5) * 10 : 0;
     if (success) {
       for (const t of targets) {
         t.morale = Math.min(t.maxMorale, t.morale + moralGain);
@@ -850,6 +854,7 @@ class GameRoom {
     // Intimidation → moral damage
     const effectiveIntimidation = attacker.intimidation + (stA[`intimidation_${type}`] || 0) + (tA[`intimidation_${type}`] || 0);
     let moralDmg = Math.max(0, Math.floor(attacker.vitality * effectiveIntimidation / 10));
+    if (!hit) moralDmg = Math.floor(moralDmg / 2);
 
     // Defense choice — ranged attacks: only phalange can absorb, no counter allowed
     if (!isCac) {

@@ -256,6 +256,13 @@ function handleAction(ws, connectionId, action, data) {
       const room = rooms[roomCode];
       if (!room || room.hostId !== connectionId) return;
       room.budget = Math.max(1000, Math.min(100000, parseInt(budget) || 15000));
+      if (room.phase === 'army_building') {
+        for (const p of room.players) {
+          p.units = [];
+          p.isReady = false;
+        }
+        broadcast(room, { event: 'phase_change', phase: 'army_building', budget: room.budget });
+      }
       broadcast(room, { event: 'room_update', ...room.getLobbyState() });
       break;
     }

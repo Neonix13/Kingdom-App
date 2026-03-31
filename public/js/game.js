@@ -1191,7 +1191,7 @@ function selectUnit(unit) {
 
 function terrainMoveCost(key) {
   const t = terrainData[key] || 'plain';
-  const costs = { plain: 1, road: 0.33, forest: 2, river: 2, building: 1, bridge: 1 };
+  const costs = { plain: 1, road: 0.66, forest: 1.5, river: 2, building: 1, bridge: 1 };
   return costs[t] ?? 1;
 }
 
@@ -2084,11 +2084,14 @@ function renderStancePanel(unit) {
   const panel = document.getElementById('stance-panel');
   const listEl = document.getElementById('stance-list');
   if (!panel || !listEl) return;
-  if (!unit || unit.isGeneral || gameState?.currentPlayerId !== myId || unit.isFleeing || gameState?.phase !== 'battle') {
+  if (!unit || unit.isGeneral || gameState?.phase !== 'battle') {
     panel.style.display = 'none';
     return;
   }
+  const isMyTurn = gameState?.currentPlayerId === myId;
+  const readOnly = !isMyTurn || unit.isFleeing;
   panel.style.display = 'block';
+  panel.style.opacity = readOnly ? '0.5' : '1';
   listEl.innerHTML = '';
   for (const s of stanceList) {
     const btn = document.createElement('button');
@@ -2100,7 +2103,12 @@ function renderStancePanel(unit) {
     } else {
       btn.textContent = stanceNames[s] || s;
     }
-    btn.onclick = () => { hideStanceTooltip(); changeStance(unit.id, s); };
+    if (!readOnly) {
+      btn.onclick = () => { hideStanceTooltip(); changeStance(unit.id, s); };
+    } else {
+      btn.disabled = true;
+      btn.style.cursor = 'default';
+    }
     btn.addEventListener('mouseenter', e => showStanceTooltip(e, s));
     btn.addEventListener('mousemove', positionStanceTooltip);
     btn.addEventListener('mouseleave', hideStanceTooltip);

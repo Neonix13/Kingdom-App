@@ -318,7 +318,7 @@ function renderPlayerList(players, hostId) {
         <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;flex:1">${pickerHtml}</div>
         <span>${p.name}</span>
         <span class="text-muted" style="font-size:0.85em">${genName}</span>
-        <span class="ready-icon">${p.generalId ? '⚔️' : ''}</span>
+        <span class="ready-icon">${p.isReady ? '✅' : p.generalId ? '⚔️' : ''}</span>
       `;
     } else if (p.isBot) {
       li.innerHTML = `
@@ -326,7 +326,7 @@ function renderPlayerList(players, hostId) {
         <div style="width:16px;height:16px;border-radius:50%;background:${color};flex-shrink:0;border:1px solid rgba(255,255,255,0.3)"></div>
         <span>${p.name}</span>
         <span class="text-muted" style="font-size:0.85em">${genName}</span>
-        <span class="ready-icon">${p.generalId ? '⚔️' : ''}</span>
+        <span class="ready-icon">${p.isReady ? '✅' : p.generalId ? '⚔️' : ''}</span>
       `;
     } else {
       li.innerHTML = `
@@ -334,7 +334,7 @@ function renderPlayerList(players, hostId) {
         <div style="width:16px;height:16px;border-radius:50%;background:${color};flex-shrink:0;border:1px solid rgba(255,255,255,0.3)"></div>
         <span>${p.name}</span>
         <span class="text-muted" style="font-size:0.85em">${genName}</span>
-        <span class="ready-icon">${p.generalId ? '⚔️' : ''}</span>
+        <span class="ready-icon">${p.isReady ? '✅' : p.generalId ? '⚔️' : ''}</span>
       `;
     }
     list.appendChild(li);
