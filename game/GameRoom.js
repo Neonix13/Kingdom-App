@@ -777,6 +777,9 @@ class GameRoom {
 
     const combatLog = {
       attackerName: attacker.name, targetName: target.name,
+      attackerPlayerId: attackerPlayer.id,
+      defenderPlayerId: targetPlayer.id,
+      turn: this.turn, manche: this.manche,
       defenseChoice,
       attackTotal: result.attackTotal, attackD20: result.attackD20, hit: result.hit,
       dmgInflicted: result.dmgInflicted, armorAbsorb: result.armorAbsorb, dmgReceived: result.dmgReceived,

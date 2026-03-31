@@ -1972,32 +1972,49 @@ function appendChatMessage({ authorName, text, isMine, isSystem, authorId }) {
 }
 
 let combatHistoryEntries = [];
-function addCombatHistory(log, round) {
-  combatHistoryEntries.push({ log, round });
+let historyLastTurn = 0;
+function addCombatHistory(log) {
+  combatHistoryEntries.push(log);
   const container = document.getElementById('combat-history');
   if (!container) return;
+  const turn = log.turn || 1;
+  const manche = log.manche || 1;
+  // Supprimer le placeholder si présent
+  const placeholder = container.querySelector('div[style*="italic"]');
+  if (placeholder) placeholder.remove();
+  // Insérer un séparateur de tour si nouveau tour
+  if (turn !== historyLastTurn) {
+    historyLastTurn = turn;
+    const sep = document.createElement('div');
+    sep.style.cssText = 'background:#1a0d04;color:#c8960c;font-weight:bold;padding:4px 8px;margin-top:6px;border-top:1px solid #5a3c10;font-size:0.8em;';
+    sep.textContent = `── Tour ${turn} ──`;
+    container.appendChild(sep);
+  }
   const entry = document.createElement('div');
-  entry.innerHTML = formatHistoryEntry({ log, round });
+  entry.innerHTML = formatHistoryEntry(log);
   container.appendChild(entry.firstElementChild);
   container.scrollTop = container.scrollHeight;
 }
 
 let historyCounter = 0;
-function formatHistoryEntry({ log, round }) {
+function formatHistoryEntry(log) {
   if (!log) return '';
   const id = `h${historyCounter++}`;
   const b = log.breakdown || {};
   const hit = log.hit;
   const defLabels = { none: 'Rien', counter: 'Contre-attaque', absorb: 'Encaisse' };
   const stanceNames2 = { marche:'Marche', combat:'Combat', charge:'Charge', repos:'Repos', defense_combat:'Déf. Combat', defense_distance:'Déf. Distance' };
+  const turn = log.turn || 1;
+  const manche = log.manche || 1;
+  const attackerColor = gameState?.players?.find(p => p.id === log.attackerPlayerId)?.color || '#c8a84b';
 
   // Header line
   const hitBadge = hit
     ? `<span class="h-badge h-hit">TOUCHÉ</span>`
     : `<span class="h-badge h-miss">RATÉ</span>`;
-  const header = `<div class="h-header" onclick="toggleHistory('${id}')">
+  const header = `<div class="h-header" onclick="toggleHistory('${id}')" style="border-left:3px solid ${attackerColor};">
     <span class="h-arrow" id="arrow-${id}">▶</span>
-    <span class="h-title">T${round} — <b>${log.attackerName||'?'}</b> → <b>${log.targetName||'?'}</b></span>
+    <span class="h-title">T${turn}.${manche} — <b style="color:${attackerColor}">${log.attackerName||'?'}</b> → <b>${log.targetName||'?'}</b></span>
     ${hitBadge}
     ${log.targetKilled ? `<span class="h-badge h-dead">💀</span>` : ''}
     ${log.attackerKilled ? `<span class="h-badge h-dead">💀 (attaquant)</span>` : ''}
@@ -2504,7 +2521,7 @@ function wsDispatch(event, data) {
       const log = data.combatLog || data;
       addCombatLog(log);
       showCombatResult(log);
-      addCombatHistory(log, gameState?.round || 1);
+      addCombatHistory(log);
       break;
     }
     case 'defense_request': {
