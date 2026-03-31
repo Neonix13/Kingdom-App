@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Test Zone de Déploiement</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #111; color: #fff; font-family: monospace; display: flex; height: 100vh; overflow: hidden; }
+    #canvas-wrap { flex: 1; overflow: hidden; position: relative; }
+    canvas { display: block; cursor: crosshair; }
+    #controls {
+      width: 240px; background: #1a1a1a; padding: 12px; overflow-y: auto;
+      border-left: 1px solid #333; font-size: 13px; display: flex; flex-direction: column; gap: 10px;
+    }
+    h2 { color: #c8a84b; font-size: 14px; }
+    .section-title { color: #888; font-size: 11px; text-transform: uppercase; margin-bottom: 4px; }
+    label { color: #aaa; display: block; margin-bottom: 2px; }
+    input[type=range] { width: 100%; }
+    .val { color: #c8a84b; font-weight: bold; }
+    #coords {
+      position: absolute; bottom: 8px; left: 8px;
+      background: rgba(0,0,0,0.75); padding: 4px 8px;
+      font-family: monospace; font-size: 12px; color: #c8a84b; pointer-events: none;
+    }
+    .info-box {
+      background: #111; border: 1px solid #333; border-radius: 4px; padding: 8px; font-size: 12px;
+    }
+    .info-box b { color: #c8a84b; }
+    .legend { display: flex; flex-direction: column; gap: 4px; font-size: 11px; }
+    .legend-row { display: flex; align-items: center; gap: 6px; }
+    .legend-swatch { width: 16px; height: 16px; border-radius: 3px; flex-shrink: 0; }
+    button.action {
+      width: 100%; padding: 8px; background: #1a3a5a; color: #4ab0ea;
+      border: 1px solid #2a6a9a; cursor: pointer; border-radius: 4px;
+      font-family: monospace; font-size: 12px;
+    }
+    button.action:hover { background: #2a4a7a; }
+    #status { font-size: 11px; color: #60ea60; min-height: 16px; }
+    .score-table { font-size: 11px; border-collapse: collapse; width: 100%; }
+    .score-table td { padding: 2px 4px; }
+    .score-table td:last-child { color: #c8a84b; text-align: right; }
+  </style>
+</head>
+<body>
+<div id="canvas-wrap">
+  <canvas id="c"></canvas>
+  <div id="coords">q: — r: —</div>
+</div>
+
+<div id="controls">
+  <h2>Zone de Déploiement — Test</h2>
+
+  <div class="info-box">
+    <div>Centre : <b id="info-center">—</b></div>
+    <div>Score min : <b id="info-min">—</b></div>
+    <div>Score max : <b id="info-max">—</b></div>
+    <div>Tuiles en zone : <b id="info-count">—</b></div>
+  </div>
+
+  <div>
+    <label>Budget : <span class="val" id="v-budget">2500</span> or</label>
+    <input type="range" id="budget-slider" min="1000" max="20000" value="2500" step="500">
+  </div>
+
+  <div>
+    <label>Zoom : <span class="val" id="v-zoom">0.10</span></label>
+    <input type="range" id="zoom-slider" min="0.02" max="0.5" value="0.1" step="0.005">
+  </div>
+
+  <div>
+    <label>Opacité scores : <span class="val" id="v-alpha">0.75</span></label>
+    <input type="range" id="alpha-slider" min="0.1" max="1" value="0.75" step="0.05">
+  </div>
+
+  <div>
+    <label>Opacité grille : <span class="val" id="v-grid">0.25</span></label>
+    <input type="range" id="grid-slider" min="0" max="1" value="0.25" step="0.05">
+  </div>
+
+  <div>
+    <div class="section-title">Légende</div>
+    <div class="legend">
+      <div class="legend-row"><div class="legend-swatch" style="background:#f7e03b;border:2px solid #fff"></div> Centre sélectionné</div>
+      <div class="legend-row"><div class="legend-swatch" style="background:rgba(0,220,80,0.8)"></div> Zone (meilleur score)</div>
+      <div class="legend-row"><div class="legend-swatch" style="background:rgba(255,80,0,0.8)"></div> Score élevé (mauvais)</div>
+      <div class="legend-row"><div class="legend-swatch" style="background:rgba(40,120,220,0.8)"></div> Rivière</div>
+    </div>
+  </div>
+
+  <div>
+    <div class="section-title">Multiplicateurs actifs</div>
+    <table class="score-table">
+      <tr><td>Route</td><td>×0.9</td></tr>
+      <tr><td>Plaine</td><td>×1</td></tr>
+      <tr><td>Forêt/Bâtiment/Pont</td><td>×2</td></tr>
+      <tr><td>Rivière</td><td>×3</td></tr>
+      <tr><td>Derrière segment bloquant</td><td>×2</td></tr>
+    </table>
+  </div>
+
+  <div id="status"></div>
+
+  <div style="font-size:10px;color:#555;margin-top:4px;">
+    <b>Navigation :</b><br>
+    • Clic gauche = sélectionner centre<br>
+    • Clic droit / molette = déplacer<br>
+    • Molette = zoom
+  </div>
+</div>
+
+<script>
+const MAP_HEX_SIZE = 101.5;
+const MAP_ORIG_X   = 137;
+const MAP_ORIG_Y   = 190;
+const MAP_IMG_W    = 8800;
+const MAP_IMG_H    = 7200;
+const S = Math.sqrt(3);
+
+const SEGMENT_DEFS = {
+  river:            { infranchissable: false },
+  cliff:            { infranchissable: false },
+  bridge:           { infranchissable: false },
+  passerelle:       { infranchissable: false },
+  barriere:         { infranchissable: false },
+  chevaux_de_frise: { infranchissable: false },
+  mur:              { infranchissable: true  },
+  echelle:          { infranchissable: false },
+};
+
+const TERRAIN_COLORS = {
+  plain:    'rgba(180,210,120,0.5)',
+  forest:   'rgba(30,100,20,0.75)',
+  river:    'rgba(40,120,220,0.75)',
+  building: 'rgba(140,100,60,0.75)',
+  road:     'rgba(200,170,100,0.65)',
+  bridge:   'rgba(220,140,30,0.75)',
+};
+
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+const wrap   = document.getElementById('canvas-wrap');
+
+const img = new Image();
+img.src = '/assets/img/map.webp';
+img.onload = () => draw();
+
+let zoom = 0.1, panX = 0, panY = 0;
+let scoreAlpha = 0.75, gridAlpha = 0.25;
+let terrainData = {}, segmentData = {};
+let centerHex = null;
+let scores = null;
+let zoneTiles = new Set();
+let budget = 2500;
+let dragging = false, lastMx = 0, lastMy = 0;
+let hoveredScore = null;
+
+const DIRS = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
+
+Promise.all([
+  fetch('/data/terrain.json').then(r => r.json()),
+  fetch('/data/segments.json').then(r => r.json()),
+]).then(([td, sd]) => {
+  terrainData = td;
+  segmentData = sd;
+  document.getElementById('status').textContent = `✓ ${Object.keys(td).length} tuiles chargées`;
+  draw();
+});
+
+function segmentEdgeKey(q1, r1, q2, r2) {
+  if (q1 < q2 || (q1 === q2 && r1 < r2)) return `${q1},${r1}|${q2},${r2}`;
+  return `${q2},${r2}|${q1},${r1}`;
+}
+
+function hexDistance(q1, r1, q2, r2) {
+  return (Math.abs(q1-q2) + Math.abs(q1+r1-q2-r2) + Math.abs(r1-r2)) / 2;
+}
+
+function computeScores(cq, cr) {
+  // BFS : tuiles atteignables sans segment infranchissable
+  const reachable = new Set();
+  const bfsQ = [{ q: cq, r: cr }];
+  reachable.add(`${cq},${cr}`);
+  while (bfsQ.length > 0) {
+    const { q, r } = bfsQ.shift();
+    for (const [dq, dr] of DIRS) {
+      const nq = q+dq, nr = r+dr;
+      const nk = `${nq},${nr}`;
+      if (reachable.has(nk) || !terrainData[nk]) continue;
+      const segType = segmentData[segmentEdgeKey(q, r, nq, nr)];
+      if (segType && SEGMENT_DEFS[segType]?.infranchissable) continue;
+      reachable.add(nk);
+      bfsQ.push({ q: nq, r: nr });
+    }
+  }
+
+  const result = {};
+  for (const [key, terrain] of Object.entries(terrainData)) {
+    const [q, r] = key.split(',').map(Number);
+    let score = hexDistance(q, r, cq, cr) || 0.01;
+
+    if (terrain === 'road') score *= 0.9;
+    else if (terrain === 'forest' || terrain === 'building' || terrain === 'bridge') score *= 2;
+    else if (terrain === 'river') score *= 3;
+
+    if (!reachable.has(key)) score *= 2;
+
+    result[key] = score;
+  }
+  return result;
+}
+
+function updateZone() {
+  if (!centerHex || !scores) return;
+  const maxTiles = Math.max(5, Math.floor(budget / 1000) * 5);
+  const sorted = Object.entries(scores).sort((a, b) => a[1] - b[1]);
+  zoneTiles = new Set(sorted.slice(0, maxTiles).map(([k]) => k));
+
+  const vals = Object.values(scores);
+  document.getElementById('info-center').textContent = `q:${centerHex.q} r:${centerHex.r}`;
+  document.getElementById('info-min').textContent = Math.min(...vals).toFixed(2);
+  document.getElementById('info-max').textContent = Math.max(...vals).toFixed(2);
+  document.getElementById('info-count').textContent = zoneTiles.size;
+}
+
+function scoreToColor(score, minScore, maxScore) {
+  const t = Math.pow((score - minScore) / (maxScore - minScore + 0.001), 0.4);
+  const r = Math.round(20 + t * 235);
+  const g = Math.round(220 - t * 200);
+  const b = Math.round(20);
+  return `rgba(${r},${g},${b},${scoreAlpha})`;
+}
+
+// ---- HEX MATH ----
+function hexToPixel(q, r) {
+  return {
+    x: MAP_HEX_SIZE * (1.5 * q) + MAP_ORIG_X,
+    y: MAP_HEX_SIZE * (S/2 * q + S * r) + MAP_ORIG_Y,
+  };
+}
+function pixelToHex(px, py) {
+  const x = (px - MAP_ORIG_X) / MAP_HEX_SIZE;
+  const y = (py - MAP_ORIG_Y) / MAP_HEX_SIZE;
+  const q = (2/3) * x;
+  const r = (-1/3) * x + (Math.sqrt(3)/3) * y;
+  return roundHex(q, r);
+}
+function roundHex(q, r) {
+  const s = -q - r;
+  let rq = Math.round(q), rr = Math.round(r), rs = Math.round(s);
+  const dq = Math.abs(rq-q), dr = Math.abs(rr-r), ds = Math.abs(rs-s);
+  if (dq > dr && dq > ds) rq = -rr - rs;
+  else if (dr > ds) rr = -rq - rs;
+  return { q: rq, r: rr };
+}
+function hexCorners(cx, cy) {
+  const corners = [];
+  for (let i = 0; i < 6; i++) {
+    const angle = Math.PI / 180 * (60 * i);
+    corners.push({ x: cx + MAP_HEX_SIZE * Math.cos(angle), y: cy + MAP_HEX_SIZE * Math.sin(angle) });
+  }
+  return corners;
+}
+
+// ---- DRAW ----
+function resizeCanvas() {
+  canvas.width  = wrap.clientWidth;
+  canvas.height = wrap.clientHeight;
+  draw();
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+function draw() {
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0, 0, W, H);
+  if (!img.complete || !img.naturalWidth) return;
+
+  ctx.save();
+  ctx.translate(panX, panY);
+  ctx.scale(zoom, zoom);
+
+  ctx.drawImage(img, 0, 0);
+
+  // Visibles range
+  const tl = { x: -panX / zoom, y: -panY / zoom };
+  const br = { x: (W - panX) / zoom, y: (H - panY) / zoom };
+  const qMin = Math.floor((tl.x - MAP_ORIG_X) / (MAP_HEX_SIZE * 1.5)) - 1;
+  const qMax = Math.ceil((br.x - MAP_ORIG_X) / (MAP_HEX_SIZE * 1.5)) + 1;
+
+  const scoreVals = scores ? Object.values(scores) : [];
+  const minScore = scoreVals.length ? Math.min(...scoreVals) : 0;
+  const maxScore = scoreVals.length ? Math.max(...scoreVals) : 1;
+
+  for (let q = qMin; q <= qMax; q++) {
+    const rMin = Math.floor((tl.y - MAP_ORIG_Y - MAP_HEX_SIZE * S/2 * q) / (MAP_HEX_SIZE * S)) - 1;
+    const rMax = Math.ceil((br.y - MAP_ORIG_Y - MAP_HEX_SIZE * S/2 * q) / (MAP_HEX_SIZE * S)) + 1;
+    for (let r = rMin; r <= rMax; r++) {
+      const key = `${q},${r}`;
+      if (!terrainData[key]) continue;
+      const { x, y } = hexToPixel(q, r);
+      const corners = hexCorners(x, y);
+
+      ctx.beginPath();
+      ctx.moveTo(corners[0].x, corners[0].y);
+      for (let i = 1; i < 6; i++) ctx.lineTo(corners[i].x, corners[i].y);
+      ctx.closePath();
+
+      // Fill: terrain de base
+      const terrain = terrainData[key];
+      if (terrain && TERRAIN_COLORS[terrain]) {
+        ctx.fillStyle = TERRAIN_COLORS[terrain];
+        ctx.fill();
+      }
+
+      // Overlay score
+      if (scores && scores[key] !== undefined) {
+        const isCenter = centerHex && centerHex.q === q && centerHex.r === r;
+        const inZone = zoneTiles.has(key);
+        if (isCenter) {
+          ctx.fillStyle = 'rgba(247,224,59,0.9)';
+        } else if (inZone) {
+          ctx.fillStyle = `rgba(0,220,80,${scoreAlpha * 0.6})`;
+        } else {
+          ctx.fillStyle = scoreToColor(scores[key], minScore, maxScore);
+        }
+        ctx.fill();
+
+        // Contour zone
+        if (inZone && !isCenter) {
+          ctx.strokeStyle = 'rgba(0,255,100,0.9)';
+          ctx.lineWidth = 3 / zoom;
+          ctx.stroke();
+        }
+      }
+
+      // Score label (si assez zoomé)
+      if (scores && scores[key] !== undefined && zoom > 0.12) {
+        const s = scores[key].toFixed(1);
+        ctx.fillStyle = 'rgba(255,255,255,0.85)';
+        ctx.font = `${Math.round(18 / zoom)}px monospace`;  // fixed px in world space
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(s, x, y);
+      }
+    }
+  }
+
+  // Grille
+  if (gridAlpha > 0) {
+    ctx.strokeStyle = `rgba(200,180,100,${gridAlpha})`;
+    ctx.lineWidth = 1 / zoom;
+    for (let q = qMin; q <= qMax; q++) {
+      const rMin = Math.floor((tl.y - MAP_ORIG_Y - MAP_HEX_SIZE * S/2 * q) / (MAP_HEX_SIZE * S)) - 1;
+      const rMax = Math.ceil((br.y - MAP_ORIG_Y - MAP_HEX_SIZE * S/2 * q) / (MAP_HEX_SIZE * S)) + 1;
+      for (let r = rMin; r <= rMax; r++) {
+        if (!terrainData[`${q},${r}`]) continue;
+        const { x, y } = hexToPixel(q, r);
+        const corners = hexCorners(x, y);
+        ctx.beginPath();
+        ctx.moveTo(corners[0].x, corners[0].y);
+        for (let i = 1; i < 6; i++) ctx.lineTo(corners[i].x, corners[i].y);
+        ctx.closePath();
+        ctx.stroke();
+      }
+    }
+  }
+
+  ctx.restore();
+}
+
+// ---- INPUT ----
+canvas.addEventListener('mousedown', e => {
+  if (e.button === 1 || e.button === 2) {
+    dragging = true; lastMx = e.clientX; lastMy = e.clientY;
+    return;
+  }
+  if (e.button === 0) {
+    const imgX = (e.clientX - panX) / zoom;
+    const imgY = (e.clientY - panY) / zoom;
+    const { q, r } = pixelToHex(imgX, imgY);
+    const key = `${q},${r}`;
+    if (!terrainData[key]) return;
+    centerHex = { q, r };
+    scores = computeScores(q, r);
+    updateZone();
+    draw();
+  }
+});
+
+canvas.addEventListener('mousemove', e => {
+  if (dragging) {
+    panX += e.clientX - lastMx;
+    panY += e.clientY - lastMy;
+    lastMx = e.clientX; lastMy = e.clientY;
+    draw(); return;
+  }
+  const imgX = (e.clientX - panX) / zoom;
+  const imgY = (e.clientY - panY) / zoom;
+  const { q, r } = pixelToHex(imgX, imgY);
+  const key = `${q},${r}`;
+  const terrain = terrainData[key] || '—';
+  const score = scores && scores[key] !== undefined ? `  score: ${scores[key].toFixed(3)}` : '';
+  const inZone = zoneTiles.has(key) ? '  [ZONE]' : '';
+  document.getElementById('coords').textContent = `q:${q}  r:${r}  |  ${terrain}${score}${inZone}`;
+});
+
+canvas.addEventListener('mouseup', () => { dragging = false; });
+canvas.addEventListener('mouseleave', () => { dragging = false; });
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const factor = e.deltaY > 0 ? 0.9 : 1.1;
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  panX = mx - (mx - panX) * factor;
+  panY = my - (my - panY) * factor;
+  zoom = Math.max(0.02, Math.min(2, zoom * factor));
+  document.getElementById('zoom-slider').value = zoom;
+  document.getElementById('v-zoom').textContent = zoom.toFixed(3);
+  draw();
+}, { passive: false });
+
+// ---- CONTROLS ----
+document.getElementById('budget-slider').addEventListener('input', function() {
+  budget = parseInt(this.value);
+  document.getElementById('v-budget').textContent = budget.toLocaleString('fr-FR');
+  if (scores) { updateZone(); draw(); }
+});
+document.getElementById('zoom-slider').addEventListener('input', function() {
+  zoom = parseFloat(this.value);
+  document.getElementById('v-zoom').textContent = zoom.toFixed(3);
+  draw();
+});
+document.getElementById('alpha-slider').addEventListener('input', function() {
+  scoreAlpha = parseFloat(this.value);
+  document.getElementById('v-alpha').textContent = scoreAlpha.toFixed(2);
+  draw();
+});
+document.getElementById('grid-slider').addEventListener('input', function() {
+  gridAlpha = parseFloat(this.value);
+  document.getElementById('v-grid').textContent = gridAlpha.toFixed(2);
+  draw();
+});
+</script>
+</body>
+</html>
