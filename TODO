@@ -1,2 +1,18 @@
-limiter le déplacement des unités en fuite
-Revoir Systeme de moral
+import { ParameterizedStatement$ } from "@aws-sdk/client-dynamodb"
+
+revoir l'acces au budget (modif dans la selecion des units)
+voir qui est pret dans le menu
+Trier les unités dans 
+voir les combat en cours des autres joueurs
+N'afficher que les combats visibles
+Diminuer les perte de moral quand  pas touché
+Faire en sorte de pouvoir selectionner les unités hors tour
+Corriger : Tous les tour de l'historique sont T1 (trier dans des sous onglet tour -> manche avec des couleurs)
++1 de vitesse pour tous les génénaux
+Augmenter + la vision pour les généraux en hauteur
+Augmenter la restauration de moral par le général
+pouvoir revoir les lances d'iniatives
+revoir les stats de stances et de terrain
+diminuer les coups de déplacement en foret
+Recap à la fin avec vision global
+Crash en cour de Partie
