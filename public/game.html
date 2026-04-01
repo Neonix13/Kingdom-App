@@ -31,6 +31,15 @@
     .h-table tr.h-section td { background:#1a0d04; color:#c8960c; font-weight:bold; font-size:0.9em; text-align:center; border-color:#3a2408; padding:5px; }
     .h-table tr.h-hit-row td { color:#ff9060; font-weight:bold; }
     .h-table tr.h-miss-row td { color:#80a060; }
+    .manche-header { display:flex; align-items:center; gap:6px; padding:4px 8px; cursor:pointer; user-select:none; background:#150c04; border-left:3px solid #5a3c10; margin-top:2px; font-size:0.8em; }
+    .manche-header:hover { background:#1c1004; }
+    .manche-header .m-arrow { color:#7a5820; font-size:0.75em; width:10px; }
+    .manche-header .m-name { flex:1; color:#d4a44b; font-weight:bold; }
+    .manche-header .m-sub { color:#6a4c20; font-size:0.85em; }
+    .manche-header.mine { border-left-color:#c8960c; }
+    .manche-header.mine .m-name { color:#ffd700; }
+    .manche-content { padding-left:6px; border-left:1px solid #2a1608; margin-left:4px; }
+    .manche-idle { padding:5px 10px; color:#5a3c10; font-style:italic; font-size:0.8em; }
     .chat-msg { font-size:0.8em; line-height:1.4; padding:3px 0; border-bottom:1px solid #1a0d04; }
     .chat-msg .chat-author { font-weight:bold; }
     .chat-msg.mine .chat-author { color:#ffd700; }

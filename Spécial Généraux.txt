@@ -1,0 +1,81 @@
+
+
+
+Ou Ki
+
+actif:
+passif: Réduit de 1 la FORCE, la STRATEGIE et le CHARISME des généraux ennemies
+
+---------------------------------------------------------------------------------------------------
+
+Mou Bu
+
+actif:  Détruit une unité d'infanterie
+passif:
+
+---------------------------------------------------------------------------------------------------
+
+Ou Sen
+
+actif: 
+passif: +2 de défense pour toutes les unités de sont armée
+
+---------------------------------------------------------------------------------------------------
+
+Kan Ki
+
+actif:  Fait apparaitre une unité d'assassin dans son rayon de Charisme
+passif: Les Forets ne ralentisse pas sont armée
+
+---------------------------------------------------------------------------------------------------
+
+Ri Boku
+
+actif:
+passif: Les unités ont +2 de vision
+
+---------------------------------------------------------------------------------------------------
+
+Kei Sha
+
+actif:
+passif:
+
+---------------------------------------------------------------------------------------------------
+
+Shi Ba Shou
+
+actif:
+passif: +1 Armure pour les unités en posture défensive (def CAC et def TIR)
+
+---------------------------------------------------------------------------------------------------
+
+Ren Pa
+
+actif:
+passif:
+
+---------------------------------------------------------------------------------------------------
+
+Go Kei
+
+actif:
+passif:
+
+---------------------------------------------------------------------------------------------------
+
+Go Hou Mei
+
+actif: Le prochain tour il sera le seul à jouer
+passif: Les unité de son armé ont +1 de vitesse
+
+---------------------------------------------------------------------------------------------------
+
+
+
+
+Gai Mou
+
+actif: Inflige 10*D20 au moral des unités ennemies dans la zone de Charisme
+passif:
+
