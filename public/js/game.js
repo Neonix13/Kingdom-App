@@ -118,14 +118,8 @@ const TERRAINS_DATA = {
   building: { name:'Bâtiments', vitesse:-1, attack_cac:-1, attack_tir:-3, defense_cac:+4, defense_tir:+2, puissance_cac:0,  puissance_tir:-1, intimidation_cac:0,  intimidation_tir:0,  esquive_cac:+2, esquive_tir:+4, precision_cac:+1, precision_tir:+1, armure:+2, moral_tour:0 },
   bridge:   { name:'Ponts',     vitesse:-1, attack_cac:0,  attack_tir:+1, defense_cac:+2, defense_tir:+1, puissance_cac:-1, puissance_tir:0,  intimidation_cac:+1, intimidation_tir:0,  esquive_cac:+1, esquive_tir:-2, precision_cac:+1, precision_tir:+1, armure:0,  moral_tour:0 },
 };
-const STANCES_DATA = {
-  marche:           { vitesse:+1, attack_cac:-1, attack_tir:-2, defense_cac:-2, defense_tir:-1, puissance_cac:+1, puissance_tir:-1, intimidation_cac:0, intimidation_tir:0, esquive_cac:+1, esquive_tir:+2, precision_cac:0, precision_tir:-2, armure:-1, moral_tour:0 },
-  combat:           { vitesse:-1, attack_cac:+1, attack_tir:+1, defense_cac:+1, defense_tir:+1, puissance_cac:+2, puissance_tir:+2, intimidation_cac:+1, intimidation_tir:+1, esquive_cac:0, esquive_tir:0, precision_cac:+1, precision_tir:+2, armure:+1, moral_tour:0 },
-  charge:           { vitesse:+2, attack_cac:+3, attack_tir:-2, defense_cac:-1, defense_tir:-2, puissance_cac:+3, puissance_tir:-2, intimidation_cac:+2, intimidation_tir:-1, esquive_cac:+2, esquive_tir:+3, precision_cac:+3, precision_tir:-2, armure:0, moral_tour:-1 },
-  repos:            { vitesse:-1, attack_cac:-2, attack_tir:-2, defense_cac:-2, defense_tir:-2, puissance_cac:-2, puissance_tir:-1, intimidation_cac:-2, intimidation_tir:-1, esquive_cac:0, esquive_tir:-2, precision_cac:-1, precision_tir:-1, armure:0, moral_tour:+10 },
-  defense_combat:   { vitesse:-1, attack_cac:-2, attack_tir:-1, defense_cac:+4, defense_tir:-2, puissance_cac:-1, puissance_tir:-2, intimidation_cac:-2, intimidation_tir:+1, esquive_cac:+1, esquive_tir:-1, precision_cac:0, precision_tir:-2, armure:+2, moral_tour:0 },
-  defense_distance: { vitesse:0,  attack_cac:-3, attack_tir:0,  defense_cac:-3, defense_tir:0,  puissance_cac:-2, puissance_tir:-1, intimidation_cac:-2, intimidation_tir:-1, esquive_cac:+2, esquive_tir:+4, precision_cac:-2, precision_tir:-1, armure:+1, moral_tour:0 },
-};
+let STANCES_DATA = {};
+fetch('/data/stances.json').then(r => r.json()).then(data => { STANCES_DATA = data; render(); }).catch(() => {});
 for (const s of stanceList) {
   const img = new Image();
   img.src = `/assets/icons/${stanceIconFiles[s]}.svg`;
@@ -272,6 +266,7 @@ const TERRAIN_COLORS = {
 let myId = sessionStorage.getItem('myId');
 let roomCode = sessionStorage.getItem('roomCode');
 let gameState = null;
+let isSpectator = false;
 let deployState = sessionStorage.getItem('deploymentState');
 
 // Animations de déplacement : unitId → { path:[[q,r],...], startTime, stepMs }
@@ -855,6 +850,44 @@ function drawUnit(ctx, x, y, unit, playerId, isSelected = false, isHovered = fal
 
   // Hover overlay : assombrit le token et affiche le nom
   if (isHovered) {
+    // Flèche de direction (facing)
+    const FACING_DIRS = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
+    const facing = unit.facing ?? 0;
+    const [fdq, fdr] = FACING_DIRS[facing] || [1,0];
+    const S3 = Math.sqrt(3);
+    const fpx = 1.5 * fdq;
+    const fpy = S3 * fdr + S3 / 2 * fdq;
+    const fAngle = Math.atan2(fpy, fpx);
+    const arrowLen = HEX_SIZE * 0.75;
+    const arrowHeadLen = HEX_SIZE * 0.3;
+    const ax = x + Math.cos(fAngle) * arrowLen;
+    const ay = y + Math.sin(fAngle) * arrowLen;
+    ctx.save();
+    // Contour blanc pour lisibilité
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+    ctx.lineWidth = 6;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(ax, ay);
+    ctx.lineTo(ax - Math.cos(fAngle - 0.4) * arrowHeadLen, ay - Math.sin(fAngle - 0.4) * arrowHeadLen);
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(ax - Math.cos(fAngle + 0.4) * arrowHeadLen, ay - Math.sin(fAngle + 0.4) * arrowHeadLen);
+    ctx.stroke();
+    // Flèche noire
+    ctx.strokeStyle = 'rgba(0,0,0,0.95)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(ax, ay);
+    ctx.lineTo(ax - Math.cos(fAngle - 0.4) * arrowHeadLen, ay - Math.sin(fAngle - 0.4) * arrowHeadLen);
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(ax - Math.cos(fAngle + 0.4) * arrowHeadLen, ay - Math.sin(fAngle + 0.4) * arrowHeadLen);
+    ctx.stroke();
+    ctx.restore();
+
+    // Badge nom
     const label = unit.name;
     const fontSize = Math.round(HEX_SIZE * 0.38);
     ctx.font = `bold ${fontSize}px sans-serif`;
@@ -1382,6 +1415,13 @@ function setMode(newMode) {
 }
 
 function updateActionButtons() {
+  if (isSpectator) {
+    ['btn-move','btn-attack','btn-motivate','btn-ability','btn-end-turn','btn-end-turn-center','stance-panel'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    });
+    return;
+  }
   const isMyTurn = gameState?.currentPlayerId === myId;
   const hasUnit = !!selectedUnit;
   const isFleeing = hasUnit && selectedUnit.isFleeing;
@@ -1662,7 +1702,7 @@ function showInitiativeModal(rolls, turnOrder, turn) {
     const isMe = id === myId;
     html += `<div class="initiative-row${isMe ? ' mine' : ''}">
       <span class="rank">${i + 1}.</span>
-      <span class="i-name">${roll.playerName}<span style="color:#7a5820;font-size:0.85em"> (${roll.generalName})</span></span>
+      <span class="i-name">${roll.generalName || roll.playerName}</span>
       <span class="i-roll">Str ${roll.strategy} + D20 <strong>${roll.d20}</strong> = <strong>${roll.total}</strong></span>
     </div>`;
   }
@@ -1711,12 +1751,17 @@ function renderTurnOrder(turnOrder, initiativeRolls, currentPlayerId) {
       portraitHtml = `<div class="to-portrait-placeholder">★</div>`;
     }
 
-    const name = roll?.playerName || roll?.generalName || id;
+    const name = roll?.generalName || roll?.playerName || id;
     const div = document.createElement('div');
     div.className = `turn-order-item${isCurrent ? ' current' : ''}${hasPlayed ? ' played' : ''}`;
     div.innerHTML = `${portraitHtml}<span class="to-name">${name}</span>`;
     list.appendChild(div);
   }
+}
+
+function getPlayerDisplayName(playerId) {
+  const p = gameState?.players?.find(pl => pl.id === playerId);
+  return p?.generalName || p?.name || playerId;
 }
 
 function endTurn() {
@@ -1973,27 +2018,126 @@ function appendChatMessage({ authorName, text, isMine, isSystem, authorId }) {
 
 let combatHistoryEntries = [];
 let historyLastTurn = 0;
-function addCombatHistory(log) {
-  combatHistoryEntries.push(log);
+const historyTurnOrders = {}; // turn -> { turnOrder, rolls }
+let historyCurrentManche = null; // { playerId, turn, manche, contentEl, actionsCount }
+let historyMancheCounter = 0;
+
+function recordTurnOrder(turn, turnOrder, rolls) {
+  historyTurnOrders[turn] = { turnOrder, rolls };
+}
+
+function toggleHistoryTurnOrder(turn) {
+  const el = document.getElementById(`turn-order-${turn}`);
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function toggleHistoryTurn(turn) {
   const container = document.getElementById('combat-history');
   if (!container) return;
-  const turn = log.turn || 1;
-  const manche = log.manche || 1;
+  const wrappers = container.querySelectorAll(`[data-turn="${turn}"]`);
+  const arrow = document.getElementById(`turn-arrow-${turn}`);
+  const anyVisible = Array.from(wrappers).some(w => w.style.display !== 'none');
+  wrappers.forEach(w => { w.style.display = anyVisible ? 'none' : ''; });
+  if (arrow) arrow.textContent = anyVisible ? '▶' : '▼';
+}
+
+function toggleManche(id) {
+  const content = document.getElementById(`mc-${id}`);
+  const arrow = document.getElementById(`ma-${id}`);
+  if (!content) return;
+  const open = content.style.display !== 'none';
+  content.style.display = open ? 'none' : 'block';
+  if (arrow) arrow.textContent = open ? '▶' : '▼';
+}
+
+function _closeMancheSection() {
+  if (!historyCurrentManche) return;
+  if (historyCurrentManche.actionsCount === 0) {
+    const idle = document.createElement('div');
+    idle.className = 'manche-idle';
+    idle.textContent = 'Rien de spécial.';
+    historyCurrentManche.contentEl.appendChild(idle);
+  }
+  historyCurrentManche = null;
+}
+
+function _openMancheSection(playerId, playerName, generalName, turn, manche, playerColor) {
+  _closeMancheSection();
+  const container = document.getElementById('combat-history');
+  if (!container) return;
   // Supprimer le placeholder si présent
   const placeholder = container.querySelector('div[style*="italic"]');
   if (placeholder) placeholder.remove();
-  // Insérer un séparateur de tour si nouveau tour
+  // Séparateur de tour si nouveau tour
   if (turn !== historyLastTurn) {
     historyLastTurn = turn;
     const sep = document.createElement('div');
-    sep.style.cssText = 'background:#1a0d04;color:#c8960c;font-weight:bold;padding:4px 8px;margin-top:6px;border-top:1px solid #5a3c10;font-size:0.8em;';
-    sep.textContent = `── Tour ${turn} ──`;
+    sep.style.cssText = 'background:#1a0d04;color:#c8960c;font-weight:bold;padding:4px 8px;margin-top:6px;border-top:1px solid #5a3c10;font-size:0.8em;cursor:pointer;user-select:none;';
+    const tData = historyTurnOrders[turn];
+    if (tData) {
+      const { turnOrder, rolls } = tData;
+      const orderText = turnOrder.map((id, i) => {
+        const r = rolls?.[id];
+        const n = r?.generalName || r?.playerName || id;
+        const g = '';
+        const rv = r ? ` — Str${r.strategy}+D20${r.d20}=${r.total}` : '';
+        return `<div style="padding:2px 12px;color:${id === myId ? '#ffd700' : '#c8a060'}">${i+1}. ${n}${g}${rv}</div>`;
+      }).join('');
+      sep.innerHTML = `<span style="display:flex;align-items:center;gap:8px"><span onclick="toggleHistoryTurn(${turn})" style="cursor:pointer" id="turn-arrow-${turn}">▼</span><span onclick="toggleHistoryTurnOrder(${turn})" style="cursor:pointer">── Tour ${turn} ── <span style="font-size:0.85em;opacity:0.6">(ordre ▾)</span></span></span><div id="turn-order-${turn}" style="display:none;margin-top:4px;font-weight:normal;font-size:0.9em">${orderText}</div>`;
+    } else {
+      sep.innerHTML = `<span style="display:flex;align-items:center;gap:8px"><span onclick="toggleHistoryTurn(${turn})" style="cursor:pointer" id="turn-arrow-${turn}">▼</span><span>── Tour ${turn} ──</span></span>`;
+    }
     container.appendChild(sep);
   }
+  // Section manche
+  const mid = historyMancheCounter++;
+  const isMe = playerId === myId;
+  const color = playerColor || '#c8a84b';
+  const wrapper = document.createElement('div');
+  wrapper.dataset.turn = turn;
+  const contentId = `mc-${mid}`;
+  wrapper.innerHTML = `<div class="manche-header${isMe ? ' mine' : ''}" onclick="toggleManche(${mid})" style="border-left-color:${color}">
+    <span class="m-arrow" id="ma-${mid}">▶</span>
+    <span class="m-name" style="color:${color}">${playerName}</span>
+    <span class="m-sub">${generalName ? `${generalName} · ` : ''}T${turn}.${manche}</span>
+  </div>
+  <div class="manche-content" id="${contentId}" style="display:none"></div>`;
+  container.appendChild(wrapper);
+  container.scrollTop = container.scrollHeight;
+  historyCurrentManche = { playerId, turn, manche, contentEl: wrapper.querySelector(`#${contentId}`), actionsCount: 0 };
+}
+
+function addCombatHistory(log) {
+  combatHistoryEntries.push(log);
+  if (!historyCurrentManche) return;
   const entry = document.createElement('div');
   entry.innerHTML = formatHistoryEntry(log);
-  container.appendChild(entry.firstElementChild);
-  container.scrollTop = container.scrollHeight;
+  historyCurrentManche.contentEl.appendChild(entry.firstElementChild);
+  historyCurrentManche.actionsCount++;
+  // Auto-ouvrir si action ajoutée
+  const contentEl = historyCurrentManche.contentEl;
+  contentEl.style.display = 'block';
+  const mid = contentEl.id.replace('mc-', '');
+  const arrow = document.getElementById(`ma-${mid}`);
+  if (arrow) arrow.textContent = '▼';
+  const container = document.getElementById('combat-history');
+  if (container) container.scrollTop = container.scrollHeight;
+}
+
+function addHistoryAction(playerId, html) {
+  if (!historyCurrentManche) return;
+  const entry = document.createElement('div');
+  entry.innerHTML = html;
+  historyCurrentManche.contentEl.appendChild(entry);
+  historyCurrentManche.actionsCount++;
+  const contentEl = historyCurrentManche.contentEl;
+  contentEl.style.display = 'block';
+  const mid = contentEl.id.replace('mc-', '');
+  const arrow = document.getElementById(`ma-${mid}`);
+  if (arrow) arrow.textContent = '▼';
+  const container = document.getElementById('combat-history');
+  if (container) container.scrollTop = container.scrollHeight;
 }
 
 let historyCounter = 0;
@@ -2007,6 +2151,7 @@ function formatHistoryEntry(log) {
   const turn = log.turn || 1;
   const manche = log.manche || 1;
   const attackerColor = gameState?.players?.find(p => p.id === log.attackerPlayerId)?.color || '#c8a84b';
+  const targetColor = gameState?.players?.find(p => p.id === log.targetPlayerId)?.color || '#a08060';
 
   // Header line
   const hitBadge = hit
@@ -2014,7 +2159,7 @@ function formatHistoryEntry(log) {
     : `<span class="h-badge h-miss">RATÉ</span>`;
   const header = `<div class="h-header" onclick="toggleHistory('${id}')" style="border-left:3px solid ${attackerColor};">
     <span class="h-arrow" id="arrow-${id}">▶</span>
-    <span class="h-title">T${turn}.${manche} — <b style="color:${attackerColor}">${log.attackerName||'?'}</b> → <b>${log.targetName||'?'}</b></span>
+    <span class="h-title"><b style="color:${attackerColor}">${log.attackerName||'?'}</b> → <b style="color:${targetColor}">${log.targetName||'?'}</b></span>
     ${hitBadge}
     ${log.targetKilled ? `<span class="h-badge h-dead">💀</span>` : ''}
     ${log.attackerKilled ? `<span class="h-badge h-dead">💀 (attaquant)</span>` : ''}
@@ -2244,9 +2389,11 @@ function buildStanceTooltip(stanceId) {
     ['Esquive',      s.esquive_cac,      s.esquive_tir],
     ['Précision',    s.precision_cac,    s.precision_tir],
   ], isRanged);
-  if (s.vitesse    !== 0) html += `<div class="tt-extra">${cell1(s.vitesse)} Vitesse</div>`;
-  if (s.armure     !== 0) html += `<div class="tt-extra">${cell1(s.armure)} Armure</div>`;
-  if (s.moral_tour !== 0) html += `<div class="tt-extra">${cell1(s.moral_tour)} Moral/tour</div>`;
+  if (s.vitesse       !== 0) html += `<div class="tt-extra">${cell1(s.vitesse)} Vitesse</div>`;
+  if (s.armure        !== 0) html += `<div class="tt-extra">${cell1(s.armure)} Armure</div>`;
+  if (s.armure_tour   !== 0) html += `<div class="tt-extra">${cell1(s.armure_tour)} Armure/tour</div>`;
+  if (s.moral_tour    !== 0) html += `<div class="tt-extra">${cell1(s.moral_tour)} Moral/tour</div>`;
+  if (s.vitalite_tour !== 0) html += `<div class="tt-extra">${cell1(s.vitalite_tour)} Vita/tour</div>`;
   return html;
 }
 
@@ -2441,14 +2588,21 @@ function wsDispatch(event, data) {
       sessionStorage.setItem('myId', myId);
       gameState = data;
       gameState.visibleHexes = new Set(data.visibleHexes);
+      if (data.isSpectator) isSpectator = true;
 
       document.getElementById('top-turn').textContent = `Tour ${data.turn} · Manche ${data.manche || 1}`;
       const currPlayer = data.players.find(p => p.id === data.currentPlayerId);
       document.getElementById('top-current-player').textContent =
-        data.currentPlayerId === myId ? '⚔️ Votre manche' : `Manche de : ${currPlayer?.name || '?'}`;
+        data.currentPlayerId === myId ? '⚔️ Votre manche' : `Manche de : ${currPlayer?.generalName || currPlayer?.name || '?'}`;
       document.getElementById('top-phase').textContent = data.phase === 'battle' ? 'Bataille' : '';
       document.getElementById('sidebar-title').textContent =
-        data.currentPlayerId === myId ? 'Votre manche' : `Manche de ${currPlayer?.name || '?'}`;
+        data.currentPlayerId === myId ? 'Votre manche' : `Manche de ${currPlayer?.generalName || currPlayer?.name || '?'}`;
+      if (data.phase === 'battle' && !historyCurrentManche) {
+        const p = data.players?.find(pl => pl.id === data.currentPlayerId);
+        const pName = p?.generalName || p?.name || data.currentPlayerId;
+        const pColor = p?.color || '#c8a84b';
+        _openMancheSection(data.currentPlayerId, pName, '', data.turn, data.manche || 1, pColor);
+      }
 
       if (selectedUnit) {
         const updated = data.myUnits.find(u => u.id === selectedUnit.id);
@@ -2481,13 +2635,17 @@ function wsDispatch(event, data) {
         const showPopup = () => {
           const ptpPlayer = gameState?.players.find(p => p.id === ptp.playerId);
           const ptpColor = ptpPlayer?.color || '#ffd700';
-          const ptpName = ptp.playerId === myId ? 'Votre manche !' : `Manche de ${ptpPlayer?.name || '?'}`;
+          const ptpName = ptp.playerId === myId ? 'Votre manche !' : `Manche de ${ptpPlayer?.generalName || ptpPlayer?.name || '?'}`;
           const ptpSub = `Tour ${ptp.turn} · Manche ${ptp.manche || 1}`;
           if (ptp.playerId === myId) {
             const myGeneral = gameState?.units?.find(u => u.playerId === myId && u.isGeneral);
             if (myGeneral) { const { x, y } = hexToPixel(myGeneral.q, myGeneral.r); smoothPanTo(x, y); }
             const canAct = gameState?.units?.some(u => u.playerId === myId && (u.speedRemaining > 0 || !u.hasAttacked));
-            if (canAct) showTurnPopup(ptpName, ptpSub, ptpColor);
+            if (!canAct) {
+              wsSend('end_turn', { roomCode });
+            } else {
+              showTurnPopup(ptpName, ptpSub, ptpColor);
+            }
           } else {
             showTurnPopup(ptpName, ptpSub, ptpColor);
           }
@@ -2512,9 +2670,17 @@ function wsDispatch(event, data) {
       rangeTiles.clear(); rangeCenter = null; motivateTiles.clear(); motivateCenter = null;
       updateActionButtons();
       pendingTurnPopup = { playerId: data.currentPlayerId, turn: data.turn, manche: data.manche, newRound: data.manche === 1 };
+      // Ouvrir section manche dans l'historique
+      {
+        const p = gameState?.players?.find(pl => pl.id === data.currentPlayerId);
+        const pName = p?.generalName || p?.name || data.currentPlayerId;
+        const pColor = p?.color || '#c8a84b';
+        _openMancheSection(data.currentPlayerId, pName, '', data.turn, data.manche, pColor);
+      }
       break;
     }
     case 'initiative_rolled':
+      recordTurnOrder(data.turn, data.turnOrder, data.rolls);
       showInitiativeModal(data.rolls, data.turnOrder, data.turn);
       break;
     case 'combat_result': {
@@ -2551,6 +2717,12 @@ function wsDispatch(event, data) {
         data.winnerName ? `${data.winnerName} remporte la bataille !` : 'Match nul !';
       document.getElementById('overlay-gameover').style.display = 'flex';
       break;
+    case 'become_spectator':
+      notify(`${data.winnerName} remporte la bataille ! Vous pouvez continuer à observer.`, 'info');
+      isSpectator = true;
+      updateActionButtons();
+      render();
+      break;
     case 'deployment_ready_update': {
       notify(`${data.readyCount}/${data.total} joueurs prêts…`, 'info');
       if (btn.disabled) {
@@ -2560,13 +2732,29 @@ function wsDispatch(event, data) {
       }
       break;
     }
-    case 'motivate_result':
-      if (data.success) {
-        notify(`Motivation réussie ! (Charisme ${data.charisma} ≥ D20 ${data.d20}) → ${data.count} unité(s) regagnent ${data.moralGain} moral.`, 'success');
+    case 'motivate_result': {
+      let notifMsg, notifType, histMsg;
+      if (data.critSuccess) {
+        notifMsg = `⭐ SUCCÈS CRITIQUE ! (D20=1) → ${data.count} unité(s) regagnent tout leur moral !`;
+        notifType = 'success';
+        histMsg = `<div style="padding:4px 8px;color:#ffd700;font-size:0.8em">⭐ Motivation — Succès critique (D20=1) : ${data.count} unité(s) → moral max</div>`;
+      } else if (data.critFail) {
+        notifMsg = `💀 ÉCHEC CRITIQUE ! (D20=20) → ${data.count} unité(s) perdent 20 moral.`;
+        notifType = 'error';
+        histMsg = `<div style="padding:4px 8px;color:#ff6060;font-size:0.8em">💀 Motivation — Échec critique (D20=20) : ${data.count} unité(s) −20 moral</div>`;
+      } else if (data.success) {
+        notifMsg = `Motivation réussie ! (Charisme ${data.charisma} ≥ D20 ${data.d20}) → ${data.count} unité(s) regagnent ${data.moralGain} moral.`;
+        notifType = 'success';
+        histMsg = `<div style="padding:4px 8px;color:#80c080;font-size:0.8em">🎖 Motivation — Cha${data.charisma} ≥ D20 ${data.d20} : ${data.count} unité(s) +${data.moralGain} moral</div>`;
       } else {
-        notify(`Motivation échouée. (Charisme ${data.charisma} < D20 ${data.d20})`, 'info');
+        notifMsg = `Motivation échouée. (Charisme ${data.charisma} < D20 ${data.d20})`;
+        notifType = 'info';
+        histMsg = `<div style="padding:4px 8px;color:#a08060;font-size:0.8em">Motivation — Échec (Cha${data.charisma} < D20 ${data.d20})</div>`;
       }
+      notify(notifMsg, notifType);
+      addHistoryAction(data.playerId, histMsg);
       break;
+    }
     case 'chat_message':
       appendChatMessage({ authorName: data.authorName, text: data.text, isMine: data.authorId === myId, authorId: data.authorId });
       break;

@@ -69,15 +69,19 @@ class GameRoom {
       hostId: this.hostId,
       phase: this.phase,
       budget: this.budget,
-      players: this.players.filter(p => !p.offline).map(p => ({
-        id: p.id,
-        name: p.name,
-        generalId: p.generalId,
-        isReady: p.isReady,
-        isEliminated: p.isEliminated,
-        isBot: p.isBot || false,
-        color: p.color || '#4a90d9',
-      })),
+      players: this.players.filter(p => !p.offline).map(p => {
+        const gd = GENERALS.find(g => g.id === p.generalId);
+        return {
+          id: p.id,
+          name: p.name,
+          generalId: p.generalId,
+          generalName: gd ? gd.name : null,
+          isReady: p.isReady,
+          isEliminated: p.isEliminated,
+          isBot: p.isBot || false,
+          color: p.color || '#4a90d9',
+        };
+      }),
       takenGenerals: this.players.filter(p => p.generalId && !p.offline).map(p => p.generalId),
     };
   }
@@ -406,6 +410,22 @@ class GameRoom {
   getVisibleHexes(playerId) {
     const player = this.getPlayer(playerId);
     if (!player) return new Set();
+    // Spectateur : union de la vision de tous les joueurs vivants
+    if (player.isEliminated) {
+      const all = new Set();
+      for (const p of this.players) {
+        if (!p.isEliminated) {
+          for (const hex of this._getVisibleHexesForPlayer(p.id)) all.add(hex);
+        }
+      }
+      return all;
+    }
+    return this._getVisibleHexesForPlayer(playerId);
+  }
+
+  _getVisibleHexesForPlayer(playerId) {
+    const player = this.getPlayer(playerId);
+    if (!player) return new Set();
     const visible = new Set();
 
     const sd = getSegmentData();
@@ -430,9 +450,18 @@ class GameRoom {
         const effectiveRange = unit.isGeneral
           ? baseRange + myHeight * 2
           : baseRange + Math.max(0, myHeight - targetHeight);
-        const isLowerForest = this.terrainData[key] === 'forest' && targetHeight < myHeight;
-        if (!inForest && this.terrainData[key] === 'forest' && d > 2 && !(unit.isGeneral && isLowerForest)) continue;
-        if (d <= effectiveRange) visible.add(key);
+        const isForest = this.terrainData[key] === 'forest';
+        const isLowerForest = isForest && targetHeight < myHeight;
+        // Forêt bloque la vision, sauf général en hauteur qui voit DERRIÈRE (mais pas DANS)
+        if (!inForest && isForest && d > 2) {
+          if (unit.isGeneral && isLowerForest) {
+            // Le général en hauteur peut traverser la forêt inférieure visuellement,
+            // mais ne voit PAS la case forêt elle-même
+          } else {
+            continue;
+          }
+        }
+        if (d <= effectiveRange && !(unit.isGeneral && isLowerForest && d > 2)) visible.add(key);
         if (d >= maxRange) continue;
         for (const [dq, dr] of DIRS) {
           const nq = q + dq, nr = r + dr;
@@ -453,6 +482,7 @@ class GameRoom {
     const player = this.getPlayer(playerId);
     const visibleHexes = this.getVisibleHexes(playerId);
     const general = GENERALS.find(g => g.id === player.generalId);
+    const isSpectator = player.isEliminated;
 
     // Build visible units list
     const visibleUnits = [];
@@ -460,7 +490,7 @@ class GameRoom {
       for (const u of p.units) {
         if (u.q === null) continue;
         const key = hexKey(u.q, u.r);
-        if (p.id === playerId || visibleHexes.has(key)) {
+        if (isSpectator || p.id === playerId || visibleHexes.has(key)) {
           visibleUnits.push({
             ...u,
             isMine: p.id === playerId,
@@ -476,19 +506,24 @@ class GameRoom {
       manche: this.manche,
       currentPlayerId: this.getCurrentPlayerId(),
       myId: playerId,
+      isSpectator,
       budget: this.budget,
       generalData: general,
       visibleHexes: Array.from(visibleHexes),
       units: visibleUnits,
       myUnits: player.units,
-      players: this.players.map(p => ({
-        id: p.id,
-        name: p.name,
-        generalId: p.generalId,
-        isEliminated: p.isEliminated,
-        unitCount: p.units.length,
-        color: p.color || '#4a90d9',
-      })),
+      players: this.players.map(p => {
+        const gd = GENERALS.find(g => g.id === p.generalId);
+        return {
+          id: p.id,
+          name: p.name,
+          generalId: p.generalId,
+          generalName: gd ? gd.name : null,
+          isEliminated: p.isEliminated,
+          unitCount: p.units.length,
+          color: p.color || '#4a90d9',
+        };
+      }),
       turnOrder: this.turnOrder,
       initiativeRolls: this.initiativeRolls,
       activeEffects: this.activeEffects.filter(e => e.targetPlayerId === playerId),
@@ -681,10 +716,22 @@ class GameRoom {
     if (targets.length === 0) return { error: 'Aucune unité à portée.' };
 
     const d20 = Math.floor(Math.random() * 20) + 1;
-    const success = charisma >= d20;
-    const moralGain = success ? (general.intimidation || 5) * 10 : 0;
-    if (success) {
-      for (const t of targets) {
+    const critSuccess = d20 === 1;
+    const critFail = d20 === 20;
+    const success = critSuccess || (!critFail && charisma >= d20);
+    let moralGain = 0;
+    if (critSuccess) {
+      moralGain = null; // full restore
+    } else if (success) {
+      moralGain = Math.max(1, charisma - d20) * 10;
+    }
+    for (const t of targets) {
+      if (critFail) {
+        t.morale = Math.max(0, t.morale - 20);
+      } else if (critSuccess) {
+        t.morale = t.maxMorale;
+        t.isFleeing = false;
+      } else if (success) {
         t.morale = Math.min(t.maxMorale, t.morale + moralGain);
         if (t.isFleeing && t.morale > 0) t.isFleeing = false;
       }
@@ -695,7 +742,7 @@ class GameRoom {
     general.speedRemaining = Math.max(0, general.speedRemaining - speedCost);
     general.hasAttacked = true;
 
-    return { ok: true, success, charisma, d20, range, moralGain, count: targets.length };
+    return { ok: true, success, critSuccess, critFail, charisma, d20, range, moralGain, count: targets.length };
   }
 
   initiateCombat(playerId, attackerId, targetId) {
@@ -777,7 +824,7 @@ class GameRoom {
 
     const combatLog = {
       attackerName: attacker.name, targetName: target.name,
-      attackerPlayerId: attackerPlayer.id,
+      attackerPlayerId: attackerPlayer.id, targetPlayerId: targetPlayer.id,
       defenderPlayerId: targetPlayer.id,
       turn: this.turn, manche: this.manche,
       defenseChoice,
@@ -957,6 +1004,7 @@ class GameRoom {
 
     if (!general) return { error: 'Général introuvable.' };
     if (!generalUnit) return { error: 'Unité général introuvable.' };
+    if (!general.activeAbility) return { error: 'Ce général n\'a pas de capacité active.' };
     if (generalUnit.hasUsedAbility) return { error: 'Capacité déjà utilisée ce tour.' };
     if (generalUnit.abilityCooldown > 0) return { error: `Capacité en recharge (${generalUnit.abilityCooldown} tours restants).` };
 

@@ -105,9 +105,16 @@
         <span class="budget-label">Restant :</span>
         <span class="budget-value" id="army-remaining">2 500</span>
       </div>
+      <div id="army-budget-edit" style="display:none;margin-bottom:12px;display:none">
+        <label style="font-size:0.85em;color:#aaa">Modifier le budget (hôte) :</label>
+        <input type="number" id="army-budget-input" min="1000" max="100000" step="1000" style="width:110px;margin:0 8px">
+        <button class="btn btn-primary" style="padding:4px 12px;font-size:0.85em" onclick="setBudgetFromArmy()">Appliquer</button>
+      </div>
+      <div id="army-players-status" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px"></div>
       <div class="unit-shop" id="unit-shop"></div>
-      <div class="mt-16">
+      <div class="mt-16" style="display:flex;gap:12px;align-items:center">
         <button class="btn btn-success" onclick="submitArmy()">Confirmer l'armée</button>
+        <button id="btn-back-to-lobby" class="btn btn-secondary" style="display:none" onclick="backToLobby()">← Retour au lobby</button>
       </div>
     </div>
   </div>

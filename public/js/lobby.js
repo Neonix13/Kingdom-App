@@ -160,6 +160,16 @@ function setBudget() {
   wsSend('set_budget', { roomCode, budget: val });
 }
 
+function setBudgetFromArmy() {
+  const val = parseInt(document.getElementById('army-budget-input').value);
+  if (isNaN(val) || val < 1000) return notify('Budget minimum : 1000 or');
+  wsSend('set_budget', { roomCode, budget: val });
+}
+
+function backToLobby() {
+  wsSend('back_to_lobby', { roomCode });
+}
+
 function selectGeneral(id) {
   selectedGeneral = id;
   wsSend('select_general', { roomCode, generalId: id });
@@ -298,6 +308,19 @@ function showUnitCardLobby(u) {
   document.getElementById('overlay-general-card').style.display = 'flex';
 }
 
+function renderArmyStatus(players) {
+  const el = document.getElementById('army-players-status');
+  if (!el) return;
+  el.innerHTML = players.filter(p => !p.offline).map(p => {
+    const genName = p.generalId ? (GENERALS_DATA.find(g => g.id === p.generalId)?.name || p.generalId) : '?';
+    const icon = p.isReady ? '✅' : p.generalId ? '⚔️' : '⌛';
+    const color = p.color || '#4a90d9';
+    return `<span style="background:#1a1a1e;border:1px solid ${color};border-radius:4px;padding:3px 8px;font-size:0.82em;color:#ccc">
+      ${icon} <span style="color:${color}">${genName}</span>
+    </span>`;
+  }).join('');
+}
+
 function renderPlayerList(players, hostId) {
   const list = document.getElementById('player-list');
   list.innerHTML = '';
@@ -307,33 +330,33 @@ function renderPlayerList(players, hostId) {
     const color = p.color || '#4a90d9';
     if (p.id === myId) {
       // Color picker inline for current player
-      const pickerHtml = PLAYER_COLORS.map(c => `
-        <div class="color-swatch${c.hex === selectedColor ? ' active' : ''}"
-          title="${c.name}"
-          style="width:18px;height:18px;border-radius:50%;background:${c.hex};cursor:pointer;border:2px solid ${c.hex === selectedColor ? '#fff' : 'transparent'};flex-shrink:0"
-          onclick="pickColor('${c.hex}')"></div>
-      `).join('');
+      const takenColors = players.filter(pl => pl.id !== myId).map(pl => pl.color || '#4a90d9');
+      const pickerHtml = PLAYER_COLORS.map(c => {
+        const isTaken = takenColors.includes(c.hex);
+        const isSelected = c.hex === selectedColor;
+        return `<div class="color-swatch${isSelected ? ' active' : ''}"
+          title="${c.name}${isTaken ? ' (prise)' : ''}"
+          style="width:18px;height:18px;border-radius:50%;background:${c.hex};cursor:${isTaken ? 'not-allowed' : 'pointer'};border:2px solid ${isSelected ? '#fff' : 'transparent'};flex-shrink:0;opacity:${isTaken ? '0.25' : '1'};position:relative"
+          onclick="${isTaken ? '' : `pickColor('${c.hex}')`}"></div>`;
+      }).join('');
       li.innerHTML = `
         <span class="player-badge${p.id === hostId ? ' host' : ''}">${p.id === hostId ? 'Host' : 'Joueur'}</span>
         <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;flex:1">${pickerHtml}</div>
-        <span>${p.name}</span>
-        <span class="text-muted" style="font-size:0.85em">${genName}</span>
+        <span>${genName !== '—' ? genName : p.name}</span>
         <span class="ready-icon">${p.isReady ? '✅' : p.generalId ? '⚔️' : ''}</span>
       `;
     } else if (p.isBot) {
       li.innerHTML = `
         <span class="player-badge" style="background:#555">Bot</span>
         <div style="width:16px;height:16px;border-radius:50%;background:${color};flex-shrink:0;border:1px solid rgba(255,255,255,0.3)"></div>
-        <span>${p.name}</span>
-        <span class="text-muted" style="font-size:0.85em">${genName}</span>
+        <span>${genName !== '—' ? genName : p.name}</span>
         <span class="ready-icon">${p.isReady ? '✅' : p.generalId ? '⚔️' : ''}</span>
       `;
     } else {
       li.innerHTML = `
         <span class="player-badge${p.id === hostId ? ' host' : ''}">${p.id === hostId ? 'Host' : 'Joueur'}</span>
         <div style="width:16px;height:16px;border-radius:50%;background:${color};flex-shrink:0;border:1px solid rgba(255,255,255,0.3)"></div>
-        <span>${p.name}</span>
-        <span class="text-muted" style="font-size:0.85em">${genName}</span>
+        <span>${genName !== '—' ? genName : p.name}</span>
         <span class="ready-icon">${p.isReady ? '✅' : p.generalId ? '⚔️' : ''}</span>
       `;
     }
@@ -405,6 +428,8 @@ function updateBudgetDisplay() {
   document.getElementById('army-budget').textContent = budget.toLocaleString();
   document.getElementById('army-spent').textContent = spent.toLocaleString();
   document.getElementById('army-remaining').textContent = (budget - spent).toLocaleString();
+  const inp = document.getElementById('army-budget-input');
+  if (inp) inp.value = budget;
 }
 
 function submitArmy() {
@@ -446,6 +471,7 @@ function wsDispatch(event, data) {
       budget = data.budget;
       document.getElementById('current-budget').textContent = data.budget.toLocaleString();
       renderPlayerList(data.players, data.hostId);
+      renderArmyStatus(data.players);
       renderGenerals(data.takenGenerals);
       if (data.hostId === myId) {
         document.getElementById('budget-card').style.display = 'block';
@@ -458,9 +484,24 @@ function wsDispatch(event, data) {
     }
     case 'phase_change': {
       if (data.budget !== undefined) budget = data.budget;
+      if (data.phase === 'lobby') {
+        show('screen-lobby');
+        armyQuantities = {};
+        break;
+      }
       if (data.phase === 'army_building') {
         show('screen-army');
         document.getElementById('army-budget').textContent = budget.toLocaleString();
+        const editDiv = document.getElementById('army-budget-edit');
+        const btnBack = document.getElementById('btn-back-to-lobby');
+        if (isHost) {
+          editDiv.style.display = 'block';
+          document.getElementById('army-budget-input').value = budget;
+          if (btnBack) btnBack.style.display = 'inline-block';
+        } else {
+          editDiv.style.display = 'none';
+          if (btnBack) btnBack.style.display = 'none';
+        }
         renderArmyBuilder();
       }
       break;

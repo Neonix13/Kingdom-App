@@ -38,6 +38,20 @@ function broadcast(room, data) {
   for (const p of room.players) send(p.id, data);
 }
 
+function broadcastGameOver(room) {
+  const winner = room.getPlayer(room.winner);
+  const gd = GENERALS.find(g => g.id === winner?.generalId);
+  const winnerName = gd ? gd.name : (winner?.name || '?');
+  for (const p of room.players) {
+    if (p.isEliminated) {
+      // Spectateur : notifier qu'ils peuvent regarder
+      send(p.id, { event: 'become_spectator', winnerId: room.winner, winnerName });
+    } else {
+      send(p.id, { event: 'game_over', winnerId: room.winner, winnerName });
+    }
+  }
+}
+
 function runBotArmy(room) {
   for (const p of room.players) {
     if (!p.isBot || p.armySubmitted) continue;
@@ -81,7 +95,7 @@ async function _doBotAttack(room, agent, botId, unit, target) {
     const resolved = room.resolveAttack(result.attackId, choice);
     if (resolved.ok) {
       room.players.forEach(p => { send(p.id, { event: 'combat_result', combatLog: resolved.combatLog }); send(p.id, { event: 'game_state', ...room.getGameState(p.id) }); });
-      if (room.phase === 'ended') broadcast(room, { event: 'game_over', winnerId: room.winner, winnerName: room.getPlayer(room.winner)?.name });
+      if (room.phase === 'ended') broadcastGameOver(room);
     }
   } else {
     const defAgent = new AIAgent(result.targetPlayerId);
@@ -161,7 +175,7 @@ async function _executeBotTurnAsync(room) {
   broadcast(room, { event: 'turn_change', currentPlayerId: room.getCurrentPlayerId(), turn: room.turn, manche: room.manche });
   if (fled && fled.length > 0) broadcast(room, { event: 'units_fled', fled });
   room.players.forEach(p => send(p.id, { event: 'game_state', ...room.getGameState(p.id) }));
-  if (room.phase === 'ended') broadcast(room, { event: 'game_over', winnerId: room.winner, winnerName: room.getPlayer(room.winner)?.name });
+  if (room.phase === 'ended') broadcastGameOver(room);
   runBotTurn(room);
 }
 
@@ -273,7 +287,9 @@ function handleAction(ws, connectionId, action, data) {
       if (!room || room.phase !== 'lobby') return;
       const player = room.getPlayer(connectionId);
       const allowed = ['#4a90d9','#e05050','#50c050','#e0a030','#a050d0','#e07840','#40c0c0','#e050a0','#ffffff'];
-      if (player && allowed.includes(color)) player.color = color;
+      const takenColors = room.players.filter(p => p.id !== connectionId).map(p => p.color);
+      if (player && allowed.includes(color) && !takenColors.includes(color)) player.color = color;
+      else if (takenColors.includes(color)) return send(connectionId, { event: 'error', message: 'Cette couleur est déjà prise.' });
       broadcast(room, { event: 'room_update', ...room.getLobbyState() });
       break;
     }
@@ -326,6 +342,17 @@ function handleAction(ws, connectionId, action, data) {
       break;
     }
 
+    case 'back_to_lobby': {
+      const { roomCode } = data;
+      const room = rooms[roomCode];
+      if (!room || room.hostId !== connectionId || room.phase !== 'army_building') return;
+      room.phase = 'lobby';
+      for (const p of room.players) { p.units = []; p.isReady = false; }
+      broadcast(room, { event: 'phase_change', phase: 'lobby' });
+      broadcast(room, { event: 'room_update', ...room.getLobbyState() });
+      break;
+    }
+
     case 'submit_army': {
       const { roomCode, units } = data;
       const room = rooms[roomCode];
@@ -333,6 +360,7 @@ function handleAction(ws, connectionId, action, data) {
       const result = room.submitArmy(connectionId, units);
       if (result.error) return send(connectionId, { event: 'error', message: result.error });
       send(connectionId, { event: 'army_accepted' });
+      broadcast(room, { event: 'room_update', ...room.getLobbyState() });
       if (room.allArmiesSubmitted()) {
         room.startDeployment();
         room.players.forEach(p => {
@@ -425,7 +453,7 @@ function handleAction(ws, connectionId, action, data) {
               send(p.id, { event: 'combat_result', combatLog: resolved.combatLog });
               send(p.id, { event: 'game_state', ...room.getGameState(p.id) });
             });
-            if (room.phase === 'ended') broadcast(room, { event: 'game_over', winnerId: room.winner, winnerName: room.getPlayer(room.winner)?.name });
+            if (room.phase === 'ended') broadcastGameOver(room);
           }
         } else {
           send(result.targetPlayerId, { event: 'defense_request', attackId: result.attackId, attackerName: result.attackerName, targetName: result.targetName, targetQ: result.targetQ, targetR: result.targetR, isRanged: result.isRanged, targetTypeId: result.targetTypeId, roomCode });
@@ -439,7 +467,7 @@ function handleAction(ws, connectionId, action, data) {
                 send(p.id, { event: 'combat_result', combatLog: resolved.combatLog });
                 send(p.id, { event: 'game_state', ...room.getGameState(p.id) });
               });
-              if (room.phase === 'ended') broadcast(room, { event: 'game_over', winnerId: room.winner, winnerName: room.getPlayer(room.winner)?.name });
+              if (room.phase === 'ended') broadcastGameOver(room);
             }
           }, 20000);
         }
@@ -464,7 +492,7 @@ function handleAction(ws, connectionId, action, data) {
           send(p.id, { event: 'combat_result', combatLog: resolved.combatLog });
           send(p.id, { event: 'game_state', ...room.getGameState(p.id) });
         });
-        if (room.phase === 'ended') broadcast(room, { event: 'game_over', winnerId: room.winner, winnerName: room.getPlayer(room.winner)?.name });
+        if (room.phase === 'ended') broadcastGameOver(room);
       }
       break;
     }
@@ -498,7 +526,7 @@ function handleAction(ws, connectionId, action, data) {
       if (room.getCurrentPlayerId() !== connectionId) return send(connectionId, { event: 'error', message: 'Ce n\'est pas votre tour.' });
       const result = room.motivateUnit(connectionId, generalId);
       if (result.error) return send(connectionId, { event: 'error', message: result.error });
-      send(connectionId, { event: 'motivate_result', ...result });
+      broadcast(room, { event: 'motivate_result', ...result, playerId: connectionId });
       room.players.forEach(p => send(p.id, { event: 'game_state', ...room.getGameState(p.id) }));
       break;
     }
@@ -511,7 +539,9 @@ function handleAction(ws, connectionId, action, data) {
       if (!player) return;
       const msg = String(text || '').slice(0, 200).trim();
       if (!msg) return;
-      broadcast(room, { event: 'chat_message', authorId: connectionId, authorName: player.name, text: msg });
+      const gd = GENERALS.find(g => g.id === player.generalId);
+      const authorName = gd ? gd.name : player.name;
+      broadcast(room, { event: 'chat_message', authorId: connectionId, authorName, text: msg });
       break;
     }
 
