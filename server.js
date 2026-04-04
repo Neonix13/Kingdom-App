@@ -381,6 +381,16 @@ function handleAction(ws, connectionId, action, data) {
       break;
     }
 
+    case 'build_segment': {
+      const { roomCode, unitId, neighborQ, neighborR } = data;
+      const room = rooms[roomCode];
+      if (!room || room.phase !== 'battle') return;
+      const result = room.buildSegment(connectionId, unitId, neighborQ, neighborR);
+      if (result.error) return send(connectionId, { event: 'error', message: result.error });
+      room.players.forEach(p => send(p.id, { event: 'game_state', ...room.getGameState(p.id) }));
+      break;
+    }
+
     case 'place_unit': {
       const { roomCode, unitId, q, r } = data;
       const room = rooms[roomCode];

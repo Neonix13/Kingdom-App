@@ -340,6 +340,7 @@ let motivateCenter = null;
 let deployTiles = new Set();
 let pendingMoveTarget = null;
 let pendingMovePath = [];
+let buildTiles = new Set(); // voisins constructibles pour les Bâtisseurs
 
 // Camera — centrée sur la carte image au démarrage
 const MAP_CENTER_WORLD_X = (MAP_IMG_W / 2 - MAP_ORIG_X) * MAP_SCALE; // ≈ 1344
@@ -454,6 +455,7 @@ function render() {
         let stroke = isVisible ? `rgba(${gridColorRGB},${gridOpacity})` : 'rgba(0,0,0,0)';
         if (isVisible && movableTiles.has(key)) fill = 'rgba(40,120,20,0.35)';
         if (isVisible && attackableTiles.has(key)) fill = 'rgba(180,30,10,0.35)';
+        if (isVisible && buildTiles.has(key)) fill = 'rgba(20,160,80,0.45)';
         if (isHovered && isVisible) stroke = '#c8960c';
         drawHex(ctx, x, y, fill, stroke, 1, gridThickness);
       }
@@ -923,7 +925,11 @@ function drawStar(ctx, cx, cy, spikes, outerR, innerR) {
 }
 
 // ---- INPUT ----
+let lastMoveConfirmedAt = 0;
+
 canvas.addEventListener('dblclick', (e) => {
+  // Ne pas ouvrir la fiche si on vient de confirmer un déplacement via double-clic
+  if (Date.now() - lastMoveConfirmedAt < 300) return;
   const hex = getHexUnderMouse(e);
   const units = gameState?.units || deployState?.units || [];
   const unit = units.find(u => u.q === hex.q && u.r === hex.r);
@@ -1103,6 +1109,7 @@ function handleHexClick(hex) {
     if (movableTiles.has(key)) {
       if (pendingMoveTarget && pendingMoveTarget.q === hex.q && pendingMoveTarget.r === hex.r) {
         wsSend('move_unit', { roomCode, unitId: selectedUnit.id, targetQ: hex.q, targetR: hex.r });
+        lastMoveConfirmedAt = Date.now();
         pendingMoveTarget = null;
         pendingMovePath = [];
         movableTiles.clear();
@@ -1112,6 +1119,15 @@ function handleHexClick(hex) {
         pendingMoveTarget = { q: hex.q, r: hex.r };
         pendingMovePath = findPathClient(selectedUnit, hex.q, hex.r);
       }
+      render();
+      return;
+    }
+
+    // Clic sur voisin constructible → construire
+    if (buildTiles.has(key)) {
+      wsSend('build_segment', { roomCode, unitId: selectedUnit.id, neighborQ: hex.q, neighborR: hex.r });
+      buildTiles.clear();
+      setMode('select');
       render();
       return;
     }
@@ -1350,6 +1366,26 @@ function computeAttackableTiles(unit) {
   }
 }
 
+function computeBuildTiles(unit) {
+  buildTiles.clear();
+  if (!unit || unit.typeId !== 'batisseurs') return;
+  const DIRS = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
+  for (const [dq, dr] of DIRS) {
+    const nq = unit.q + dq, nr = unit.r + dr;
+    const edgeK = segmentEdgeKey(unit.q, unit.r, nq, nr);
+    const segType = segmentData[edgeK];
+    // Segment vide → chevaux de frise, segment falaise → échelle
+    if (!segType || segType === 'cliff') {
+      buildTiles.add(`${nq},${nr}`);
+    }
+  }
+}
+
+function enterBuildMode() {
+  setMode('build');
+  render();
+}
+
 function computeRangeTiles(unit) {
   const dirs = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
   rangeCenter = { q: unit.q, r: unit.r };
@@ -1402,7 +1438,7 @@ function computeMotivateTiles(unit) {
 function setMode(newMode) {
   mode = newMode;
   const indicator = document.getElementById('mode-indicator');
-  const labels = { select: 'Sélection', move: 'Déplacement', attack: 'Attaque', motivate: 'Motiver', deploy: 'Déploiement' };
+  const labels = { select: 'Sélection', move: 'Déplacement', attack: 'Attaque', motivate: 'Motiver', deploy: 'Déploiement', build: 'Construction' };
   indicator.textContent = `Mode : ${labels[newMode] || newMode}`;
   if (newMode !== 'move') movableTiles.clear();
   if (newMode !== 'attack') {
@@ -1411,12 +1447,14 @@ function setMode(newMode) {
   } else if (selectedUnit) {
     computeAttackableTiles(selectedUnit);
   }
+  if (newMode !== 'build') buildTiles.clear();
+  else if (selectedUnit) computeBuildTiles(selectedUnit);
   render();
 }
 
 function updateActionButtons() {
   if (isSpectator) {
-    ['btn-move','btn-attack','btn-motivate','btn-ability','btn-end-turn','btn-end-turn-center','stance-panel'].forEach(id => {
+    ['btn-move','btn-attack','btn-motivate','btn-ability','btn-build','btn-end-turn','btn-end-turn-center','stance-panel'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.style.display = 'none';
     });
@@ -1431,10 +1469,12 @@ function updateActionButtons() {
   const canAbility = isGeneral && isMyTurn && !selectedUnit.hasUsedAbility && selectedUnit.abilityCooldown === 0;
   const canMotivate = isGeneral && isMyTurn && !selectedUnit.hasAttacked;
 
+  const canBuild = hasUnit && isMyTurn && !isFleeing && selectedUnit.typeId === 'batisseurs' && selectedUnit.speedRemaining >= 2;
   document.getElementById('btn-move').style.display = canMove ? 'block' : 'none';
   document.getElementById('btn-attack').style.display = canAttack ? 'block' : 'none';
   document.getElementById('btn-ability').style.display = canAbility ? 'block' : 'none';
   document.getElementById('btn-motivate').style.display = canMotivate ? 'block' : 'none';
+  document.getElementById('btn-build').style.display = canBuild ? 'block' : 'none';
   const endDisplay = isMyTurn ? 'block' : 'none';
   const deployDisplay = (mode === 'deploy') ? 'block' : 'none';
   document.getElementById('btn-end-turn-global').style.display = endDisplay;
@@ -2177,35 +2217,44 @@ function formatHistoryEntry(log) {
   };
   const signRow = (label, n, cls='') => n === 0 ? '' : row(label, sign(n), cls);
 
+  const pct = v => `${Math.round((v??0) * 100)}%`;
+
   let table = `<div class="h-detail" id="${id}" style="display:none"><table class="h-table">
     <tbody>
     <tr class="h-section"><td colspan="2">⚔ ATTAQUE</td></tr>
+    ${row('NGO attaquant (Vit÷5)', b.NGOAtt ?? '—')}
     ${row('Base attaque', b.attackBase ?? '—')}
-    ${row('= Seuil de touche', `<b>${b.attackTotal??'—'}</b>`)}
-    ${row('Gō attaquants', b.nGoAtt??'—')}
-    ${row('Touches', `<b>${b.touchesAtt??0}</b> / ${b.nGoAtt??'—'}`, (b.touchesAtt||0)>0?'h-hit-row':'h-miss-row')}`;
+    ${row('Attaque effective', `<b>${b.attackEff ?? '—'}</b>`)}
+    ${row('Réussites', `<b>${b.attReussite ?? 0}</b> / ${b.NGOAtt ?? '?'} dés`, hit ? 'h-hit-row' : 'h-miss-row')}`;
 
-  if ((b.touchesAtt||0) > 0) {
-    const dmgNet = b.dmgNetAtt != null ? b.dmgNetAtt.toFixed(2) : '—';
-    table += `
+  table += `
     <tr class="h-section"><td colspan="2">💥 DÉGÂTS</td></tr>
-    ${row('Puissance', b.powerAtt??'—')}
-    ${row('Armure défenseur', b.armorDef??'—')}
-    ${row('Dégâts nets / Go', dmgNet)}
-    ${b.heightDiff ? row('Mult. hauteur', `×${(1+b.heightDiff/10).toFixed(1)}`) : ''}
-    ${row('Dégâts reçus', `<b>${log.dmgReceived??0}</b>`, 'h-hit-row')}
-    ${row('Vitalité restante cible', log.targetVitalityLeft??'—')}`;
+    ${row('NGO défenseur (Vit÷5)', b.NGODef ?? '—')}
+    ${row('Armure effective défenseur', b.effectiveArmorDef ?? 0)}
+    ${row('AR déf. (NGO×Armure)', b.ARDef ?? 0)}
+    ${row('Ratio armure (1−AR/AR+100)', pct(b.ratARDef))}
+    ${row('Puissance effective', b.effectivePowerAtt ?? '—')}
+    ${row('Dégâts / réussite', b.degatsUnitaire ?? 0)}
+    ${row('Dégâts reçus', `<b>${log.dmgReceived ?? 0}</b>`, hit ? 'h-hit-row' : '')}
+    ${row('Vitalité restante cible', log.targetVitalityLeft ?? '—')}`;
+
+  if (log.moralDmg > 0 || log.targetMoraleLeft != null) {
+    table += `<tr class="h-section"><td colspan="2">😰 MORAL</td></tr>`;
+    if (log.moralDmg > 0) table += row('Moral infligé', log.moralDmg);
+    if (log.targetMoraleLeft != null) table += row('Moral restant cible', log.targetMoraleLeft);
   }
 
-  if (log.defenseChoice && log.defenseChoice !== 'none' && log.defenseChoice !== 'rien') {
-    const ds = (b.touchesDef||0) > 0;
-    table += `<tr class="h-section"><td colspan="2">🛡 DÉFENSE — ${defLabels[log.defenseChoice]||log.defenseChoice}</td></tr>
-    ${row('Seuil de parade', `<b>${b.defTotal??'—'}</b>`)}
-    ${row('Touches parade', `<b>${b.touchesDef??0}</b>`, ds?'h-hit-row':'')}`;
-    if (log.counterDmgReceived > 0) {
+  if (log.defenseChoice === 'counter') {
+    const ds = log.defenseSuccess;
+    table += `<tr class="h-section"><td colspan="2">🛡 CONTRE-ATTAQUE</td></tr>
+    ${row('Réussites déf.', `<b>${b.defReussite ?? 0}</b> / ${b.NGODef ?? '?'} dés`, ds ? 'h-hit-row' : 'h-miss-row')}`;
+    if (ds) {
       table += row('Dégâts contre-attaque', `<b>${log.counterDmgReceived}</b>`, 'h-hit-row');
-      table += row('Vitalité restante atq.', log.attackerVitalityLeft??'—');
+      table += row('Vitalité restante atq.', log.attackerVitalityLeft ?? '—');
     }
+    if (log.counterMoralDmg > 0) table += row('Moral contre-attaque', log.counterMoralDmg);
+  } else if (log.defenseChoice === 'absorb') {
+    table += `<tr class="h-section"><td colspan="2">🛡 ENCAISSE (÷2)</td></tr>`;
   }
 
   table += `</tbody></table></div>`;
@@ -2438,15 +2487,17 @@ function cancelStanceChange() {
 function showCombatResult(log) {
   const el = document.getElementById('combat-result-box');
   if (!el) return;
-  const b2 = log.breakdown || {};
   let html = `<b>${log.attackerName}</b> attaque <b>${log.targetName}</b><br>`;
-  html += `Touches : <b>${b2.touchesAtt??0}</b>/${b2.nGoAtt??'?'} (seuil ${log.attackTotal??'?'})<br>`;
-  if ((b2.touchesAtt||0) > 0) {
-    html += `Dégâts : <b>${log.dmgReceived??0}</b><br>`;
+  html += `Attaque : ${log.attackTotal} vs D20=${log.attackD20} → ${log.hit ? '<span style="color:#4f4">TOUCHÉ</span>' : '<span style="color:#f44">RATÉ</span>'}<br>`;
+  if (log.hit) {
+    html += `Dégâts infligés : ${log.dmgInflicted} − armure ${log.armorAbsorb} = <b>${log.dmgReceived}</b><br>`;
+    html += `Moral −${log.moralDmg}<br>`;
   }
   if (log.defenseChoice && log.defenseChoice !== 'rien') {
-    html += `Parade : <b>${b2.touchesDef??0}</b> touches`;
-    if ((log.counterDmgReceived||0) > 0) html += ` → contre <b>${log.counterDmgReceived}</b> dégâts`;
+    html += `Défense (${log.defenseChoice}) : ${log.defenseSuccess ? '<span style="color:#4f4">SUCCÈS</span>' : '<span style="color:#f44">ÉCHEC</span>'}`;
+    if (log.defenseSuccess && log.counterDmgReceived > 0) {
+      html += ` → contre-attaque <b>${log.counterDmgReceived}</b> dégâts`;
+    }
     html += '<br>';
   }
   if (log.targetKilled) html += `<span style="color:#f84">&#9876; ${log.targetName} éliminé !</span><br>`;
@@ -2470,8 +2521,8 @@ function showDefenseRequest(data) {
   const btnCounter = document.getElementById('btn-defense-counter');
   const btnAbsorb = document.getElementById('btn-defense-absorb');
   if (data.isRanged) {
-    sendDefenseChoice('rien');
-    return;
+    if (btnCounter) btnCounter.style.display = 'none';
+    if (btnAbsorb) btnAbsorb.style.display = data.targetTypeId === 'phalange' ? '' : 'none';
   } else {
     if (btnCounter) btnCounter.style.display = '';
     if (btnAbsorb) btnAbsorb.style.display = '';
@@ -2575,6 +2626,7 @@ function wsDispatch(event, data) {
       sessionStorage.setItem('myId', myId);
       gameState = data;
       gameState.visibleHexes = new Set(data.visibleHexes);
+      if (data.segmentData) segmentData = data.segmentData;
       if (data.isSpectator) isSpectator = true;
 
       document.getElementById('top-turn').textContent = `Tour ${data.turn} · Manche ${data.manche || 1}`;

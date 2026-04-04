@@ -434,7 +434,8 @@ class GameRoom {
       if (unit.q === null) continue;
       const unitTerrain = this.terrainData[hexKey(unit.q, unit.r)] || 'plain';
       const inForest = unitTerrain === 'forest';
-      const baseRange = inForest ? 2 : Math.max(3, unit.visionRange);
+      let baseRange = inForest ? 2 : Math.max(3, unit.visionRange);
+      if (unit.typeId === 'espion') baseRange += inForest ? 2 : 5;
       const myHeight = this.heightData[hexKey(unit.q, unit.r)] || 0;
       const heightBonus = unit.isGeneral ? myHeight * 2 : myHeight;
       const maxRange = baseRange + heightBonus;
@@ -490,7 +491,10 @@ class GameRoom {
       for (const u of p.units) {
         if (u.q === null) continue;
         const key = hexKey(u.q, u.r);
-        if (isSpectator || p.id === playerId || visibleHexes.has(key)) {
+        // Assassin : invisible pour les ennemis à plus de 4 cases
+        const assassinHidden = u.typeId === 'assassin' && p.id !== playerId && !isSpectator
+          && player.units.every(myU => myU.q === null || hexDistance(myU.q, myU.r, u.q, u.r) > 4);
+        if (!assassinHidden && (isSpectator || p.id === playerId || visibleHexes.has(key))) {
           visibleUnits.push({
             ...u,
             isMine: p.id === playerId,
@@ -529,6 +533,7 @@ class GameRoom {
       activeEffects: this.activeEffects.filter(e => e.targetPlayerId === playerId),
       winner: this.winner,
       heightData: this.heightData,
+      segmentData: this.segmentData,
     };
   }
 
@@ -765,8 +770,8 @@ class GameRoom {
     const effectiveRange = (attacker.range || 1) + Math.max(0, hA - hT);
     if (dist > effectiveRange) return { error: `Cible hors de portée (distance: ${dist}, portée: ${effectiveRange}).` };
 
-    // Deduct speed (all remaining, min 1)
-    const speedCost = Math.max(1, attacker.speedRemaining);
+    // Deduct speed (all remaining, min 1 — Cavalier Léger : coûte 2)
+    const speedCost = attacker.typeId === 'cavalier_leger' ? 2 : Math.max(1, attacker.speedRemaining);
     attacker.speedRemaining = Math.max(0, attacker.speedRemaining - speedCost);
     attacker.hasAttacked = true;
 
@@ -804,11 +809,34 @@ class GameRoom {
 
     // Apply to target
     target.vitality = Math.max(0, target.vitality - result.dmgReceived);
+    // Soldats : exécute si < 10% vitalité après le coup
+    if (attacker.typeId === 'soldats' && target.vitality > 0 && target.vitality < target.maxVitality * 0.1) {
+      target.vitality = 0;
+    }
     target.armor = Math.max(0, target.armor - 1);
     attacker.damageDealt = (attacker.damageDealt || 0) + result.dmgReceived;
     if (!target.isGeneral) {
       target.morale = Math.max(0, target.morale - result.moralDmg);
       if (target.morale <= 0 && !target.isFleeing) { target.stance = 'marche'; target.isFleeing = true; }
+    }
+    // Cavalier Lourd : 50% des dégâts moral aux unités ennemies adjacentes à la cible
+    if (attacker.typeId === 'cavalier_lourd' && result.moralDmg > 0) {
+      const aoeIntimDmg = Math.floor(result.moralDmg * 0.5);
+      if (aoeIntimDmg > 0) {
+        const DIRS = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
+        for (const [dq, dr] of DIRS) {
+          const adjUnit = this.unitMap[hexKey(target.q + dq, target.r + dr)];
+          if (!adjUnit || adjUnit === target || adjUnit.isGeneral) continue;
+          for (const p of this.players) {
+            if (p.id === attackerPlayerId) continue;
+            const u = p.units.find(u => u.id === adjUnit.id);
+            if (u) {
+              u.morale = Math.max(0, u.morale - aoeIntimDmg);
+              if (u.morale <= 0 && !u.isFleeing) { u.stance = 'marche'; u.isFleeing = true; }
+            }
+          }
+        }
+      }
     }
 
     // Apply to attacker (counter-attack)
@@ -828,10 +856,10 @@ class GameRoom {
       defenderPlayerId: targetPlayer.id,
       turn: this.turn, manche: this.manche,
       defenseChoice,
-      attackTotal: result.attackTotal, attackD20: result.attackD20, hit: result.hit,
-      dmgInflicted: result.dmgInflicted, armorAbsorb: result.armorAbsorb, dmgReceived: result.dmgReceived,
+      hit: result.hit,
+      dmgReceived: result.dmgReceived,
       moralDmg: result.moralDmg,
-      defenseRoll: result.defenseRoll, defenseSuccess: result.defenseSuccess,
+      defenseSuccess: result.defenseSuccess,
       counterDmgReceived: result.counterDmgReceived, counterMoralDmg: result.counterMoralDmg,
       targetVitalityLeft: target.vitality, targetMoraleLeft: target.morale,
       attackerVitalityLeft: attacker.vitality,
@@ -852,6 +880,11 @@ class GameRoom {
       if (attacker.isGeneral) { attackerPlayer.isEliminated = true; this._checkVictory(); }
     }
 
+    // Cavalier Léger : peut se déplacer après une attaque (vitesse non vidée)
+    if (attacker.vitality > 0 && attacker.typeId === 'cavalier_leger') {
+      attacker.hasMoved = false;
+    }
+
     return { ok: true, combatLog };
   }
 
@@ -868,97 +901,104 @@ class GameRoom {
     const tA = this._getTerrainMods(attacker.q, attacker.r);
     const tD = this._getTerrainMods(target.q, target.r);
     const segDef = isCac ? this._getSegmentDef(attacker.q, attacker.r, target.q, target.r) : null;
-
     const hA = this.heightData[hexKey(attacker.q, attacker.r)] || 0;
     const hD = this.heightData[hexKey(target.q, target.r)] || 0;
     const heightDiff = hA - hD;
 
-    // --- ATTAQUE ---
+    // NGO = Nombre de Groupes d'Opposition
+    const NGOAtt = Math.max(1, Math.floor(attacker.vitality / 5));
+    const NGODef = Math.max(1, Math.floor(target.vitality / 5));
+
+    // Attaque effective
     const attackBase = attacker.isGeneral ? attacker.force : attacker.attack;
-    const attackTotal = Math.max(1, attackBase
+    const attackEff = attackBase
       + (stA[`attack_${type}`] || 0) + (tA[`attack_${type}`] || 0) + (segDef ? (segDef[`attack_${type}`] || 0) : 0)
       - (stD[`esquive_${type}`] || 0) - (tD[`esquive_${type}`] || 0)
-      + (stA[`precision_${type}`] || 0) + (tA[`precision_${type}`] || 0)
-      + heightDiff);
+      + heightDiff;
 
-    const nGoAtt = Math.max(1, Math.floor(attacker.vitality / 5));
-    let touchesAtt = 0;
-    for (let i = 0; i < nGoAtt; i++) {
-      if (Math.floor(Math.random() * 20) + 1 <= attackTotal) touchesAtt++;
+    // Att_reussite : NGOAtt jets D20, compter ≤ attackEff
+    let attReussite = 0;
+    for (let i = 0; i < NGOAtt; i++) {
+      if (Math.floor(Math.random() * 20) + 1 <= attackEff) attReussite++;
     }
+    const hit = attReussite > 0;
 
-    const powerAtt = Math.max(1, attacker.power
-      + (stA[`puissance_${type}`] || 0) + (tA[`puissance_${type}`] || 0)
-      + (segDef ? (segDef[`puissance_${type}`] || 0) : 0));
+    // Ratio d'armure défenseur
+    const phalangeBonus = (!isCac && target.typeId === 'phalange') ? 2 : 0;
+    const effectiveArmorDef = Math.max(0, target.armor + (stD.armure || 0) + (tD.armure || 0) + phalangeBonus);
+    const ARDef = NGODef * effectiveArmorDef;
+    const ratARDef = 1 - ARDef / (ARDef + 100);
 
-    // Armure défenseur (+20 pour Phalange vs tirs)
-    const armorDef = Math.max(0, target.armor
-      + (stD.armure || 0) + (tD.armure || 0)
-      + (!isCac && target.typeId === 'phalange' ? 20 : 0));
+    // Dégâts attaquant
+    const lancierBonus = (attacker.typeId === 'lancier' && (target.category === 'Chevaux' || target.category === 'Chars')) ? 6 : 0;
+    const effectivePowerAtt = Math.max(1, attacker.power + (stA[`puissance_${type}`] || 0) + (tA[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0) + lancierBonus);
+    const degatsUnitaire = effectivePowerAtt * ratARDef;
+    let dmgReceived = Math.round(attReussite * degatsUnitaire);
 
-    const dmgNetAtt = powerAtt * (1 - armorDef / (armorDef + 100));
-    let dmgReceived = Math.round(touchesAtt * dmgNetAtt * (1 + heightDiff / 10) / 10);
+    // Moral damage : Att_reussite × intimidation (0 si aucun succès)
+    const effectiveIntimidation = attacker.intimidation + (stA[`intimidation_${type}`] || 0) + (tA[`intimidation_${type}`] || 0);
+    let moralDmg = attReussite * effectiveIntimidation;
 
-    // --- DÉFENSE (contre-attaque simultanée) ---
-    // Ranged : pas de défense sauf Phalange (armor+20 déjà géré, pas de riposte)
-    let touchesDef = 0, defTotal = 0, dmgDealt = 0;
-    let counterDmgReceived = 0, counterMoralDmg = 0;
-    let defenseRoll = null, defenseSuccess = false;
-    const moralDmg = 0;
-
+    // Defense choice — tir : seule la phalange peut absorber
     if (!isCac) {
-      // Tir : pas de défense/riposte (Phalange a juste +20 armure)
-      defenseChoice = 'rien';
+      defenseChoice = (target.typeId === 'phalange' && defenseChoice === 'absorb') ? 'absorb' : 'rien';
     }
 
-    if (isCac && (defenseChoice === 'counter' || defenseChoice === 'absorb')) {
+    let defReussite = 0;
+    let defenseSuccess = false;
+    let counterDmgReceived = 0, counterMoralDmg = 0;
+
+    if (defenseChoice === 'counter') {
+      // Défense effective
       const defBase = target.isGeneral ? target.force : target.defense;
-      defTotal = Math.max(1, defBase
-        + (stD[`defense_${type}`] || 0) + (tD[`defense_${type}`] || 0)
-        + (segDef ? (segDef[`defense_${type}`] || 0) : 0)
-        - heightDiff);
+      const defEff = defBase
+        + (stD[`defense_${type}`] || 0) + (tD[`defense_${type}`] || 0) + (segDef ? (segDef[`defense_${type}`] || 0) : 0)
+        - (stA[`precision_${type}`] || 0) - (tA[`precision_${type}`] || 0)
+        - heightDiff;
 
-      const nGoDef = Math.max(1, Math.floor(target.vitality / 5));
-      for (let i = 0; i < nGoDef; i++) {
-        if (Math.floor(Math.random() * 20) + 1 <= defTotal) touchesDef++;
+      // Def_reussite : NGODef jets D20, compter ≤ defEff
+      for (let i = 0; i < NGODef; i++) {
+        if (Math.floor(Math.random() * 20) + 1 <= defEff) defReussite++;
       }
-      defenseSuccess = touchesDef > 0;
-      defenseRoll = touchesDef; // on stocke le nombre de touches pour le log
+      defenseSuccess = defReussite > 0;
 
-      const powerDef = Math.max(1, target.power
-        + (stD[`puissance_${type}`] || 0) + (tD[`puissance_${type}`] || 0)
-        + (segDef ? (segDef[`puissance_${type}`] || 0) : 0));
-      const armorAtt = Math.max(0, attacker.armor + (stA.armure || 0) + (tA.armure || 0));
-      const dmgNetDef = powerDef * (1 - armorAtt / (armorAtt + 100));
-      dmgDealt = Math.round(touchesDef * dmgNetDef * (1 + (hD - hA) / 10) / 10);
+      // Ratio d'armure attaquant
+      const effectiveArmorAtt = Math.max(0, attacker.armor + (stA.armure || 0) + (tA.armure || 0));
+      const ARAtt = NGOAtt * effectiveArmorAtt;
+      const ratARAtt = 1 - ARAtt / (ARAtt + 100);
 
-      if (defenseChoice === 'absorb') {
-        dmgReceived = Math.ceil(dmgReceived / 2);
-        counterDmgReceived = Math.ceil(dmgDealt / 2);
-      } else {
-        counterDmgReceived = dmgDealt;
-      }
+      // Dégâts contre-attaque
+      const effectivePowerDef = Math.max(1, target.power + (stD[`puissance_${type}`] || 0) + (tD[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0));
+      counterDmgReceived = Math.round(defReussite * effectivePowerDef * ratARAtt);
+
+      // Moral contre-attaque : Def_reussite × intimidation (0 si aucun succès)
+      const counterIntimidation = target.intimidation + (stD[`intimidation_${type}`] || 0) + (tD[`intimidation_${type}`] || 0);
+      counterMoralDmg = defReussite * counterIntimidation;
+
+    } else if (defenseChoice === 'absorb') {
+      dmgReceived = Math.ceil(dmgReceived / 2);
+      moralDmg = Math.ceil(moralDmg / 2);
     }
 
     const breakdown = {
-      attackBase, attackTotal, nGoAtt, touchesAtt,
-      powerAtt, armorDef, dmgNetAtt, dmgReceived,
-      defenseChoice, defTotal, touchesDef, defenseRoll, defenseSuccess,
-      counterDmgReceived, counterMoralDmg, moralDmg,
-      attackerStance: attacker.stance, defenderStance: target.stance,
+      NGOAtt, NGODef,
+      attackBase, attackEff, attReussite,
+      effectiveArmorDef, ARDef,
+      ratARDef: Math.round(ratARDef * 1000) / 1000,
+      effectivePowerAtt,
+      degatsUnitaire: Math.round(degatsUnitaire * 100) / 100,
+      dmgReceived,
+      defReussite: defenseChoice === 'counter' ? defReussite : null,
+      counterDmgReceived, counterMoralDmg,
+      defenseChoice,
+      attackerStance: attacker.stance,
+      defenderStance: target.stance,
       attackerTerrain: this.terrainData[hexKey(attacker.q, attacker.r)] || 'plaines',
       defenderTerrain: this.terrainData[hexKey(target.q, target.r)] || 'plaines',
       segment: segDef ? segDef.name : null,
-      heightDiff,
     };
 
-    // Legacy fields expected by other code
-    const hit = touchesAtt > 0;
-    const attackD20 = touchesAtt;
-    const dmgInflicted = touchesAtt;
-    const armorAbsorb = 0;
-
-    return { attackTotal, attackD20, hit, dmgInflicted, armorAbsorb, dmgReceived, moralDmg, defenseRoll, defenseSuccess, counterDmgReceived, counterMoralDmg, breakdown };
+    return { hit, dmgReceived, moralDmg, defenseSuccess, counterDmgReceived, counterMoralDmg, breakdown };
   }
 
   useGeneralAbility(playerId, targetHex, targetId) {
@@ -1051,14 +1091,49 @@ class GameRoom {
     const nextPlayer = this.getPlayer(this.getCurrentPlayerId());
     let fled = [];
     if (nextPlayer) {
+      const nextGeneral = nextPlayer.units.find(u => u.isGeneral && u.q !== null);
+      const nextGeneralData = GENERALS.find(g => g.id === nextPlayer.generalId);
       for (const u of nextPlayer.units) {
         this._applyTurnRegen(u);
         this._initUnitSpeedForTurn(u);
+        // Piétaille : +10 moral si dans le rayon de Charisme du général
+        if (u.typeId === 'pietaille' && nextGeneral && u.q !== null) {
+          const charisma = nextGeneralData ? nextGeneralData.charisma : 10;
+          const range = Math.floor(charisma / 5);
+          if (hexDistance(nextGeneral.q, nextGeneral.r, u.q, u.r) <= range) {
+            u.morale = Math.min(u.maxMorale, u.morale + 10);
+          }
+        }
       }
       fled = this._processFleeing(nextPlayer.id);
     }
 
     return { newRound, fled };
+  }
+
+  buildSegment(playerId, unitId, neighborQ, neighborR) {
+    const player = this.getPlayer(playerId);
+    const unit = player?.units.find(u => u.id === unitId);
+    if (!unit) return { error: 'Unité introuvable.' };
+    if (unit.typeId !== 'batisseurs') return { error: 'Seuls les Bâtisseurs peuvent construire.' };
+    if (unit.hasAttacked) return { error: 'Cette unité a déjà agi ce tour.' };
+    if (hexDistance(unit.q, unit.r, neighborQ, neighborR) !== 1) return { error: 'Case non adjacente.' };
+
+    const edgeK = segmentEdgeKey(unit.q, unit.r, neighborQ, neighborR);
+    const existing = this.segmentData[edgeK];
+
+    let segType;
+    if (existing === 'cliff') {
+      segType = 'echelle';
+    } else if (!existing) {
+      segType = 'chevaux_de_frise';
+    } else {
+      return { error: 'Ce segment ne peut pas être construit ici.' };
+    }
+
+    this.segmentData[edgeK] = segType;
+    unit.speedRemaining = Math.max(0, unit.speedRemaining - 2);
+    return { ok: true, segType, edgeK };
   }
 
   _applyPassives() {
