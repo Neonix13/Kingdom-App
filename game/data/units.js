@@ -14,7 +14,7 @@ const UNITS = {
     speed: 3,
     range: 1,
     cost: 500,
-    bonus: '+1 de moral par tour lorsque l\'unité se trouve dans la troupe du général.',
+    bonus: '+10 de moral au début du tour si l\'unité est dans le rayon de Charisme de son général.',
     bonusType: 'moral_near_general',
   },
   soldats: {
@@ -31,7 +31,7 @@ const UNITS = {
     speed: 2,
     range: 1,
     cost: 600,
-    bonus: 'Après un combat si l\'unité ennemie est laissée avec 3 de vitalité ou moins, elle est détruite.',
+    bonus: 'Si après une attaque du Soldat, une unité ennemie a moins de 10% de sa vitalité, elle est exécutée.',
     bonusType: 'execute_low_hp',
   },
   phalange: {
@@ -48,7 +48,7 @@ const UNITS = {
     speed: 2,
     range: 1,
     cost: 700,
-    bonus: 'La phalange peut faire un test de défense contre les unités de tireur. Si elle réussit, elle ignore la puissance ennemie.',
+    bonus: '+2 Armure contre les attaques de tir.',
     bonusType: 'defend_ranged',
   },
   lancier: {
@@ -65,7 +65,7 @@ const UNITS = {
     speed: 3,
     range: 1,
     cost: 700,
-    bonus: '+3 attaque et défense contre les unités à cheval et les chars.',
+    bonus: '+6 de puissance contre les unités de cavalerie et les chars.',
     bonusType: 'anti_cavalry',
   },
   espion: {
@@ -82,7 +82,7 @@ const UNITS = {
     speed: 4,
     range: 1,
     cost: 400,
-    bonus: 'Peut détruire une infrastructure pour 2 de vitesse.',
+    bonus: '+5 de vision et +2 de vision en forêt.',
     bonusType: 'sabotage',
   },
   assassin: {
@@ -99,7 +99,7 @@ const UNITS = {
     speed: 4,
     range: 1,
     cost: 900,
-    bonus: 'Avantage sur le premier jet d\'attaque par jour. Peut disparaître si aucun ennemi à moins de 600m.',
+    bonus: 'Invisible pour les ennemis à plus de 4 cases.',
     bonusType: 'ambush',
   },
 
@@ -118,7 +118,7 @@ const UNITS = {
     speed: 6,
     range: 1,
     cost: 800,
-    bonus: '+1 de vitesse si l\'unité n\'est pas engagée.',
+    bonus: 'Peut se déplacer après une attaque.',
     bonusType: 'speed_free',
   },
   cavalier_lourd: {
@@ -135,7 +135,7 @@ const UNITS = {
     speed: 5,
     range: 1,
     cost: 1000,
-    bonus: '+1 de puissance et d\'intimidation lors d\'une charge.',
+    bonus: 'Inflige 50% de ses dégâts d\'intimidation aux unités adjacentes à sa cible lors d\'une attaque.',
     bonusType: 'charge_bonus',
   },
 
@@ -190,7 +190,7 @@ const UNITS = {
     speed: 4,
     range: 1,
     cost: 900,
-    bonus: 'Pour 2 vitesse, peut construire une barrière, un cheval de frise, une échelle, un pont ou brûler une tuile inflammable adjacente.',
+    bonus: 'Peut construire des échelles sur les falaises et des chevaux de frise sur les segments vides.',
     bonusType: 'build',
   },
   char: {
@@ -207,7 +207,7 @@ const UNITS = {
     speed: 5,
     range: 1,
     cost: 1200,
-    bonus: 'Peut attaquer 2 unités simultanément si les 3 sont alignées. Traverse les unités lorsque c\'est possible.',
+    bonus: 'Peut traverser les unités ennemies (si assez de vitesse).',
     bonusType: 'trample',
   },
 };

@@ -340,6 +340,7 @@ let motivateCenter = null;
 let deployTiles = new Set();
 let pendingMoveTarget = null;
 let pendingMovePath = [];
+let buildTiles = new Set(); // voisins constructibles pour les Bâtisseurs
 
 // Camera — centrée sur la carte image au démarrage
 const MAP_CENTER_WORLD_X = (MAP_IMG_W / 2 - MAP_ORIG_X) * MAP_SCALE; // ≈ 1344
@@ -454,6 +455,7 @@ function render() {
         let stroke = isVisible ? `rgba(${gridColorRGB},${gridOpacity})` : 'rgba(0,0,0,0)';
         if (isVisible && movableTiles.has(key)) fill = 'rgba(40,120,20,0.35)';
         if (isVisible && attackableTiles.has(key)) fill = 'rgba(180,30,10,0.35)';
+        if (isVisible && buildTiles.has(key)) fill = 'rgba(20,160,80,0.45)';
         if (isHovered && isVisible) stroke = '#c8960c';
         drawHex(ctx, x, y, fill, stroke, 1, gridThickness);
       }
@@ -923,7 +925,11 @@ function drawStar(ctx, cx, cy, spikes, outerR, innerR) {
 }
 
 // ---- INPUT ----
+let lastMoveConfirmedAt = 0;
+
 canvas.addEventListener('dblclick', (e) => {
+  // Ne pas ouvrir la fiche si on vient de confirmer un déplacement via double-clic
+  if (Date.now() - lastMoveConfirmedAt < 300) return;
   const hex = getHexUnderMouse(e);
   const units = gameState?.units || deployState?.units || [];
   const unit = units.find(u => u.q === hex.q && u.r === hex.r);
@@ -1103,6 +1109,7 @@ function handleHexClick(hex) {
     if (movableTiles.has(key)) {
       if (pendingMoveTarget && pendingMoveTarget.q === hex.q && pendingMoveTarget.r === hex.r) {
         wsSend('move_unit', { roomCode, unitId: selectedUnit.id, targetQ: hex.q, targetR: hex.r });
+        lastMoveConfirmedAt = Date.now();
         pendingMoveTarget = null;
         pendingMovePath = [];
         movableTiles.clear();
@@ -1112,6 +1119,15 @@ function handleHexClick(hex) {
         pendingMoveTarget = { q: hex.q, r: hex.r };
         pendingMovePath = findPathClient(selectedUnit, hex.q, hex.r);
       }
+      render();
+      return;
+    }
+
+    // Clic sur voisin constructible → construire
+    if (buildTiles.has(key)) {
+      wsSend('build_segment', { roomCode, unitId: selectedUnit.id, neighborQ: hex.q, neighborR: hex.r });
+      buildTiles.clear();
+      setMode('select');
       render();
       return;
     }
@@ -1350,6 +1366,26 @@ function computeAttackableTiles(unit) {
   }
 }
 
+function computeBuildTiles(unit) {
+  buildTiles.clear();
+  if (!unit || unit.typeId !== 'batisseurs') return;
+  const DIRS = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
+  for (const [dq, dr] of DIRS) {
+    const nq = unit.q + dq, nr = unit.r + dr;
+    const edgeK = segmentEdgeKey(unit.q, unit.r, nq, nr);
+    const segType = segmentData[edgeK];
+    // Segment vide → chevaux de frise, segment falaise → échelle
+    if (!segType || segType === 'cliff') {
+      buildTiles.add(`${nq},${nr}`);
+    }
+  }
+}
+
+function enterBuildMode() {
+  setMode('build');
+  render();
+}
+
 function computeRangeTiles(unit) {
   const dirs = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
   rangeCenter = { q: unit.q, r: unit.r };
@@ -1402,7 +1438,7 @@ function computeMotivateTiles(unit) {
 function setMode(newMode) {
   mode = newMode;
   const indicator = document.getElementById('mode-indicator');
-  const labels = { select: 'Sélection', move: 'Déplacement', attack: 'Attaque', motivate: 'Motiver', deploy: 'Déploiement' };
+  const labels = { select: 'Sélection', move: 'Déplacement', attack: 'Attaque', motivate: 'Motiver', deploy: 'Déploiement', build: 'Construction' };
   indicator.textContent = `Mode : ${labels[newMode] || newMode}`;
   if (newMode !== 'move') movableTiles.clear();
   if (newMode !== 'attack') {
@@ -1411,12 +1447,14 @@ function setMode(newMode) {
   } else if (selectedUnit) {
     computeAttackableTiles(selectedUnit);
   }
+  if (newMode !== 'build') buildTiles.clear();
+  else if (selectedUnit) computeBuildTiles(selectedUnit);
   render();
 }
 
 function updateActionButtons() {
   if (isSpectator) {
-    ['btn-move','btn-attack','btn-motivate','btn-ability','btn-end-turn','btn-end-turn-center','stance-panel'].forEach(id => {
+    ['btn-move','btn-attack','btn-motivate','btn-ability','btn-build','btn-end-turn','btn-end-turn-center','stance-panel'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.style.display = 'none';
     });
@@ -1431,10 +1469,12 @@ function updateActionButtons() {
   const canAbility = isGeneral && isMyTurn && !selectedUnit.hasUsedAbility && selectedUnit.abilityCooldown === 0;
   const canMotivate = isGeneral && isMyTurn && !selectedUnit.hasAttacked;
 
+  const canBuild = hasUnit && isMyTurn && !isFleeing && selectedUnit.typeId === 'batisseurs' && selectedUnit.speedRemaining >= 2;
   document.getElementById('btn-move').style.display = canMove ? 'block' : 'none';
   document.getElementById('btn-attack').style.display = canAttack ? 'block' : 'none';
   document.getElementById('btn-ability').style.display = canAbility ? 'block' : 'none';
   document.getElementById('btn-motivate').style.display = canMotivate ? 'block' : 'none';
+  document.getElementById('btn-build').style.display = canBuild ? 'block' : 'none';
   const endDisplay = isMyTurn ? 'block' : 'none';
   const deployDisplay = (mode === 'deploy') ? 'block' : 'none';
   document.getElementById('btn-end-turn-global').style.display = endDisplay;
@@ -2586,6 +2626,7 @@ function wsDispatch(event, data) {
       sessionStorage.setItem('myId', myId);
       gameState = data;
       gameState.visibleHexes = new Set(data.visibleHexes);
+      if (data.segmentData) segmentData = data.segmentData;
       if (data.isSpectator) isSpectator = true;
 
       document.getElementById('top-turn').textContent = `Tour ${data.turn} · Manche ${data.manche || 1}`;
