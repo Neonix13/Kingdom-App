@@ -900,10 +900,9 @@ class GameRoom {
     const degatsUnitaire = effectivePowerAtt * ratARDef;
     let dmgReceived = Math.round(attReussite * degatsUnitaire);
 
-    // Moral damage
+    // Moral damage : Att_reussite × intimidation (0 si aucun succès)
     const effectiveIntimidation = attacker.intimidation + (stA[`intimidation_${type}`] || 0) + (tA[`intimidation_${type}`] || 0);
-    let moralDmg = Math.max(0, Math.floor(attacker.vitality * effectiveIntimidation / 10));
-    if (!hit) moralDmg = Math.floor(moralDmg / 2);
+    let moralDmg = attReussite * effectiveIntimidation;
 
     // Defense choice — tir : seule la phalange peut absorber
     if (!isCac) {
@@ -937,10 +936,9 @@ class GameRoom {
       const effectivePowerDef = Math.max(1, target.power + (stD[`puissance_${type}`] || 0) + (tD[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0));
       counterDmgReceived = Math.round(defReussite * effectivePowerDef * ratARAtt);
 
-      // Moral contre-attaque
+      // Moral contre-attaque : Def_reussite × intimidation (0 si aucun succès)
       const counterIntimidation = target.intimidation + (stD[`intimidation_${type}`] || 0) + (tD[`intimidation_${type}`] || 0);
-      counterMoralDmg = Math.max(0, Math.floor(target.vitality * counterIntimidation / 10));
-      if (!defenseSuccess) counterMoralDmg = Math.floor(counterMoralDmg / 2);
+      counterMoralDmg = defReussite * counterIntimidation;
 
     } else if (defenseChoice === 'absorb') {
       dmgReceived = Math.ceil(dmgReceived / 2);
