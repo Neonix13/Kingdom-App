@@ -828,10 +828,10 @@ class GameRoom {
       defenderPlayerId: targetPlayer.id,
       turn: this.turn, manche: this.manche,
       defenseChoice,
-      attackTotal: result.attackTotal, attackD20: result.attackD20, hit: result.hit,
-      dmgInflicted: result.dmgInflicted, armorAbsorb: result.armorAbsorb, dmgReceived: result.dmgReceived,
+      hit: result.hit,
+      dmgReceived: result.dmgReceived,
       moralDmg: result.moralDmg,
-      defenseRoll: result.defenseRoll, defenseSuccess: result.defenseSuccess,
+      defenseSuccess: result.defenseSuccess,
       counterDmgReceived: result.counterDmgReceived, counterMoralDmg: result.counterMoralDmg,
       targetVitalityLeft: target.vitality, targetMoraleLeft: target.morale,
       attackerVitalityLeft: attacker.vitality,
@@ -867,134 +867,105 @@ class GameRoom {
     const stD = target.isGeneral ? {} : this._getStanceMods(target);
     const tA = this._getTerrainMods(attacker.q, attacker.r);
     const tD = this._getTerrainMods(target.q, target.r);
-    // Segment on the edge between attacker and target (only for adjacent melee)
     const segDef = isCac ? this._getSegmentDef(attacker.q, attacker.r, target.q, target.r) : null;
-
-    // Bonus/malus de hauteur
     const hA = this.heightData[hexKey(attacker.q, attacker.r)] || 0;
     const hD = this.heightData[hexKey(target.q, target.r)] || 0;
     const heightDiff = hA - hD;
 
-    // Attack effective (généraux utilisent force comme base d'attaque)
+    // NGO = Nombre de Groupes d'Opposition
+    const NGOAtt = Math.max(1, Math.floor(attacker.vitality / 5));
+    const NGODef = Math.max(1, Math.floor(target.vitality / 5));
+
+    // Attaque effective
     const attackBase = attacker.isGeneral ? attacker.force : attacker.attack;
-    const attackTotal = attackBase
+    const attackEff = attackBase
       + (stA[`attack_${type}`] || 0) + (tA[`attack_${type}`] || 0) + (segDef ? (segDef[`attack_${type}`] || 0) : 0)
       - (stD[`esquive_${type}`] || 0) - (tD[`esquive_${type}`] || 0)
       + heightDiff;
-    const attackD20 = Math.floor(Math.random() * 20) + 1;
-    const hit = attackTotal >= attackD20;
 
-    // Damage inflicted: N dé X where N=attacker.vitality, X=effective power
-    let dmgInflicted = 0;
-    if (hit) {
-      const dieFaces = Math.max(1, attacker.power + (stA[`puissance_${type}`] || 0) + (tA[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0));
-      for (let i = 0; i < attacker.vitality; i++) {
-        dmgInflicted += Math.floor(Math.random() * dieFaces) + 1;
-      }
+    // Att_reussite : NGOAtt jets D20, compter ≤ attackEff
+    let attReussite = 0;
+    for (let i = 0; i < NGOAtt; i++) {
+      if (Math.floor(Math.random() * 20) + 1 <= attackEff) attReussite++;
     }
+    const hit = attReussite > 0;
 
-    // Multiplicateur de hauteur sur les dégâts : (1 + heightDiff / 10)
-    if (hit) dmgInflicted = Math.round(dmgInflicted * (1 + heightDiff / 10));
+    // Ratio d'armure défenseur
+    const effectiveArmorDef = Math.max(0, target.armor + (stD.armure || 0) + (tD.armure || 0));
+    const ARDef = NGODef * effectiveArmorDef;
+    const ratARDef = 1 - ARDef / (ARDef + 100);
 
-    // Armor absorption: Vitalite_def × Armure_def_effective
-    const effectiveArmor = Math.max(0, target.armor + (stD.armure || 0) + (tD.armure || 0));
-    const armorAbsorb = target.vitality * effectiveArmor;
-    let dmgReceived = Math.max(0, Math.floor((dmgInflicted - armorAbsorb) / 10));
+    // Dégâts attaquant
+    const effectivePowerAtt = Math.max(1, attacker.power + (stA[`puissance_${type}`] || 0) + (tA[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0));
+    const degatsUnitaire = effectivePowerAtt * ratARDef;
+    let dmgReceived = Math.round(attReussite * degatsUnitaire);
 
-    // Intimidation → moral damage
+    // Moral damage
     const effectiveIntimidation = attacker.intimidation + (stA[`intimidation_${type}`] || 0) + (tA[`intimidation_${type}`] || 0);
     let moralDmg = Math.max(0, Math.floor(attacker.vitality * effectiveIntimidation / 10));
     if (!hit) moralDmg = Math.floor(moralDmg / 2);
 
-    // Defense choice — ranged attacks: only phalange can absorb, no counter allowed
+    // Defense choice — tir : seule la phalange peut absorber
     if (!isCac) {
-      if (target.typeId === 'phalange' && defenseChoice === 'absorb') {
-        // allowed — handled below
-      } else {
-        defenseChoice = 'rien';
-      }
+      defenseChoice = (target.typeId === 'phalange' && defenseChoice === 'absorb') ? 'absorb' : 'rien';
     }
 
-    let defenseRoll = null, defenseSuccess = false;
+    let defReussite = 0;
+    let defenseSuccess = false;
     let counterDmgReceived = 0, counterMoralDmg = 0;
 
-    if (defenseChoice === 'counter' || defenseChoice === 'absorb') {
-      // Généraux utilisent force comme base de défense
+    if (defenseChoice === 'counter') {
+      // Défense effective
       const defBase = target.isGeneral ? target.force : target.defense;
-      const defTotal = defBase
+      const defEff = defBase
         + (stD[`defense_${type}`] || 0) + (tD[`defense_${type}`] || 0) + (segDef ? (segDef[`defense_${type}`] || 0) : 0)
         - (stA[`precision_${type}`] || 0) - (tA[`precision_${type}`] || 0)
         - heightDiff;
-      defenseRoll = Math.floor(Math.random() * 20) + 1;
-      defenseSuccess = defTotal >= defenseRoll;
 
-      if (defenseSuccess) {
-        const counterDieFaces = Math.max(1, target.power + (stD[`puissance_${type}`] || 0) + (tD[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0));
-        let counterRaw = 0;
-        for (let i = 0; i < target.vitality; i++) {
-          counterRaw += Math.floor(Math.random() * counterDieFaces) + 1;
-        }
-        const atkArmor = Math.max(0, attacker.armor + (stA.armure || 0) + (tA.armure || 0));
-        const atkArmorAbsorb = attacker.vitality * atkArmor;
-        const rawCounter = Math.max(0, Math.round((counterRaw - atkArmorAbsorb) * (1 + (hD - hA) / 10)));
-        const effectiveCounterIntimidation = target.intimidation + (stD[`intimidation_${type}`] || 0) + (tD[`intimidation_${type}`] || 0);
-        const rawMoral = Math.max(0, Math.floor(target.vitality * effectiveCounterIntimidation / 10));
-
-        if (defenseChoice === 'absorb') {
-          dmgReceived = Math.ceil(dmgReceived / 2);
-          moralDmg = Math.ceil(moralDmg / 2);
-          // Ranged absorb (phalange): no counter damage
-          if (isCac) {
-            counterDmgReceived = Math.ceil(rawCounter / 2);
-            counterMoralDmg = Math.ceil(rawMoral / 2);
-          }
-        } else {
-          counterDmgReceived = rawCounter;
-          counterMoralDmg = rawMoral;
-        }
+      // Def_reussite : NGODef jets D20, compter ≤ defEff
+      for (let i = 0; i < NGODef; i++) {
+        if (Math.floor(Math.random() * 20) + 1 <= defEff) defReussite++;
       }
+      defenseSuccess = defReussite > 0;
+
+      // Ratio d'armure attaquant
+      const effectiveArmorAtt = Math.max(0, attacker.armor + (stA.armure || 0) + (tA.armure || 0));
+      const ARAtt = NGOAtt * effectiveArmorAtt;
+      const ratARAtt = 1 - ARAtt / (ARAtt + 100);
+
+      // Dégâts contre-attaque
+      const effectivePowerDef = Math.max(1, target.power + (stD[`puissance_${type}`] || 0) + (tD[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0));
+      counterDmgReceived = Math.round(defReussite * effectivePowerDef * ratARAtt);
+
+      // Moral contre-attaque
+      const counterIntimidation = target.intimidation + (stD[`intimidation_${type}`] || 0) + (tD[`intimidation_${type}`] || 0);
+      counterMoralDmg = Math.max(0, Math.floor(target.vitality * counterIntimidation / 10));
+      if (!defenseSuccess) counterMoralDmg = Math.floor(counterMoralDmg / 2);
+
+    } else if (defenseChoice === 'absorb') {
+      dmgReceived = Math.ceil(dmgReceived / 2);
+      moralDmg = Math.ceil(moralDmg / 2);
     }
 
-    // Breakdown details for history
     const breakdown = {
-      attackBase,
-      stA_attack: stA[`attack_${type}`] || 0,
-      tA_attack:  tA[`attack_${type}`] || 0,
-      stD_esquive: stD[`esquive_${type}`] || 0,
-      tD_esquive:  tD[`esquive_${type}`] || 0,
-      attackTotal,
-      attackD20,
-      hit,
-      dieFaces: Math.max(1, attacker.power + (stA[`puissance_${type}`] || 0) + (tA[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0)),
-      diceCount: attacker.vitality,
-      dmgInflicted,
-      armorAbsorb,
-      effectiveArmor,
+      NGOAtt, NGODef,
+      attackBase, attackEff, attReussite,
+      effectiveArmorDef, ARDef,
+      ratARDef: Math.round(ratARDef * 1000) / 1000,
+      effectivePowerAtt,
+      degatsUnitaire: Math.round(degatsUnitaire * 100) / 100,
       dmgReceived,
-      moralDmg,
+      defReussite: defenseChoice === 'counter' ? defReussite : null,
+      counterDmgReceived, counterMoralDmg,
       defenseChoice,
-      defBase: (defenseChoice === 'counter' || defenseChoice === 'absorb') ? (target.isGeneral ? target.force : target.defense) : null,
-      stD_defense: (stD[`defense_${type}`] || 0),
-      tD_defense:  (tD[`defense_${type}`] || 0),
-      stA_precision: (stA[`precision_${type}`] || 0),
-      tA_precision:  (tA[`precision_${type}`] || 0),
-      defTotal: (defenseChoice === 'counter' || defenseChoice === 'absorb')
-        ? (target.isGeneral ? target.force : target.defense) + (stD[`defense_${type}`] || 0) + (tD[`defense_${type}`] || 0) + (segDef ? (segDef[`defense_${type}`] || 0) : 0) - (stA[`precision_${type}`] || 0) - (tA[`precision_${type}`] || 0)
-        : null,
-      defenseRoll,
-      defenseSuccess,
-      counterDmgReceived,
-      counterMoralDmg,
       attackerStance: attacker.stance,
       defenderStance: target.stance,
       attackerTerrain: this.terrainData[hexKey(attacker.q, attacker.r)] || 'plaines',
       defenderTerrain: this.terrainData[hexKey(target.q, target.r)] || 'plaines',
       segment: segDef ? segDef.name : null,
-      seg_attack: segDef ? (segDef[`attack_${type}`] || 0) : 0,
-      seg_defense: segDef ? (segDef[`defense_${type}`] || 0) : 0,
-      seg_puissance: segDef ? (segDef[`puissance_${type}`] || 0) : 0,
     };
-    return { attackTotal, attackD20, hit, dmgInflicted, armorAbsorb, dmgReceived, moralDmg, defenseRoll, defenseSuccess, counterDmgReceived, counterMoralDmg, breakdown };
+
+    return { hit, dmgReceived, moralDmg, defenseSuccess, counterDmgReceived, counterMoralDmg, breakdown };
   }
 
   useGeneralAbility(playerId, targetHex, targetId) {

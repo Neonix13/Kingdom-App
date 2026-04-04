@@ -2177,46 +2177,44 @@ function formatHistoryEntry(log) {
   };
   const signRow = (label, n, cls='') => n === 0 ? '' : row(label, sign(n), cls);
 
+  const pct = v => `${Math.round((v??0) * 100)}%`;
+
   let table = `<div class="h-detail" id="${id}" style="display:none"><table class="h-table">
     <tbody>
     <tr class="h-section"><td colspan="2">⚔ ATTAQUE</td></tr>
+    ${row('NGO attaquant (Vit÷5)', b.NGOAtt ?? '—')}
     ${row('Base attaque', b.attackBase ?? '—')}
-    ${signRow('Posture atq. ('+(stanceNames2[b.attackerStance]||b.attackerStance||'?')+')', b.stA_attack||0)}
-    ${signRow('Terrain atq. ('+(b.attackerTerrain||'?')+')', b.tA_attack||0)}
-    ${signRow('− Esquive posture déf.', -(b.stD_esquive||0))}
-    ${signRow('− Esquive terrain déf.', -(b.tD_esquive||0))}
-    ${row('= Total attaque', `<b>${b.attackTotal??'—'}</b> vs D20: <b>${b.attackD20??'—'}</b>`, hit?'h-hit-row':'h-miss-row')}`;
+    ${row('Attaque effective', `<b>${b.attackEff ?? '—'}</b>`)}
+    ${row('Réussites', `<b>${b.attReussite ?? 0}</b> / ${b.NGOAtt ?? '?'} dés`, hit ? 'h-hit-row' : 'h-miss-row')}`;
 
-  if (hit) {
-    table += `
+  table += `
     <tr class="h-section"><td colspan="2">💥 DÉGÂTS</td></tr>
-    ${row('Dés', `${b.diceCount??'?'} × D${b.dieFaces??'?'}`)}
-    ${row('Dégâts infligés', b.dmgInflicted??0)}
-    ${(b.armorAbsorb||0) > 0 ? row('Absorption (Vit×Arm)', `${b.armorAbsorb} (armure eff. ${b.effectiveArmor??'?'})`) : ''}
-    ${row('Dégâts reçus (÷10)', `<b>${log.dmgReceived??0}</b>`, 'h-hit-row')}
-    ${row('Vitalité restante cible', log.targetVitalityLeft??'—')}`;
-  }
+    ${row('NGO défenseur (Vit÷5)', b.NGODef ?? '—')}
+    ${row('Armure effective défenseur', b.effectiveArmorDef ?? 0)}
+    ${row('AR déf. (NGO×Armure)', b.ARDef ?? 0)}
+    ${row('Ratio armure (1−AR/AR+100)', pct(b.ratARDef))}
+    ${row('Puissance effective', b.effectivePowerAtt ?? '—')}
+    ${row('Dégâts / réussite', b.degatsUnitaire ?? 0)}
+    ${row('Dégâts reçus', `<b>${log.dmgReceived ?? 0}</b>`, hit ? 'h-hit-row' : '')}
+    ${row('Vitalité restante cible', log.targetVitalityLeft ?? '—')}`;
 
   if (log.moralDmg > 0 || log.targetMoraleLeft != null) {
     table += `<tr class="h-section"><td colspan="2">😰 MORAL</td></tr>`;
-    if (log.moralDmg > 0) table += row('Moral infligé (Vit×Intim.)', log.moralDmg);
+    if (log.moralDmg > 0) table += row('Moral infligé', log.moralDmg);
     if (log.targetMoraleLeft != null) table += row('Moral restant cible', log.targetMoraleLeft);
   }
 
-  if (log.defenseChoice && log.defenseChoice !== 'none') {
+  if (log.defenseChoice === 'counter') {
     const ds = log.defenseSuccess;
-    table += `<tr class="h-section"><td colspan="2">🛡 DÉFENSE — ${defLabels[log.defenseChoice]||log.defenseChoice}</td></tr>
-    ${row('Base défense', b.defBase??'—')}
-    ${signRow('Posture déf. ('+(stanceNames2[b.defenderStance]||b.defenderStance||'?')+')', b.stD_defense||0)}
-    ${signRow('Terrain déf. ('+(b.defenderTerrain||'?')+')', b.tD_defense||0)}
-    ${signRow('− Précision posture atq.', -(b.stA_precision||0))}
-    ${signRow('− Précision terrain atq.', -(b.tA_precision||0))}
-    ${row('= Total défense', `<b>${b.defTotal??'—'}</b> vs D20: <b>${log.defenseRoll??'—'}</b>`, ds?'h-hit-row':'h-miss-row')}`;
-    if (ds && log.counterDmgReceived > 0) {
+    table += `<tr class="h-section"><td colspan="2">🛡 CONTRE-ATTAQUE</td></tr>
+    ${row('Réussites déf.', `<b>${b.defReussite ?? 0}</b> / ${b.NGODef ?? '?'} dés`, ds ? 'h-hit-row' : 'h-miss-row')}`;
+    if (ds) {
       table += row('Dégâts contre-attaque', `<b>${log.counterDmgReceived}</b>`, 'h-hit-row');
-      table += row('Vitalité restante atq.', log.attackerVitalityLeft??'—');
+      table += row('Vitalité restante atq.', log.attackerVitalityLeft ?? '—');
     }
-    if (ds && log.counterMoralDmg > 0) table += row('Moral contre-attaque', log.counterMoralDmg);
+    if (log.counterMoralDmg > 0) table += row('Moral contre-attaque', log.counterMoralDmg);
+  } else if (log.defenseChoice === 'absorb') {
+    table += `<tr class="h-section"><td colspan="2">🛡 ENCAISSE (÷2)</td></tr>`;
   }
 
   table += `</tbody></table></div>`;
