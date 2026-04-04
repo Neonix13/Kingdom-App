@@ -2181,42 +2181,31 @@ function formatHistoryEntry(log) {
     <tbody>
     <tr class="h-section"><td colspan="2">⚔ ATTAQUE</td></tr>
     ${row('Base attaque', b.attackBase ?? '—')}
-    ${signRow('Posture atq. ('+(stanceNames2[b.attackerStance]||b.attackerStance||'?')+')', b.stA_attack||0)}
-    ${signRow('Terrain atq. ('+(b.attackerTerrain||'?')+')', b.tA_attack||0)}
-    ${signRow('− Esquive posture déf.', -(b.stD_esquive||0))}
-    ${signRow('− Esquive terrain déf.', -(b.tD_esquive||0))}
-    ${row('= Total attaque', `<b>${b.attackTotal??'—'}</b> vs D20: <b>${b.attackD20??'—'}</b>`, hit?'h-hit-row':'h-miss-row')}`;
+    ${row('= Seuil de touche', `<b>${b.attackTotal??'—'}</b>`)}
+    ${row('Gō attaquants', b.nGoAtt??'—')}
+    ${row('Touches', `<b>${b.touchesAtt??0}</b> / ${b.nGoAtt??'—'}`, (b.touchesAtt||0)>0?'h-hit-row':'h-miss-row')}`;
 
-  if (hit) {
+  if ((b.touchesAtt||0) > 0) {
+    const dmgNet = b.dmgNetAtt != null ? b.dmgNetAtt.toFixed(2) : '—';
     table += `
     <tr class="h-section"><td colspan="2">💥 DÉGÂTS</td></tr>
-    ${row('Dés', `${b.diceCount??'?'} × D${b.dieFaces??'?'}`)}
-    ${row('Dégâts infligés', b.dmgInflicted??0)}
-    ${(b.armorAbsorb||0) > 0 ? row('Absorption (Vit×Arm)', `${b.armorAbsorb} (armure eff. ${b.effectiveArmor??'?'})`) : ''}
-    ${row('Dégâts reçus (÷10)', `<b>${log.dmgReceived??0}</b>`, 'h-hit-row')}
+    ${row('Puissance', b.powerAtt??'—')}
+    ${row('Armure défenseur', b.armorDef??'—')}
+    ${row('Dégâts nets / Go', dmgNet)}
+    ${b.heightDiff ? row('Mult. hauteur', `×${(1+b.heightDiff/10).toFixed(1)}`) : ''}
+    ${row('Dégâts reçus', `<b>${log.dmgReceived??0}</b>`, 'h-hit-row')}
     ${row('Vitalité restante cible', log.targetVitalityLeft??'—')}`;
   }
 
-  if (log.moralDmg > 0 || log.targetMoraleLeft != null) {
-    table += `<tr class="h-section"><td colspan="2">😰 MORAL</td></tr>`;
-    if (log.moralDmg > 0) table += row('Moral infligé (Vit×Intim.)', log.moralDmg);
-    if (log.targetMoraleLeft != null) table += row('Moral restant cible', log.targetMoraleLeft);
-  }
-
-  if (log.defenseChoice && log.defenseChoice !== 'none') {
-    const ds = log.defenseSuccess;
+  if (log.defenseChoice && log.defenseChoice !== 'none' && log.defenseChoice !== 'rien') {
+    const ds = (b.touchesDef||0) > 0;
     table += `<tr class="h-section"><td colspan="2">🛡 DÉFENSE — ${defLabels[log.defenseChoice]||log.defenseChoice}</td></tr>
-    ${row('Base défense', b.defBase??'—')}
-    ${signRow('Posture déf. ('+(stanceNames2[b.defenderStance]||b.defenderStance||'?')+')', b.stD_defense||0)}
-    ${signRow('Terrain déf. ('+(b.defenderTerrain||'?')+')', b.tD_defense||0)}
-    ${signRow('− Précision posture atq.', -(b.stA_precision||0))}
-    ${signRow('− Précision terrain atq.', -(b.tA_precision||0))}
-    ${row('= Total défense', `<b>${b.defTotal??'—'}</b> vs D20: <b>${log.defenseRoll??'—'}</b>`, ds?'h-hit-row':'h-miss-row')}`;
-    if (ds && log.counterDmgReceived > 0) {
+    ${row('Seuil de parade', `<b>${b.defTotal??'—'}</b>`)}
+    ${row('Touches parade', `<b>${b.touchesDef??0}</b>`, ds?'h-hit-row':'')}`;
+    if (log.counterDmgReceived > 0) {
       table += row('Dégâts contre-attaque', `<b>${log.counterDmgReceived}</b>`, 'h-hit-row');
       table += row('Vitalité restante atq.', log.attackerVitalityLeft??'—');
     }
-    if (ds && log.counterMoralDmg > 0) table += row('Moral contre-attaque', log.counterMoralDmg);
   }
 
   table += `</tbody></table></div>`;
@@ -2449,17 +2438,15 @@ function cancelStanceChange() {
 function showCombatResult(log) {
   const el = document.getElementById('combat-result-box');
   if (!el) return;
+  const b2 = log.breakdown || {};
   let html = `<b>${log.attackerName}</b> attaque <b>${log.targetName}</b><br>`;
-  html += `Attaque : ${log.attackTotal} vs D20=${log.attackD20} → ${log.hit ? '<span style="color:#4f4">TOUCHÉ</span>' : '<span style="color:#f44">RATÉ</span>'}<br>`;
-  if (log.hit) {
-    html += `Dégâts infligés : ${log.dmgInflicted} − armure ${log.armorAbsorb} = <b>${log.dmgReceived}</b><br>`;
-    html += `Moral −${log.moralDmg}<br>`;
+  html += `Touches : <b>${b2.touchesAtt??0}</b>/${b2.nGoAtt??'?'} (seuil ${log.attackTotal??'?'})<br>`;
+  if ((b2.touchesAtt||0) > 0) {
+    html += `Dégâts : <b>${log.dmgReceived??0}</b><br>`;
   }
   if (log.defenseChoice && log.defenseChoice !== 'rien') {
-    html += `Défense (${log.defenseChoice}) : ${log.defenseSuccess ? '<span style="color:#4f4">SUCCÈS</span>' : '<span style="color:#f44">ÉCHEC</span>'}`;
-    if (log.defenseSuccess && log.counterDmgReceived > 0) {
-      html += ` → contre-attaque <b>${log.counterDmgReceived}</b> dégâts`;
-    }
+    html += `Parade : <b>${b2.touchesDef??0}</b> touches`;
+    if ((log.counterDmgReceived||0) > 0) html += ` → contre <b>${log.counterDmgReceived}</b> dégâts`;
     html += '<br>';
   }
   if (log.targetKilled) html += `<span style="color:#f84">&#9876; ${log.targetName} éliminé !</span><br>`;
@@ -2483,8 +2470,8 @@ function showDefenseRequest(data) {
   const btnCounter = document.getElementById('btn-defense-counter');
   const btnAbsorb = document.getElementById('btn-defense-absorb');
   if (data.isRanged) {
-    if (btnCounter) btnCounter.style.display = 'none';
-    if (btnAbsorb) btnAbsorb.style.display = data.targetTypeId === 'phalange' ? '' : 'none';
+    sendDefenseChoice('rien');
+    return;
   } else {
     if (btnCounter) btnCounter.style.display = '';
     if (btnAbsorb) btnAbsorb.style.display = '';

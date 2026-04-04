@@ -867,133 +867,97 @@ class GameRoom {
     const stD = target.isGeneral ? {} : this._getStanceMods(target);
     const tA = this._getTerrainMods(attacker.q, attacker.r);
     const tD = this._getTerrainMods(target.q, target.r);
-    // Segment on the edge between attacker and target (only for adjacent melee)
     const segDef = isCac ? this._getSegmentDef(attacker.q, attacker.r, target.q, target.r) : null;
 
-    // Bonus/malus de hauteur
     const hA = this.heightData[hexKey(attacker.q, attacker.r)] || 0;
     const hD = this.heightData[hexKey(target.q, target.r)] || 0;
     const heightDiff = hA - hD;
 
-    // Attack effective (généraux utilisent force comme base d'attaque)
+    // --- ATTAQUE ---
     const attackBase = attacker.isGeneral ? attacker.force : attacker.attack;
-    const attackTotal = attackBase
+    const attackTotal = Math.max(1, attackBase
       + (stA[`attack_${type}`] || 0) + (tA[`attack_${type}`] || 0) + (segDef ? (segDef[`attack_${type}`] || 0) : 0)
       - (stD[`esquive_${type}`] || 0) - (tD[`esquive_${type}`] || 0)
-      + heightDiff;
-    const attackD20 = Math.floor(Math.random() * 20) + 1;
-    const hit = attackTotal >= attackD20;
+      + (stA[`precision_${type}`] || 0) + (tA[`precision_${type}`] || 0)
+      + heightDiff);
 
-    // Damage inflicted: N dé X where N=attacker.vitality, X=effective power
-    let dmgInflicted = 0;
-    if (hit) {
-      const dieFaces = Math.max(1, attacker.power + (stA[`puissance_${type}`] || 0) + (tA[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0));
-      for (let i = 0; i < attacker.vitality; i++) {
-        dmgInflicted += Math.floor(Math.random() * dieFaces) + 1;
-      }
+    const nGoAtt = Math.max(1, Math.floor(attacker.vitality / 5));
+    let touchesAtt = 0;
+    for (let i = 0; i < nGoAtt; i++) {
+      if (Math.floor(Math.random() * 20) + 1 <= attackTotal) touchesAtt++;
     }
 
-    // Multiplicateur de hauteur sur les dégâts : (1 + heightDiff / 10)
-    if (hit) dmgInflicted = Math.round(dmgInflicted * (1 + heightDiff / 10));
+    const powerAtt = Math.max(1, attacker.power
+      + (stA[`puissance_${type}`] || 0) + (tA[`puissance_${type}`] || 0)
+      + (segDef ? (segDef[`puissance_${type}`] || 0) : 0));
 
-    // Armor absorption: Vitalite_def × Armure_def_effective
-    const effectiveArmor = Math.max(0, target.armor + (stD.armure || 0) + (tD.armure || 0));
-    const armorAbsorb = target.vitality * effectiveArmor;
-    let dmgReceived = Math.max(0, Math.floor((dmgInflicted - armorAbsorb) / 10));
+    // Armure défenseur (+20 pour Phalange vs tirs)
+    const armorDef = Math.max(0, target.armor
+      + (stD.armure || 0) + (tD.armure || 0)
+      + (!isCac && target.typeId === 'phalange' ? 20 : 0));
 
-    // Intimidation → moral damage
-    const effectiveIntimidation = attacker.intimidation + (stA[`intimidation_${type}`] || 0) + (tA[`intimidation_${type}`] || 0);
-    let moralDmg = Math.max(0, Math.floor(attacker.vitality * effectiveIntimidation / 10));
-    if (!hit) moralDmg = Math.floor(moralDmg / 2);
+    const dmgNetAtt = powerAtt * (1 - armorDef / (armorDef + 100));
+    let dmgReceived = Math.round(touchesAtt * dmgNetAtt * (1 + heightDiff / 10) / 10);
 
-    // Defense choice — ranged attacks: only phalange can absorb, no counter allowed
-    if (!isCac) {
-      if (target.typeId === 'phalange' && defenseChoice === 'absorb') {
-        // allowed — handled below
-      } else {
-        defenseChoice = 'rien';
-      }
-    }
-
-    let defenseRoll = null, defenseSuccess = false;
+    // --- DÉFENSE (contre-attaque simultanée) ---
+    // Ranged : pas de défense sauf Phalange (armor+20 déjà géré, pas de riposte)
+    let touchesDef = 0, defTotal = 0, dmgDealt = 0;
     let counterDmgReceived = 0, counterMoralDmg = 0;
+    let defenseRoll = null, defenseSuccess = false;
+    const moralDmg = 0;
 
-    if (defenseChoice === 'counter' || defenseChoice === 'absorb') {
-      // Généraux utilisent force comme base de défense
+    if (!isCac) {
+      // Tir : pas de défense/riposte (Phalange a juste +20 armure)
+      defenseChoice = 'rien';
+    }
+
+    if (isCac && (defenseChoice === 'counter' || defenseChoice === 'absorb')) {
       const defBase = target.isGeneral ? target.force : target.defense;
-      const defTotal = defBase
-        + (stD[`defense_${type}`] || 0) + (tD[`defense_${type}`] || 0) + (segDef ? (segDef[`defense_${type}`] || 0) : 0)
-        - (stA[`precision_${type}`] || 0) - (tA[`precision_${type}`] || 0)
-        - heightDiff;
-      defenseRoll = Math.floor(Math.random() * 20) + 1;
-      defenseSuccess = defTotal >= defenseRoll;
+      defTotal = Math.max(1, defBase
+        + (stD[`defense_${type}`] || 0) + (tD[`defense_${type}`] || 0)
+        + (segDef ? (segDef[`defense_${type}`] || 0) : 0)
+        - heightDiff);
 
-      if (defenseSuccess) {
-        const counterDieFaces = Math.max(1, target.power + (stD[`puissance_${type}`] || 0) + (tD[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0));
-        let counterRaw = 0;
-        for (let i = 0; i < target.vitality; i++) {
-          counterRaw += Math.floor(Math.random() * counterDieFaces) + 1;
-        }
-        const atkArmor = Math.max(0, attacker.armor + (stA.armure || 0) + (tA.armure || 0));
-        const atkArmorAbsorb = attacker.vitality * atkArmor;
-        const rawCounter = Math.max(0, Math.round((counterRaw - atkArmorAbsorb) * (1 + (hD - hA) / 10)));
-        const effectiveCounterIntimidation = target.intimidation + (stD[`intimidation_${type}`] || 0) + (tD[`intimidation_${type}`] || 0);
-        const rawMoral = Math.max(0, Math.floor(target.vitality * effectiveCounterIntimidation / 10));
+      const nGoDef = Math.max(1, Math.floor(target.vitality / 5));
+      for (let i = 0; i < nGoDef; i++) {
+        if (Math.floor(Math.random() * 20) + 1 <= defTotal) touchesDef++;
+      }
+      defenseSuccess = touchesDef > 0;
+      defenseRoll = touchesDef; // on stocke le nombre de touches pour le log
 
-        if (defenseChoice === 'absorb') {
-          dmgReceived = Math.ceil(dmgReceived / 2);
-          moralDmg = Math.ceil(moralDmg / 2);
-          // Ranged absorb (phalange): no counter damage
-          if (isCac) {
-            counterDmgReceived = Math.ceil(rawCounter / 2);
-            counterMoralDmg = Math.ceil(rawMoral / 2);
-          }
-        } else {
-          counterDmgReceived = rawCounter;
-          counterMoralDmg = rawMoral;
-        }
+      const powerDef = Math.max(1, target.power
+        + (stD[`puissance_${type}`] || 0) + (tD[`puissance_${type}`] || 0)
+        + (segDef ? (segDef[`puissance_${type}`] || 0) : 0));
+      const armorAtt = Math.max(0, attacker.armor + (stA.armure || 0) + (tA.armure || 0));
+      const dmgNetDef = powerDef * (1 - armorAtt / (armorAtt + 100));
+      dmgDealt = Math.round(touchesDef * dmgNetDef * (1 + (hD - hA) / 10) / 10);
+
+      if (defenseChoice === 'absorb') {
+        dmgReceived = Math.ceil(dmgReceived / 2);
+        counterDmgReceived = Math.ceil(dmgDealt / 2);
+      } else {
+        counterDmgReceived = dmgDealt;
       }
     }
 
-    // Breakdown details for history
     const breakdown = {
-      attackBase,
-      stA_attack: stA[`attack_${type}`] || 0,
-      tA_attack:  tA[`attack_${type}`] || 0,
-      stD_esquive: stD[`esquive_${type}`] || 0,
-      tD_esquive:  tD[`esquive_${type}`] || 0,
-      attackTotal,
-      attackD20,
-      hit,
-      dieFaces: Math.max(1, attacker.power + (stA[`puissance_${type}`] || 0) + (tA[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0)),
-      diceCount: attacker.vitality,
-      dmgInflicted,
-      armorAbsorb,
-      effectiveArmor,
-      dmgReceived,
-      moralDmg,
-      defenseChoice,
-      defBase: (defenseChoice === 'counter' || defenseChoice === 'absorb') ? (target.isGeneral ? target.force : target.defense) : null,
-      stD_defense: (stD[`defense_${type}`] || 0),
-      tD_defense:  (tD[`defense_${type}`] || 0),
-      stA_precision: (stA[`precision_${type}`] || 0),
-      tA_precision:  (tA[`precision_${type}`] || 0),
-      defTotal: (defenseChoice === 'counter' || defenseChoice === 'absorb')
-        ? (target.isGeneral ? target.force : target.defense) + (stD[`defense_${type}`] || 0) + (tD[`defense_${type}`] || 0) + (segDef ? (segDef[`defense_${type}`] || 0) : 0) - (stA[`precision_${type}`] || 0) - (tA[`precision_${type}`] || 0)
-        : null,
-      defenseRoll,
-      defenseSuccess,
-      counterDmgReceived,
-      counterMoralDmg,
-      attackerStance: attacker.stance,
-      defenderStance: target.stance,
+      attackBase, attackTotal, nGoAtt, touchesAtt,
+      powerAtt, armorDef, dmgNetAtt, dmgReceived,
+      defenseChoice, defTotal, touchesDef, defenseRoll, defenseSuccess,
+      counterDmgReceived, counterMoralDmg, moralDmg,
+      attackerStance: attacker.stance, defenderStance: target.stance,
       attackerTerrain: this.terrainData[hexKey(attacker.q, attacker.r)] || 'plaines',
       defenderTerrain: this.terrainData[hexKey(target.q, target.r)] || 'plaines',
       segment: segDef ? segDef.name : null,
-      seg_attack: segDef ? (segDef[`attack_${type}`] || 0) : 0,
-      seg_defense: segDef ? (segDef[`defense_${type}`] || 0) : 0,
-      seg_puissance: segDef ? (segDef[`puissance_${type}`] || 0) : 0,
+      heightDiff,
     };
+
+    // Legacy fields expected by other code
+    const hit = touchesAtt > 0;
+    const attackD20 = touchesAtt;
+    const dmgInflicted = touchesAtt;
+    const armorAbsorb = 0;
+
     return { attackTotal, attackD20, hit, dmgInflicted, armorAbsorb, dmgReceived, moralDmg, defenseRoll, defenseSuccess, counterDmgReceived, counterMoralDmg, breakdown };
   }
 
