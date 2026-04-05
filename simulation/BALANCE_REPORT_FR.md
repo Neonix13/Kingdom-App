@@ -1,165 +1,136 @@
-# Kingdom Battleground — Rapport de Simulation d'Equilibrage
+# Kingdom Battleground — Rapport de Simulation d'Équilibrage
 
-**Date :** 2026-04-03 (nouveau système de combat N_Go D20 + stats unités refondues)
-**Formule de combat :** N_Go = ⌊Vitalité/5⌋ dés D20 lancés, touche si ≤ attaque. Dégâts = Touches × Puissance × (1 − Armure/(Armure+100)) × (1+ΔH/10) / 10.
-
----
-
-## SIMULATION A — Budget 2 500 (30 parties/matchup, 3 630 total)
-
-Budget réaliste de partie. **Cavalier Lourd et Char jamais achetés** (trop chers, 1 200 et 1 600g).
-
-### Taux de Victoire des Généraux
-
-| # | General | Force | Strat | PV | Victoire | IC 95% | Verdict |
-|---|---------|-------|-------|----|----------|--------|---------|
-| 1 | **Gai Mou** | 18 | 12 | 130 | **73.8%** | ±3.4% | Trop fort |
-| 2 | **Mou Bu** | 18 | 12 | 130 | **71.1%** | ±3.5% | Trop fort |
-| 3 | **Shi Ba Shou** | 17 | 15 | 130 | **66.7%** | ±3.6% | Trop fort |
-| 4 | **Ren Pa** | 17 | 16 | 120 | **62.7%** | ±3.7% | Fort |
-| 5 | **Ou Ki** | 15 | 16 | 110 | **52.1%** | ±3.8% | Equilibre ✓ |
-| 6 | **Kan Ki** | 14 | 16 | 100 | **44.4%** | ±3.8% | Legerement faible |
-| 7 | **Ou Sen** | 13 | 17 | 110 | **43.0%** | ±3.8% | Legerement faible |
-| 8 | **Kei Sha** | 13 | 16 | 100 | **39.7%** | ±3.7% | Faible |
-| 9 | **Go Kei** | 14 | 17 | 90 | **37.6%** | ±3.7% | Faible |
-| 10 | **Ri Boku** | 11 | 18 | 100 | **35.6%** | ±3.7% | Faible |
-| 11 | **Go Hou Mei** | 10 | 18 | 80 | **23.3%** | ±3.2% | Injouable |
-
-### Survie des Unités (budget 2 500)
-
-| Unite | Survie | Dmg infliges | Dmg recus | Note |
-|-------|--------|--------------|-----------|------|
-| Archer | 98.9% | 29 | 9 | Trop fort |
-| Archer d'Elite | 98.7% | 39 | 7 | Trop fort |
-| Piétaille | 94.7% | 31 | 72 | Solide (masse) |
-| Phalange | 94.2% | 65 | 54 | Tank solide |
-| Soldats | 93.5% | 57 | 55 | Correct |
-| Lancier | 87.4% | 87 | 83 | Correct |
-| Espion | 84.0% | 40 | 109 | Fragile |
-| Batisseurs | 72.1% | 9 | 79 | Utilitaire |
-| Cavalier Leger | 68.2% | 51 | 88 | Correct |
-| Assassin | 59.0% | 55 | 70 | Tres fragile |
-| Cavalier Lourd | — | — | — | Non utilise |
-| Char | — | — | — | Non utilise |
+**Date :** 2026-04-05
+**Formule de combat :** N_Go = ⌊Vitalité/5⌋ dés D20 ≤ attaque. Dégâts = Att_réussite × Puissance × (1 − (NGO_def × Armure)/(NGO_def × Armure + 100)).
+**Moral damage :** Att_réussite × Intimidation / Def_réussite × Intimidation.
+**Bonus Lancier :** +6 Puissance contre Chevaux et Chars.
 
 ---
 
-## SIMULATION B — Budget 100 000 (30 parties/matchup, 3 630 total)
+## SIMULATION PRINCIPALE — Budget 10 000 (50 parties/matchup, 6 050 total)
 
-Budget extrême. Toutes les unités sont achetées en grande quantité. Les grandes armées nivellent la variance. **Aucun flag de déséquilibre.**
+---
 
-### Taux de Victoire des Généraux
+## 1. Équilibrage des Généraux
 
-| # | General | Force | Strat | PV | Victoire | IC 95% | Verdict |
-|---|---------|-------|-------|----|----------|--------|---------|
-| 1 | **Mou Bu** | 18 | 12 | 130 | **56.5%** | ±3.8% | Legerement fort |
-| 2 | **Ren Pa** | 17 | 16 | 120 | **52.4%** | ±3.8% | Equilibre ✓ |
-| 3 | **Ou Ki** | 15 | 16 | 110 | **52.0%** | ±3.8% | Equilibre ✓ |
-| 4 | **Gai Mou** | 18 | 12 | 130 | **52.0%** | ±3.8% | Equilibre ✓ |
-| 5 | **Shi Ba Shou** | 17 | 15 | 130 | **51.7%** | ±3.8% | Equilibre ✓ |
-| 6 | **Kan Ki** | 14 | 16 | 100 | **51.2%** | ±3.8% | Equilibre ✓ |
-| 7 | **Ou Sen** | 13 | 17 | 110 | **48.9%** | ±3.8% | Equilibre ✓ |
-| 8 | **Go Kei** | 14 | 17 | 90 | **47.6%** | ±3.8% | Equilibre ✓ |
-| 9 | **Kei Sha** | 13 | 16 | 100 | **47.3%** | ±3.8% | Equilibre ✓ |
-| 10 | **Go Hou Mei** | 10 | 18 | 80 | **46.7%** | ±3.8% | Equilibre ✓ |
-| 11 | **Ri Boku** | 11 | 18 | 100 | **43.8%** | ±3.8% | Legerement faible |
+![Taux de victoire par général](charts/1_generals_winrate.png)
 
-**Écart max : 12.7 points** (Mou Bu 56.5% vs Ri Boku 43.8%). Aucun général hors norme.
+| # | Général | Royaume | Force | Strat | PV | Victoire | IC 95% | Verdict |
+|---|---------|---------|-------|-------|----|----------|--------|---------|
+| 1 | **Gai Mou** | WEI | 18 | 12 | 130 | **60.5%** | ±2.9% | Trop fort ⚠ |
+| 2 | **Mou Bu** | QIN | 18 | 12 | 130 | **59.2%** | ±2.9% | Trop fort ⚠ |
+| 3 | **Shi Ba Shou** | ZHAO | 17 | 15 | 130 | **58.4%** | ±2.9% | Fort |
+| 4 | **Ren Pa** | ZHAO/WEI | 17 | 16 | 120 | **56.7%** | ±2.9% | Fort |
+| 5 | **Ou Ki** | QIN | 15 | 16 | 110 | **51.9%** | ±3.0% | Équilibre ✓ |
+| 6 | **Ou Sen** | QIN | 13 | 17 | 110 | **50.0%** | ±3.0% | Équilibre ✓ |
+| 7 | **Kan Ki** | QIN | 14 | 16 | 100 | **48.9%** | ±3.0% | Équilibre ✓ |
+| 8 | **Kei Sha** | ZHAO | 13 | 16 | 100 | **44.4%** | ±2.9% | Faible |
+| 9 | **Ri Boku** | ZHAO | 11 | 18 | 100 | **44.3%** | ±2.9% | Faible |
+| 10 | **Go Kei** | WEI | 14 | 17 | 90 | **42.0%** | ±2.9% | Faible |
+| 11 | **Go Hou Mei** | WEI | 10 | 18 | 80 | **33.8%** | ±2.8% | Injouable ⚠ |
 
-### Survie des Unités (budget 100 000)
+### Force vs Stratégie
 
-| Unite | Survie | Dmg infliges | Dmg recus | Note |
-|-------|--------|--------------|-----------|------|
-| Archer | **92.6%** | 52 | 34 | Trop fort |
-| Archer d'Elite | **92.3%** | 79 | 28 | Trop fort |
-| Piétaille | **78.9%** | 26 | 110 | Masse correcte |
-| Batisseurs | **73.1%** | 6 | 61 | Utilitaire pur |
-| Cavalier Leger | **70.3%** | 49 | 69 | Correct |
-| Cavalier Lourd | **63.7%** | 52 | 51 | Equilibre ✓ |
-| Phalange | **60.1%** | 37 | 107 | Fragile (surprenant) |
-| Soldats | **57.7%** | 34 | 110 | Fragile |
-| Espion | **57.6%** | 22 | 139 | Tres fragile |
-| Char | **57.1%** | 50 | 42 | Correct |
-| Lancier | **52.8%** | 39 | 122 | Tres fragile |
-| Assassin | **34.9%** | 27 | 75 | Injouable |
+![Force vs Stratégie → winrate](charts/3_force_vs_strategie.png)
 
-### Matchup Matrix — Budget 100 000
+**Constat :** Force domine toujours. Les 4 premiers ont Force ≥ 17. Les 4 derniers ont Force ≤ 14 malgré haute Stratégie. Ou Ki (Force 15, Strat 16) reste la référence stable à 52%.
+
+---
+
+## 2. Matrice de Matchup
+
+![Matrice de matchup](charts/2_matchup_matrix.png)
 
 ```
           Ou Ki  Mou Bu  Ou Sen  Kan Ki  Ri Boku Kei Sha ShiBaSh  Ren Pa  Go Kei  GoHouM  Gai Mou
-Ou Ki       43%    43%    37%    63%     60%     53%     53%     53%     47%     63%     47%
-Mou Bu      57%    43%    70%    47%     57%     57%     43%     37%     50%     63%     60%
-Ou Sen      30%    40%    57%    50%     53%     37%     43%     43%     50%     60%     47%
-Kan Ki      60%    43%    50%    47%     53%     50%     47%     47%     63%     40%     43%
-Ri Boku     37%    47%    30%    40%     27%     53%     57%     47%     30%     53%     57%
-Kei Sha     40%    47%    47%    50%     47%     67%     57%     33%     50%     60%     40%
-Shi Ba S    67%    30%    53%    60%     77%     43%     67%     43%     37%     47%     40%
-Ren Pa      53%    37%    53%    30%     57%     60%     47%     47%     60%     67%     43%
-Go Kei      30%    40%    50%    37%     67%     43%     33%     37%     60%     50%     50%
-Go Hou M    50%    37%    37%    37%     57%     70%     37%     57%     47%     43%     53%
-Gai Mou     53%    33%    50%    57%     60%     63%     43%     57%     57%     50%     57%
+Ou Ki       42%    38%    56%    54%     48%     58%     42%     50%     56%     78%     36%
+Mou Bu      54%    54%    54%    64%     68%     80%     44%     52%     68%     76%     34%
+Ou Sen      52%    42%    48%    54%     58%     60%     40%     50%     60%     56%     46%
+Kan Ki      52%    42%    48%    40%     46%     52%     42%     48%     50%     58%     30%
+Ri Boku     48%    34%    44%    40%     42%     46%     44%     36%     54%     60%     38%
+Kei Sha     50%    44%    60%    44%     42%     60%     40%     38%     44%     60%     34%
+Shi Ba S    52%    38%    54%    62%     78%     70%     54%     48%     74%     78%     50%
+Ren Pa      54%    52%    60%    58%     64%     58%     54%     52%     58%     72%     44%
+Go Kei      30%    34%    42%    36%     52%     52%     42%     30%     52%     58%     44%
+Go Hou M    22%    24%    36%    26%     34%     42%     16%     24%     56%     46%     28%
+Gai Mou     60%    44%    64%    54%     80%     62%     56%     50%     76%     68%     48%
 ```
 
 ---
 
-## Analyse Comparée A vs B
+## 3. Efficacité des Unités
 
-### Généraux — L'écart se resserre massivement avec le budget
+![Taux de survie par unité](charts/4_unit_survival.png)
 
-| General | Victoire 2 500 | Victoire 100 000 | Delta |
-|---------|---------------|-----------------|-------|
-| Gai Mou | 73.8% | 52.0% | **-21.8%** |
-| Mou Bu | 71.1% | 56.5% | **-14.6%** |
-| Shi Ba Shou | 66.7% | 51.7% | **-15.0%** |
-| Ren Pa | 62.7% | 52.4% | -10.3% |
-| Ou Ki | 52.1% | 52.0% | stable |
-| Go Hou Mei | 23.3% | 46.7% | **+23.4%** |
-| Ri Boku | 35.6% | 43.8% | +8.2% |
+| # | Unité | Catégorie | Coût | Survie | IC 95% | Dmg infligés/u | Dmg reçus/u | Verdict |
+|---|-------|-----------|------|--------|--------|----------------|-------------|---------|
+| 1 | **Archer d'Élite** | Tireurs | 800 | **99.0%** | ±0.1% | 108 | 6 | Trop fort ⚠ |
+| 2 | **Archer** | Tireurs | 600 | **98.2%** | ±0.2% | 68 | 11 | Trop fort ⚠ |
+| 3 | **Phalange** | Infanterie | 700 | **78.8%** | ±0.7% | 56 | 70 | Tank solide |
+| 4 | **Cavalier Lourd** | Chevaux | 1000 | **75.3%** | ±0.9% | 113 | 41 | Très efficace |
+| 5 | **Piétaille** | Infanterie | 500 | **74.3%** | ±0.5% | 23 | 118 | Masse correcte |
+| 6 | **Soldats** | Infanterie | 600 | **71.9%** | ±0.8% | 54 | 82 | Correct |
+| 7 | **Char** | Chars | 1200 | **68.9%** | ±1.0% | 96 | 38 | Efficace |
+| 8 | **Bâtisseurs** | Chars | 900 | **67.4%** | ±1.0% | 6 | 73 | Utilitaire pur |
+| 9 | **Cavalier Léger** | Chevaux | 800 | **58.9%** | ±1.0% | 52 | 84 | Fragile |
+| 10 | **Lancier** | Infanterie | 700 | **56.2%** | ±0.9% | 63 | 114 | Fragile |
+| 11 | **Espion** | Infanterie | 400 | **54.0%** | ±0.9% | 25 | 155 | Très fragile |
+| 12 | **Assassin** | Infanterie | 900 | **40.9%** | ±0.9% | 46 | 99 | Injouable ⚠ |
 
-**Constat : les généraux à Force élevée dominent à petit budget** (peu d'unités → chaque combat compte → le général fait la différence). A grand budget, les grandes armées gomment cet avantage. Ou Ki reste la référence stable dans les deux cas.
+### Dégâts infligés vs reçus
 
-### Unités — Problèmes persistants
+![Dégâts infligés vs reçus](charts/5_dmg_dealt_vs_taken.png)
 
-**Archers toujours trop forts dans les deux simulations** (98.9% → 92.6%). La mécanique `ranged_no_defense` reste le problème structurel indépendamment du budget.
+### Coût vs Survie (value for money)
 
-**Assassin injouable à grand budget (34.9%)** : à 2500g il s'en sort mieux (59%) car les armées sont plus petites et son burst compte. A 100k il se fait submerger — 100 PV / armure 6 ne tient pas face à une masse d'unités.
+![Coût vs Survie](charts/7_cost_vs_survival.png)
 
-**Phalange étonnamment faible à grand budget (60.1%)** : armure 15 / defense 18 semblent insuffisants face aux grandes masses. Reçoit 107 dmg, n'en inflige que 37 — rôle défensif mal exploité par l'IA.
+### Profil des unités — stats normalisées
 
-**Cavalier Lourd (63.7%) et Char (57.1%) équilibrés** : stats refondues correctes.
-
----
-
-## Recommandations
-
-### Urgentes
-
-1. **Archers** : `ranged_no_defense` les rend structurellement invincibles. Solutions :
-   - Permettre une contre-attaque à portée 1 (touche adjacente)
-   - Ou réduire vitalité (Archer 240→160, Élite 200→140)
-
-2. **Assassin** : injouable à grand budget (34.9%). 100 PV / armure 6 trop fragile. Buff : armure 12-15, ou PV 150.
-
-3. **Go Hou Mei** : injouable à petit budget (23.3%) mais se rétablit à grand budget (46.7%) — le problème vient de son rôle : Force 10 trop faible pour les petites parties où le général combat souvent. Augmenter Force 10→13 ou PV 80→110.
-
-### A Surveiller
-
-4. **Phalange** : bon à petit budget (94.2%), médiocre à grand budget (60.1%) — son rôle de tank anti-tir n'est pas exploité par l'IA. A réévaluer avec un joueur humain.
-
-5. **Lancier** : reçoit trop de dégâts (122/u à 100k). Bonus anti-cavalerie trop situationnel.
-
-### Fonctionne Correctement
-
-- **Généraux à grand budget** : distribution quasi-parfaite (44-56%), le système N_Go avec grandes armées est bien équilibré.
-- **Ou Ki** : référence stable dans toutes les conditions (~52%).
-- **Cavalier Lourd / Char** : stats refondues correctes, ratio dmg ~1:1.
-- **Cavalier Léger** : correct (70.3%), bon rapport coût/efficacité.
+![Radar chart unités](charts/6_unit_radar.png)
 
 ---
 
-## Notes Méthodologiques
+## 4. Composition des Armées — Gagnants vs Perdants
 
-- **Agent IA** : Heuristique. Ne joue pas les capacités spéciales (sabotage, construction, ambush, charge). Espion et Bâtisseurs sous-évalués par rapport à leur potentiel réel.
-- **Vision** : Brouillard de guerre actif, portée = Stratégie cases.
-- **Modificateur de hauteur** : actif dans les deux simulations.
-- **Limite budget 2 500** : Cavalier Lourd (1 200g) et Char (1 600g) non achetés par l'IA car trop coûteux proportionnellement.
+![Composition armées gagnants vs perdants](charts/8_army_composition.png)
+
+Les unités que les armées gagnantes achètent significativement plus que les perdantes sont les plus impactantes sur le résultat d'une partie.
+
+---
+
+## 5. Analyse et Recommandations
+
+### Problèmes urgents
+
+1. **Archers injouables en équilibre (98-99% survie)** : la mécanique `ranged_no_defense` combinée à leur haute vitalité (NGO élevé) les rend structurellement invincibles. Ratio Archer d'Élite : 108 dmg infligés / 6 reçus → **18:1**. Solutions :
+   - Réduire vitalité (Archer : 240→160, Élite : 200→140)
+   - Ou permettre une défense partielle à portée 1-2
+
+2. **Assassin injouable (40.9%)** : reçoit 99 dmg, inflige seulement 46. Son attaque 14 et puissance 12 sont insuffisantes pour justifier son coût 900g. Buff offensif nécessaire.
+
+3. **Go Hou Mei toujours injouable (33.8%)** : Force 10 trop faible, ses unités tirent moins profit du bonus NGO en attaque. Buff Force 10→13 recommandé.
+
+### À surveiller
+
+4. **Gai Mou / Mou Bu** (60-61%) : Force 18 avantage trop fort à 10k budget. Reste dans les 60% contrairement au budget 2500 (73-74%) — le problème se réduit avec les grandes armées.
+
+5. **Cavalier Léger (58.9%)** et **Lancier (56.2%)** : trop fragiles. Reçoivent beaucoup de dégâts pour des unités de 700-800g.
+
+6. **Espion (54%)** : reçoit 155 dmg/unité — fragile mais rôle utilitaire (vision, infiltration) justifie partiellement.
+
+### Fonctionne correctement
+
+- **Ou Ki / Ou Sen / Kan Ki** : cluster équilibré 49-52%, excellente zone de confort.
+- **Cavalier Lourd** : excellent rapport coût/efficacité (75% survie, 113 dmg infligés pour 1000g).
+- **Char** : 68.9% survie, 96 dmg infligés — justifie son coût 1200g.
+- **Phalange** : bon tank (78.8% survie) malgré une offensive modeste.
+
+---
+
+## 6. Notes Méthodologiques
+
+- **Agent IA** : Heuristique. Ne joue pas les capacités spéciales. Espion, Bâtisseurs et Assassin sous-évalués vs leur potentiel réel en jeu humain.
+- **Formule armure :** `ratAR = 1 − (NGO_def × Armure) / (NGO_def × Armure + 100)` — l'armure scale avec le nombre de soldats du défenseur. Les unités à haute vitalité + haute armure (Cav. Lourd armor:60, Char armor:80) sont extrêmement résistantes.
+- **Moral damage :** inclus dans la simulation mais non reflété dans les taux de survie (moral séparé des PV).
+- **Budget :** 10 000 or. Toutes les unités sont accessibles à ce budget.
