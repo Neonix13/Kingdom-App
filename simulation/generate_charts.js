@@ -88,55 +88,140 @@ async function main() {
     });
   }
 
-  // ── 2. Heatmap matchup matrix ─────────────────────────────────────────
+  // ── 2. Heatmap matchup matrix — dessin canvas manuel ─────────────────
   {
+    const { createCanvas } = require('canvas');
     const ids = DATA.generalIds;
     const names = DATA.generalNames;
     const n = ids.length;
 
-    // Flatten matrix → scatter avec background coloré via génération SVG/HTML → PNG via canvas
-    // On utilise une image matricielle avec ChartJS scatter
-    const datasets = [];
+    const MARGIN_LEFT = 120;
+    const MARGIN_TOP = 90;
+    const CELL = 58;
+    const W = MARGIN_LEFT + n * CELL + 20;
+    const H = MARGIN_TOP + n * CELL + 20;
+
+    const canvas = createCanvas(W, H);
+    const ctx = canvas.getContext('2d');
+
+    // Fond
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(0, 0, W, H);
+
+    // Titre
+    ctx.fillStyle = '#e0e0e0';
+    ctx.font = 'bold 16px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Matrice de matchup — % victoire (ligne vs colonne)', W / 2, 28);
+    ctx.font = '12px sans-serif';
+    ctx.fillStyle = '#888';
+    ctx.fillText('Rouge = ligne gagne souvent   Bleu = colonne gagne souvent', W / 2, 50);
+
+    // Noms colonnes (en diagonale)
+    ctx.fillStyle = '#ddd';
+    ctx.font = 'bold 12px sans-serif';
+    for (let c = 0; c < n; c++) {
+      const x = MARGIN_LEFT + c * CELL + CELL / 2;
+      const y = MARGIN_TOP - 8;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(-Math.PI / 4);
+      ctx.textAlign = 'left';
+      ctx.fillText(names[c], 0, 0);
+      ctx.restore();
+    }
+
+    // Noms lignes
+    ctx.textAlign = 'right';
+    for (let r = 0; r < n; r++) {
+      const y = MARGIN_TOP + r * CELL + CELL / 2 + 5;
+      ctx.fillStyle = '#ddd';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.fillText(names[r], MARGIN_LEFT - 8, y);
+    }
+
+    // Cellules
     for (let r = 0; r < n; r++) {
       for (let c = 0; c < n; c++) {
+        const x = MARGIN_LEFT + c * CELL;
+        const y = MARGIN_TOP + r * CELL;
         const val = DATA.matrix[r][c];
-        if (val === null) continue;
-        const norm = (val - 20) / 60; // normalise 20-80 → 0-1
-        const red = Math.round(220 * Math.max(0, 1 - norm * 2));
-        const blue = Math.round(220 * Math.max(0, norm * 2 - 1));
-        const green = Math.round(150 * Math.min(norm * 2, (1 - norm) * 2));
-        datasets.push({
-          label: `${r}-${c}`,
-          data: [{ x: c, y: n - 1 - r, v: val }],
-          backgroundColor: `rgba(${red},${green},${blue},0.85)`,
-          pointRadius: 28,
-          pointStyle: 'rect',
-        });
+
+        if (val === null || r === c) {
+          // Diagonale
+          ctx.fillStyle = '#2a2a3e';
+          ctx.fillRect(x + 1, y + 1, CELL - 2, CELL - 2);
+          ctx.fillStyle = '#555';
+          ctx.font = '14px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('—', x + CELL / 2, y + CELL / 2 + 5);
+          continue;
+        }
+
+        // Couleur : rouge si val > 50, bleu si val < 50
+        const norm = (val - 20) / 60; // 0 à 1 pour val 20→80
+        let red, green, blue;
+        if (norm > 0.5) {
+          // rouge dominant
+          const t = (norm - 0.5) * 2;
+          red = Math.round(180 + 60 * t);
+          green = Math.round(60 - 50 * t);
+          blue = Math.round(60 - 50 * t);
+        } else {
+          // bleu dominant
+          const t = (0.5 - norm) * 2;
+          red = Math.round(60 - 40 * t);
+          green = Math.round(60 - 40 * t);
+          blue = Math.round(160 + 60 * t);
+        }
+
+        ctx.fillStyle = `rgb(${red},${green},${blue})`;
+        ctx.fillRect(x + 1, y + 1, CELL - 2, CELL - 2);
+
+        // Valeur
+        const textColor = (norm > 0.65 || norm < 0.35) ? '#fff' : '#111';
+        ctx.fillStyle = textColor;
+        ctx.font = `bold ${val === 100 ? 12 : 14}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText(val + '%', x + CELL / 2, y + CELL / 2 + 5);
       }
     }
 
-    // Utilise scatter avec pointStyle rect pour simuler une heatmap
-    await chart('2_matchup_matrix.png', 700, 700, {
-      type: 'scatter',
-      data: { datasets },
-      options: {
-        plugins: {
-          title: { display: true, text: 'Matrice de matchup — % victoire ligne vs colonne', color: '#e0e0e0', font: { size: 14 } },
-          legend: { display: false },
-          tooltip: { callbacks: { label: ctx => `${ctx.raw.v}%` } }
-        },
-        scales: {
-          x: {
-            min: -0.5, max: n - 0.5, ticks: { color: '#ddd', callback: v => names[Math.round(v)]?.split(' ')[0] || '' },
-            grid: { color: '#333' }, title: { display: true, text: 'Défenseur (colonne)', color: '#aaa' }
-          },
-          y: {
-            min: -0.5, max: n - 0.5, ticks: { color: '#ddd', callback: v => names[n - 1 - Math.round(v)]?.split(' ')[0] || '' },
-            grid: { color: '#333' }, title: { display: true, text: 'Attaquant (ligne)', color: '#aaa' }
-          }
-        }
-      }
-    });
+    // Bordures grille
+    ctx.strokeStyle = '#1a1a2e';
+    ctx.lineWidth = 2;
+    for (let r = 0; r <= n; r++) {
+      ctx.beginPath();
+      ctx.moveTo(MARGIN_LEFT, MARGIN_TOP + r * CELL);
+      ctx.lineTo(MARGIN_LEFT + n * CELL, MARGIN_TOP + r * CELL);
+      ctx.stroke();
+    }
+    for (let c = 0; c <= n; c++) {
+      ctx.beginPath();
+      ctx.moveTo(MARGIN_LEFT + c * CELL, MARGIN_TOP);
+      ctx.lineTo(MARGIN_LEFT + c * CELL, MARGIN_TOP + n * CELL);
+      ctx.stroke();
+    }
+
+    // Légende
+    const legY = H - 14;
+    const gradient = ctx.createLinearGradient(MARGIN_LEFT, 0, MARGIN_LEFT + n * CELL, 0);
+    gradient.addColorStop(0, 'rgb(60,60,220)');
+    gradient.addColorStop(0.5, 'rgb(120,120,120)');
+    gradient.addColorStop(1, 'rgb(240,60,60)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(MARGIN_LEFT, legY - 10, n * CELL, 10);
+    ctx.fillStyle = '#aaa';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('20%', MARGIN_LEFT, legY + 12);
+    ctx.textAlign = 'center';
+    ctx.fillText('50%', MARGIN_LEFT + n * CELL / 2, legY + 12);
+    ctx.textAlign = 'right';
+    ctx.fillText('80%', MARGIN_LEFT + n * CELL, legY + 12);
+
+    fs.writeFileSync(path.join(OUT, '2_matchup_matrix.png'), canvas.toBuffer('image/png'));
+    console.log('  ✓ 2_matchup_matrix.png');
   }
 
   // ── 3. Scatter Force vs Stratégie → winrate ───────────────────────────
