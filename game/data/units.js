@@ -48,7 +48,7 @@ const UNITS = {
     speed: 2,
     range: 1,
     cost: 700,
-    bonus: '+2 Armure contre les attaques de tir.',
+    bonus: '+20 Armure contre les attaques de tir.',
     bonusType: 'defend_ranged',
   },
   lancier: {

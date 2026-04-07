@@ -163,7 +163,7 @@ function getStartingZones(numPlayers, mapRadius, budget) {
   const sd = getSegmentData();
   const maxTiles = Math.floor(4 * (budget || 2500) / 1000 + 2);
   const centerExclusion = 3 + numPlayers;
-  const borderExclusion = 13 + numPlayers;
+  const borderExclusion = 15 + numPlayers;
   const DIRS_6 = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
 
   // Toutes les tuiles de la carte (y compris plaines)
@@ -196,8 +196,14 @@ function getStartingZones(numPlayers, mapRadius, budget) {
     const S = Math.sqrt(3);
     const targetQ = centralHex.q + Math.round(deployRadius * (2 / S) * Math.cos(angle));
     const targetR = centralHex.r + Math.round(deployRadius * (Math.sin(angle) - Math.cos(angle) / S));
+    // Trouver le hex valide le plus proche de la cible, avec contrainte de bord
+    const validCandidates = allHexes.filter(({ q, r }) =>
+      q >= minQ + borderExclusion && q <= maxQ - borderExclusion &&
+      r >= minR + borderExclusion && r <= maxR - borderExclusion
+    );
+    const pool = validCandidates.length > 0 ? validCandidates : allHexes;
     let best = null, bestDist = Infinity;
-    for (const h of allHexes) {
+    for (const h of pool) {
       const d = hexDistance(h.q, h.r, targetQ, targetR);
       if (d < bestDist) { bestDist = d; best = h; }
     }

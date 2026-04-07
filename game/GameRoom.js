@@ -129,10 +129,10 @@ class GameRoom {
       force: generalData.force,
       strategy: generalData.strategy,
       charisma: generalData.charisma,
-      power: generalData.weapon.damage,
+      power: generalData.power,
       armor: generalData.armor,
       maxArmor: generalData.armor,
-      intimidation: Math.floor(generalData.charisma / 2),
+      intimidation: generalData.intimidation,
       speed: 4,
       range: 1,
       visionRange: generalData.strategy, // 1 hex = 100m
@@ -985,15 +985,21 @@ class GameRoom {
       - (stD[`esquive_${type}`] || 0) - (tD[`esquive_${type}`] || 0)
       + heightDiff;
 
-    // Att_reussite : NGOAtt jets D20, compter ≤ attackEff
+    // Roll d'attaque
     let attReussite = 0;
-    for (let i = 0; i < NGOAtt; i++) {
-      if (Math.floor(Math.random() * 20) + 1 <= attackEff) attReussite++;
+    let generalD20 = null, generalAttValue = null;
+    if (attacker.isGeneral) {
+      generalD20 = Math.floor(Math.random() * 20) + 1;
+      generalAttValue = attacker.force - generalD20 + 80;
+    } else {
+      for (let i = 0; i < NGOAtt; i++) {
+        if (Math.floor(Math.random() * 20) + 1 <= attackEff) attReussite++;
+      }
     }
-    const hit = attReussite > 0;
+    const hit = attacker.isGeneral ? true : attReussite > 0;
 
     // Ratio d'armure défenseur
-    const phalangeBonus = (!isCac && target.typeId === 'phalange') ? 2 : 0;
+    const phalangeBonus = (!isCac && target.typeId === 'phalange') ? 20 : 0;
     const lancierRangedBonus = (!isCac && target.typeId === 'lancier') ? 20 : 0;
     const effectiveArmorDef = Math.max(0, target.armor + (stD.armure || 0) + (tD.armure || 0) + phalangeBonus + lancierRangedBonus);
     const ARDef = NGODef * effectiveArmorDef;
@@ -1002,12 +1008,26 @@ class GameRoom {
     // Dégâts attaquant
     const lancierBonus = (attacker.typeId === 'lancier' && (target.category === 'Chevaux' || target.category === 'Chars')) ? 6 : 0;
     const effectivePowerAtt = Math.max(1, attacker.power + (stA[`puissance_${type}`] || 0) + (tA[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0) + lancierBonus);
-    const degatsUnitaire = effectivePowerAtt * ratARDef;
-    let dmgReceived = Math.round(attReussite * degatsUnitaire);
+    let degatsUnitaire = effectivePowerAtt * ratARDef;
+    let dmgReceived;
+    if (attacker.isGeneral) {
+      // Formule spéciale général : ((Force - D20 + 80) × Puissance / 5 × ratARDef) / 2
+      dmgReceived = Math.round(generalAttValue * attacker.power / 5 * ratARDef / 2);
+      degatsUnitaire = attacker.power / 5 * ratARDef / 2;
+    } else {
+      dmgReceived = Math.round(attReussite * degatsUnitaire);
+    }
 
-    // Moral damage : Att_reussite × intimidation (0 si aucun succès)
+    // Moral damage
     const effectiveIntimidation = attacker.intimidation + (stA[`intimidation_${type}`] || 0) + (tA[`intimidation_${type}`] || 0);
-    let moralDmg = attReussite * effectiveIntimidation;
+    let moralDmg;
+    if (attacker.isGeneral) {
+      // (Charisme - D20 + 80) * intimidation / 100 (même D20 que l'attaque)
+      const charismeVal = attacker.charisma - generalD20 + 80;
+      moralDmg = Math.round(charismeVal * effectiveIntimidation / 100);
+    } else {
+      moralDmg = attReussite * effectiveIntimidation;
+    }
 
     // Defense choice — tir : seule la phalange peut absorber (sauf vs archers)
     if (!isCac) {
@@ -1021,62 +1041,60 @@ class GameRoom {
     let counterDmgReceived = 0, counterMoralDmg = 0;
 
     let defBase = null, defEff = null, effectiveArmorAtt = null, ARAtt = null, ratARAtt = null, effectivePowerDef = null, counterIntimidation = null;
+    let generalD20Def = null, generalAttValueDef = null;
 
-    if (defenseChoice === 'counter') {
-      // Défense effective
+    if (defenseChoice === 'counter' || defenseChoice === 'absorb') {
+      const isAbsorb = defenseChoice === 'absorb';
+
+      // Défense effective (utilisé pour unités normales + display)
       defBase = target.isGeneral ? target.force : target.defense;
       defEff = defBase
         + (stD[`defense_${type}`] || 0) + (tD[`defense_${type}`] || 0) + (segDef ? (segDef[`defense_${type}`] || 0) : 0)
         - (stA[`precision_${type}`] || 0) - (tA[`precision_${type}`] || 0)
         - heightDiff;
 
-      // Def_reussite : NGODef jets D20, compter ≤ defEff
-      for (let i = 0; i < NGODef; i++) {
-        if (Math.floor(Math.random() * 20) + 1 <= defEff) defReussite++;
-      }
-      defenseSuccess = defReussite > 0;
-
-      // Ratio d'armure attaquant
+      // Ratio d'armure attaquant (même formule que pour les unités)
       effectiveArmorAtt = Math.max(0, attacker.armor + (stA.armure || 0) + (tA.armure || 0));
       ARAtt = NGOAtt * effectiveArmorAtt;
       ratARAtt = 1 - ARAtt / (ARAtt + 100);
 
-      // Dégâts contre-attaque (lancier +6 puissance contre cavalerie/chars)
+      counterIntimidation = target.intimidation + (stD[`intimidation_${type}`] || 0) + (tD[`intimidation_${type}`] || 0);
       const lancierBonusDef = (target.typeId === 'lancier' && (attacker.category === 'Chevaux' || attacker.category === 'Chars')) ? 6 : 0;
       effectivePowerDef = Math.max(1, target.power + (stD[`puissance_${type}`] || 0) + (tD[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0) + lancierBonusDef);
-      counterDmgReceived = Math.round(defReussite * effectivePowerDef * ratARAtt);
 
-      // Moral contre-attaque : Def_reussite × intimidation (0 si aucun succès)
-      counterIntimidation = target.intimidation + (stD[`intimidation_${type}`] || 0) + (tD[`intimidation_${type}`] || 0);
-      counterMoralDmg = defReussite * counterIntimidation;
-
-    } else if (defenseChoice === 'absorb') {
-      // Encaissement : même résolution que contre-attaque, mais dégâts ÷2 des deux côtés
-      defBase = target.isGeneral ? target.force : target.defense;
-      defEff = defBase
-        + (stD[`defense_${type}`] || 0) + (tD[`defense_${type}`] || 0) + (segDef ? (segDef[`defense_${type}`] || 0) : 0)
-        - (stA[`precision_${type}`] || 0) - (tA[`precision_${type}`] || 0)
-        - heightDiff;
-      for (let i = 0; i < NGODef; i++) {
-        if (Math.floor(Math.random() * 20) + 1 <= defEff) defReussite++;
+      if (target.isGeneral) {
+        // Formule spéciale général : ((Force - D20 + 80) × Puissance / 5 × ratARAtt) / 2
+        generalD20Def = Math.floor(Math.random() * 20) + 1;
+        generalAttValueDef = target.force - generalD20Def + 80;
+        defenseSuccess = true;
+        const divisor = isAbsorb ? 4 : 2; // encaissement ÷2 supplémentaire
+        counterDmgReceived = Math.round(generalAttValueDef * target.power / 5 * ratARAtt / divisor);
+        // (Charisme - D20 + 80) * intimidation / 100
+        const charValDef = target.charisma - generalD20Def + 80;
+        const rawCounterMoral = Math.round(charValDef * counterIntimidation / 100);
+        counterMoralDmg = isAbsorb ? Math.round(rawCounterMoral / 2) : rawCounterMoral;
+      } else {
+        // Def_reussite : NGODef jets D20
+        for (let i = 0; i < NGODef; i++) {
+          if (Math.floor(Math.random() * 20) + 1 <= defEff) defReussite++;
+        }
+        defenseSuccess = defReussite > 0;
+        counterDmgReceived = Math.round(defReussite * effectivePowerDef * ratARAtt / (isAbsorb ? 2 : 1));
+        counterMoralDmg = isAbsorb ? Math.round(defReussite * counterIntimidation / 2) : defReussite * counterIntimidation;
       }
-      defenseSuccess = defReussite > 0;
-      effectiveArmorAtt = Math.max(0, attacker.armor + (stA.armure || 0) + (tA.armure || 0));
-      ARAtt = NGOAtt * effectiveArmorAtt;
-      ratARAtt = 1 - ARAtt / (ARAtt + 100);
-      const lancierBonusDefAbsorb = (target.typeId === 'lancier' && (attacker.category === 'Chevaux' || attacker.category === 'Chars')) ? 6 : 0;
-      effectivePowerDef = Math.max(1, target.power + (stD[`puissance_${type}`] || 0) + (tD[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0) + lancierBonusDefAbsorb);
-      counterIntimidation = target.intimidation + (stD[`intimidation_${type}`] || 0) + (tD[`intimidation_${type}`] || 0);
-      // Les deux côtés ÷2
-      dmgReceived = Math.ceil(dmgReceived / 2);
-      moralDmg = Math.ceil(moralDmg / 2);
-      counterDmgReceived = Math.round(defReussite * effectivePowerDef * ratARAtt / 2);
-      counterMoralDmg = Math.round(defReussite * counterIntimidation / 2);
+
+      // Encaissement : dégâts attaquant ÷2
+      if (isAbsorb) {
+        dmgReceived = Math.ceil(dmgReceived / 2);
+        moralDmg = Math.ceil(moralDmg / 2);
+      }
     }
 
     const breakdown = {
       NGOAtt, NGODef,
       attackBase, attackEff, attReussite,
+      generalD20, generalAttValue,
+      generalD20Def, generalAttValueDef,
       // Attack modifiers (individual, for display)
       modAtkStance:   (stA[`attack_${type}`] || 0) + (segDef ? (segDef[`attack_${type}`] || 0) : 0),
       modAtkTerrain:  (tA[`attack_${type}`] || 0),
@@ -1111,6 +1129,8 @@ class GameRoom {
       counterIntimidation,
       modIntimDef: (defenseChoice === 'counter' || defenseChoice === 'absorb') ? ((stD[`intimidation_${type}`] || 0) + (tD[`intimidation_${type}`] || 0)) : null,
       moralDmg,
+      attackerCharisma: attacker.isGeneral ? attacker.charisma : null,
+      defenderCharisma: target.isGeneral ? target.charisma : null,
       defenseChoice,
       attackerStance: attacker.stance,
       defenderStance: target.stance,

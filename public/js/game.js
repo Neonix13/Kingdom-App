@@ -1462,7 +1462,7 @@ function computeRangeTiles(unit) {
     if (Math.max(Math.abs(q), Math.abs(r), Math.abs(q + r)) > 70) continue; // hors carte
     const hT = hd[`${q},${r}`] || 0;
     const effectiveRange = Math.max(1, (unit.range || 1) + (hA - hT));
-    if (d > 0) rangeTiles.add(`${q},${r}`);
+    if (d > 0 && d <= effectiveRange) rangeTiles.add(`${q},${r}`);
     if (d >= effectiveRange || d >= maxRange) continue;
     for (const [dq, dr] of dirs) {
       const nq = q + dq, nr = r + dr;
@@ -2317,45 +2317,68 @@ function formatHistoryEntry(log) {
   const defPct = ngoDef > 0 ? Math.round(defR / ngoDef * 100) : 0;
 
   // ── ROLLS ──
+  const isGeneralAtk = b.generalD20 != null;
   const atkMods = modsLine(
     [b.modAtkStance, atkStanceName], [b.modAtkTerrain, atkTerrainName],
     [b.modEsquive, 'esquive'], [b.modHauteur, 'hauteur']
   );
   let leftRoll = '';
-  leftRoll += row('GO', ngoAtt);
-  leftRoll += row('Attaque', statVal(b.attackBase ?? '?', b.attackEff ?? '?'));
-  leftRoll += atkMods;
-  leftRoll += row('Nb touche', `<span class="${att > 0 ? 'h-val-hit' : 'h-val-miss'}">${att} / ${ngoAtt}</span>`, atkPct);
+  if (isGeneralAtk) {
+    leftRoll += row('Force', b.attackBase ?? '?');
+    leftRoll += row('D20', `<span class="h-val-miss">${b.generalD20}</span>`);
+    leftRoll += `<div class="h-mods-placeholder"></div>`;
+    leftRoll += row('Résultat', `<b>${b.generalAttValue ?? '?'}</b>`);
+  } else {
+    leftRoll += row('GO', ngoAtt);
+    leftRoll += row('Attaque', statVal(b.attackBase ?? '?', b.attackEff ?? '?'));
+    leftRoll += atkMods;
+    leftRoll += row('Nb touche', `<span class="${att > 0 ? 'h-val-hit' : 'h-val-miss'}">${att} / ${ngoAtt}</span>`, atkPct);
+  }
 
+  const isGeneralDef = b.generalD20Def != null;
   let rightRoll = '';
   if (isCounter || isAbsorb) {
-    const defMods = modsLine(
-      [b.modDefStance, defStanceName], [b.modDefTerrain, defTerrainName],
-      [b.modPrecision, 'précision'], [b.modHauteurDef, 'hauteur']
-    );
-    rightRoll += row('GO', ngoDef);
-    rightRoll += row('Défense', statVal(b.defBase ?? '?', b.defEff ?? '?'));
-    rightRoll += defMods;
-    rightRoll += row('Nb touche', `<span class="${defR > 0 ? 'h-val-hit' : 'h-val-miss'}">${defR} / ${ngoDef}</span>`, defPct);
+    if (isGeneralDef) {
+      rightRoll += row('Force', b.defBase ?? '?');
+      rightRoll += row('D20', `<span class="h-val-miss">${b.generalD20Def}</span>`);
+      rightRoll += `<div class="h-mods-placeholder"></div>`;
+      rightRoll += row('Résultat', `<b>${b.generalAttValueDef ?? '?'}</b>`);
+    } else {
+      const defMods = modsLine(
+        [b.modDefStance, defStanceName], [b.modDefTerrain, defTerrainName],
+        [b.modPrecision, 'précision'], [b.modHauteurDef, 'hauteur']
+      );
+      rightRoll += row('GO', ngoDef);
+      rightRoll += row('Défense', statVal(b.defBase ?? '?', b.defEff ?? '?'));
+      rightRoll += defMods;
+      rightRoll += row('Nb touche', `<span class="${defR > 0 ? 'h-val-hit' : 'h-val-miss'}">${defR} / ${ngoDef}</span>`, defPct);
+    }
   } else {
     // Rien — miroir vide pour aligner
     rightRoll += emptyRow + emptyRow + `<div class="h-mods-placeholder"></div>` + emptyRow;
   }
 
   // ── DÉGÂTS ──
-  const pwrAttStr = statVal(b.basePowerAtt ?? '?', b.effectivePowerAtt ?? '?',
-    [(b.lancierBonus || 0), 'lancier'], [b.modPwrAtt, atkStanceName]);
-  const arDefStr  = statVal(b.baseArmorDef ?? '?', b.effectiveArmorDef ?? '?',
-    [b.modArmorDefStance, defStanceName], [b.modArmorDefTerrain, defTerrainName],
+  const pwrAttBase = statVal(b.basePowerAtt ?? '?', b.effectivePowerAtt ?? '?');
+  const pwrAttMods = modsLine([(b.lancierBonus || 0), 'lancier'], [b.modPwrAtt, atkStanceName]);
+  const arDefBase  = statVal(b.baseArmorDef ?? '?', b.effectiveArmorDef ?? '?');
+  const arDefMods  = modsLine([b.modArmorDefStance, defStanceName], [b.modArmorDefTerrain, defTerrainName],
     [(b.phalangeBonus || 0), 'phalange'], [(b.lancierRangedBonus || 0), 'lancier']);
   const ratARDefPct = b.ratARDef != null ? `${Math.round(b.ratARDef * 100)}%` : '?';
 
   let leftDmg = '';
-  leftDmg += row('Puissance', pwrAttStr);
-  leftDmg += row('Armure déf.', arDefStr);
+  if (isGeneralAtk) {
+    leftDmg += row('Puissance /5 ÷2', `${b.basePowerAtt ?? '?'}`);
+    leftDmg += `<div class="h-mods-placeholder"></div>`;
+  } else {
+    leftDmg += row('Puissance', pwrAttBase);
+    leftDmg += pwrAttMods;
+  }
+  leftDmg += row('Armure déf.', arDefBase);
+  leftDmg += arDefMods;
   leftDmg += row('%Armure', ratARDefPct);
   leftDmg += sep;
-  if (att > 0) {
+  if (isGeneralAtk || att > 0) {
     const div2Att = isAbsorb ? ` <span style="color:#888;font-size:0.85em">(÷2)</span>` : '';
     leftDmg += row(`(${tgtName}) tués`, `<span class="h-val-hit">${log.dmgReceived ?? 0}</span>${div2Att}`);
   } else {
@@ -2364,22 +2387,25 @@ function formatHistoryEntry(log) {
 
   let rightDmg = '';
   if (isCounter || isAbsorb) {
-    const pwrDefStr = statVal(b.basePowerDef ?? '?', b.effectivePowerDef ?? '?', [b.modPwrDef, defStanceName]);
-    const arAttStr  = statVal(b.baseArmorAtt ?? '?', b.effectiveArmorAtt ?? '?',
-      [b.modArmorAttStance, atkStanceName], [b.modArmorAttTerrain, atkTerrainName]);
+    const pwrDefBase = isGeneralDef ? `${b.basePowerDef ?? '?'}` : statVal(b.basePowerDef ?? '?', b.effectivePowerDef ?? '?');
+    const pwrDefMods = isGeneralDef ? `<div class="h-mods-placeholder"></div>` : modsLine([(b.lancierBonusDef || 0), 'lancier'], [b.modPwrDef, defStanceName]);
+    const arAttBase  = statVal(b.baseArmorAtt ?? '?', b.effectiveArmorAtt ?? '?');
+    const arAttMods  = modsLine([b.modArmorAttStance, atkStanceName], [b.modArmorAttTerrain, atkTerrainName]);
     const ratARAtt2 = b.ratARAtt != null ? `${Math.round(b.ratARAtt * 100)}%` : '?';
-    rightDmg += row('Puissance', pwrDefStr);
-    rightDmg += row('Armure att.', arAttStr);
+    rightDmg += row(isGeneralDef ? 'Puissance /5 ÷2' : 'Puissance', pwrDefBase);
+    rightDmg += pwrDefMods;
+    rightDmg += row('Armure att.', arAttBase);
+    rightDmg += arAttMods;
     rightDmg += row('%Armure', ratARAtt2);
     rightDmg += sep;
-    if ((isCounter && ds) || isAbsorb) {
+    if ((isCounter && (ds || isGeneralDef)) || isAbsorb) {
       const div2 = isAbsorb ? ` <span style="color:#888;font-size:0.85em">(÷2)</span>` : '';
       rightDmg += row(`(${atkName}) tués`, `<span class="h-val-hit">${log.counterDmgReceived ?? 0}</span>${div2}`);
     } else {
       rightDmg += emptyRow;
     }
   } else {
-    rightDmg += emptyRow + emptyRow + emptyRow + sep + emptyRow;
+    rightDmg += emptyRow + `<div class="h-mods-placeholder"></div>` + emptyRow + `<div class="h-mods-placeholder"></div>` + emptyRow + sep + emptyRow;
   }
 
   // ── MORAL ──
@@ -2387,7 +2413,15 @@ function formatHistoryEntry(log) {
   const intimAttStr  = statVal(intimAttBase, b.effectiveIntimidation ?? '?', [b.modIntimAtt, atkStanceName]);
 
   let leftMoral = '';
-  leftMoral += row('Intimidation', intimAttStr);
+  if (isGeneralAtk) {
+    const charismeVal = (b.attackerCharisma ?? 0) - (b.generalD20 ?? 0) + 80;
+    leftMoral += row('Charisme', b.attackerCharisma ?? '?');
+    leftMoral += row('D20', `<span class="h-val-miss">${b.generalD20 ?? '?'}</span>`);
+    leftMoral += sep;
+    leftMoral += row('Intimidation /100', b.effectiveIntimidation ?? '?');
+  } else {
+    leftMoral += row('Intimidation', intimAttStr);
+  }
   leftMoral += sep;
   leftMoral += (log.moralDmg ?? 0) > 0
     ? row(`(${tgtName}) démoral.`, `<span class="h-val-hit">${log.moralDmg}</span>`)
@@ -2395,9 +2429,16 @@ function formatHistoryEntry(log) {
 
   let rightMoral = '';
   if ((isCounter || isAbsorb) && b.counterIntimidation != null) {
-    const intimDefBase = b.counterIntimidation - (b.modIntimDef ?? 0);
-    const intimDefStr  = statVal(intimDefBase, b.counterIntimidation, [b.modIntimDef, defStanceName]);
-    rightMoral += row('Intimidation', intimDefStr);
+    if (isGeneralDef) {
+      rightMoral += row('Charisme', b.defenderCharisma ?? '?');
+      rightMoral += row('D20', `<span class="h-val-miss">${b.generalD20Def ?? '?'}</span>`);
+      rightMoral += sep;
+      rightMoral += row('Intimidation /100', b.counterIntimidation ?? '?');
+    } else {
+      const intimDefBase = b.counterIntimidation - (b.modIntimDef ?? 0);
+      const intimDefStr  = statVal(intimDefBase, b.counterIntimidation, [b.modIntimDef, defStanceName]);
+      rightMoral += row('Intimidation', intimDefStr);
+    }
     rightMoral += sep;
     rightMoral += (log.counterMoralDmg ?? 0) > 0
       ? row(`(${atkName}) démoral.`, `<span class="h-val-hit">${log.counterMoralDmg}</span>`)

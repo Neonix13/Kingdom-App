@@ -4,17 +4,11 @@
 -------
 Priorité:
 
-limite la portée des archers au bord map
-Les espions doivent aussi avoir une vision de l'intérieur des forêts lorsqu'il sont à l'extérieur mais seulement à une distance de 4
-Met à jour l'affiche de la prévision du déplacement des char.
-Quand un char passe à travers une unité ennemie cela produit une attaque
-Le bonus des lanciers contre les cavaliers s'applique aussi en defense (affiche le dans le tableau)
-je ne vois pas le bonus de 20AR des lanciers dans le tableau quand des archers les attaques est il appliqué?
-Va a la ligne dans le tableau pour afficher les mods : terrain stance esquive precision hauteur
-Le /2 pendant l'encaissement
-   - la ligne Absorbé ne devrait pas exister dans le tableau, elle compte aussi le nombre de kill des défenseur sur les attaquant
-   - la division s'applique aussi aux dégâts de l'attaque ( je ne la vois pas dans le tableau)
-   - pour rappelle l'encaissement fonctionne exactement comme la contre attaque sauf qu'il divise les dégâts de l'attaquant et du défenseur par 2
+J'ai l'impression que la porté des archers n'est réduite par les hauteur autours d'eux
+Affiche Le bonus des lanciers contre les cavaliers (+6 Bonus)
+je ne vois pas le bonus de 20AR des phalanges dans le tableau quand des archers les attaques est il appliqué? si oui affiche (+20 bonus) dans la ligne comme les autres mods
+Va a la ligne dans le tableau pour afficher les mods(terrain stance esquive precision hauteur) de puissance et d'armure
+
 
 
 
