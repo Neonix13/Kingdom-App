@@ -42,7 +42,7 @@ const SEGMENTS = {
     vitesse_tout: false,
     infranchissable: false,
     infranchissable_cavalerie: false,
-    special: 'collapse_1d4', // 1/4 chance : perd autant de Vitalité que ses points d'armure
+    special: null,
   },
   barriere: {
     id: 'barriere', name: 'Barrière',
@@ -57,7 +57,7 @@ const SEGMENTS = {
   },
   chevaux_de_frise: {
     id: 'chevaux_de_frise', name: 'Chevaux de frise',
-    vitesse: 0,
+    vitesse: -2,
     attack_cac: 0, attack_tir: 0,
     defense_cac: 4, defense_tir: 4,
     puissance_cac: 0, puissance_tir: 0,
@@ -80,7 +80,7 @@ const SEGMENTS = {
   },
   echelle: {
     id: 'echelle', name: 'Échelle',
-    vitesse: -2,
+    vitesse: -2.5,
     attack_cac: -6, attack_tir: 0,
     defense_cac: 0, defense_tir: 0,
     puissance_cac: 0, puissance_tir: 0,

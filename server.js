@@ -442,6 +442,12 @@ function handleAction(ws, connectionId, action, data) {
         send(p.id, { event: 'unit_move_anim', unitId: result.unitId, fromQ: result.fromQ, fromR: result.fromR, path: result.path });
         send(p.id, { event: 'game_state', ...room.getGameState(p.id) });
       });
+      if (result.trampledAttacks?.length > 0) {
+        for (const combatLog of result.trampledAttacks) {
+          room.players.forEach(p => send(p.id, { event: 'combat_result', combatLog }));
+        }
+        if (room.phase === 'ended') broadcastGameOver(room);
+      }
       break;
     }
 
@@ -466,7 +472,21 @@ function handleAction(ws, connectionId, action, data) {
             if (room.phase === 'ended') broadcastGameOver(room);
           }
         } else {
-          send(result.targetPlayerId, { event: 'defense_request', attackId: result.attackId, attackerName: result.attackerName, targetName: result.targetName, targetQ: result.targetQ, targetR: result.targetR, isRanged: result.isRanged, targetTypeId: result.targetTypeId, roomCode });
+          // Si seule option est 'rien', résoudre immédiatement sans popup
+          const archerTypes = ['archer', 'archer_elite'];
+          const noDefensePossible = result.isRanged && !(result.targetTypeId === 'phalange' && !archerTypes.includes(result.attackerTypeId));
+          if (noDefensePossible) {
+            const resolved = room.resolveAttack(result.attackId, 'rien');
+            if (resolved.ok) {
+              room.players.forEach(p => {
+                send(p.id, { event: 'combat_result', combatLog: resolved.combatLog });
+                send(p.id, { event: 'game_state', ...room.getGameState(p.id) });
+              });
+              if (room.phase === 'ended') broadcastGameOver(room);
+            }
+            return;
+          }
+          send(result.targetPlayerId, { event: 'defense_request', attackId: result.attackId, attackerName: result.attackerName, targetName: result.targetName, targetQ: result.targetQ, targetR: result.targetR, isRanged: result.isRanged, targetTypeId: result.targetTypeId, attackerTypeId: result.attackerTypeId, roomCode });
           send(connectionId, { event: 'waiting_defense', attackId: result.attackId });
           send(result.targetPlayerId, { event: 'defense_timer', attackId: result.attackId, seconds: 20 });
           setTimeout(() => {

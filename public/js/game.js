@@ -62,11 +62,11 @@ const SEGMENT_DEFS_CLIENT = {
   river:            { name:'Rivière',         vitesse:-1,  vitesse_fixe:null, infranchissable:false, infranchissable_cavalerie:false, attack_cac:-2, attack_tir:0, defense_cac:0, defense_tir:0, puissance_cac:0, puissance_tir:0, special:null },
   cliff:            { name:'Falaise',         vitesse:0,   vitesse_fixe:3,    infranchissable:false, infranchissable_cavalerie:true,  attack_cac:-5, attack_tir:0, defense_cac:0, defense_tir:0, puissance_cac:0, puissance_tir:0, special:null },
   bridge:           { name:'Pont',            vitesse:0,   vitesse_fixe:null, infranchissable:false, infranchissable_cavalerie:false, attack_cac:0,  attack_tir:0, defense_cac:2, defense_tir:2, puissance_cac:0, puissance_tir:0, special:null },
-  passerelle:       { name:'Passerelle',      vitesse:0,   vitesse_fixe:null, infranchissable:false, infranchissable_cavalerie:false, attack_cac:0,  attack_tir:0, defense_cac:-1, defense_tir:-1, puissance_cac:0, puissance_tir:0, special:'Effondrement 1/4' },
+  passerelle:       { name:'Passerelle',      vitesse:0,   vitesse_fixe:null, infranchissable:false, infranchissable_cavalerie:false, attack_cac:0,  attack_tir:0, defense_cac:-1, defense_tir:-1, puissance_cac:0, puissance_tir:0, special:null },
   barriere:         { name:'Barrière',        vitesse:-1,  vitesse_fixe:null, infranchissable:false, infranchissable_cavalerie:false, attack_cac:0,  attack_tir:0, defense_cac:2, defense_tir:2, puissance_cac:0, puissance_tir:0, special:null },
-  chevaux_de_frise: { name:'Chevaux de frise',vitesse:0,   vitesse_fixe:null, infranchissable:false, infranchissable_cavalerie:false, attack_cac:0,  attack_tir:0, defense_cac:4, defense_tir:4, puissance_cac:0, puissance_tir:0, special:'+5 puissance vs cavalerie' },
+  chevaux_de_frise: { name:'Chevaux de frise',vitesse:-2,  vitesse_fixe:null, infranchissable:false, infranchissable_cavalerie:false, attack_cac:0,  attack_tir:0, defense_cac:4, defense_tir:4, puissance_cac:0, puissance_tir:0, special:'+5 puissance vs cavalerie' },
   mur:              { name:'Mur',             vitesse:0,   vitesse_fixe:null, infranchissable:true,  infranchissable_cavalerie:false, attack_cac:0,  attack_tir:0, defense_cac:0, defense_tir:0, puissance_cac:0, puissance_tir:0, special:null },
-  echelle:          { name:'Échelle',         vitesse:-2,  vitesse_fixe:null, infranchissable:false, infranchissable_cavalerie:true,  attack_cac:-6, attack_tir:0, defense_cac:0, defense_tir:0, puissance_cac:0, puissance_tir:0, special:null },
+  echelle:          { name:'Échelle',         vitesse:-2.5,vitesse_fixe:null, infranchissable:false, infranchissable_cavalerie:true,  attack_cac:-6, attack_tir:0, defense_cac:0, defense_tir:0, puissance_cac:0, puissance_tir:0, special:null },
 };
 
 function segmentEdgeKey(q1, r1, q2, r2) {
@@ -74,13 +74,20 @@ function segmentEdgeKey(q1, r1, q2, r2) {
   return `${q2},${r2}|${q1},${r1}`;
 }
 
-function drawSegments(ctx) {
+// Images pour segments construits
+const chevauxDeFriseImage = new Image();
+chevauxDeFriseImage.src = '/assets/elements/ChevalDeFrise_sfb_hrc.png';
+chevauxDeFriseImage.onload = () => render();
+const ladderImage = new Image();
+ladderImage.src = '/assets/elements/ladder.png';
+ladderImage.onload = () => render();
+
+function drawSegments(ctx, withColors) {
   if (Object.keys(segmentData).length === 0) return;
   ctx.save();
   ctx.lineCap = 'round';
+  const hd = gameState?.heightData || {};
   for (const [edgeKey, segType] of Object.entries(segmentData)) {
-    const color = SEGMENT_COLORS_MAP[segType];
-    if (!color) continue;
     const parts = edgeKey.split('|');
     const [q1, r1] = parts[0].split(',').map(Number);
     const [q2, r2] = parts[1].split(',').map(Number);
@@ -90,6 +97,54 @@ function drawSegments(ctx) {
     const { x: cx, y: cy } = hexToPixel(q1, r1);
     const corners = hexCorners(cx, cy);
     const c1 = corners[dirIdx], c2 = corners[(dirIdx + 1) % 6];
+    const edgeLen = Math.hypot(c2.x - c1.x, c2.y - c1.y);
+    const mx = (c1.x + c2.x) / 2, my = (c1.y + c2.y) / 2;
+
+    // Chevaux de frise — PNG pleine largeur ×1.5
+    if (segType === 'chevaux_de_frise' && chevauxDeFriseImage.complete && chevauxDeFriseImage.naturalWidth) {
+      const drawW = edgeLen * 1.5;
+      const drawH = chevauxDeFriseImage.naturalHeight / chevauxDeFriseImage.naturalWidth * drawW;
+      const angle = Math.atan2(c2.y - c1.y, c2.x - c1.x);
+      ctx.save();
+      ctx.translate(mx, my);
+      ctx.rotate(angle);
+      ctx.drawImage(chevauxDeFriseImage, -drawW / 2, -drawH / 2, drawW, drawH);
+      ctx.restore();
+      if (withColors) {
+        const color = SEGMENT_COLORS_MAP[segType];
+        if (color) { ctx.strokeStyle = color; ctx.lineWidth = HEX_SIZE * 0.07; ctx.globalAlpha = 0.5; ctx.beginPath(); ctx.moveTo(c1.x, c1.y); ctx.lineTo(c2.x, c2.y); ctx.stroke(); ctx.globalAlpha = 1; }
+      }
+      continue;
+    }
+
+    // Échelle — PNG perpendiculaire, top vers hex le plus haut, largeur ×1.5
+    if (segType === 'echelle' && ladderImage.complete && ladderImage.naturalWidth) {
+      const h1 = hd[`${q1},${r1}`] || 0;
+      const h2 = hd[`${q2},${r2}`] || 0;
+      const { x: hx1, y: hy1 } = hexToPixel(q1, r1);
+      const { x: hx2, y: hy2 } = hexToPixel(q2, r2);
+      // Direction vers le hex le plus élevé (top du PNG)
+      const topHexX = (h2 >= h1) ? hx2 : hx1;
+      const topHexY = (h2 >= h1) ? hy2 : hy1;
+      const toTopAngle = Math.atan2(topHexY - my, topHexX - mx);
+      const imgW = edgeLen * 0.675; // 0.45 × 1.5
+      const imgH = edgeLen * 1.1;
+      ctx.save();
+      ctx.translate(mx, my);
+      ctx.rotate(toTopAngle + Math.PI / 2);
+      ctx.drawImage(ladderImage, -imgW / 2, -imgH / 2, imgW, imgH);
+      ctx.restore();
+      if (withColors) {
+        const color = SEGMENT_COLORS_MAP[segType];
+        if (color) { ctx.strokeStyle = color; ctx.lineWidth = HEX_SIZE * 0.07; ctx.globalAlpha = 0.5; ctx.beginPath(); ctx.moveTo(c1.x, c1.y); ctx.lineTo(c2.x, c2.y); ctx.stroke(); ctx.globalAlpha = 1; }
+      }
+      continue;
+    }
+
+    // Autres segments — ligne colorée uniquement en mode terrain
+    if (!withColors) continue;
+    const color = SEGMENT_COLORS_MAP[segType];
+    if (!color) continue;
     ctx.strokeStyle = color;
     ctx.lineWidth = HEX_SIZE * 0.13;
     ctx.beginPath();
@@ -638,15 +693,20 @@ function render() {
     }
   }
 
-  // Segments (arêtes entre tuiles) — visibles quand le toggle terrain est actif
-  if (showTerrain) drawSegments(ctx);
+  // Segments — PNGs toujours visibles, couleurs uniquement avec l'outil terrain
+  drawSegments(ctx, showTerrain);
 
   // Chemin de déplacement en attente de confirmation
   if (pendingMovePath.length > 0 && pendingMoveTarget) {
     ctx.save();
     for (const step of pendingMovePath) {
       const { x, y } = hexToPixel(step.q, step.r);
-      drawHex(ctx, x, y, 'rgba(255,200,0,0.25)', 'rgba(255,200,0,0.7)', 1, 2);
+      const isTrampled = step !== pendingMoveTarget && gameState?.units.some(u => u.q === step.q && u.r === step.r && !u.isMine);
+      if (isTrampled) {
+        drawHex(ctx, x, y, 'rgba(220,60,0,0.4)', 'rgba(255,80,0,0.9)', 1, 2);
+      } else {
+        drawHex(ctx, x, y, 'rgba(255,200,0,0.25)', 'rgba(255,200,0,0.7)', 1, 2);
+      }
     }
     const { x: dx, y: dy } = hexToPixel(pendingMoveTarget.q, pendingMoveTarget.r);
     drawHex(ctx, dx, dy, 'rgba(255,200,0,0.45)', 'rgba(255,220,0,1)', 1, 3);
@@ -772,7 +832,7 @@ function drawUnit(ctx, x, y, unit, playerId, isSelected = false, isHovered = fal
   const tokenR = HEX_SIZE * 0.95;
 
   const overlayColor = unit.isFleeing ? 'rgba(255,80,0,0.45)'
-    : (unit.hasMoved && unit.isMine) ? 'rgba(0,0,0,0.45)'
+    : (unit.speedRemaining <= 0 && unit.isMine) ? 'rgba(0,0,0,0.45)'
     : null;
 
   if (unit.isGeneral) {
@@ -1265,9 +1325,10 @@ function findPathClient(unit, targetQ, targetR) {
     for (const [dq, dr] of dirs) {
       const nq = q + dq, nr = r + dr;
       const nk = `${nq},${nr}`;
-      if (!movableTiles.has(nk) && nk !== targetKey) continue;
       const occupant = gameState?.units.find(u => u.q === nq && u.r === nr);
-      if (occupant && nk !== targetKey) continue;
+      const isCharThrough = unit.typeId === 'char' && occupant && !occupant.isMine;
+      if (!movableTiles.has(nk) && nk !== targetKey && !isCharThrough) continue;
+      if (occupant && !isCharThrough && nk !== targetKey) continue;
       const edgeK = segmentEdgeKey(q, r, nq, nr);
       const segType = segmentData[edgeK];
       const segDef = segType ? SEGMENT_DEFS_CLIENT[segType] : null;
@@ -1318,7 +1379,8 @@ function computeMovableTiles(unit) {
       const key = `${nq},${nr}`;
       if (gameState && !gameState.visibleHexes.has(key)) continue;
       const occupant = gameState?.units.find(u => u.q === nq && u.r === nr);
-      if (occupant) continue;
+      const isCharThrough = unit.typeId === 'char' && occupant && !occupant.isMine;
+      if (occupant && !isCharThrough) continue;
 
       // Segment check
       const edgeK = segmentEdgeKey(q, r, nq, nr);
@@ -1342,7 +1404,7 @@ function computeMovableTiles(unit) {
       if (newCost > maxSpeed) continue;
       if (!dist.has(key) || newCost < dist.get(key)) {
         dist.set(key, newCost);
-        movableTiles.add(key);
+        if (!isCharThrough) movableTiles.add(key); // chars ne peuvent pas s'arrêter sur ennemi
         queue.push({ q: nq, r: nr, cost: newCost });
       }
     }
@@ -1359,7 +1421,7 @@ function computeAttackableTiles(unit) {
     if (u.isMine) continue;
     const dist = hexDistance(unit.q, unit.r, u.q, u.r);
     const hT = hd[`${u.q},${u.r}`] || 0;
-    const effectiveRange = (unit.range || 1) + Math.max(0, hA - hT);
+    const effectiveRange = Math.max(1, (unit.range || 1) + (hA - hT));
     if (dist <= effectiveRange) {
       attackableTiles.add(`${u.q},${u.r}`);
     }
@@ -1397,8 +1459,9 @@ function computeRangeTiles(unit) {
   visited.add(`${unit.q},${unit.r}`);
   while (queue.length) {
     const { q, r, d } = queue.shift();
+    if (Math.max(Math.abs(q), Math.abs(r), Math.abs(q + r)) > 70) continue; // hors carte
     const hT = hd[`${q},${r}`] || 0;
-    const effectiveRange = (unit.range || 1) + Math.max(0, hA - hT);
+    const effectiveRange = Math.max(1, (unit.range || 1) + (hA - hT));
     if (d > 0) rangeTiles.add(`${q},${r}`);
     if (d >= effectiveRange || d >= maxRange) continue;
     for (const [dq, dr] of dirs) {
@@ -1536,6 +1599,13 @@ function showUnitDetail(unit) {
     addStat('Puissance', unit.power, 'puissance_cac', 'puissance_cac');
     addStat('Défense', unit.defense, 'defense_cac', 'defense_cac');
     addStat('Armure', unit.armor, 'armure', 'armure');
+    // Bonus conditionnels
+    if (unit.typeId === 'phalange') {
+      statRows.push(`<div class="stat-row" style="color:#80c060;font-size:0.82em"><span>Armure (vs tirs)</span><span>+2</span></div>`);
+    }
+    if (unit.typeId === 'lancier') {
+      statRows.push(`<div class="stat-row" style="color:#80c060;font-size:0.82em"><span>Puissance (vs cav.)</span><span>+6</span></div>`);
+    }
   } else {
     statRows.push(`<div class="stat-row"><span>Attaque</span><span>${unit.attack}</span></div>`);
     statRows.push(`<div class="stat-row"><span>Puissance</span><span>${unit.power}</span></div>`);
@@ -2186,80 +2256,173 @@ function formatHistoryEntry(log) {
   const id = `h${historyCounter++}`;
   const b = log.breakdown || {};
   const hit = log.hit;
-  const defLabels = { none: 'Rien', counter: 'Contre-attaque', absorb: 'Encaisse' };
-  const stanceNames2 = { marche:'Marche', combat:'Combat', charge:'Charge', repos:'Repos', defense_combat:'Déf. Combat', defense_distance:'Déf. Distance' };
-  const turn = log.turn || 1;
-  const manche = log.manche || 1;
   const attackerColor = gameState?.players?.find(p => p.id === log.attackerPlayerId)?.color || '#c8a84b';
-  const targetColor = gameState?.players?.find(p => p.id === log.targetPlayerId)?.color || '#a08060';
+  const targetColor   = gameState?.players?.find(p => p.id === log.targetPlayerId)?.color   || '#a08060';
+  const tgtName = log.targetName   || '?';
+  const atkName = log.attackerName || '?';
 
-  // Header line
-  const hitBadge = hit
-    ? `<span class="h-badge h-hit">TOUCHÉ</span>`
-    : `<span class="h-badge h-miss">RATÉ</span>`;
+  // Header
+  const hitBadge = hit ? `<span class="h-badge h-hit">TOUCHÉ</span>` : `<span class="h-badge h-miss">RATÉ</span>`;
+  const trampleBadge = log.trample ? `<span class="h-badge" style="background:#8a4010;color:#ffd080">PIÉTINEMENT</span>` : '';
   const header = `<div class="h-header" onclick="toggleHistory('${id}')" style="border-left:3px solid ${attackerColor};">
     <span class="h-arrow" id="arrow-${id}">▶</span>
-    <span class="h-title"><b style="color:${attackerColor}">${log.attackerName||'?'}</b> → <b style="color:${targetColor}">${log.targetName||'?'}</b></span>
-    ${hitBadge}
-    ${log.targetKilled ? `<span class="h-badge h-dead">💀</span>` : ''}
-    ${log.attackerKilled ? `<span class="h-badge h-dead">💀 (attaquant)</span>` : ''}
+    <span class="h-title"><b style="color:${attackerColor}">${atkName}</b> → <b style="color:${targetColor}">${tgtName}</b></span>
+    ${trampleBadge}${hitBadge}
+    ${log.targetKilled   ? `<span class="h-badge h-dead">💀</span>` : ''}
+    ${log.attackerKilled ? `<span class="h-badge h-dead">💀 (att.)</span>` : ''}
   </div>`;
 
-  // Detail table
-  const sign = n => n >= 0 ? `+${n}` : `${n}`;
-  const row = (label, val, cls='') => {
-    // Masquer les lignes dont la valeur est 0 ou +0
-    const raw = typeof val === 'number' ? val : (typeof val === 'string' ? parseFloat(val) : NaN);
-    if (!isNaN(raw) && raw === 0) return '';
-    const signed = typeof val === 'string' && val.startsWith('+') ? parseFloat(val) : NaN;
-    if (!isNaN(signed) && signed === 0) return '';
-    return `<tr class="${cls}"><td>${label}</td><td>${val}</td></tr>`;
+  const ngoAtt  = b.NGOAtt ?? 0;
+  const ngoDef  = b.NGODef ?? 0;
+  const att     = b.attReussite ?? 0;
+  const defR    = b.defReussite ?? 0;
+  const isCac   = log.defenseChoice !== undefined;
+  const ds      = log.defenseSuccess;
+  const isCounter = isCac && log.defenseChoice === 'counter';
+  const isAbsorb  = isCac && log.defenseChoice === 'absorb';
+  const isRien    = isCac && log.defenseChoice === 'rien';
+  const defTitle  = isCounter ? '⚔ Contre-Attaque' : isAbsorb ? '🛡 Encaissement' : '🛡 Défense impossible';
+
+  const stanceLabels = { marche:'Marche', combat:'Combat', charge:'Charge', repos:'Repos', defense_combat:'Déf. Combat', defense_distance:'Déf. Distance' };
+  const terrainLabels = { plain:'Plaines', forest:'Forêts', river:'Fleuve', road:'Route', building:'Bâtiment', bridge:'Pont' };
+  const atkStanceName = stanceLabels[b.attackerStance] || b.attackerStance || '—';
+  const defStanceName = stanceLabels[b.defenderStance] || b.defenderStance || '—';
+  const atkTerrainName = terrainLabels[b.attackerTerrain] || b.attackerTerrain || '—';
+  const defTerrainName = terrainLabels[b.defenderTerrain] || b.defenderTerrain || '—';
+
+  // Helpers
+  const modTag = (val, lbl) => {
+    if (!val) return '';
+    return `<span class="${val > 0 ? 'h-mod-pos' : 'h-mod-neg'}">(${val > 0 ? '+' : ''}${val} ${lbl})</span>`;
   };
-  const signRow = (label, n, cls='') => n === 0 ? '' : row(label, sign(n), cls);
+  const modsLine = (...mods) => {
+    const parts = mods.map(([v, l]) => modTag(v, l)).filter(Boolean);
+    return parts.length ? `<div class="h-mods">${parts.join(' ')}</div>` : `<div class="h-mods-placeholder"></div>`;
+  };
+  const statVal = (base, eff, ...mods) => {
+    const modHtml = mods.map(([v, l]) => modTag(v, l)).join(' ');
+    const modPart = modHtml ? ` ${modHtml}` : '';
+    if (base === eff) return `${eff}${modPart}`;
+    return `${base} = <b>${eff}</b>${modPart}`;
+  };
+  const row = (lbl, val, pct) => {
+    const pctHtml = pct != null ? `<span class="h-pct">[${pct}%]</span>` : '';
+    return `<div class="h-row"><span class="h-lbl">${lbl}</span><span class="h-val">${val}</span>${pctHtml}</div>`;
+  };
+  const sep  = `<div class="h-sep"></div>`;
+  const sep2 = `<div class="h-sep"></div><div class="h-sep2"></div>`;
+  const emptyRow = `<div class="h-row"><span class="h-lbl" style="color:#333">—</span></div>`;
 
-  const pct = v => `${Math.round((v??0) * 100)}%`;
+  const atkPct = ngoAtt > 0 ? Math.round(att  / ngoAtt * 100) : 0;
+  const defPct = ngoDef > 0 ? Math.round(defR / ngoDef * 100) : 0;
 
-  let table = `<div class="h-detail" id="${id}" style="display:none"><table class="h-table">
-    <tbody>
-    <tr class="h-section"><td colspan="2">⚔ ATTAQUE</td></tr>
-    ${row('NGO attaquant (Vit÷5)', b.NGOAtt ?? '—')}
-    ${row('Base attaque', b.attackBase ?? '—')}
-    ${row('Attaque effective', `<b>${b.attackEff ?? '—'}</b>`)}
-    ${row('Réussites', `<b>${b.attReussite ?? 0}</b> / ${b.NGOAtt ?? '?'} dés`, hit ? 'h-hit-row' : 'h-miss-row')}`;
+  // ── ROLLS ──
+  const atkMods = modsLine(
+    [b.modAtkStance, atkStanceName], [b.modAtkTerrain, atkTerrainName],
+    [b.modEsquive, 'esquive'], [b.modHauteur, 'hauteur']
+  );
+  let leftRoll = '';
+  leftRoll += row('GO', ngoAtt);
+  leftRoll += row('Attaque', statVal(b.attackBase ?? '?', b.attackEff ?? '?'));
+  leftRoll += atkMods;
+  leftRoll += row('Nb touche', `<span class="${att > 0 ? 'h-val-hit' : 'h-val-miss'}">${att} / ${ngoAtt}</span>`, atkPct);
 
-  table += `
-    <tr class="h-section"><td colspan="2">💥 DÉGÂTS</td></tr>
-    ${row('NGO défenseur (Vit÷5)', b.NGODef ?? '—')}
-    ${row('Armure effective défenseur', b.effectiveArmorDef ?? 0)}
-    ${row('AR déf. (NGO×Armure)', b.ARDef ?? 0)}
-    ${row('Ratio armure (1−AR/AR+100)', pct(b.ratARDef))}
-    ${row('Puissance effective', b.effectivePowerAtt ?? '—')}
-    ${row('Dégâts / réussite', b.degatsUnitaire ?? 0)}
-    ${row('Dégâts reçus', `<b>${log.dmgReceived ?? 0}</b>`, hit ? 'h-hit-row' : '')}
-    ${row('Vitalité restante cible', log.targetVitalityLeft ?? '—')}`;
-
-  if (log.moralDmg > 0 || log.targetMoraleLeft != null) {
-    table += `<tr class="h-section"><td colspan="2">😰 MORAL</td></tr>`;
-    if (log.moralDmg > 0) table += row('Moral infligé', log.moralDmg);
-    if (log.targetMoraleLeft != null) table += row('Moral restant cible', log.targetMoraleLeft);
+  let rightRoll = '';
+  if (isCounter || isAbsorb) {
+    const defMods = modsLine(
+      [b.modDefStance, defStanceName], [b.modDefTerrain, defTerrainName],
+      [b.modPrecision, 'précision'], [b.modHauteurDef, 'hauteur']
+    );
+    rightRoll += row('GO', ngoDef);
+    rightRoll += row('Défense', statVal(b.defBase ?? '?', b.defEff ?? '?'));
+    rightRoll += defMods;
+    rightRoll += row('Nb touche', `<span class="${defR > 0 ? 'h-val-hit' : 'h-val-miss'}">${defR} / ${ngoDef}</span>`, defPct);
+  } else {
+    // Rien — miroir vide pour aligner
+    rightRoll += emptyRow + emptyRow + `<div class="h-mods-placeholder"></div>` + emptyRow;
   }
 
-  if (log.defenseChoice === 'counter') {
-    const ds = log.defenseSuccess;
-    table += `<tr class="h-section"><td colspan="2">🛡 CONTRE-ATTAQUE</td></tr>
-    ${row('Réussites déf.', `<b>${b.defReussite ?? 0}</b> / ${b.NGODef ?? '?'} dés`, ds ? 'h-hit-row' : 'h-miss-row')}`;
-    if (ds) {
-      table += row('Dégâts contre-attaque', `<b>${log.counterDmgReceived}</b>`, 'h-hit-row');
-      table += row('Vitalité restante atq.', log.attackerVitalityLeft ?? '—');
+  // ── DÉGÂTS ──
+  const pwrAttStr = statVal(b.basePowerAtt ?? '?', b.effectivePowerAtt ?? '?',
+    [(b.lancierBonus || 0), 'lancier'], [b.modPwrAtt, atkStanceName]);
+  const arDefStr  = statVal(b.baseArmorDef ?? '?', b.effectiveArmorDef ?? '?',
+    [b.modArmorDefStance, defStanceName], [b.modArmorDefTerrain, defTerrainName],
+    [(b.phalangeBonus || 0), 'phalange'], [(b.lancierRangedBonus || 0), 'lancier']);
+  const ratARDefPct = b.ratARDef != null ? `${Math.round(b.ratARDef * 100)}%` : '?';
+
+  let leftDmg = '';
+  leftDmg += row('Puissance', pwrAttStr);
+  leftDmg += row('Armure déf.', arDefStr);
+  leftDmg += row('%Armure', ratARDefPct);
+  leftDmg += sep;
+  if (att > 0) {
+    const div2Att = isAbsorb ? ` <span style="color:#888;font-size:0.85em">(÷2)</span>` : '';
+    leftDmg += row(`(${tgtName}) tués`, `<span class="h-val-hit">${log.dmgReceived ?? 0}</span>${div2Att}`);
+  } else {
+    leftDmg += emptyRow;
+  }
+
+  let rightDmg = '';
+  if (isCounter || isAbsorb) {
+    const pwrDefStr = statVal(b.basePowerDef ?? '?', b.effectivePowerDef ?? '?', [b.modPwrDef, defStanceName]);
+    const arAttStr  = statVal(b.baseArmorAtt ?? '?', b.effectiveArmorAtt ?? '?',
+      [b.modArmorAttStance, atkStanceName], [b.modArmorAttTerrain, atkTerrainName]);
+    const ratARAtt2 = b.ratARAtt != null ? `${Math.round(b.ratARAtt * 100)}%` : '?';
+    rightDmg += row('Puissance', pwrDefStr);
+    rightDmg += row('Armure att.', arAttStr);
+    rightDmg += row('%Armure', ratARAtt2);
+    rightDmg += sep;
+    if ((isCounter && ds) || isAbsorb) {
+      const div2 = isAbsorb ? ` <span style="color:#888;font-size:0.85em">(÷2)</span>` : '';
+      rightDmg += row(`(${atkName}) tués`, `<span class="h-val-hit">${log.counterDmgReceived ?? 0}</span>${div2}`);
+    } else {
+      rightDmg += emptyRow;
     }
-    if (log.counterMoralDmg > 0) table += row('Moral contre-attaque', log.counterMoralDmg);
-  } else if (log.defenseChoice === 'absorb') {
-    table += `<tr class="h-section"><td colspan="2">🛡 ENCAISSE (÷2)</td></tr>`;
+  } else {
+    rightDmg += emptyRow + emptyRow + emptyRow + sep + emptyRow;
   }
 
-  table += `</tbody></table></div>`;
+  // ── MORAL ──
+  const intimAttBase = (b.effectiveIntimidation ?? 0) - (b.modIntimAtt ?? 0);
+  const intimAttStr  = statVal(intimAttBase, b.effectiveIntimidation ?? '?', [b.modIntimAtt, atkStanceName]);
 
-  return `<div class="history-entry">${header}${table}</div>`;
+  let leftMoral = '';
+  leftMoral += row('Intimidation', intimAttStr);
+  leftMoral += sep;
+  leftMoral += (log.moralDmg ?? 0) > 0
+    ? row(`(${tgtName}) démoral.`, `<span class="h-val-hit">${log.moralDmg}</span>`)
+    : emptyRow;
+
+  let rightMoral = '';
+  if ((isCounter || isAbsorb) && b.counterIntimidation != null) {
+    const intimDefBase = b.counterIntimidation - (b.modIntimDef ?? 0);
+    const intimDefStr  = statVal(intimDefBase, b.counterIntimidation, [b.modIntimDef, defStanceName]);
+    rightMoral += row('Intimidation', intimDefStr);
+    rightMoral += sep;
+    rightMoral += (log.counterMoralDmg ?? 0) > 0
+      ? row(`(${atkName}) démoral.`, `<span class="h-val-hit">${log.counterMoralDmg}</span>`)
+      : emptyRow;
+  } else {
+    rightMoral += emptyRow + sep + emptyRow;
+  }
+
+  const leftAll  = leftRoll  + sep2 + leftDmg  + sep2 + leftMoral;
+  const rightAll = rightRoll + sep2 + rightDmg + sep2 + rightMoral;
+
+  const detail = `<div class="h-detail" id="${id}" style="display:none">
+    <div class="h-dual">
+      <div class="h-side">
+        <div class="h-side-title">⚔ Attaque</div>
+        ${leftAll}
+      </div>
+      <div class="h-side${isRien ? ' h-side-none' : ''}">
+        <div class="h-side-title">${defTitle}</div>
+        ${rightAll}
+      </div>
+    </div>
+  </div>`;
+
+  return `<div class="history-entry">${header}${detail}</div>`;
 }
 
 function toggleHistory(id) {
@@ -2487,21 +2650,34 @@ function cancelStanceChange() {
 function showCombatResult(log) {
   const el = document.getElementById('combat-result-box');
   if (!el) return;
-  let html = `<b>${log.attackerName}</b> attaque <b>${log.targetName}</b><br>`;
-  html += `Attaque : ${log.attackTotal} vs D20=${log.attackD20} → ${log.hit ? '<span style="color:#4f4">TOUCHÉ</span>' : '<span style="color:#f44">RATÉ</span>'}<br>`;
-  if (log.hit) {
-    html += `Dégâts infligés : ${log.dmgInflicted} − armure ${log.armorAbsorb} = <b>${log.dmgReceived}</b><br>`;
-    html += `Moral −${log.moralDmg}<br>`;
+  const b = log.breakdown || {};
+  const hit = log.hit;
+  const defLabels = { counter:'Contre-attaque', absorb:'Encaissement', rien:'Rien' };
+  let html = `<b>${log.attackerName}</b> → <b>${log.targetName}</b> &nbsp;`;
+  html += hit ? `<span style="color:#f90;font-weight:bold">TOUCHÉ</span>` : `<span style="color:#aaa">RATÉ</span>`;
+  html += `<br>`;
+  if (hit) {
+    const ratPct = b.ratARDef != null ? `${Math.round(b.ratARDef * 100)}%` : '';
+    html += `<span style="color:#aaa">Dégâts</span> <b style="color:#ff9060">${log.dmgReceived}</b>`;
+    if (ratPct) html += ` <span style="color:#555">(arm. ${ratPct})</span>`;
+    if (log.moralDmg > 0) html += ` &nbsp;<span style="color:#aaa">Moral −${log.moralDmg}</span>`;
+    html += `<br>`;
   }
   if (log.defenseChoice && log.defenseChoice !== 'rien') {
-    html += `Défense (${log.defenseChoice}) : ${log.defenseSuccess ? '<span style="color:#4f4">SUCCÈS</span>' : '<span style="color:#f44">ÉCHEC</span>'}`;
-    if (log.defenseSuccess && log.counterDmgReceived > 0) {
-      html += ` → contre-attaque <b>${log.counterDmgReceived}</b> dégâts`;
+    const defLabel = defLabels[log.defenseChoice] || log.defenseChoice;
+    html += `<span style="color:#aaa">${defLabel}</span> : `;
+    if (log.defenseChoice === 'absorb') {
+      html += `<b style="color:#80c060">${log.counterDmgReceived ?? 0} PV absorbés</b>`;
+    } else {
+      html += log.defenseSuccess
+        ? `<span style="color:#4f4">Succès</span> → <b style="color:#ff9060">${log.counterDmgReceived} PV</b>`
+        : `<span style="color:#f44">Raté</span>`;
     }
-    html += '<br>';
+    if (log.counterMoralDmg > 0) html += ` &nbsp;<span style="color:#aaa">Moral −${log.counterMoralDmg}</span>`;
+    html += `<br>`;
   }
-  if (log.targetKilled) html += `<span style="color:#f84">&#9876; ${log.targetName} éliminé !</span><br>`;
-  if (log.attackerKilled) html += `<span style="color:#f84">&#9876; ${log.attackerName} éliminé !</span><br>`;
+  if (log.targetKilled)   html += `<span style="color:#f84">💀 ${log.targetName} éliminé</span><br>`;
+  if (log.attackerKilled) html += `<span style="color:#f84">💀 ${log.attackerName} éliminé</span><br>`;
   el.innerHTML = html;
   el.style.display = 'block';
   clearTimeout(window._combatResultTimer);
@@ -2517,12 +2693,13 @@ function showDefenseRequest(data) {
   overlay.style.display = 'flex';
   overlay.dataset.attackId = data.attackId;
   overlay.dataset.roomCode = data.roomCode;
-  // Ranged attack: only phalange can absorb, nobody can counter
   const btnCounter = document.getElementById('btn-defense-counter');
   const btnAbsorb = document.getElementById('btn-defense-absorb');
+  const archerTypes = ['archer', 'archer_elite'];
   if (data.isRanged) {
     if (btnCounter) btnCounter.style.display = 'none';
-    if (btnAbsorb) btnAbsorb.style.display = data.targetTypeId === 'phalange' ? '' : 'none';
+    const phalangeCanAbsorb = data.targetTypeId === 'phalange' && !archerTypes.includes(data.attackerTypeId);
+    if (btnAbsorb) btnAbsorb.style.display = phalangeCanAbsorb ? '' : 'none';
   } else {
     if (btnCounter) btnCounter.style.display = '';
     if (btnAbsorb) btnAbsorb.style.display = '';

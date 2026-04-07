@@ -115,7 +115,13 @@ function findPath(hexMap, unitMap, q1, r1, q2, r2, maxSpeed, playerId, unit) {
     for (const [nq, nr] of hexNeighbors(q, r)) {
       const key = hexKey(nq, nr);
       if (!hexMap[key]) continue;
-      if (unitMap[key]) continue;
+      if (unitMap[key]) {
+        // Chars can pass through enemy units (not allied, not target)
+        const isChar = unit && unit.typeId === 'char';
+        const isEnemy = unit && unitMap[key].playerId !== unit.playerId;
+        const isTarget = nq === q2 && nr === r2;
+        if (!isChar || !isEnemy || isTarget) continue;
+      }
 
       // Segment check
       const edgeK = segmentEdgeKey(q, r, nq, nr);

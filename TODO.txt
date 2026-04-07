@@ -1,37 +1,28 @@
 
-FAIT
-----
-
- Voir qui est prêt dans le lobby (⚔️ général choisi, ✅ armée soumise)
-    → Barre de statuts affichée pendant la construction d'armée (mise à jour en temps réel)
-
- Historique : tours corrects (T1.1, T1.2...), groupés par tour+manche, couleur attaquant/cible, ordre d'initiative cliquable
-    → Le premier joueur du premier tour s'affiche maintenant dans l'historique
-    → Noms des généraux dans top-current-player et sidebar
-
- Général : vision +2 par niveau de hauteur, voit au-dessus des forêts inférieures (sans voir dans les tuiles de forêt)
-
- Hover unité : flèche de direction + badge nom (flèche grosse, noire)
-
- Joueurs éliminés deviennent spectateurs (vision union de tous les joueurs vivants)
-
-
-À FAIRE (meilleur affichage initiative dans l'historique)
-    Colonnes : 1. / Mou Bu / Str 12 + 🎲 8 / =20
 
 À FAIRE
 -------
-Implémenter les capacités spéciales des généraux :
-  - Ou Ki passif : -1 Force/Strat/Cha aux généraux ennemis
-  - Mou Bu actif : détruit une unité d'infanterie ennemie
-  - Ou Sen passif : +2 défense pour toutes ses unités
-  - Kan Ki actif : faire apparaître un Assassin dans le rayon de Charisme
-  - Kan Ki passif : forêts ne ralentissent pas son armée
-  - Ri Boku passif : +2 vision pour toutes ses unités
-  - Shi Ba Shou passif : +1 armure en posture défensive (def CAC / def TIR)
-  - Go Hou Mei actif : il est le seul à jouer le prochain tour
-  - Go Hou Mei passif : +1 vitesse pour toutes ses unités
-  - Gai Mou actif : 10×D20 dégâts moral aux unités ennemies dans la zone de Charisme
+Priorité:
+
+limite la portée des archers au bord map
+Les espions doivent aussi avoir une vision de l'intérieur des forêts lorsqu'il sont à l'extérieur mais seulement à une distance de 4
+Met à jour l'affiche de la prévision du déplacement des char.
+Quand un char passe à travers une unité ennemie cela produit une attaque
+Le bonus des lanciers contre les cavaliers s'applique aussi en defense (affiche le dans le tableau)
+je ne vois pas le bonus de 20AR des lanciers dans le tableau quand des archers les attaques est il appliqué?
+Va a la ligne dans le tableau pour afficher les mods : terrain stance esquive precision hauteur
+Le /2 pendant l'encaissement
+   - la ligne Absorbé ne devrait pas exister dans le tableau, elle compte aussi le nombre de kill des défenseur sur les attaquant
+   - la division s'applique aussi aux dégâts de l'attaque ( je ne la vois pas dans le tableau)
+   - pour rappelle l'encaissement fonctionne exactement comme la contre attaque sauf qu'il divise les dégâts de l'attaquant et du défenseur par 2
+
+
+
+
+-------
+
+Secondaire:
+
 Trier les unités par type dans la sidebar
 Voir les combats en cours des autres joueurs
 N'afficher que les combats visibles (fog of war)

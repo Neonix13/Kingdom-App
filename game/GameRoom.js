@@ -434,8 +434,12 @@ class GameRoom {
       if (unit.q === null) continue;
       const unitTerrain = this.terrainData[hexKey(unit.q, unit.r)] || 'plain';
       const inForest = unitTerrain === 'forest';
-      let baseRange = inForest ? 2 : Math.max(3, unit.visionRange);
-      if (unit.typeId === 'espion') baseRange += inForest ? 2 : 5;
+      let baseRange;
+      if (unit.typeId === 'espion') {
+        baseRange = inForest ? 4 : 6;
+      } else {
+        baseRange = inForest ? 2 : Math.max(3, unit.visionRange);
+      }
       const myHeight = this.heightData[hexKey(unit.q, unit.r)] || 0;
       const heightBonus = unit.isGeneral ? myHeight * 2 : myHeight;
       const maxRange = baseRange + heightBonus;
@@ -453,11 +457,13 @@ class GameRoom {
           : baseRange + Math.max(0, myHeight - targetHeight);
         const isForest = this.terrainData[key] === 'forest';
         const isLowerForest = isForest && targetHeight < myHeight;
-        // Forêt bloque la vision, sauf général en hauteur qui voit DERRIÈRE (mais pas DANS)
+        // Forêt bloque la vision, sauf général en hauteur ou espion
         if (!inForest && isForest && d > 2) {
           if (unit.isGeneral && isLowerForest) {
-            // Le général en hauteur peut traverser la forêt inférieure visuellement,
-            // mais ne voit PAS la case forêt elle-même
+            // Le général en hauteur peut voir DERRIÈRE la forêt inférieure (pas DANS)
+          } else if (unit.typeId === 'espion') {
+            // L'espion voit à l'intérieur des forêts depuis l'extérieur, seulement à d≤4
+            if (d > 4) continue;
           } else {
             continue;
           }
@@ -588,7 +594,70 @@ class GameRoom {
       unit.facing = hexFacing(prevQ, prevR, path[last][0], path[last][1]);
     }
 
-    return { ok: true, unitId: unit.id, fromQ, fromR, path };
+    // Piétinement : char attaque automatiquement les unités traversées (hors destination)
+    const trampledAttacks = [];
+    if (unit.typeId === 'char' && path.length > 1) {
+      for (let i = 0; i < path.length - 1; i++) {
+        const [pq, pr] = path[i];
+        const enemy = this.unitMap[hexKey(pq, pr)];
+        if (enemy && enemy.playerId !== playerId) {
+          const log = this._resolveTrample(unit, enemy, playerId);
+          if (log) trampledAttacks.push(log);
+        }
+      }
+    }
+
+    return { ok: true, unitId: unit.id, fromQ, fromR, path, trampledAttacks };
+  }
+
+  _resolveTrample(attacker, target, playerId) {
+    const attackerPlayer = this.getPlayer(playerId);
+    let targetPlayer = null;
+    for (const p of this.players) {
+      if (p.id !== playerId) {
+        if (p.units.find(u => u.id === target.id)) { targetPlayer = p; break; }
+      }
+    }
+    if (!attackerPlayer || !targetPlayer) return null;
+
+    const result = this._resolveCombat(attacker, target, true, 'rien');
+
+    if (result.dmgReceived > 0) {
+      target.vitality = Math.max(0, target.vitality - result.dmgReceived);
+      attacker.damageDealt = (attacker.damageDealt || 0) + result.dmgReceived;
+    }
+    if (result.moralDmg > 0 && !target.isGeneral) {
+      target.morale = Math.max(0, target.morale - result.moralDmg);
+      if (target.morale <= 0 && !target.isFleeing) { target.stance = 'marche'; target.isFleeing = true; }
+    }
+
+    const combatLog = {
+      attackerName: attacker.name, targetName: target.name,
+      attackerPlayerId: playerId, targetPlayerId: targetPlayer.id,
+      defenderPlayerId: targetPlayer.id,
+      turn: this.turn, manche: this.manche,
+      defenseChoice: 'rien',
+      hit: result.hit, dmgReceived: result.dmgReceived, moralDmg: result.moralDmg,
+      defenseSuccess: false, counterDmgReceived: 0, counterMoralDmg: 0,
+      targetVitalityLeft: target.vitality, targetMoraleLeft: target.morale,
+      attackerVitalityLeft: attacker.vitality,
+      breakdown: result.breakdown,
+      trample: true,
+    };
+
+    if (target.vitality <= 0) {
+      combatLog.targetKilled = true;
+      targetPlayer.units = targetPlayer.units.filter(u => u.id !== target.id);
+      delete this.unitMap[hexKey(target.q, target.r)];
+      if (target.isGeneral) {
+        targetPlayer.isEliminated = true;
+        combatLog.generalKilled = true;
+        combatLog.eliminatedPlayer = targetPlayer.name;
+        this._checkVictory();
+      }
+    }
+
+    return combatLog;
   }
 
   // Terrain and stance helpers
@@ -767,7 +836,7 @@ class GameRoom {
     const dist = hexDistance(attacker.q, attacker.r, target.q, target.r);
     const hA = this.heightData[hexKey(attacker.q, attacker.r)] || 0;
     const hT = this.heightData[hexKey(target.q, target.r)] || 0;
-    const effectiveRange = (attacker.range || 1) + Math.max(0, hA - hT);
+    const effectiveRange = Math.max(1, (attacker.range || 1) + (hA - hT));
     if (dist > effectiveRange) return { error: `Cible hors de portée (distance: ${dist}, portée: ${effectiveRange}).` };
 
     // Deduct speed (all remaining, min 1 — Cavalier Léger : coûte 2)
@@ -778,7 +847,7 @@ class GameRoom {
     const attackId = `atk_${Date.now()}_${Math.random()}`;
     this.pendingAttacks[attackId] = { attackerPlayerId: playerId, attackerId, targetPlayerId: targetPlayer.id, targetId, dist };
 
-    return { pending: true, attackId, targetPlayerId: targetPlayer.id, attackerName: attacker.name, targetName: target.name, targetQ: target.q, targetR: target.r, isRanged: dist > 1, targetTypeId: target.typeId };
+    return { pending: true, attackId, targetPlayerId: targetPlayer.id, attackerName: attacker.name, targetName: target.name, targetQ: target.q, targetR: target.r, isRanged: dist > 1, targetTypeId: target.typeId, attackerTypeId: attacker.typeId };
   }
 
   resolveAttack(attackId, defenseChoice) {
@@ -925,7 +994,8 @@ class GameRoom {
 
     // Ratio d'armure défenseur
     const phalangeBonus = (!isCac && target.typeId === 'phalange') ? 2 : 0;
-    const effectiveArmorDef = Math.max(0, target.armor + (stD.armure || 0) + (tD.armure || 0) + phalangeBonus);
+    const lancierRangedBonus = (!isCac && target.typeId === 'lancier') ? 20 : 0;
+    const effectiveArmorDef = Math.max(0, target.armor + (stD.armure || 0) + (tD.armure || 0) + phalangeBonus + lancierRangedBonus);
     const ARDef = NGODef * effectiveArmorDef;
     const ratARDef = 1 - ARDef / (ARDef + 100);
 
@@ -939,19 +1009,23 @@ class GameRoom {
     const effectiveIntimidation = attacker.intimidation + (stA[`intimidation_${type}`] || 0) + (tA[`intimidation_${type}`] || 0);
     let moralDmg = attReussite * effectiveIntimidation;
 
-    // Defense choice — tir : seule la phalange peut absorber
+    // Defense choice — tir : seule la phalange peut absorber (sauf vs archers)
     if (!isCac) {
-      defenseChoice = (target.typeId === 'phalange' && defenseChoice === 'absorb') ? 'absorb' : 'rien';
+      const archerTypes = ['archer', 'archer_elite'];
+      const phalangeCanAbsorb = target.typeId === 'phalange' && !archerTypes.includes(attacker.typeId);
+      defenseChoice = (phalangeCanAbsorb && defenseChoice === 'absorb') ? 'absorb' : 'rien';
     }
 
     let defReussite = 0;
     let defenseSuccess = false;
     let counterDmgReceived = 0, counterMoralDmg = 0;
 
+    let defBase = null, defEff = null, effectiveArmorAtt = null, ARAtt = null, ratARAtt = null, effectivePowerDef = null, counterIntimidation = null;
+
     if (defenseChoice === 'counter') {
       // Défense effective
-      const defBase = target.isGeneral ? target.force : target.defense;
-      const defEff = defBase
+      defBase = target.isGeneral ? target.force : target.defense;
+      defEff = defBase
         + (stD[`defense_${type}`] || 0) + (tD[`defense_${type}`] || 0) + (segDef ? (segDef[`defense_${type}`] || 0) : 0)
         - (stA[`precision_${type}`] || 0) - (tA[`precision_${type}`] || 0)
         - heightDiff;
@@ -963,33 +1037,80 @@ class GameRoom {
       defenseSuccess = defReussite > 0;
 
       // Ratio d'armure attaquant
-      const effectiveArmorAtt = Math.max(0, attacker.armor + (stA.armure || 0) + (tA.armure || 0));
-      const ARAtt = NGOAtt * effectiveArmorAtt;
-      const ratARAtt = 1 - ARAtt / (ARAtt + 100);
+      effectiveArmorAtt = Math.max(0, attacker.armor + (stA.armure || 0) + (tA.armure || 0));
+      ARAtt = NGOAtt * effectiveArmorAtt;
+      ratARAtt = 1 - ARAtt / (ARAtt + 100);
 
-      // Dégâts contre-attaque
-      const effectivePowerDef = Math.max(1, target.power + (stD[`puissance_${type}`] || 0) + (tD[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0));
+      // Dégâts contre-attaque (lancier +6 puissance contre cavalerie/chars)
+      const lancierBonusDef = (target.typeId === 'lancier' && (attacker.category === 'Chevaux' || attacker.category === 'Chars')) ? 6 : 0;
+      effectivePowerDef = Math.max(1, target.power + (stD[`puissance_${type}`] || 0) + (tD[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0) + lancierBonusDef);
       counterDmgReceived = Math.round(defReussite * effectivePowerDef * ratARAtt);
 
       // Moral contre-attaque : Def_reussite × intimidation (0 si aucun succès)
-      const counterIntimidation = target.intimidation + (stD[`intimidation_${type}`] || 0) + (tD[`intimidation_${type}`] || 0);
+      counterIntimidation = target.intimidation + (stD[`intimidation_${type}`] || 0) + (tD[`intimidation_${type}`] || 0);
       counterMoralDmg = defReussite * counterIntimidation;
 
     } else if (defenseChoice === 'absorb') {
+      // Encaissement : même résolution que contre-attaque, mais dégâts ÷2 des deux côtés
+      defBase = target.isGeneral ? target.force : target.defense;
+      defEff = defBase
+        + (stD[`defense_${type}`] || 0) + (tD[`defense_${type}`] || 0) + (segDef ? (segDef[`defense_${type}`] || 0) : 0)
+        - (stA[`precision_${type}`] || 0) - (tA[`precision_${type}`] || 0)
+        - heightDiff;
+      for (let i = 0; i < NGODef; i++) {
+        if (Math.floor(Math.random() * 20) + 1 <= defEff) defReussite++;
+      }
+      defenseSuccess = defReussite > 0;
+      effectiveArmorAtt = Math.max(0, attacker.armor + (stA.armure || 0) + (tA.armure || 0));
+      ARAtt = NGOAtt * effectiveArmorAtt;
+      ratARAtt = 1 - ARAtt / (ARAtt + 100);
+      const lancierBonusDefAbsorb = (target.typeId === 'lancier' && (attacker.category === 'Chevaux' || attacker.category === 'Chars')) ? 6 : 0;
+      effectivePowerDef = Math.max(1, target.power + (stD[`puissance_${type}`] || 0) + (tD[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0) + lancierBonusDefAbsorb);
+      counterIntimidation = target.intimidation + (stD[`intimidation_${type}`] || 0) + (tD[`intimidation_${type}`] || 0);
+      // Les deux côtés ÷2
       dmgReceived = Math.ceil(dmgReceived / 2);
       moralDmg = Math.ceil(moralDmg / 2);
+      counterDmgReceived = Math.round(defReussite * effectivePowerDef * ratARAtt / 2);
+      counterMoralDmg = Math.round(defReussite * counterIntimidation / 2);
     }
 
     const breakdown = {
       NGOAtt, NGODef,
       attackBase, attackEff, attReussite,
-      effectiveArmorDef, ARDef,
+      // Attack modifiers (individual, for display)
+      modAtkStance:   (stA[`attack_${type}`] || 0) + (segDef ? (segDef[`attack_${type}`] || 0) : 0),
+      modAtkTerrain:  (tA[`attack_${type}`] || 0),
+      modEsquive:    -((stD[`esquive_${type}`] || 0) + (tD[`esquive_${type}`] || 0)),
+      modHauteur:     heightDiff,
+      effectiveArmorDef, ARDef, baseArmorDef: target.armor,
+      modArmorDefStance: (stD.armure || 0),
+      phalangeBonus, lancierRangedBonus,
+      modArmorDefTerrain: (tD.armure || 0),
       ratARDef: Math.round(ratARDef * 1000) / 1000,
-      effectivePowerAtt,
+      effectivePowerAtt, basePowerAtt: attacker.power, lancierBonus,
+      modPwrAtt: (stA[`puissance_${type}`] || 0) + (tA[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0),
       degatsUnitaire: Math.round(degatsUnitaire * 100) / 100,
       dmgReceived,
-      defReussite: defenseChoice === 'counter' ? defReussite : null,
+      defBase, defEff, defReussite: (defenseChoice === 'counter' || defenseChoice === 'absorb') ? defReussite : null,
+      // Defense modifiers (counter + absorb)
+      modDefStance:   (defenseChoice === 'counter' || defenseChoice === 'absorb') ? ((stD[`defense_${type}`] || 0) + (segDef ? (segDef[`defense_${type}`] || 0) : 0)) : null,
+      modDefTerrain:  (defenseChoice === 'counter' || defenseChoice === 'absorb') ? (tD[`defense_${type}`] || 0) : null,
+      modPrecision:   (defenseChoice === 'counter' || defenseChoice === 'absorb') ? -((stA[`precision_${type}`] || 0) + (tA[`precision_${type}`] || 0)) : null,
+      modHauteurDef:  (defenseChoice === 'counter' || defenseChoice === 'absorb') ? -heightDiff : null,
+      effectivePowerDef, basePowerDef: target.power,
+      lancierBonusDef: (defenseChoice === 'counter' || defenseChoice === 'absorb') ? ((target.typeId === 'lancier' && (attacker.category === 'Chevaux' || attacker.category === 'Chars')) ? 6 : 0) : null,
+      modPwrDef: (defenseChoice === 'counter' || defenseChoice === 'absorb') ? ((stD[`puissance_${type}`] || 0) + (tD[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0)) : null,
+      effectiveArmorAtt, baseArmorAtt: attacker.armor,
+      modArmorAttStance: (defenseChoice === 'counter' || defenseChoice === 'absorb') ? (stA.armure || 0) : null,
+      modArmorAttTerrain: (defenseChoice === 'counter' || defenseChoice === 'absorb') ? (tA.armure || 0) : null,
+      ARAtt,
+      ratARAtt: ratARAtt !== null ? Math.round(ratARAtt * 1000) / 1000 : null,
       counterDmgReceived, counterMoralDmg,
+      effectiveIntimidation,
+      modIntimAtt: (stA[`intimidation_${type}`] || 0) + (tA[`intimidation_${type}`] || 0),
+      counterIntimidation,
+      modIntimDef: (defenseChoice === 'counter' || defenseChoice === 'absorb') ? ((stD[`intimidation_${type}`] || 0) + (tD[`intimidation_${type}`] || 0)) : null,
+      moralDmg,
       defenseChoice,
       attackerStance: attacker.stance,
       defenderStance: target.stance,
