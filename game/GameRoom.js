@@ -1001,7 +1001,7 @@ class GameRoom {
     // Ratio d'armure défenseur
     const phalangeBonus = (!isCac && target.typeId === 'phalange') ? 20 : 0;
     const lancierRangedBonus = (!isCac && target.typeId === 'lancier') ? 20 : 0;
-    const effectiveArmorDef = Math.max(0, target.armor + (stD.armure || 0) + (tD.armure || 0) + phalangeBonus + lancierRangedBonus);
+    const effectiveArmorDef = Math.max(0, target.armor + (stD.armure || 0) + (tD.armure || 0) + phalangeBonus + lancierRangedBonus + (segDef ? (segDef[`defense_armure_${type}`] || 0) : 0));
     const ARDef = NGODef * effectiveArmorDef;
     const ratARDef = 1 - ARDef / (ARDef + 100);
 
@@ -1019,7 +1019,7 @@ class GameRoom {
     }
 
     // Moral damage
-    const effectiveIntimidation = attacker.intimidation + (stA[`intimidation_${type}`] || 0) + (tA[`intimidation_${type}`] || 0);
+    const effectiveIntimidation = attacker.intimidation + (stA[`intimidation_${type}`] || 0) + (tA[`intimidation_${type}`] || 0) + (segDef ? (segDef[`intimidation_${type}`] || 0) : 0);
     let moralDmg;
     if (attacker.isGeneral) {
       // (Charisme - D20 + 80) * intimidation / 100 (même D20 que l'attaque)
@@ -1054,13 +1054,13 @@ class GameRoom {
         - heightDiff;
 
       // Ratio d'armure attaquant (même formule que pour les unités)
-      effectiveArmorAtt = Math.max(0, attacker.armor + (stA.armure || 0) + (tA.armure || 0));
+      effectiveArmorAtt = Math.max(0, attacker.armor + (stA.armure || 0) + (tA.armure || 0) + (segDef ? (segDef[`armure_${type}`] || 0) : 0));
       ARAtt = NGOAtt * effectiveArmorAtt;
       ratARAtt = 1 - ARAtt / (ARAtt + 100);
 
-      counterIntimidation = target.intimidation + (stD[`intimidation_${type}`] || 0) + (tD[`intimidation_${type}`] || 0);
+      counterIntimidation = target.intimidation + (stD[`intimidation_${type}`] || 0) + (tD[`intimidation_${type}`] || 0) + (segDef ? (segDef[`defense_intimidation_${type}`] || 0) : 0);
       const lancierBonusDef = (target.typeId === 'lancier' && (attacker.category === 'Chevaux' || attacker.category === 'Chars')) ? 6 : 0;
-      effectivePowerDef = Math.max(1, target.power + (stD[`puissance_${type}`] || 0) + (tD[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0) + lancierBonusDef);
+      effectivePowerDef = Math.max(1, target.power + (stD[`puissance_${type}`] || 0) + (tD[`puissance_${type}`] || 0) + (segDef ? (segDef[`defense_puissance_${type}`] || 0) : 0) + lancierBonusDef);
 
       if (target.isGeneral) {
         // Formule spéciale général : ((Force - D20 + 80) × Puissance / 5 × ratARAtt) / 2
@@ -1117,7 +1117,7 @@ class GameRoom {
       modHauteurDef:  (defenseChoice === 'counter' || defenseChoice === 'absorb') ? -heightDiff : null,
       effectivePowerDef, basePowerDef: target.power,
       lancierBonusDef: (defenseChoice === 'counter' || defenseChoice === 'absorb') ? ((target.typeId === 'lancier' && (attacker.category === 'Chevaux' || attacker.category === 'Chars')) ? 6 : 0) : null,
-      modPwrDef: (defenseChoice === 'counter' || defenseChoice === 'absorb') ? ((stD[`puissance_${type}`] || 0) + (tD[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0)) : null,
+      modPwrDef: (defenseChoice === 'counter' || defenseChoice === 'absorb') ? ((stD[`puissance_${type}`] || 0) + (tD[`puissance_${type}`] || 0) + (segDef ? (segDef[`defense_puissance_${type}`] || 0) : 0)) : null,
       effectiveArmorAtt, baseArmorAtt: attacker.armor,
       modArmorAttStance: (defenseChoice === 'counter' || defenseChoice === 'absorb') ? (stA.armure || 0) : null,
       modArmorAttTerrain: (defenseChoice === 'counter' || defenseChoice === 'absorb') ? (tA.armure || 0) : null,
