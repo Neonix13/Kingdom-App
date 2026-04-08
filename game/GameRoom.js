@@ -1019,7 +1019,8 @@ class GameRoom {
     }
 
     // Moral damage
-    const effectiveIntimidation = attacker.intimidation + (stA[`intimidation_${type}`] || 0) + (tA[`intimidation_${type}`] || 0) + (segDef ? (segDef[`intimidation_${type}`] || 0) : 0);
+    const effectiveIntimidation = attacker.intimidation + (stA[`intimidation_${type}`] || 0) + (tA[`intimidation_${type}`] || 0) + (segDef ? (segDef[`intimidation_${type}`] || 0) : 0)
+      - (stD[`courage_${type}`] || 0) - (tD[`courage_${type}`] || 0);
     let moralDmg;
     if (attacker.isGeneral) {
       // (Charisme - D20 + 80) * intimidation / 100 (même D20 que l'attaque)
@@ -1058,7 +1059,8 @@ class GameRoom {
       ARAtt = NGOAtt * effectiveArmorAtt;
       ratARAtt = 1 - ARAtt / (ARAtt + 100);
 
-      counterIntimidation = target.intimidation + (stD[`intimidation_${type}`] || 0) + (tD[`intimidation_${type}`] || 0) + (segDef ? (segDef[`defense_intimidation_${type}`] || 0) : 0);
+      counterIntimidation = target.intimidation + (stD[`intimidation_${type}`] || 0) + (tD[`intimidation_${type}`] || 0) + (segDef ? (segDef[`defense_intimidation_${type}`] || 0) : 0)
+        - (stA[`courage_${type}`] || 0) - (tA[`courage_${type}`] || 0);
       const lancierBonusDef = (target.typeId === 'lancier' && (attacker.category === 'Chevaux' || attacker.category === 'Chars')) ? 6 : 0;
       effectivePowerDef = Math.max(1, target.power + (stD[`puissance_${type}`] || 0) + (tD[`puissance_${type}`] || 0) + (segDef ? (segDef[`defense_puissance_${type}`] || 0) : 0) + lancierBonusDef);
 
@@ -1126,8 +1128,10 @@ class GameRoom {
       counterDmgReceived, counterMoralDmg,
       effectiveIntimidation,
       modIntimAtt: (stA[`intimidation_${type}`] || 0) + (tA[`intimidation_${type}`] || 0),
+      modCourageDef: -((stD[`courage_${type}`] || 0) + (tD[`courage_${type}`] || 0)),
       counterIntimidation,
       modIntimDef: (defenseChoice === 'counter' || defenseChoice === 'absorb') ? ((stD[`intimidation_${type}`] || 0) + (tD[`intimidation_${type}`] || 0)) : null,
+      modCourageAtt: (defenseChoice === 'counter' || defenseChoice === 'absorb') ? -((stA[`courage_${type}`] || 0) + (tA[`courage_${type}`] || 0)) : null,
       moralDmg,
       attackerCharisma: attacker.isGeneral ? attacker.charisma : null,
       defenderCharisma: target.isGeneral ? target.charisma : null,

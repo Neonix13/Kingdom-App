@@ -166,12 +166,12 @@ const stanceList = ['marche','combat','charge','repos','defense_combat','defense
 const stanceIconFiles = { marche:'marche', combat:'combat', charge:'charge', repos:'repos', defense_combat:'def_charge', defense_distance:'def_eparse' };
 const stanceNames = { marche:'Marche', combat:'Combat', charge:'Charge', repos:'Repos', defense_combat:'Déf. combat', defense_distance:'Déf. distance' };
 const TERRAINS_DATA = {
-  plain:    { name:'Plaines',    vitesse:0,  attack_cac:0,  attack_tir:0,  defense_cac:0,  defense_tir:0,  puissance_cac:0,  puissance_tir:0,  intimidation_cac:0,  intimidation_tir:0,  esquive_cac:0,  esquive_tir:0,  precision_cac:0,  precision_tir:0,  armure:0,  moral_tour:0 },
-  forest:   { name:'Forêts',    vitesse:-1, attack_cac:-1, attack_tir:-2, defense_cac:+2, defense_tir:+2, puissance_cac:-1, puissance_tir:-2, intimidation_cac:+1, intimidation_tir:+1, esquive_cac:+2, esquive_tir:+2, precision_cac:-1, precision_tir:-2, armure:+1, moral_tour:0 },
-  river:    { name:'Fleuves',   vitesse:-1, attack_cac:-3, attack_tir:-3, defense_cac:-3, defense_tir:-3, puissance_cac:-3, puissance_tir:-2, intimidation_cac:-2, intimidation_tir:+2, esquive_cac:-2, esquive_tir:-2, precision_cac:-2, precision_tir:-2, armure:-1, moral_tour:0 },
-  road:     { name:'Routes',    vitesse:+1, attack_cac:+2, attack_tir:+1, defense_cac:0,  defense_tir:-1, puissance_cac:+1, puissance_tir:+1, intimidation_cac:+1, intimidation_tir:+1, esquive_cac:-1, esquive_tir:-2, precision_cac:+2, precision_tir:+1, armure:0,  moral_tour:0 },
-  building: { name:'Bâtiments', vitesse:-1, attack_cac:-1, attack_tir:-3, defense_cac:+4, defense_tir:+2, puissance_cac:0,  puissance_tir:-1, intimidation_cac:0,  intimidation_tir:0,  esquive_cac:+2, esquive_tir:+4, precision_cac:+1, precision_tir:+1, armure:+2, moral_tour:0 },
-  bridge:   { name:'Ponts',     vitesse:-1, attack_cac:0,  attack_tir:+1, defense_cac:+2, defense_tir:+1, puissance_cac:-1, puissance_tir:0,  intimidation_cac:+1, intimidation_tir:0,  esquive_cac:+1, esquive_tir:-2, precision_cac:+1, precision_tir:+1, armure:0,  moral_tour:0 },
+  plain:    { name:'Plaines',    vitesse:0,  attack_cac:0,  attack_tir:0,  defense_cac:0,  defense_tir:0,  puissance_cac:0,  puissance_tir:0,  intimidation_cac:0,  intimidation_tir:0,  courage_cac:0,  courage_tir:0,  esquive_cac:0,  esquive_tir:0,  precision_cac:0,  precision_tir:0,  armure:0,  armure_tour:0, moral_tour:0,  vitalite_tour:0 },
+  forest:   { name:'Forêts',    vitesse:-1, attack_cac:0,  attack_tir:-1, defense_cac:+2, defense_tir:+2, puissance_cac:0,  puissance_tir:-1, intimidation_cac:+2, intimidation_tir:+2, courage_cac:-1, courage_tir:-2, esquive_cac:+1, esquive_tir:+2, precision_cac:-1, precision_tir:-1, armure:+1, armure_tour:0, moral_tour:0,  vitalite_tour:0 },
+  river:    { name:'Fleuves',   vitesse:-1, attack_cac:-3, attack_tir:-2, defense_cac:-3, defense_tir:-3, puissance_cac:-2, puissance_tir:-2, intimidation_cac:-2, intimidation_tir:-2, courage_cac:-2, courage_tir:-2, esquive_cac:-2, esquive_tir:-2, precision_cac:-2, precision_tir:-1, armure:-1, armure_tour:0, moral_tour:0,  vitalite_tour:0 },
+  road:     { name:'Routes',    vitesse:+1, attack_cac:+1, attack_tir:+1, defense_cac:0,  defense_tir:0,  puissance_cac:+1, puissance_tir:0,  intimidation_cac:+1, intimidation_tir:0,  courage_cac:+1, courage_tir:+1, esquive_cac:-1, esquive_tir:-1, precision_cac:+1, precision_tir:+1, armure:0,  armure_tour:0, moral_tour:0,  vitalite_tour:0 },
+  building: { name:'Bâtiments', vitesse:-1, attack_cac:-1, attack_tir:-3, defense_cac:+2, defense_tir:+2, puissance_cac:0,  puissance_tir:-1, intimidation_cac:+1, intimidation_tir:+2, courage_cac:+1, courage_tir:+1, esquive_cac:+2, esquive_tir:+4, precision_cac:-1, precision_tir:-1, armure:+2, armure_tour:0, moral_tour:+10, vitalite_tour:+5 },
+  bridge:   { name:'Ponts',     vitesse:0,  attack_cac:0,  attack_tir:+1, defense_cac:+1, defense_tir:+1, puissance_cac:0,  puissance_tir:0,  intimidation_cac:+1, intimidation_tir:0,  courage_cac:0,  courage_tir:-1, esquive_cac:+1, esquive_tir:-1, precision_cac:0,  precision_tir:+1, armure:0,  armure_tour:0, moral_tour:0,  vitalite_tour:0 },
 };
 let STANCES_DATA = {};
 fetch('/data/stances.json').then(r => r.json()).then(data => { STANCES_DATA = data; render(); }).catch(() => {});
@@ -2549,11 +2549,15 @@ function buildTerrainTooltip(terrainType) {
     ['Défense',      t.defense_cac,     t.defense_tir],
     ['Puissance',    t.puissance_cac,   t.puissance_tir],
     ['Intimidation', t.intimidation_cac,t.intimidation_tir],
+    ['Courage',      t.courage_cac,     t.courage_tir],
     ['Esquive',      t.esquive_cac,     t.esquive_tir],
     ['Précision',    t.precision_cac,   t.precision_tir],
   ], showTirT);
-  if (t.vitesse !== 0) html += `<div class="tt-extra">${cell1(t.vitesse)} Vitesse</div>`;
-  if (t.armure  !== 0) html += `<div class="tt-extra">${cell1(t.armure)} Armure</div>`;
+  if (t.vitesse      !== 0) html += `<div class="tt-extra">${cell1(t.vitesse)} Vitesse</div>`;
+  if (t.armure       !== 0) html += `<div class="tt-extra">${cell1(t.armure)} Armure</div>`;
+  if (t.armure_tour  !== 0) html += `<div class="tt-extra">${cell1(t.armure_tour)} Armure/tour</div>`;
+  if (t.moral_tour   !== 0) html += `<div class="tt-extra">${cell1(t.moral_tour)} Moral/tour</div>`;
+  if (t.vitalite_tour !== 0) html += `<div class="tt-extra">${cell1(t.vitalite_tour)} Vita/tour</div>`;
   return html;
 }
 
@@ -2628,6 +2632,7 @@ function buildStanceTooltip(stanceId) {
     ['Défense',      s.defense_cac,      s.defense_tir],
     ['Puissance',    s.puissance_cac,    s.puissance_tir],
     ['Intimidation', s.intimidation_cac, s.intimidation_tir],
+    ['Courage',      s.courage_cac,      s.courage_tir],
     ['Esquive',      s.esquive_cac,      s.esquive_tir],
     ['Précision',    s.precision_cac,    s.precision_tir],
   ], isRanged);
