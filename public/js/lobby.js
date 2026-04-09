@@ -36,34 +36,21 @@ let myId = null;
 let roomCode = null;
 let isHost = false;
 let selectedGeneral = null;
-let selectedColor = '#4a90d9';
+let selectedFlag = null;
 
-const PLAYER_COLORS = [
-  { hex: '#4a90d9', name: 'Bleu' },
-  { hex: '#e05050', name: 'Rouge' },
-  { hex: '#50c050', name: 'Vert' },
-  { hex: '#e0a030', name: 'Or' },
-  { hex: '#a050d0', name: 'Violet' },
-  { hex: '#e07840', name: 'Orange' },
-  { hex: '#40c0c0', name: 'Cyan' },
-  { hex: '#e050a0', name: 'Rose' },
-  { hex: '#ffffff', name: 'Blanc' },
+const FLAGS = [
+  { id: 'qin',  name: 'Qin',  file: 'Quin.webp', color: '#1a5fa8' },
+  { id: 'zhao', name: 'Zhao', file: 'Zhao.webp', color: '#e07820' },
+  { id: 'wei',  name: 'Wei',  file: 'Wei.webp',  color: '#1a7a3a' },
+  { id: 'chu',  name: 'Chu',  file: 'Chu.webp',  color: '#20b8c8' },
+  { id: 'yan',  name: 'Yan',  file: 'Yan.webp',  color: '#c8b84a' },
+  { id: 'qi',   name: 'Qi',   file: 'Qi.webp',   color: '#e8e8e8' },
+  { id: 'han',  name: 'Han',  file: 'Han.webp',  color: '#9060c0' },
 ];
 
-function initColorPicker() {
-  const container = document.getElementById('player-color-picker');
-  if (!container) return;
-  container.innerHTML = PLAYER_COLORS.map(c => `
-    <div class="color-swatch${c.hex === selectedColor ? ' active' : ''}"
-      title="${c.name}"
-      style="width:24px;height:24px;border-radius:50%;background:${c.hex};cursor:pointer;border:2px solid ${c.hex === selectedColor ? '#fff' : 'transparent'};transition:border 0.15s"
-      onclick="pickColor('${c.hex}')"></div>
-  `).join('');
-}
-
-function pickColor(hex) {
-  selectedColor = hex;
-  wsSend('set_player_color', { roomCode, color: hex });
+function pickFlag(flagId) {
+  selectedFlag = flagId;
+  wsSend('set_player_flag', { roomCode, flagId });
 }
 let armyQuantities = {};
 let budget = 15000;
@@ -83,17 +70,17 @@ const GENERAL_IMAGE1_MAP = {
 };
 
 const GENERALS_DATA = [
-  { id:'ou_ki', name:'Ou Ki', kingdom:'QIN', force:15, strategy:16, charisma:18, vitality:240, armor:4, weapon:{name:'Naginata',damage:12}, activeAbility:{name:'Sourire du Monstre',description:"Augmente la puissance de l'armée de 2 pendant 2 tours. Si l'armée ennemie est en infériorité numérique, réduit le moral de chaque unité adverse de 1.",cooldown:3}, passiveAbility:{name:'Oiseau Colossale',description:"Les généraux ennemis ont -3 en Force, Stratégie et Charisme. Les unités de l'armée d'Ou Ki ont +1 d'intimidation."}, citation:"«Ne l'as-tu pas encore compris ? La guerre, c'est amusant !»" },
-  { id:'mou_bu', name:'Mou Bu', kingdom:'QIN', force:18, strategy:12, charisma:15, vitality:320, armor:6, weapon:{name:'Masse',damage:14}, activeAbility:{name:'Poing du Titan',description:"Réduit l'armure d'une armée ennemie de 1 pendant 2 tours. Les unités ciblées éliminées octroient +1 de puissance à l'unité jusqu'à la fin de la journée.",cooldown:3}, passiveAbility:{name:'Force Inégalée',description:"Augmente la puissance des unités de l'armée de Mou Bu de 1."}, citation:"«Ce n'est pas la stratégie qui gagne les guerres… c'est la force !»" },
-  { id:'ou_sen', name:'Ou Sen', kingdom:'QIN', force:13, strategy:17, charisma:14, vitality:220, armor:5, weapon:{name:'Naginata',damage:12}, activeAbility:{name:"L'Architecte de la Guerre",description:"Réduit l'attaque et la vitesse d'une armée ennemie de 2 pendant 3 tours, et augmente la portée des unités à distance de l'armée de 200m pendant 2 tours.",cooldown:4}, passiveAbility:{name:'Forteresse Imprenable',description:"Les unités de l'armée d'Ou Sen gagnent 2 d'armure et subissent 1 d'intimidation en moins en position défensive."}, citation:"«La guerre n'est pas un duel de force… mais un jeu d'esprit où le perdant ne se relève jamais.»" },
-  { id:'kan_ki', name:'Kan Ki', kingdom:'QIN', force:14, strategy:16, charisma:16, vitality:220, armor:3, weapon:{name:'Arc',damage:8}, activeAbility:{name:'Tactiques Infernales',description:"Choisit 3 unités qui peuvent se déployer n'importe où sur le champ de bataille. Ces unités gagnent 2 de puissance et 1 d'intimidation pour la journée et ne subissent pas de malus d'éloignement.",cooldown:5}, passiveAbility:{name:'Terreur Psychologique',description:"Augmente l'intimidation des unités de 1 par embuscade réussie jusqu'à la fin de la bataille."}, citation:"«La guerre n'a jamais eu de règles. Ce sont juste les idiots qui s'en inventent.»" },
-  { id:'ri_boku', name:'Ri Boku', kingdom:'ZHAO', force:11, strategy:18, charisma:15, vitality:180, armor:2, weapon:{name:'Sabre',damage:10}, activeAbility:{name:'Vision du Sage',description:"Révèle l'emplacement d'une unité ennemie en embuscade.",cooldown:2}, passiveAbility:{name:'Maître de la Guerre Totale',description:"Lors d'un conflit, si une unité de l'armée est en avantage, elle reçoit un bonus de 1 en attaque ou en défense."}, citation:"«Gagner une guerre sans combattre est la plus grande des victoires.»" },
-  { id:'kei_sha', name:'Kei Sha', kingdom:'ZHAO', force:13, strategy:16, charisma:13, vitality:240, armor:4, weapon:{name:'Sabre',damage:10}, activeAbility:{name:'Piège Mortel',description:"Toute l'armée de Kei Sha recule instantanément de 2 cases et obtient un bonus de 1 de défense pendant les 2 prochains tours.",cooldown:4}, passiveAbility:{name:'Danse de la Guerre',description:"Chaque fois qu'une unité de l'armée de Kei Sha défend, l'unité adverse qui attaque perd 1 de vitalité en ignorant l'armure."}, citation:"«La guerre est un art, et seuls les plus fins stratèges en maîtrisent toutes les nuances.»" },
-  { id:'shi_ba_shou', name:'Shi Ba Shou', kingdom:'ZHAO', force:17, strategy:15, charisma:18, vitality:240, armor:4, weapon:{name:'Naginata',damage:12}, activeAbility:{name:'Forteresse Inviolable',description:"Les unités de l'armée en position de défense gagnent 5 d'armure pendant 2 tours et annule la charge d'une unité.",cooldown:4}, passiveAbility:{name:'Loyauté Absolue',description:"Lorsqu'une unité alliée est détruite, les unités alliées dans un rayon de 400m regagnent 1 de vitalité."}, citation:"«Tant que Zhao aura besoin de moi, je resterai son bouclier.»" },
-  { id:'ren_pa', name:'Ren Pa', kingdom:'ZHAO/WEI', force:17, strategy:16, charisma:17, vitality:310, armor:5, weapon:{name:'Naginata',damage:12}, activeAbility:{name:'Furie Martial',description:"Si une unité ennemie possède 12 de vitalité ou moins et se trouve au corps à corps avec Ren Pa, détruit cette unité peu importe son type.",cooldown:3}, passiveAbility:{name:'Volonté Indomptable',description:"La troupe de Ren Pa continue de se battre pendant 1 tour après avoir été démoralisée."}, citation:"«Un vrai guerrier ne fuit jamais la bataille. Seuls les faibles se cachent derrière les mots.»" },
-  { id:'go_kei', name:'Go Kei', kingdom:'WEI', force:14, strategy:17, charisma:15, vitality:240, armor:4, weapon:{name:'Sabre',damage:10}, activeAbility:{name:'Rempart Inébranlable',description:"Les unités de l'armée de Go Kei obtiennent 3 de défense et 2 de puissance supplémentaires en position de défense pendant 2 tours.",cooldown:3}, passiveAbility:{name:'Gardien de Wei',description:"Lorsqu'une unité de l'armée de Go Kei tue une unité ennemie en position de défense, l'unité gagne 1 de puissance et 1 de défense jusqu'à la fin de la bataille."}, citation:"«Un général qui se précipite vers la bataille a déjà perdu. Celui qui attend son heure triomphe sans effort.»" },
-  { id:'go_hou_mei', name:'Go Hou Mei', kingdom:'WEI', force:10, strategy:18, charisma:15, vitality:160, armor:2, weapon:{name:'-',damage:6}, activeAbility:{name:'Esprit Tactique Inégalé',description:"À la fin d'un tour, Go Hou Mei peut rejouer un de ses officiers ainsi que la troupe sous son commandement, mais ne peut pas attaquer.",cooldown:3}, passiveAbility:{name:'Génie Militaire',description:"Si Go Hou Mei réussit le test de Stratégie et commence le tour, ses unités ont +1 d'attaque et de défense."}, citation:"«La guerre est un jeu d'échecs où chaque mouvement détermine le vainqueur avant même que l'ennemi ne s'en rende compte.»" },
-  { id:'gai_mou', name:'Gai Mou', kingdom:'WEI', force:18, strategy:12, charisma:15, vitality:360, armor:4, weapon:{name:'Naginata',damage:12}, activeAbility:{name:'Rugissement du Lion',description:"Toutes les troupes ennemies (à l'exception des officiers) perdent 1 d'intimidation dans un rayon de 1000m autour de Gai Mou.",cooldown:3}, passiveAbility:{name:'Fierté Inflexible',description:"Lors d'un combat impliquant une unité de l'armée de Gai Mou, si l'unité adverse est en supériorité numérique (plus de vitalité), l'unité alliée obtient un bonus de 1 de puissance."}, citation:"«Que ce soit dix, cent ou mille ennemis… je les écraserai tous de mes propres mains !»" },
+  { id:'ou_ki', name:'Ou Ki', kingdom:'QIN', force:15, strategy:16, charisma:18, vitality:240, armor:4, power:8, intimidation:7, weapon:{name:'Naginata',damage:12}, activeAbility:{name:'Sourire du Monstre',description:"Augmente la puissance de l'armée de 2 pendant 2 tours. Si l'armée ennemie est en infériorité numérique, réduit le moral de chaque unité adverse de 1.",cooldown:3}, passiveAbility:{name:'Oiseau Colossale',description:"Les généraux ennemis ont -3 en Force, Stratégie et Charisme. Les unités de l'armée d'Ou Ki ont +1 d'intimidation."}, citation:"«Ne l'as-tu pas encore compris ? La guerre, c'est amusant !»" },
+  { id:'mou_bu', name:'Mou Bu', kingdom:'QIN', force:18, strategy:12, charisma:15, vitality:320, armor:6, power:9, intimidation:7, weapon:{name:'Masse',damage:14}, activeAbility:{name:'Poing du Titan',description:"Réduit l'armure d'une armée ennemie de 1 pendant 2 tours. Les unités ciblées éliminées octroient +1 de puissance à l'unité jusqu'à la fin de la journée.",cooldown:3}, passiveAbility:{name:'Force Inégalée',description:"Augmente la puissance des unités de l'armée de Mou Bu de 1."}, citation:"«Ce n'est pas la stratégie qui gagne les guerres… c'est la force !»" },
+  { id:'ou_sen', name:'Ou Sen', kingdom:'QIN', force:13, strategy:17, charisma:14, vitality:220, armor:5, power:7, intimidation:6, weapon:{name:'Naginata',damage:12}, activeAbility:{name:"L'Architecte de la Guerre",description:"Réduit l'attaque et la vitesse d'une armée ennemie de 2 pendant 3 tours, et augmente la portée des unités à distance de l'armée de 200m pendant 2 tours.",cooldown:4}, passiveAbility:{name:'Forteresse Imprenable',description:"Les unités de l'armée d'Ou Sen gagnent 2 d'armure et subissent 1 d'intimidation en moins en position défensive."}, citation:"«La guerre n'est pas un duel de force… mais un jeu d'esprit où le perdant ne se relève jamais.»" },
+  { id:'kan_ki', name:'Kan Ki', kingdom:'QIN', force:14, strategy:16, charisma:16, vitality:220, armor:3, power:6, intimidation:7, weapon:{name:'Arc',damage:8}, activeAbility:{name:'Tactiques Infernales',description:"Choisit 3 unités qui peuvent se déployer n'importe où sur le champ de bataille. Ces unités gagnent 2 de puissance et 1 d'intimidation pour la journée et ne subissent pas de malus d'éloignement.",cooldown:5}, passiveAbility:{name:'Terreur Psychologique',description:"Augmente l'intimidation des unités de 1 par embuscade réussie jusqu'à la fin de la bataille."}, citation:"«La guerre n'a jamais eu de règles. Ce sont juste les idiots qui s'en inventent.»" },
+  { id:'ri_boku', name:'Ri Boku', kingdom:'ZHAO', force:11, strategy:18, charisma:15, vitality:180, armor:2, power:7, intimidation:6, weapon:{name:'Sabre',damage:10}, activeAbility:{name:'Vision du Sage',description:"Révèle l'emplacement d'une unité ennemie en embuscade.",cooldown:2}, passiveAbility:{name:'Maître de la Guerre Totale',description:"Lors d'un conflit, si une unité de l'armée est en avantage, elle reçoit un bonus de 1 en attaque ou en défense."}, citation:"«Gagner une guerre sans combattre est la plus grande des victoires.»" },
+  { id:'kei_sha', name:'Kei Sha', kingdom:'ZHAO', force:13, strategy:16, charisma:13, vitality:240, armor:4, power:6, intimidation:6, weapon:{name:'Sabre',damage:10}, activeAbility:{name:'Piège Mortel',description:"Toute l'armée de Kei Sha recule instantanément de 2 cases et obtient un bonus de 1 de défense pendant les 2 prochains tours.",cooldown:4}, passiveAbility:{name:'Danse de la Guerre',description:"Chaque fois qu'une unité de l'armée de Kei Sha défend, l'unité adverse qui attaque perd 1 de vitalité en ignorant l'armure."}, citation:"«La guerre est un art, et seuls les plus fins stratèges en maîtrisent toutes les nuances.»" },
+  { id:'shi_ba_shou', name:'Shi Ba Shou', kingdom:'ZHAO', force:17, strategy:15, charisma:18, vitality:240, armor:4, power:8, intimidation:6, weapon:{name:'Naginata',damage:12}, activeAbility:{name:'Forteresse Inviolable',description:"Les unités de l'armée en position de défense gagnent 5 d'armure pendant 2 tours et annule la charge d'une unité.",cooldown:4}, passiveAbility:{name:'Loyauté Absolue',description:"Lorsqu'une unité alliée est détruite, les unités alliées dans un rayon de 400m regagnent 1 de vitalité."}, citation:"«Tant que Zhao aura besoin de moi, je resterai son bouclier.»" },
+  { id:'ren_pa', name:'Ren Pa', kingdom:'CHU', force:17, strategy:16, charisma:17, vitality:310, armor:5, power:8, intimidation:7, weapon:{name:'Naginata',damage:12}, activeAbility:{name:'Furie Martial',description:"Si une unité ennemie possède 12 de vitalité ou moins et se trouve au corps à corps avec Ren Pa, détruit cette unité peu importe son type.",cooldown:3}, passiveAbility:{name:'Volonté Indomptable',description:"La troupe de Ren Pa continue de se battre pendant 1 tour après avoir été démoralisée."}, citation:"«Un vrai guerrier ne fuit jamais la bataille. Seuls les faibles se cachent derrière les mots.»" },
+  { id:'go_kei', name:'Go Kei', kingdom:'WEI', force:14, strategy:17, charisma:15, vitality:240, armor:4, power:6, intimidation:7, weapon:{name:'Sabre',damage:10}, activeAbility:{name:'Rempart Inébranlable',description:"Les unités de l'armée de Go Kei obtiennent 3 de défense et 2 de puissance supplémentaires en position de défense pendant 2 tours.",cooldown:3}, passiveAbility:{name:'Gardien de Wei',description:"Lorsqu'une unité de l'armée de Go Kei tue une unité ennemie en position de défense, l'unité gagne 1 de puissance et 1 de défense jusqu'à la fin de la bataille."}, citation:"«Un général qui se précipite vers la bataille a déjà perdu. Celui qui attend son heure triomphe sans effort.»" },
+  { id:'go_hou_mei', name:'Go Hou Mei', kingdom:'WEI', force:10, strategy:18, charisma:15, vitality:160, armor:2, power:5, intimidation:6, weapon:{name:'-',damage:6}, activeAbility:{name:'Esprit Tactique Inégalé',description:"À la fin d'un tour, Go Hou Mei peut rejouer un de ses officiers ainsi que la troupe sous son commandement, mais ne peut pas attaquer.",cooldown:3}, passiveAbility:{name:'Génie Militaire',description:"Si Go Hou Mei réussit le test de Stratégie et commence le tour, ses unités ont +1 d'attaque et de défense."}, citation:"«La guerre est un jeu d'échecs où chaque mouvement détermine le vainqueur avant même que l'ennemi ne s'en rende compte.»" },
+  { id:'gai_mou', name:'Gai Mou', kingdom:'WEI', force:18, strategy:12, charisma:15, vitality:360, armor:4, power:9, intimidation:7, weapon:{name:'Naginata',damage:12}, activeAbility:{name:'Rugissement du Lion',description:"Toutes les troupes ennemies (à l'exception des officiers) perdent 1 d'intimidation dans un rayon de 1000m autour de Gai Mou.",cooldown:3}, passiveAbility:{name:'Fierté Inflexible',description:"Lors d'un combat impliquant une unité de l'armée de Gai Mou, si l'unité adverse est en supériorité numérique (plus de vitalité), l'unité alliée obtient un bonus de 1 de puissance."}, citation:"«Que ce soit dix, cent ou mille ennemis… je les écraserai tous de mes propres mains !»" },
 ];
 
 const UNIT_IMAGE1_MAP = {
@@ -130,6 +117,9 @@ function show(id) {
   ['screen-home', 'screen-lobby', 'screen-army'].forEach(s => {
     document.getElementById(s).style.display = s === id ? 'block' : 'none';
   });
+  const c = document.querySelector('.lobby-container');
+  c.classList.toggle('army-mode', id === 'screen-army');
+  c.classList.toggle('lobby-mode', id === 'screen-lobby');
 }
 
 function notify(msg, type = 'error') {
@@ -176,45 +166,136 @@ function selectGeneral(id) {
 }
 
 function addAI() {
-  const select = document.getElementById('ai-general-select');
-  const generalId = select?.value || null;
-  wsSend('add_ai', { roomCode, generalId });
+  const generalId = document.getElementById('ai-general-select')?.value || null;
+  const flagId = document.getElementById('ai-flag-select')?.value || null;
+  wsSend('add_ai', { roomCode, generalId, flagId });
+}
+
+function removeBot(botId) {
+  wsSend('remove_bot', { roomCode, botId });
 }
 
 function updateAIGeneralSelect(takenGenerals) {
   const select = document.getElementById('ai-general-select');
   if (!select) return;
   const available = GENERALS_DATA.filter(g => !takenGenerals.includes(g.id));
-  select.innerHTML = available.map(g => `<option value="${g.id}">${g.name} (${g.kingdom})</option>`).join('');
+  select.innerHTML = available.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
+}
+
+function updateAIFlagSelect(takenFlags) {
+  const select = document.getElementById('ai-flag-select');
+  if (!select) return;
+  const available = FLAGS.filter(f => !takenFlags.includes(f.id));
+  select.innerHTML = available.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+}
+
+function renderBotList(players) {
+  const box = document.getElementById('bot-list');
+  if (!box) return;
+  const bots = players.filter(p => p.isBot);
+  box.innerHTML = bots.map(p => `
+    <div style="display:flex;align-items:center;gap:8px;background:#1a1008;border:1px solid #3a2408;border-radius:4px;padding:4px 8px;font-size:0.82em">
+      ${flagImg(p.flag, 18)}
+      <span style="flex:1;color:#c8960c">${p.name}</span>
+      <button onclick="removeBot('${p.id}')" style="background:#5a1010;color:#ff8080;border:none;border-radius:3px;padding:2px 8px;cursor:pointer;font-size:0.85em">✕ Retirer</button>
+    </div>
+  `).join('');
 }
 
 function startGame() {
   wsSend('start_game', { roomCode });
 }
 
+function toggleReady() {
+  wsSend('lobby_ready', { roomCode });
+}
+
+function renderFlagPicker(takenFlags) {
+  const container = document.getElementById('flag-picker');
+  if (!container) return;
+  container.innerHTML = FLAGS.map(f => {
+    const isTaken = takenFlags.includes(f.id);
+    const isSel = f.id === selectedFlag;
+    return `<div class="flag-item${isSel ? ' selected' : ''}${isTaken ? ' taken' : ''}" onclick="${isTaken ? '' : `pickFlag('${f.id}')`}">
+      <img src="/assets/flag/${f.file}" title="${f.name}">
+      <div class="flag-item-name">${f.name}</div>
+    </div>`;
+  }).join('');
+}
+
 function renderGenerals(takenList) {
   const grid = document.getElementById('generals-grid');
   grid.innerHTML = '';
+
+  const nationOrder = ['QIN', 'ZHAO', 'WEI', 'CHU'];
+  const byNation = {};
   for (const g of GENERALS_DATA) {
-    const taken = takenList.includes(g.id) && g.id !== selectedGeneral;
-    const sel = g.id === selectedGeneral;
-    const div = document.createElement('div');
-    div.className = `general-card${taken ? ' taken' : ''}${sel ? ' selected' : ''}`;
-    const imgEntry = GENERAL_IMAGE1_MAP[g.id];
-    const imgHtml = imgEntry
-      ? `<img src="/assets/unites/GENERAL IMAGE 1-1/${encodeURIComponent(imgEntry.file)}.${imgEntry.ext}" style="width:100%;aspect-ratio:1/1;object-fit:cover;object-position:top;border-radius:4px;margin-bottom:6px;display:block">`
-      : '';
-    div.innerHTML = `
-      ${imgHtml}
-      <div class="gen-name">${g.name}</div>
-      <div class="gen-kingdom">${g.kingdom}</div>
-      <div class="gen-stats">Force ${g.force} · Strat ${g.strategy} · Char ${g.charisma}</div>
-      ${sel ? '<div style="color:#c8960c;font-size:0.8em;margin-top:4px">✓ Sélectionné</div>' : ''}
-    `;
-    if (!taken) div.onclick = () => selectGeneral(g.id);
-    div.ondblclick = (e) => { e.stopPropagation(); showGeneralCard(g); };
-    grid.appendChild(div);
+    if (!byNation[g.kingdom]) byNation[g.kingdom] = [];
+    byNation[g.kingdom].push(g);
   }
+  const nations = nationOrder.filter(n => byNation[n]);
+  // Ajoute les nations non prévues
+  for (const n of Object.keys(byNation)) {
+    if (!nations.includes(n)) nations.push(n);
+  }
+
+  for (const nation of nations) {
+    const section = document.createElement('div');
+    section.className = 'generals-nation-section';
+
+    const row = document.createElement('div');
+    row.className = 'generals-row';
+
+    for (const g of byNation[nation]) {
+      const taken = takenList.includes(g.id) && g.id !== selectedGeneral;
+      const sel = g.id === selectedGeneral;
+      const div = document.createElement('div');
+      div.className = `general-card${taken ? ' taken' : ''}${sel ? ' selected' : ''}`;
+      const imgEntry = GENERAL_IMAGE1_MAP[g.id];
+      const imgHtml = imgEntry
+        ? `<img src="/assets/unites/GENERAL IMAGE 1-1/${encodeURIComponent(imgEntry.file)}.${imgEntry.ext}" style="width:100%;aspect-ratio:1/1;object-fit:cover;object-position:top;display:block">`
+        : `<div style="width:100%;aspect-ratio:1/1;background:#1a0f04;display:flex;align-items:center;justify-content:center;font-size:32px;color:#3a2408">★</div>`;
+      div.innerHTML = `
+        <div class="gen-name">${g.name}</div>
+        ${imgHtml}
+        <div class="gen-stats-row">
+          ${statBox('Force', g.force)}${statBox('Stratégie', g.strategy)}${statBox('Charisme', g.charisma)}
+        </div>
+      `;
+      if (!taken) div.onclick = () => { selectGeneral(g.id); showGeneralDetail(g); };
+      row.appendChild(div);
+    }
+
+    section.appendChild(row);
+    grid.appendChild(section);
+  }
+}
+
+function showGeneralDetail(g) {
+  const panel = document.getElementById('general-detail-panel');
+  if (!panel) return;
+  const imgEntry = GENERAL_IMAGE1_MAP[g.id];
+  const imgHtml = imgEntry
+    ? `<img class="roster-gen-img" src="/assets/unites/GENERAL IMAGE 1-1/${encodeURIComponent(imgEntry.file)}.${imgEntry.ext}">`
+    : `<div class="roster-gen-img-placeholder">⚔</div>`;
+  const bonusLines = [];
+  if (g.activeAbility) bonusLines.push(`<strong>⚡ ${g.activeAbility.name}</strong> — ${g.activeAbility.description}`);
+  if (g.passiveAbility) bonusLines.push(`<strong>☽ ${g.passiveAbility.name}</strong> — ${g.passiveAbility.description}`);
+  panel.innerHTML = `
+    <div class="gen-panel-wrap">
+      <div class="gen-panel-title">${g.name}</div>
+      <div class="roster-gen-wrap">
+        ${imgHtml}
+        <div class="roster-gen-body">
+          <div class="stat-row">${statBox('Force', g.force)}${statBox('Stratégie', g.strategy)}${statBox('Charisme', g.charisma)}</div>
+          <div class="stat-row">${statBox('Vitalité', g.vitality)}${statBox('Armure', g.armor)}</div>
+          <div class="stat-row">${statBox('Puissance', g.power)}${statBox('Intimidation', g.intimidation)}</div>
+        </div>
+      </div>
+      ${bonusLines.length ? `<div class="gen-panel-abilities">${bonusLines.join('<br>')}</div>` : ''}
+      ${g.citation ? `<div class="gen-panel-citation">${g.citation}</div>` : ''}
+    </div>
+  `;
 }
 
 function showGeneralCard(g) {
@@ -321,97 +402,256 @@ function renderArmyStatus(players) {
   }).join('');
 }
 
+function flagImg(flagId, size = 24) {
+  const f = FLAGS.find(f => f.id === flagId);
+  if (!f) return `<div style="width:${size}px;height:${size}px;border-radius:2px;background:#333;flex-shrink:0"></div>`;
+  return `<img src="/assets/flag/${f.file}" style="width:${size}px;height:${size}px;object-fit:cover;border-radius:2px;flex-shrink:0;border:1px solid #5a3c10" title="${f.name}">`;
+}
+
 function renderPlayerList(players, hostId) {
   const list = document.getElementById('player-list');
   list.innerHTML = '';
+
+  const flagOrder = ['qin', 'zhao', 'wei', 'chu', 'yan', 'qi', 'han'];
+  const groups = {};
+  const ungrouped = [];
+
   for (const p of players) {
-    const li = document.createElement('li');
-    const genName = p.generalId ? GENERALS_DATA.find(g => g.id === p.generalId)?.name || p.generalId : '—';
-    const color = p.color || '#4a90d9';
-    if (p.id === myId) {
-      // Color picker inline for current player
-      const takenColors = players.filter(pl => pl.id !== myId).map(pl => pl.color || '#4a90d9');
-      const pickerHtml = PLAYER_COLORS.map(c => {
-        const isTaken = takenColors.includes(c.hex);
-        const isSelected = c.hex === selectedColor;
-        return `<div class="color-swatch${isSelected ? ' active' : ''}"
-          title="${c.name}${isTaken ? ' (prise)' : ''}"
-          style="width:18px;height:18px;border-radius:50%;background:${c.hex};cursor:${isTaken ? 'not-allowed' : 'pointer'};border:2px solid ${isSelected ? '#fff' : 'transparent'};flex-shrink:0;opacity:${isTaken ? '0.25' : '1'};position:relative"
-          onclick="${isTaken ? '' : `pickColor('${c.hex}')`}"></div>`;
-      }).join('');
-      li.innerHTML = `
-        <span class="player-badge${p.id === hostId ? ' host' : ''}">${p.id === hostId ? 'Host' : 'Joueur'}</span>
-        <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;flex:1">${pickerHtml}</div>
-        <span>${genName !== '—' ? genName : p.name}</span>
-        <span class="ready-icon">${p.isReady ? '✅' : p.generalId ? '⚔️' : ''}</span>
-      `;
-    } else if (p.isBot) {
-      li.innerHTML = `
-        <span class="player-badge" style="background:#555">Bot</span>
-        <div style="width:16px;height:16px;border-radius:50%;background:${color};flex-shrink:0;border:1px solid rgba(255,255,255,0.3)"></div>
-        <span>${genName !== '—' ? genName : p.name}</span>
-        <span class="ready-icon">${p.isReady ? '✅' : p.generalId ? '⚔️' : ''}</span>
-      `;
+    const gen = p.generalId ? GENERALS_DATA.find(g => g.id === p.generalId) : null;
+    const flagId = p.flag || null;
+    if (flagId) {
+      if (!groups[flagId]) groups[flagId] = [];
+      groups[flagId].push({ p, gen });
     } else {
-      li.innerHTML = `
-        <span class="player-badge${p.id === hostId ? ' host' : ''}">${p.id === hostId ? 'Host' : 'Joueur'}</span>
-        <div style="width:16px;height:16px;border-radius:50%;background:${color};flex-shrink:0;border:1px solid rgba(255,255,255,0.3)"></div>
-        <span>${genName !== '—' ? genName : p.name}</span>
-        <span class="ready-icon">${p.isReady ? '✅' : p.generalId ? '⚔️' : ''}</span>
-      `;
+      ungrouped.push({ p, gen });
     }
-    list.appendChild(li);
   }
+
+  const flagsWithPlayers = flagOrder.filter(f => groups[f]);
+
+  function makeRow(p, gen, hostId) {
+    const genName = gen ? gen.name : '—';
+    const isMe = p.id === myId;
+    const isHost = p.id === hostId;
+    const readyHtml = p.isReady
+      ? '<span class="pl-ready pl-ready-yes">Prêt</span>'
+      : '<span class="pl-ready pl-ready-no">' + (p.generalId ? 'En attente' : 'Pas prêt') + '</span>';
+    const botBadge = p.isBot ? '<span class="player-badge" style="background:#555;font-size:0.7em">Bot</span>' : '';
+    const hostBadge = isHost ? '<span class="player-badge host" style="font-size:0.7em">Host</span>' : '';
+    const meStyle = isMe ? 'background:#1a1008;' : '';
+    return `<li style="${meStyle}">
+      <div class="pl-left">${flagImg(p.flag, 20)}<span class="pl-gen">${genName}</span>${botBadge}</div>
+      <div class="pl-right">${hostBadge}<span class="pl-name">${p.name}</span>${readyHtml}</div>
+    </li>`;
+  }
+
+  let html = '';
+  for (const flagId of flagsWithPlayers) {
+    const flagName = FLAGS.find(f => f.id === flagId)?.name || flagId.toUpperCase();
+    html += `<li class="pl-nation-header">${flagName}</li>`;
+    for (const { p, gen } of groups[flagId]) {
+      html += makeRow(p, gen, hostId);
+    }
+  }
+  if (ungrouped.length) {
+    if (flagsWithPlayers.length) html += `<li class="pl-nation-header">—</li>`;
+    for (const { p, gen } of ungrouped) {
+      html += makeRow(p, gen, hostId);
+    }
+  }
+
+  list.innerHTML = html;
   document.getElementById('player-count').textContent = players.length;
 }
 
 // Army builder
+function statBox(label, value) {
+  return `<div class="stat-box"><div class="stat-box-label">${label}</div><div class="stat-box-value">${value}</div></div>`;
+}
+
+function renderRosterGeneral() {
+  const box = document.getElementById('army-roster-general');
+  if (!box) return;
+  const g = GENERALS_DATA.find(g => g.id === selectedGeneral);
+  if (!g) { box.innerHTML = ''; return; }
+  const imgEntry = GENERAL_IMAGE1_MAP[g.id];
+  const imgHtml = imgEntry
+    ? `<img class="roster-gen-img" src="/assets/unites/GENERAL IMAGE 1-1/${encodeURIComponent(imgEntry.file)}.${imgEntry.ext}">`
+    : `<div class="roster-gen-img-placeholder">⚔</div>`;
+  const bonusLines = [];
+  if (g.activeAbility) bonusLines.push(`<strong>⚡ ${g.activeAbility.name}</strong> — ${g.activeAbility.description}`);
+  if (g.passiveAbility) bonusLines.push(`<strong>☽ ${g.passiveAbility.name}</strong> — ${g.passiveAbility.description}`);
+  box.innerHTML = `
+    <div class="gen-panel-wrap">
+      <div class="gen-panel-title">${g.name}</div>
+      <div class="roster-gen-wrap">
+        ${imgHtml}
+        <div class="roster-gen-body">
+          <div class="stat-row">${statBox('Force', g.force)}${statBox('Stratégie', g.strategy)}${statBox('Charisme', g.charisma)}</div>
+          <div class="stat-row">${statBox('Vitalité', g.vitality)}${statBox('Armure', g.armor)}</div>
+          <div class="stat-row">${statBox('Puissance', g.power)}${statBox('Intimidation', g.intimidation)}</div>
+        </div>
+      </div>
+      ${bonusLines.length ? `<div class="gen-panel-abilities">${bonusLines.join('<br>')}</div>` : ''}
+      ${g.citation ? `<div class="gen-panel-citation">${g.citation}</div>` : ''}
+    </div>
+  `;
+}
+
+function makeRosterCard(u) {
+  const imgEntry = UNIT_IMAGE1_MAP[u.id];
+  const imgHtml = imgEntry
+    ? `<img class="unit-card-img" src="/assets/unites/UNIT IMAGE 1-1/${encodeURIComponent(imgEntry.file)}.${imgEntry.ext}" draggable="false">`
+    : `<div class="unit-card-img-placeholder">⚔</div>`;
+  const div = document.createElement('div');
+  div.className = 'unit-card in-roster';
+  div.title = 'Double-clic ou glisser vers le shop pour retirer';
+  div.draggable = true;
+  div.innerHTML = `
+    <div class="unit-card-name">${u.name}</div>
+    ${imgHtml}
+    <div class="unit-card-cost">${u.cost}</div>
+  `;
+  div.addEventListener('click', () => showUnitDetail(u));
+  div.addEventListener('dblclick', () => changeQty(u.id, -1));
+  div.addEventListener('dragstart', e => { e.dataTransfer.setData('removeUnitId', u.id); div.classList.add('dragging'); });
+  div.addEventListener('dragend', () => div.classList.remove('dragging'));
+  return div;
+}
+
+function makeShopCard(u) {
+  const div = document.createElement('div');
+  div.className = 'unit-card';
+  div.id = `card-${u.id}`;
+  div.draggable = true;
+  const imgEntry = UNIT_IMAGE1_MAP[u.id];
+  const imgHtml = imgEntry
+    ? `<img class="unit-card-img" src="/assets/unites/UNIT IMAGE 1-1/${encodeURIComponent(imgEntry.file)}.${imgEntry.ext}" draggable="false">`
+    : `<div class="unit-card-img-placeholder">⚔</div>`;
+  div.innerHTML = `
+    <div class="unit-card-name">${u.name}</div>
+    ${imgHtml}
+    <div class="unit-card-cost">${u.cost}</div>
+  `;
+  div.addEventListener('click', () => showUnitDetail(u));
+  div.addEventListener('dblclick', () => changeQty(u.id, 1));
+  div.addEventListener('dragstart', e => { e.dataTransfer.setData('unitId', u.id); div.classList.add('dragging'); });
+  div.addEventListener('dragend', () => div.classList.remove('dragging'));
+  return div;
+}
+
 function renderArmyBuilder() {
   const shop = document.getElementById('unit-shop');
   shop.innerHTML = '';
   armyQuantities = {};
   UNITS_DATA.forEach(u => { armyQuantities[u.id] = 0; });
 
+  const categoryOrder = ['Infanterie', 'Tireurs', 'Chevaux', 'Chars'];
+  const byCategory = {};
   for (const u of UNITS_DATA) {
-    const div = document.createElement('div');
-    div.className = 'unit-card';
-    const imgEntry = UNIT_IMAGE1_MAP[u.id];
-    const imgHtml = imgEntry
-      ? `<img src="/assets/unites/UNIT IMAGE 1-1/${encodeURIComponent(imgEntry.file)}.${imgEntry.ext}" style="width:100%;aspect-ratio:1/1;object-fit:cover;object-position:top;border-radius:4px;margin-bottom:6px;display:block">`
-      : '';
-    div.innerHTML = `
-      ${imgHtml}
-      <h4>${u.name}</h4>
-      <div class="unit-category">${u.category}</div>
-      <div class="unit-stats">
-        Vitalité ${u.vitality} · Attaque ${u.attack} · Défense ${u.defense}<br>
-        Puissance ${u.power} · Armure ${u.armor} · Vitesse ${u.speed}
-        ${u.range > 1 ? `<br>Portée ${u.range} cases` : ''}
-      </div>
-      <div class="unit-cost">${u.cost} or/unité</div>
-      <div class="unit-qty">
-        <button onclick="changeQty('${u.id}', -1)">−</button>
-        <span id="qty-${u.id}">0</span>
-        <button onclick="changeQty('${u.id}', 1)">+</button>
-      </div>
-    `;
-    div.ondblclick = (e) => { if (!e.target.closest('button')) showUnitCardLobby(u); };
-    shop.appendChild(div);
+    if (!byCategory[u.category]) byCategory[u.category] = [];
+    byCategory[u.category].push(u);
+  }
+  for (const cat of categoryOrder) {
+    if (!byCategory[cat] || byCategory[cat].length === 0) continue;
+    const units = byCategory[cat].slice().sort((a, b) => a.cost - b.cost);
+
+    const section = document.createElement('div');
+    section.className = 'unit-shop-category';
+
+    const title = document.createElement('div');
+    title.className = 'unit-shop-category-title';
+    title.textContent = cat;
+    section.appendChild(title);
+
+    const row = document.createElement('div');
+    row.className = 'unit-shop-category-row';
+
+    for (const u of units) {
+      row.appendChild(makeShopCard(u));
+    }
+
+    section.appendChild(row);
+    shop.appendChild(section);
   }
   updateBudgetDisplay();
+  renderRosterGeneral();
+  updateArmyRoster();
+
+  // Drop sur le shop = retirer une unité du roster
+  const shopPanel = shop.parentElement;
+  shopPanel.ondragover = e => e.preventDefault();
+  shopPanel.ondrop = e => {
+    e.preventDefault();
+    const unitId = e.dataTransfer.getData('removeUnitId');
+    if (unitId) changeQty(unitId, -1);
+  };
+}
+
+function showUnitDetail(u) {
+  document.querySelectorAll('.unit-card.selected').forEach(el => el.classList.remove('selected'));
+  const card = document.getElementById(`card-${u.id}`);
+  if (card) card.classList.add('selected');
+
+  const panel = document.getElementById('army-detail-panel');
+  const imgEntry = UNIT_IMAGE1_MAP[u.id];
+  const imgHtml = imgEntry
+    ? `<img class="army-detail-img" src="/assets/unites/UNIT IMAGE 1-1/${encodeURIComponent(imgEntry.file)}.${imgEntry.ext}">`
+    : `<div class="army-detail-img-placeholder">⚔</div>`;
+  panel.innerHTML = `
+    <div class="army-detail-header">
+      <div class="army-detail-name">${u.name}</div>
+      <div class="army-detail-category">${u.category}</div>
+    </div>
+    ${imgHtml}
+    <div class="army-detail-body">
+      <div class="stat-row">${statBox('Vitalité', u.vitality)}${statBox('Moral', u.morale)}</div>
+      <div class="stat-row">${statBox('Attaque', u.attack)}${statBox('Défense', u.defense)}</div>
+      <div class="stat-row">${statBox('Puissance', u.power)}${statBox('Armure', u.armor)}</div>
+      <div class="stat-row">${statBox('Intimidation', u.intimidation)}${statBox('Vitesse', u.speed)}${u.range > 1 ? statBox('Portée', u.range) : ''}</div>
+      <div class="army-detail-bonus">${u.bonus}</div>
+    </div>
+  `;
 }
 
 function changeQty(typeId, delta) {
   const unit = UNITS_DATA.find(u => u.id === typeId);
   const newQty = Math.max(0, armyQuantities[typeId] + delta);
-  const spent = computeSpent();
-  const cost = unit.cost;
-  if (delta > 0 && spent + cost > budget) {
+  if (delta > 0 && computeSpent() + unit.cost > budget) {
     return notify('Budget insuffisant !');
   }
   armyQuantities[typeId] = newQty;
-  document.getElementById(`qty-${typeId}`).textContent = newQty;
   updateBudgetDisplay();
+  updateArmyRoster();
+}
+
+function updateArmyRoster() {
+  const panel = document.getElementById('army-roster-panel');
+  const grid = document.getElementById('army-roster-grid');
+  grid.innerHTML = '';
+  let total = 0;
+
+  const sorted = UNITS_DATA.slice().sort((a, b) => b.cost - a.cost);
+  for (const u of sorted) {
+    const qty = armyQuantities[u.id] || 0;
+    total += qty;
+    for (let i = 0; i < qty; i++) {
+      grid.appendChild(makeRosterCard(u));
+    }
+  }
+
+  if (total === 0) {
+    grid.innerHTML = '<div class="army-roster-placeholder">Aucune unité</div>';
+  }
+
+  panel.ondragover = e => { e.preventDefault(); panel.classList.add('drag-over'); };
+  panel.ondragleave = () => panel.classList.remove('drag-over');
+  panel.ondrop = e => {
+    e.preventDefault();
+    panel.classList.remove('drag-over');
+    const unitId = e.dataTransfer.getData('unitId');
+    if (unitId) changeQty(unitId, 1);
+  };
 }
 
 function computeSpent() {
@@ -452,8 +692,10 @@ function wsDispatch(event, data) {
       sessionStorage.setItem('lobbyRoomCode', roomCode);
       document.getElementById('room-code-display').textContent = data.roomCode;
       document.getElementById('budget-card').style.display = 'block';
-      document.getElementById('host-actions').style.display = 'flex';
+      document.getElementById('host-actions').style.display = 'block';
       updateAIGeneralSelect([]);
+      updateAIFlagSelect([]);
+      renderBotList([]);
       show('screen-lobby');
       break;
     }
@@ -470,16 +712,33 @@ function wsDispatch(event, data) {
     case 'room_update': {
       budget = data.budget;
       document.getElementById('current-budget').textContent = data.budget.toLocaleString();
+      const budgetInput = document.getElementById('budget-input');
+      if (budgetInput && document.activeElement !== budgetInput) budgetInput.value = data.budget;
+      const me = data.players.find(p => p.id === myId);
+      if (me?.flag) selectedFlag = me.flag;
+      if (me?.generalId) selectedGeneral = me.generalId;
       renderPlayerList(data.players, data.hostId);
       renderArmyStatus(data.players);
       renderGenerals(data.takenGenerals);
+      renderFlagPicker(data.players.filter(p => p.id !== myId).map(p => p.flag).filter(Boolean));
+      // Bouton prêt
+      const readyBtn = document.getElementById('ready-btn');
+      if (readyBtn) {
+        const meReady = me?.isReady;
+        readyBtn.textContent = meReady ? '✅ Prêt !' : 'Je suis prêt';
+        readyBtn.className = `btn ${meReady ? 'btn-ready-on' : 'btn-ready'}`;
+      }
       if (data.hostId === myId) {
         document.getElementById('budget-card').style.display = 'block';
-        document.getElementById('host-actions').style.display = 'flex';
+        document.getElementById('host-actions').style.display = 'block';
         updateAIGeneralSelect(data.takenGenerals);
+        updateAIFlagSelect(data.players.map(p => p.flag).filter(Boolean));
+        renderBotList(data.players);
+        // Activer "Lancer" seulement si tous les non-bots sont prêts
+        const allReady = data.players.filter(p => !p.isBot).every(p => p.isReady);
+        const startBtn = document.getElementById('start-btn');
+        if (startBtn) { startBtn.disabled = !allReady; startBtn.style.opacity = allReady ? '1' : '0.4'; }
       }
-      const me = data.players.find(p => p.id === myId);
-      if (me && me.generalId) selectedGeneral = me.generalId;
       break;
     }
     case 'phase_change': {

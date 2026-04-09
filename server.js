@@ -281,15 +281,16 @@ function handleAction(ws, connectionId, action, data) {
       break;
     }
 
-    case 'set_player_color': {
-      const { roomCode, color } = data;
+    case 'set_player_flag': {
+      const { roomCode, flagId } = data;
       const room = rooms[roomCode];
       if (!room || room.phase !== 'lobby') return;
       const player = room.getPlayer(connectionId);
-      const allowed = ['#4a90d9','#e05050','#50c050','#e0a030','#a050d0','#e07840','#40c0c0','#e050a0','#ffffff'];
-      const takenColors = room.players.filter(p => p.id !== connectionId).map(p => p.color);
-      if (player && allowed.includes(color) && !takenColors.includes(color)) player.color = color;
-      else if (takenColors.includes(color)) return send(connectionId, { event: 'error', message: 'Cette couleur est déjà prise.' });
+      const FLAG_COLORS = { qin:'#1a5fa8', zhao:'#e07820', wei:'#1a7a3a', chu:'#20b8c8', yan:'#c8b84a', qi:'#e8e8e8', han:'#9060c0' };
+      if (!FLAG_COLORS[flagId]) return;
+      const takenFlags = room.players.filter(p => p.id !== connectionId).map(p => p.flag);
+      if (takenFlags.includes(flagId)) return send(connectionId, { event: 'error', message: 'Ce drapeau est déjà pris.' });
+      if (player) { player.flag = flagId; player.color = FLAG_COLORS[flagId]; }
       broadcast(room, { event: 'room_update', ...room.getLobbyState() });
       break;
     }
@@ -307,25 +308,64 @@ function handleAction(ws, connectionId, action, data) {
     }
 
     case 'add_ai': {
-      const { roomCode, generalId: requestedGeneralId } = data;
+      const { roomCode, generalId: requestedGeneralId, flagId: requestedFlagId } = data;
       const room = rooms[roomCode];
       if (!room || room.hostId !== connectionId || room.phase !== 'lobby') return;
       if (room.players.length >= 8) return send(connectionId, { event: 'error', message: 'Salle pleine.' });
+      const FLAG_COLORS = { qin:'#1a5fa8', zhao:'#e07820', wei:'#1a7a3a', chu:'#20b8c8', yan:'#c8b84a', qi:'#e8e8e8', han:'#9060c0' };
       const botId = 'bot_' + generateId();
       room.addPlayer(botId, '🤖 IA');
       const bot = room.getPlayer(botId);
       bot.isBot = true;
-      bot.color = '#888888';
-      const taken = room.players.filter(p => p.id !== botId).map(p => p.generalId).filter(Boolean);
-      if (requestedGeneralId && !taken.includes(requestedGeneralId) && GENERALS.find(g => g.id === requestedGeneralId)) {
+      const takenGenerals = room.players.filter(p => p.id !== botId).map(p => p.generalId).filter(Boolean);
+      if (requestedGeneralId && !takenGenerals.includes(requestedGeneralId) && GENERALS.find(g => g.id === requestedGeneralId)) {
         bot.generalId = requestedGeneralId;
       } else {
-        const available = GENERALS.filter(g => !taken.includes(g.id));
+        const available = GENERALS.filter(g => !takenGenerals.includes(g.id));
         if (available.length > 0) bot.generalId = available[Math.floor(Math.random() * available.length)].id;
+      }
+      const takenFlags = room.players.filter(p => p.id !== botId).map(p => p.flag).filter(Boolean);
+      if (requestedFlagId && !takenFlags.includes(requestedFlagId) && FLAG_COLORS[requestedFlagId]) {
+        bot.flag = requestedFlagId;
+        bot.color = FLAG_COLORS[requestedFlagId];
+      } else {
+        bot.color = '#888888';
       }
       const botGeneral = GENERALS.find(g => g.id === bot.generalId);
       bot.name = `🤖 ${botGeneral?.name || 'IA'}`;
+      bot.isReady = true;
       broadcast(room, { event: 'room_update', ...room.getLobbyState() });
+      break;
+    }
+
+    case 'remove_bot': {
+      const { roomCode, botId } = data;
+      const room = rooms[roomCode];
+      if (!room || room.hostId !== connectionId || room.phase !== 'lobby') return;
+      const idx = room.players.findIndex(p => p.id === botId && p.isBot);
+      if (idx === -1) return;
+      room.players.splice(idx, 1);
+      broadcast(room, { event: 'room_update', ...room.getLobbyState() });
+      break;
+    }
+
+    case 'lobby_ready': {
+      const { roomCode } = data;
+      const room = rooms[roomCode];
+      if (!room || room.phase !== 'lobby') return;
+      const player = room.getPlayer(connectionId);
+      if (!player) return;
+      if (!player.generalId) return send(connectionId, { event: 'error', message: 'Choisissez un général avant de vous préparer.' });
+      if (!player.flag) return send(connectionId, { event: 'error', message: 'Choisissez un drapeau avant de vous préparer.' });
+      player.isReady = !player.isReady;
+      broadcast(room, { event: 'room_update', ...room.getLobbyState() });
+      const humanPlayers = room.players.filter(p => !p.isBot);
+      if (humanPlayers.length > 0 && humanPlayers.every(p => p.isReady)) {
+        room.startGame();
+        broadcast(room, { event: 'phase_change', phase: 'army_building', budget: room.budget });
+        broadcast(room, { event: 'room_update', ...room.getLobbyState() });
+        runBotArmy(room);
+      }
       break;
     }
 
@@ -335,6 +375,7 @@ function handleAction(ws, connectionId, action, data) {
       if (!room || room.hostId !== connectionId) return;
       if (room.players.length < 1) return send(connectionId, { event: 'error', message: 'Il faut au moins 1 joueur.' });
       if (room.players.some(p => !p.generalId)) return send(connectionId, { event: 'error', message: 'Tous les joueurs doivent choisir un général.' });
+      if (room.players.some(p => !p.flag)) return send(connectionId, { event: 'error', message: 'Tous les joueurs doivent choisir un drapeau.' });
       room.startGame();
       broadcast(room, { event: 'phase_change', phase: 'army_building', budget: room.budget });
       broadcast(room, { event: 'room_update', ...room.getLobbyState() });

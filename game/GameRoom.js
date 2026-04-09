@@ -80,6 +80,7 @@ class GameRoom {
           isEliminated: p.isEliminated,
           isBot: p.isBot || false,
           color: p.color || '#4a90d9',
+          flag: p.flag || null,
         };
       }),
       takenGenerals: this.players.filter(p => p.generalId && !p.offline).map(p => p.generalId),

@@ -114,7 +114,7 @@ const GENERALS = [
   {
     id: 'ren_pa',
     name: 'Ren Pa',
-    kingdom: 'ZHAO/WEI',
+    kingdom: 'CHU',
     army: 11000,
     vitality: 120,
     maxVitality: 120,
