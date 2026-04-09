@@ -725,8 +725,9 @@ function wsDispatch(event, data) {
       const readyBtn = document.getElementById('ready-btn');
       if (readyBtn) {
         const meReady = me?.isReady;
+        const canReady = !!(me?.generalId && me?.flag);
         readyBtn.textContent = meReady ? '✅ Prêt !' : 'Je suis prêt';
-        readyBtn.className = `btn ${meReady ? 'btn-ready-on' : 'btn-ready'}`;
+        readyBtn.className = `btn ${meReady ? 'btn-ready-on' : canReady ? 'btn-ready-on' : 'btn-ready'}`;
       }
       if (data.hostId === myId) {
         document.getElementById('budget-card').style.display = 'block';
