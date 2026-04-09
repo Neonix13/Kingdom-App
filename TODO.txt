@@ -4,13 +4,6 @@
 -------
 Priorité:
 
-J'ai l'impression que la porté des archers n'est réduite par les hauteur autours d'eux
-Affiche Le bonus des lanciers contre les cavaliers (+6 Bonus)
-je ne vois pas le bonus de 20AR des phalanges dans le tableau quand des archers les attaques est il appliqué? si oui affiche (+20 bonus) dans la ligne comme les autres mods
-Va a la ligne dans le tableau pour afficher les mods(terrain stance esquive precision hauteur) de puissance et d'armure
-
-
-
 
 
 -------
@@ -20,6 +13,8 @@ Secondaire:
 Trier les unités par type dans la sidebar
 Voir les combats en cours des autres joueurs
 N'afficher que les combats visibles (fog of war)
-Revoir les stats de stances et de terrain
+
 Récap à la fin avec replay de la bataille
 Crash / déconnexion en cours de partie : joueur ne peut plus rejoindre → partie bloquée
+
+
