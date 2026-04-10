@@ -1948,6 +1948,11 @@ function renderUnitList() {
 }
 
 function renderDeployUnitList(units) {
+  // Sync onglet "Mon armée" si visible
+  const armyContainer = document.getElementById('army-list');
+  if (armyContainer && document.getElementById('pane-army')?.classList.contains('active') && deployState && !gameState) {
+    renderDeployUnitsInArmy(armyContainer);
+  }
   const list = document.getElementById('unit-list');
   list.innerHTML = '';
 
@@ -2262,9 +2267,54 @@ function switchSidebarTab(tab) {
   updateActionButtons();
 }
 
+function renderDeployUnitsInArmy(container) {
+  container.innerHTML = '';
+  const units = deployState.units;
+  const sorted = [...units].sort((a, b) => {
+    if (a.isGeneral && !b.isGeneral) return -1;
+    if (!a.isGeneral && b.isGeneral) return 1;
+    return (a.name || '').localeCompare(b.name || '');
+  });
+  for (const u of sorted) {
+    const placed = u.q !== null;
+    const isSelected = selectedUnit && selectedUnit.id === u.id;
+    const row = document.createElement('div');
+    row.className = 'army-unit-row' + (u.isGeneral ? ' is-general' : '') + (isSelected ? ' selected' : '');
+    let imgHtml = '';
+    if (u.isGeneral) {
+      const gid = deployState.generalData?.id;
+      const entry = gid ? GENERAL_IMAGE1_MAP[gid] : null;
+      imgHtml = entry
+        ? `<img class="army-unit-icon" src="/assets/unites/GENERAL IMAGE 1-1/${encodeURIComponent(entry.file)}.${entry.ext}" onerror="this.style.display='none'">`
+        : `<div class="army-unit-icon-placeholder"></div>`;
+    } else {
+      const entry = u.typeId ? UNIT_IMAGE1_MAP[u.typeId] : null;
+      imgHtml = entry
+        ? `<img class="army-unit-icon" src="/assets/unites/UNIT IMAGE 1-1/${encodeURIComponent(entry.file)}.${entry.ext}" onerror="this.style.display='none'">`
+        : `<div class="army-unit-icon-placeholder"></div>`;
+    }
+    row.innerHTML = imgHtml + `
+      <div class="army-unit-info">
+        <div class="army-unit-name${u.isGeneral ? ' general' : ''}">${u.name}${u.isGeneral ? ' ★' : ''}</div>
+        <div class="army-unit-status" style="color:${placed ? '#4aaa4a' : '#c8960c'}">${placed ? '✓ Placé' : 'À placer'}</div>
+      </div>`;
+    row.onclick = () => {
+      selectedUnit = u;
+      renderDeployUnitsInArmy(container);
+      render();
+    };
+    container.appendChild(row);
+  }
+}
+
 function renderArmyList() {
   const container = document.getElementById('army-list');
   if (!container) return;
+  // En déploiement, afficher les unités à placer
+  if (deployState && !gameState) {
+    renderDeployUnitsInArmy(container);
+    return;
+  }
   const units = gameState?.myUnits;
   if (!units || units.length === 0) {
     container.innerHTML = '<div style="color:#5a3c10;font-style:italic;padding:12px">Aucune unité.</div>';
@@ -3002,6 +3052,7 @@ function onWsOpen() {
     document.getElementById('sidebar-title').textContent = 'Déploiement';
     document.getElementById('btn-deploy-ready-center').style.display = 'block';
     renderDeployUnitList(deployState.units);
+    switchSidebarTab('army');
     resizeCanvas();
     if (deployState.startingZone) {
       const { x, y } = hexToPixel(deployState.startingZone.q, deployState.startingZone.r);
