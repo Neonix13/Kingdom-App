@@ -304,8 +304,10 @@ class GameRoom {
     room._unitCounter = data._unitCounter || 0;
     // Recharger les données statiques (terrain/segments) depuis fichiers
     room._loadStaticData();
-    if (['deployment', 'battle', 'ended'].includes(data.phase)) {
+    if (['army_building', 'deployment', 'battle', 'ended'].includes(data.phase)) {
       room.hexMap = generateHexMap(MAP_RADIUS);
+    }
+    if (['deployment', 'battle', 'ended'].includes(data.phase)) {
       room._rebuildUnitMap();
     }
     return room;
