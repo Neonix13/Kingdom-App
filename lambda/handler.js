@@ -295,20 +295,22 @@ async function handleAction(apigw, connectionId, action, data) {
 
     case 'submit_army': {
       const { roomCode, units } = data;
+      // Re-read fresh copy to avoid race conditions with simultaneous submissions
       const room = await getRoom(roomCode);
       if (!room || room.phase !== 'army_building') return;
       const result = room.submitArmy(connectionId, units);
       if (result.error) return send(apigw, connectionId, { event: 'error', message: result.error });
       await send(apigw, connectionId, { event: 'army_accepted' });
-      if (room.allArmiesSubmitted()) {
-        room.startDeployment();
-        await saveRoom(room);
-        for (const p of room.players) {
+      await saveRoom(room);
+      // Re-read to get the latest submissions from all players
+      const freshRoom = await getRoom(roomCode);
+      if (freshRoom.allArmiesSubmitted() && freshRoom.phase === 'army_building') {
+        freshRoom.startDeployment();
+        await saveRoom(freshRoom);
+        for (const p of freshRoom.players) {
           await send(apigw, p.id, { event: 'phase_change', phase: 'deployment' });
-          await send(apigw, p.id, { event: 'deployment_state', ...room.getDeploymentState(p.id) });
+          await send(apigw, p.id, { event: 'deployment_state', ...freshRoom.getDeploymentState(p.id) });
         }
-      } else {
-        await saveRoom(room);
       }
       break;
     }
