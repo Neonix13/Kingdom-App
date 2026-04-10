@@ -1432,6 +1432,21 @@ function handleHexClick(hex) {
       return;
     }
 
+    // Clic sur une unité ennemie visible → afficher ses stats en lecture seule
+    const visibleEnemy = gameState?.units.find(u => u.q === hex.q && u.r === hex.r && !u.isMine && gameState.visibleHexes?.has(`${hex.q},${hex.r}`));
+    if (visibleEnemy) {
+      selectedUnit = null;
+      pendingMoveTarget = null;
+      pendingMovePath = [];
+      movableTiles.clear();
+      attackableTiles.clear();
+      rangeTiles.clear(); rangeCenter = null; motivateTiles.clear(); motivateCenter = null;
+      updateActionButtons();
+      showUnitDetail(visibleEnemy, false, '(Ennemi)');
+      render();
+      return;
+    }
+
     // Clic hors portée → déselectionner
     selectedUnit = null;
     pendingMoveTarget = null;
@@ -1445,9 +1460,11 @@ function handleHexClick(hex) {
     return;
   }
 
-  // Pas d'unité sélectionnée → sélectionner
+  // Pas d'unité sélectionnée → sélectionner alliée ou afficher ennemie
   const unit = gameState?.units.find(u => u.q === hex.q && u.r === hex.r && u.isMine);
-  if (unit) selectUnit(unit);
+  if (unit) { selectUnit(unit); render(); return; }
+  const enemy = gameState?.units.find(u => u.q === hex.q && u.r === hex.r && !u.isMine && gameState.visibleHexes?.has(`${hex.q},${hex.r}`));
+  if (enemy) { showUnitDetail(enemy, false, '(Ennemi)'); render(); return; }
   render();
 }
 
@@ -1837,8 +1854,10 @@ function showUnitDetail(unit, previewOnly = false, previewLabel = null) {
   panel.style.display = 'block';
   if (!previewOnly) {
     const nameEl = document.getElementById('detail-name');
-    nameEl.textContent = unit.name + (unit.isFleeing ? ' (EN FUITE)' : '');
+    const suffix = unit.isFleeing ? ' (EN FUITE)' : (previewLabel ? ` ${previewLabel}` : '');
+    nameEl.textContent = unit.name + suffix;
     nameEl.style.textAlign = 'center';
+    nameEl.style.color = previewLabel ? '#e07070' : '';
   }
 
   // Image
