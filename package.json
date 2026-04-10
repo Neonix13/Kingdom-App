@@ -8,10 +8,12 @@
     "dev": "npx nodemon server.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "ws": "^8.19.0",
+    "@aws-sdk/client-apigatewaymanagementapi": "^3.0.0",
     "@aws-sdk/client-dynamodb": "^3.0.0",
     "@aws-sdk/lib-dynamodb": "^3.0.0",
-    "@aws-sdk/client-apigatewaymanagementapi": "^3.0.0"
+    "connect-livereload": "^0.6.1",
+    "express": "^4.18.2",
+    "livereload": "^0.10.3",
+    "ws": "^8.19.0"
   }
 }

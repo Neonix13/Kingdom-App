@@ -11,3 +11,4 @@
 ## Général
 - Ne pas faire de changements non demandés.
 - Ne pas ajouter de commentaires ou docstrings inutiles.
+- Quand l'utilisateur dit "screenshot", chercher le fichier le plus récent (par date) dans `~/Downloads/`.

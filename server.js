@@ -3,11 +3,17 @@ const http = require('http');
 const path = require('path');
 const WebSocket = require('ws');
 const GameRoom = require('./game/GameRoom');
+const livereload = require('livereload');
+const connectLivereload = require('connect-livereload');
+
+const lrServer = livereload.createServer({ exts: ['html', 'js', 'css', 'json'] });
+lrServer.watch(path.join(__dirname, 'public'));
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
+app.use(connectLivereload());
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/simulation/results', express.static(path.join(__dirname, 'simulation/results')));
 
