@@ -27,7 +27,7 @@ const SEGMENTS = {
     defense_intimidation_cac: -2, defense_intimidation_tir: 1,
     defense_armure_cac: 2, defense_armure_tir: 0,
     vitesse_tout: false,
-    infranchissable: false,
+    infranchissable: true,
     infranchissable_cavalerie: true,
     special: null,
   },

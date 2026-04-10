@@ -121,35 +121,43 @@
 
     <!-- Construction armée -->
     <div id="screen-army" style="display:none">
-      <div class="phase-title">Construisez votre armée</div>
-      <div class="budget-bar">
-        <span class="budget-label">Budget :</span>
-        <span class="budget-value" id="army-budget">2 500</span>
-        <span class="budget-label">Dépensé :</span>
-        <span class="budget-used" id="army-spent">0</span>
-        <span class="budget-label">Restant :</span>
-        <span class="budget-value" id="army-remaining">2 500</span>
+      <div class="army-header">
+        <div class="army-header-col">
+          <div style="font-size:0.75em;color:#7a6040;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.06em">Nations prêtes</div>
+          <div id="army-players-status" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+        </div>
+        <div class="army-header-col army-header-center">
+          <div style="font-size:0.75em;color:#7a6040;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.06em">Budget</div>
+          <div style="display:flex;align-items:center;gap:8px;width:100%">
+            <input type="number" id="army-budget-input" min="1000" max="100000" step="1000" onchange="setBudgetFromArmy()" onkeydown="if(event.key==='Enter')setBudgetFromArmy()"
+              style="flex:1;background:#1a0e04;color:#c8960c;border:1px solid #5a3c10;border-radius:4px;padding:4px 8px;font-size:1.3em;font-weight:bold;width:0">
+            <span style="font-size:0.85em;color:#7a6040;flex-shrink:0">or</span>
+          </div>
+          <span id="army-budget" style="display:none"></span>
+        </div>
+        <div class="army-header-col">
+          <div style="font-size:0.75em;color:#7a6040;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.06em">Restant</div>
+          <div style="font-size:1.6em;font-weight:bold;color:#c8960c" id="army-remaining">2 500</div>
+          <span id="army-spent" style="display:none">0</span>
+        </div>
       </div>
-      <div id="army-budget-edit" style="display:none;margin-bottom:12px">
-        <label style="font-size:0.85em;color:#aaa">Budget (hôte) :</label>
-        <input type="number" id="army-budget-input" min="1000" max="100000" step="1000" style="width:110px;margin:0 8px" onchange="setBudgetFromArmy()">
-      </div>
-      <div id="army-players-status" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px"></div>
       <div class="army-layout">
         <div class="army-detail-panel" id="army-detail-panel">
           <div class="army-detail-placeholder">Cliquez sur une unité pour voir ses statistiques</div>
         </div>
         <div class="army-shop-panel">
-          <div class="unit-shop" id="unit-shop"></div>
-          <div class="mt-16" style="display:flex;gap:12px;align-items:center">
-            <button class="btn btn-success" onclick="submitArmy()">Confirmer l'armée</button>
-            <button id="btn-back-to-lobby" class="btn btn-secondary" style="display:none" onclick="backToLobby()">← Retour au lobby</button>
+          <div class="army-shop-scroll">
+            <div class="unit-shop" id="unit-shop"></div>
           </div>
         </div>
         <div class="army-roster-panel" id="army-roster-panel">
           <div class="army-roster-title">Mon armée</div>
           <div id="army-roster-general"></div>
-          <div id="army-roster-grid"></div>
+          <div id="army-roster-grid" style="flex:1"></div>
+          <div class="army-roster-bottom">
+            <button id="btn-back-to-lobby" class="btn btn-secondary" style="display:none" onclick="backToLobby()">← Retour au lobby</button>
+            <button class="btn btn-success" style="width:100%" onclick="submitArmy()">Confirmer l'armée</button>
+          </div>
         </div>
       </div>
     </div>

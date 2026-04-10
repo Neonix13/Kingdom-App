@@ -210,6 +210,46 @@ class GameRoom {
       p.startingZone = zones[i];
       p.isReady = false;
     });
+    // Auto-place all units randomly in their starting zone
+    this.players.forEach(p => this._autoDeployPlayer(p));
+  }
+
+  _autoDeployPlayer(player) {
+    const zone = player.startingZone;
+    if (!zone || !zone.tiles) return;
+    // Shuffle available tiles (exclude river, stay in hexMap)
+    const available = zone.tiles
+      .filter(t => {
+        const key = hexKey(t.q, t.r);
+        return this.hexMap[key] && this.hexMap[key].terrain !== 'river';
+      })
+      .sort(() => Math.random() - 0.5);
+
+    // Compute enemy center for facing
+    const enemyCenters = this.players
+      .filter(p => p.id !== player.id && p.startingZone)
+      .map(p => p.startingZone);
+    const bq = enemyCenters.length > 0
+      ? Math.round(enemyCenters.reduce((s, z) => s + z.q, 0) / enemyCenters.length)
+      : 0;
+    const br = enemyCenters.length > 0
+      ? Math.round(enemyCenters.reduce((s, z) => s + z.r, 0) / enemyCenters.length)
+      : 0;
+
+    const occupied = new Set();
+    // Place general first
+    const general = player.units.find(u => u.isGeneral);
+    const others = player.units.filter(u => !u.isGeneral);
+    const ordered = general ? [general, ...others] : others;
+
+    for (const unit of ordered) {
+      const tile = available.find(t => !occupied.has(`${t.q},${t.r}`));
+      if (!tile) break;
+      unit.q = tile.q;
+      unit.r = tile.r;
+      unit.facing = hexFacing(tile.q, tile.r, bq, br);
+      occupied.add(`${tile.q},${tile.r}`);
+    }
   }
 
   getDeploymentState(playerId) {
@@ -477,7 +517,7 @@ class GameRoom {
           if (visited.has(nk)) continue;
           const edgeK = segmentEdgeKey(q, r, nq, nr);
           const segDef = sd[edgeK] ? SEGMENT_DEFS[sd[edgeK]] : null;
-          if (segDef?.infranchissable) { visited.set(nk, maxRange + 1); continue; }
+          if (segDef?.infranchissable && sd[edgeK] !== 'cliff') { visited.set(nk, maxRange + 1); continue; }
           visited.set(nk, d + 1);
           queue.push({ q: nq, r: nr, d: d + 1 });
         }

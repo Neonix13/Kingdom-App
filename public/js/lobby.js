@@ -115,7 +115,12 @@ const UNITS_DATA = [
 
 function show(id) {
   ['screen-home', 'screen-lobby', 'screen-army'].forEach(s => {
-    document.getElementById(s).style.display = s === id ? 'block' : 'none';
+    const el = document.getElementById(s);
+    if (s === id) {
+      el.style.display = (s === 'screen-army' || s === 'screen-lobby') ? 'flex' : 'block';
+    } else {
+      el.style.display = 'none';
+    }
   });
   const c = document.querySelector('.lobby-container');
   c.classList.toggle('army-mode', id === 'screen-army');
@@ -287,12 +292,12 @@ function showGeneralDetail(g) {
       <div class="roster-gen-wrap">
         ${imgHtml}
         <div class="roster-gen-body">
+          <div class="stat-row">${statBox('Vitalité', g.vitality)}</div>
           <div class="stat-row">${statBox('Force', g.force)}${statBox('Stratégie', g.strategy)}${statBox('Charisme', g.charisma)}</div>
-          <div class="stat-row">${statBox('Vitalité', g.vitality)}${statBox('Armure', g.armor)}</div>
-          <div class="stat-row">${statBox('Puissance', g.power)}${statBox('Intimidation', g.intimidation)}</div>
+          <div class="stat-row">${statBox('Puissance', g.power)}${statBox('Armure', g.armor)}${statBox('Intimidation', g.intimidation)}</div>
         </div>
       </div>
-      ${bonusLines.length ? `<div class="gen-panel-abilities">${bonusLines.join('<br>')}</div>` : ''}
+      ${bonusLines.length ? `<div style="text-align:center;font-size:0.68em;color:#5a3c10;text-transform:uppercase;letter-spacing:0.08em;margin-top:6px;margin-bottom:3px">Bonus</div><div class="gen-panel-abilities">${bonusLines.join('<br>')}</div>` : ''}
       ${g.citation ? `<div class="gen-panel-citation">${g.citation}</div>` : ''}
     </div>
   `;
@@ -393,12 +398,11 @@ function renderArmyStatus(players) {
   const el = document.getElementById('army-players-status');
   if (!el) return;
   el.innerHTML = players.filter(p => !p.offline).map(p => {
-    const genName = p.generalId ? (GENERALS_DATA.find(g => g.id === p.generalId)?.name || p.generalId) : '?';
-    const icon = p.isReady ? '✅' : p.generalId ? '⚔️' : '⌛';
-    const color = p.color || '#4a90d9';
-    return `<span style="background:#1a1a1e;border:1px solid ${color};border-radius:4px;padding:3px 8px;font-size:0.82em;color:#ccc">
-      ${icon} <span style="color:${color}">${genName}</span>
-    </span>`;
+    const ready = p.isReady;
+    return `<div style="display:flex;align-items:center;gap:4px;background:${ready ? '#1a3a1a' : '#1a1008'};border:1px solid ${ready ? '#2a8c2a' : '#3a2408'};border-radius:4px;padding:3px 8px">
+      ${flagImg(p.flag, 18)}
+      <span style="font-size:0.78em;color:${ready ? '#7fff7f' : '#c87040'}">${ready ? 'Prêt' : 'En attente'}</span>
+    </div>`;
   }).join('');
 }
 
@@ -487,12 +491,13 @@ function renderRosterGeneral() {
       <div class="roster-gen-wrap">
         ${imgHtml}
         <div class="roster-gen-body">
+          <div class="stat-row">${statBox('Vitalité', g.vitality)}</div>
           <div class="stat-row">${statBox('Force', g.force)}${statBox('Stratégie', g.strategy)}${statBox('Charisme', g.charisma)}</div>
-          <div class="stat-row">${statBox('Vitalité', g.vitality)}${statBox('Armure', g.armor)}</div>
-          <div class="stat-row">${statBox('Puissance', g.power)}${statBox('Intimidation', g.intimidation)}</div>
+          <div class="stat-row">${statBox('Puissance', g.power)}${statBox('Armure', g.armor)}${statBox('Intimidation', g.intimidation)}</div>
         </div>
+        ${selectedFlag ? `<img class="roster-flag-img" src="/assets/flag/${FLAGS.find(f=>f.id===selectedFlag)?.file}" title="${FLAGS.find(f=>f.id===selectedFlag)?.name}">` : ''}
       </div>
-      ${bonusLines.length ? `<div class="gen-panel-abilities">${bonusLines.join('<br>')}</div>` : ''}
+      ${bonusLines.length ? `<div style="text-align:center;font-size:0.68em;color:#5a3c10;text-transform:uppercase;letter-spacing:0.08em;margin-top:6px;margin-bottom:3px">Bonus</div><div class="gen-panel-abilities">${bonusLines.join('<br>')}</div>` : ''}
       ${g.citation ? `<div class="gen-panel-citation">${g.citation}</div>` : ''}
     </div>
   `;
@@ -607,8 +612,9 @@ function showUnitDetail(u) {
     <div class="army-detail-body">
       <div class="stat-row">${statBox('Vitalité', u.vitality)}${statBox('Moral', u.morale)}</div>
       <div class="stat-row">${statBox('Attaque', u.attack)}${statBox('Défense', u.defense)}</div>
-      <div class="stat-row">${statBox('Puissance', u.power)}${statBox('Armure', u.armor)}</div>
-      <div class="stat-row">${statBox('Intimidation', u.intimidation)}${statBox('Vitesse', u.speed)}${u.range > 1 ? statBox('Portée', u.range) : ''}</div>
+      <div class="stat-row">${statBox('Puissance', u.power)}${statBox('Armure', u.armor)}${statBox('Intimidation', u.intimidation)}</div>
+      <div class="stat-row">${statBox('Vitesse', u.speed)}${u.range > 1 ? statBox('Portée', u.range) : ''}</div>
+      <div style="text-align:center;font-size:0.68em;color:#5a3c10;text-transform:uppercase;letter-spacing:0.08em;margin-top:6px;margin-bottom:3px">Bonus</div>
       <div class="army-detail-bonus">${u.bonus}</div>
     </div>
   `;
@@ -665,11 +671,10 @@ function computeSpent() {
 
 function updateBudgetDisplay() {
   const spent = computeSpent();
-  document.getElementById('army-budget').textContent = budget.toLocaleString();
   document.getElementById('army-spent').textContent = spent.toLocaleString();
   document.getElementById('army-remaining').textContent = (budget - spent).toLocaleString();
   const inp = document.getElementById('army-budget-input');
-  if (inp) inp.value = budget;
+  if (inp && document.activeElement !== inp) inp.value = budget;
 }
 
 function submitArmy() {
@@ -751,17 +756,10 @@ function wsDispatch(event, data) {
       }
       if (data.phase === 'army_building') {
         show('screen-army');
-        document.getElementById('army-budget').textContent = budget.toLocaleString();
-        const editDiv = document.getElementById('army-budget-edit');
+        const budgetInp = document.getElementById('army-budget-input');
+        if (budgetInp) { budgetInp.value = budget; budgetInp.disabled = !isHost; }
         const btnBack = document.getElementById('btn-back-to-lobby');
-        if (isHost) {
-          editDiv.style.display = 'block';
-          document.getElementById('army-budget-input').value = budget;
-          if (btnBack) btnBack.style.display = 'inline-block';
-        } else {
-          editDiv.style.display = 'none';
-          if (btnBack) btnBack.style.display = 'none';
-        }
+        if (btnBack) btnBack.style.display = isHost ? 'inline-block' : 'none';
         renderArmyBuilder();
       }
       break;

@@ -32,7 +32,18 @@ mapImage.src = '/assets/img/map.webp';
 let terrainData = {};
 let showTerrain = false;
 let showCoords = false;
+let showWeakness = false;
 let pingMode = false;
+
+// facing idx → {dq, dr, label}
+const FACING_DIRS = [
+  { dq:  1, dr:  0, label: '↘' }, // 0 SE
+  { dq:  1, dr: -1, label: '↗' }, // 1 NE
+  { dq:  0, dr: -1, label: '↑'  }, // 2 N
+  { dq: -1, dr:  0, label: '↖' }, // 3 NW
+  { dq: -1, dr:  1, label: '↙' }, // 4 SW
+  { dq:  0, dr:  1, label: '↓'  }, // 5 S
+];
 const activePings = []; // { q, r, color, startTime }
 let gridOpacity = 0.25;
 let gridThickness = 1;
@@ -60,7 +71,7 @@ const SEGMENT_COLORS_MAP = {
 // Propriétés locales pour les vérifications de mouvement côté client
 const SEGMENT_DEFS_CLIENT = {
   river:            { name:'Rivière',          vitesse:-1,  infranchissable:false, infranchissable_cavalerie:false, attack_cac:-2, attack_tir:0, puissance_cac:-2, puissance_tir:0, intimidation_cac:-1, intimidation_tir:0, armure_cac:-1, armure_tir:0, defense_cac:2, defense_tir:0, defense_puissance_cac:0, defense_puissance_tir:1, defense_intimidation_cac:-1, defense_intimidation_tir:1, defense_armure_cac:0, defense_armure_tir:0, special:null },
-  cliff:            { name:'Falaise',           vitesse:-3,  infranchissable:false, infranchissable_cavalerie:true,  attack_cac:-6, attack_tir:0, puissance_cac:-3, puissance_tir:0, intimidation_cac:-2, intimidation_tir:0, armure_cac:-2, armure_tir:0, defense_cac:4, defense_tir:0, defense_puissance_cac:0, defense_puissance_tir:3, defense_intimidation_cac:-2, defense_intimidation_tir:1, defense_armure_cac:2, defense_armure_tir:0, special:null },
+  cliff:            { name:'Falaise',           vitesse:-3,  infranchissable:true,  infranchissable_cavalerie:true,  attack_cac:-6, attack_tir:0, puissance_cac:-3, puissance_tir:0, intimidation_cac:-2, intimidation_tir:0, armure_cac:-2, armure_tir:0, defense_cac:4, defense_tir:0, defense_puissance_cac:0, defense_puissance_tir:3, defense_intimidation_cac:-2, defense_intimidation_tir:1, defense_armure_cac:2, defense_armure_tir:0, special:null },
   bridge:           { name:'Pont',              vitesse:0,   infranchissable:false, infranchissable_cavalerie:false, attack_cac:0,  attack_tir:0, puissance_cac:0,  puissance_tir:0, intimidation_cac:0,  intimidation_tir:0, armure_cac:0,  armure_tir:0, defense_cac:2, defense_tir:2, defense_puissance_cac:0, defense_puissance_tir:0, defense_intimidation_cac:0,  defense_intimidation_tir:0, defense_armure_cac:0, defense_armure_tir:0, special:null },
   passerelle:       { name:'Passerelle',        vitesse:0,   infranchissable:false, infranchissable_cavalerie:false, attack_cac:-1, attack_tir:0, puissance_cac:0,  puissance_tir:0, intimidation_cac:0,  intimidation_tir:0, armure_cac:0,  armure_tir:0, defense_cac:1, defense_tir:0, defense_puissance_cac:0, defense_puissance_tir:1, defense_intimidation_cac:0,  defense_intimidation_tir:1, defense_armure_cac:0, defense_armure_tir:0, special:null },
   barriere:         { name:'Barrière',          vitesse:-1,  infranchissable:false, infranchissable_cavalerie:false, attack_cac:-2, attack_tir:0, puissance_cac:-1, puissance_tir:0, intimidation_cac:-1, intimidation_tir:0, armure_cac:-1, armure_tir:0, defense_cac:2, defense_tir:0, defense_puissance_cac:0, defense_puissance_tir:-1, defense_intimidation_cac:-1, defense_intimidation_tir:1, defense_armure_cac:1, defense_armure_tir:2, special:null },
@@ -160,6 +171,21 @@ const treeImage = new Image();
 treeImage.src = '/assets/arbre.png';
 treeImage.onload = () => render();
 
+// Données des généraux (pour les capacités)
+const GENERALS_GAME_DATA = [
+  { id:'ou_ki',       activeAbility:{name:'Sourire du Monstre',description:"Augmente la puissance de l'armée de 2 pendant 2 tours. Si l'armée ennemie est en infériorité numérique, réduit le moral de chaque unité adverse de 1.",cooldown:3}, passiveAbility:{name:'Oiseau Colossale',description:"Les généraux ennemis ont -3 en Force, Stratégie et Charisme. Les unités de l'armée d'Ou Ki ont +1 d'intimidation."} },
+  { id:'mou_bu',      activeAbility:{name:'Poing du Titan',description:"Réduit l'armure d'une armée ennemie de 1 pendant 2 tours. Les unités ciblées éliminées octroient +1 de puissance à l'unité jusqu'à la fin de la journée.",cooldown:3}, passiveAbility:{name:'Force Inégalée',description:"Augmente la puissance des unités de l'armée de Mou Bu de 1."} },
+  { id:'ou_sen',      activeAbility:{name:"L'Architecte de la Guerre",description:"Réduit l'attaque et la vitesse d'une armée ennemie de 2 pendant 3 tours, et augmente la portée des unités à distance de l'armée de 200m pendant 2 tours.",cooldown:4}, passiveAbility:{name:'Forteresse Imprenable',description:"Les unités de l'armée d'Ou Sen gagnent 2 d'armure et subissent 1 d'intimidation en moins en position défensive."} },
+  { id:'kan_ki',      activeAbility:{name:'Tactiques Infernales',description:"Choisit 3 unités qui peuvent se déployer n'importe où sur le champ de bataille. Ces unités gagnent 2 de puissance et 1 d'intimidation pour la journée.",cooldown:5}, passiveAbility:{name:'Terreur Psychologique',description:"Augmente l'intimidation des unités de 1 par embuscade réussie jusqu'à la fin de la bataille."} },
+  { id:'ri_boku',     activeAbility:{name:'Vision du Sage',description:"Révèle l'emplacement d'une unité ennemie en embuscade.",cooldown:2}, passiveAbility:{name:'Maître de la Guerre Totale',description:"Lors d'un conflit, si une unité de l'armée est en avantage, elle reçoit un bonus de 1 en attaque ou en défense."} },
+  { id:'kei_sha',     activeAbility:{name:'Piège Mortel',description:"Toute l'armée de Kei Sha recule instantanément de 2 cases et obtient un bonus de 1 de défense pendant les 2 prochains tours.",cooldown:4}, passiveAbility:{name:'Danse de la Guerre',description:"Chaque fois qu'une unité de l'armée de Kei Sha défend, l'unité adverse qui attaque perd 1 de vitalité en ignorant l'armure."} },
+  { id:'shi_ba_shou', activeAbility:{name:'Forteresse Inviolable',description:"Les unités en position de défense gagnent 5 d'armure pendant 2 tours et annule la charge d'une unité.",cooldown:4}, passiveAbility:{name:'Loyauté Absolue',description:"Lorsqu'une unité alliée est détruite, les unités alliées dans un rayon de 400m regagnent 1 de vitalité."} },
+  { id:'ren_pa',      activeAbility:{name:'Furie Martial',description:"Si une unité ennemie possède 12 de vitalité ou moins et se trouve au corps à corps avec Ren Pa, détruit cette unité peu importe son type.",cooldown:3}, passiveAbility:{name:'Volonté Indomptable',description:"La troupe de Ren Pa continue de se battre pendant 1 tour après avoir été démoralisée."} },
+  { id:'go_kei',      activeAbility:{name:'Rempart Inébranlable',description:"Les unités obtiennent 3 de défense et 2 de puissance supplémentaires en position de défense pendant 2 tours.",cooldown:3}, passiveAbility:{name:'Gardien de Wei',description:"Lorsqu'une unité tue une unité ennemie en position de défense, elle gagne 1 de puissance et 1 de défense jusqu'à la fin de la bataille."} },
+  { id:'go_hou_mei',  activeAbility:{name:'Esprit Tactique Inégalé',description:"À la fin d'un tour, Go Hou Mei peut rejouer un de ses officiers ainsi que la troupe sous son commandement, mais ne peut pas attaquer.",cooldown:3}, passiveAbility:{name:'Génie Militaire',description:"Si Go Hou Mei réussit le test de Stratégie et commence le tour, ses unités ont +1 d'attaque et de défense."} },
+  { id:'gai_mou',     activeAbility:{name:'Rugissement du Lion',description:"Toutes les troupes ennemies (à l'exception des officiers) perdent 1 d'intimidation dans un rayon de 1000m autour de Gai Mou.",cooldown:3}, passiveAbility:{name:'Fierté Inflexible',description:"Lors d'un combat impliquant une unité de l'armée de Gai Mou, si l'unité adverse est en supériorité numérique, l'unité alliée obtient un bonus de 1 de puissance."} },
+];
+
 // Stance icons
 const stanceIcons = {};
 const stanceList = ['marche','combat','charge','repos','defense_combat','defense_distance'];
@@ -173,8 +199,14 @@ const TERRAINS_DATA = {
   building: { name:'Bâtiments', vitesse:-1, attack_cac:-1, attack_tir:-3, defense_cac:+2, defense_tir:+2, puissance_cac:0,  puissance_tir:-1, intimidation_cac:+1, intimidation_tir:+2, courage_cac:+1, courage_tir:+1, esquive_cac:+2, esquive_tir:+4, precision_cac:-1, precision_tir:-1, armure:+2, armure_tour:0, moral_tour:+10, vitalite_tour:+5 },
   bridge:   { name:'Ponts',     vitesse:0,  attack_cac:0,  attack_tir:+1, defense_cac:+1, defense_tir:+1, puissance_cac:0,  puissance_tir:0,  intimidation_cac:+1, intimidation_tir:0,  courage_cac:0,  courage_tir:-1, esquive_cac:+1, esquive_tir:-1, precision_cac:0,  precision_tir:+1, armure:0,  armure_tour:0, moral_tour:0,  vitalite_tour:0 },
 };
-let STANCES_DATA = {};
-fetch('/data/stances.json').then(r => r.json()).then(data => { STANCES_DATA = data; render(); }).catch(() => {});
+const STANCES_DATA = {
+  marche:           { vitesse:+1,  attack_cac:-1, attack_tir:-2, defense_cac:-2, defense_tir:-1, puissance_cac:0,  puissance_tir:-1, intimidation_cac:+1, intimidation_tir:0,  armure:-1, armure_tour:0,  moral_tour:0,   vitalite_tour:0 },
+  combat:           { vitesse:0,   attack_cac:0,  attack_tir:0,  defense_cac:0,  defense_tir:0,  puissance_cac:0,  puissance_tir:0,  intimidation_cac:0,  intimidation_tir:0,  armure:0,  armure_tour:0,  moral_tour:0,   vitalite_tour:0 },
+  charge:           { vitesse:+2,  attack_cac:+3, attack_tir:-2, defense_cac:-1, defense_tir:-2, puissance_cac:+1, puissance_tir:-1, intimidation_cac:+2, intimidation_tir:-1, armure:0,  armure_tour:0,  moral_tour:-10, vitalite_tour:0 },
+  repos:            { vitesse:-1,  attack_cac:-2, attack_tir:-2, defense_cac:-2, defense_tir:-2, puissance_cac:-2, puissance_tir:-1, intimidation_cac:-2, intimidation_tir:-1, armure:0,  armure_tour:+1, moral_tour:+10, vitalite_tour:+5 },
+  defense_combat:   { vitesse:-1,  attack_cac:-2, attack_tir:-1, defense_cac:+3, defense_tir:-2, puissance_cac:-1, puissance_tir:0,  intimidation_cac:0,  intimidation_tir:+1, armure:+1, armure_tour:0,  moral_tour:0,   vitalite_tour:0 },
+  defense_distance: { vitesse:0,   attack_cac:-3, attack_tir:0,  defense_cac:-2, defense_tir:0,  puissance_cac:-2, puissance_tir:0,  intimidation_cac:-2, intimidation_tir:-1, armure:0,  armure_tour:0,  moral_tour:0,   vitalite_tour:0 },
+};
 for (const s of stanceList) {
   const img = new Image();
   img.src = `/assets/icons/${stanceIconFiles[s]}.svg`;
@@ -317,6 +349,9 @@ const TERRAIN_COLORS = {
   bridge:   'rgba(220,140,30,0.8)',
 };
 
+// Map hex set — built once from image bounds (mirrors server generateHexMap)
+const mapHexSet = buildMapHexSet();
+
 // State
 let myId = sessionStorage.getItem('myId');
 let roomCode = sessionStorage.getItem('roomCode');
@@ -380,7 +415,8 @@ function buildZoneTileSet(state) {
 }
 if (deployState) buildZoneTileSet(deployState);
 
-let mode = 'select'; // select | move | attack | deploy
+let mode = 'select'; // select | move | attack | deploy | facing
+let facingTiles = new Map(); // key -> { facingIdx, label, isCurrent }
 let selectedUnit = null;
 let hoveredHex = null;
 let hoveredUnit = null;
@@ -511,7 +547,16 @@ function render() {
         if (isVisible && movableTiles.has(key)) fill = 'rgba(40,120,20,0.35)';
         if (isVisible && attackableTiles.has(key)) fill = 'rgba(180,30,10,0.35)';
         if (isVisible && buildTiles.has(key)) fill = 'rgba(20,160,80,0.45)';
-        if (isHovered && isVisible) stroke = '#c8960c';
+        const facingTile = facingTiles.get(key);
+        if (facingTile) {
+          if (facingTile.isCurrent) {
+            fill = 'rgba(80,80,80,0.45)'; stroke = 'rgba(120,120,120,0.6)';
+          } else {
+            fill = isHovered ? 'rgba(200,160,20,0.45)' : 'rgba(180,130,10,0.25)';
+            stroke = '#c8960c';
+          }
+        }
+        if (isHovered && isVisible && !facingTile) stroke = '#c8960c';
         drawHex(ctx, x, y, fill, stroke, 1, gridThickness);
       }
     }
@@ -651,6 +696,31 @@ function render() {
     ctx.restore();
   }
 
+  // Faiblesses directionnelles — derrière les unités
+  if (showWeakness) {
+    const allUnits = gameState?.units || [];
+    const allyPositions = new Set(allUnits.filter(u => u.isMine).map(u => `${u.q},${u.r}`));
+    const enemyPositions = new Set(allUnits.filter(u => !u.isMine).map(u => `${u.q},${u.r}`));
+    for (const unit of allUnits) {
+      if (unit.q === null || unit.r === null || unit.facing == null) continue;
+      const { x, y } = hexToPixel(unit.q, unit.r);
+      const f = unit.facing;
+      const friendlyPos = unit.isMine ? allyPositions : enemyPositions;
+      const edgeColors = new Array(6).fill(null);
+      for (let offset = 0; offset < 6; offset++) {
+        const dirIdx = (f + offset) % 6;
+        const { dq, dr } = FACING_DIRS[dirIdx];
+        const nq = unit.q + dq, nr = unit.r + dr;
+        if (friendlyPos.has(`${nq},${nr}`)) continue;
+        const edgeIdx = (6 - dirIdx) % 6;
+        if (offset === 0 || offset === 1 || offset === 5) edgeColors[edgeIdx] = 'rgba(20,120,20,0.85)';
+        else if (offset === 2 || offset === 4)            edgeColors[edgeIdx] = 'rgba(160,70,0,0.85)';
+        else                                               edgeColors[edgeIdx] = 'rgba(140,10,10,0.85)';
+      }
+      drawHexWeakness(ctx, x, y, edgeColors);
+    }
+  }
+
   // Draw units
   const units = gameState?.units || [];
   const myUnits = deployState?.units || [];
@@ -745,6 +815,7 @@ function render() {
         const rMin2 = Math.floor(((-canvas.height / 2 - camY) / zoom - HEX_SIZE * S / 2 * q) / (HEX_SIZE * S)) - 1;
         const rMax2 = Math.ceil(((canvas.height / 2 - camY) / zoom - HEX_SIZE * S / 2 * q) / (HEX_SIZE * S)) + 1;
         for (let r = rMin2; r <= rMax2; r++) {
+          if (!mapHexSet.has(`${q},${r}`)) continue;
           const { x, y } = hexToPixel(q, r);
           ctx.fillStyle = 'rgba(0,0,0,0.6)';
           ctx.fillText(`${q},${r}`, x + 0.5, y + 0.5);
@@ -753,6 +824,30 @@ function render() {
         }
       }
     }
+    ctx.restore();
+  }
+
+  // Flèches de rotation — dessinées en dernier pour passer au-dessus de tout
+  if (facingTiles.size > 0) {
+    ctx.save();
+    ctx.font = `bold ${Math.max(12, HEX_SIZE * zoom * 0.52)}px serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (const [key, ft] of facingTiles) {
+      const [q, r] = key.split(',').map(Number);
+      const { x, y } = hexToPixel(q, r);
+      const isHov = hoveredHex && hoveredHex.q === q && hoveredHex.r === r;
+      if (ft.isCurrent) {
+        ctx.fillStyle = 'rgba(180,180,180,0.75)';
+        ctx.shadowBlur = 0;
+      } else {
+        ctx.fillStyle = isHov ? '#fff200' : '#ffa500';
+        ctx.shadowColor = isHov ? '#fff200' : '#ff8800';
+        ctx.shadowBlur = isHov ? 14 : 8;
+      }
+      ctx.fillText(ft.label, x, y);
+    }
+    ctx.shadowBlur = 0;
     ctx.restore();
   }
 
@@ -873,17 +968,6 @@ function drawUnit(ctx, x, y, unit, playerId, isSelected = false, isHovered = fal
     }
   }
 
-  // HP bar
-  const hpRatio = unit.vitality / unit.maxVitality;
-  const barW = HEX_SIZE * 1.2;
-  const barH = 4;
-  const bx = x - barW / 2;
-  const by = y + tokenR + 2;
-  ctx.fillStyle = '#1a0a04';
-  ctx.fillRect(bx, by, barW, barH);
-  ctx.fillStyle = hpRatio > 0.5 ? '#2a8c2a' : hpRatio > 0.25 ? '#c8960c' : '#a02020';
-  ctx.fillRect(bx, by, barW * hpRatio, barH);
-
   // Draw stance icon (bottom-right of hex) — all non-general units
   if (unit.stance && !unit.isGeneral) {
     const icon = stanceIcons[unit.stance];
@@ -913,9 +997,8 @@ function drawUnit(ctx, x, y, unit, playerId, isSelected = false, isHovered = fal
   // Hover overlay : assombrit le token et affiche le nom
   if (isHovered) {
     // Flèche de direction (facing)
-    const FACING_DIRS = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
     const facing = unit.facing ?? 0;
-    const [fdq, fdr] = FACING_DIRS[facing] || [1,0];
+    const [fdq, fdr] = FACING_DIRS[facing] ? [FACING_DIRS[facing].dq, FACING_DIRS[facing].dr] : [1,0];
     const S3 = Math.sqrt(3);
     const fpx = 1.5 * fdq;
     const fpy = S3 * fdr + S3 / 2 * fdq;
@@ -987,14 +1070,6 @@ function drawStar(ctx, cx, cy, spikes, outerR, innerR) {
 // ---- INPUT ----
 let lastMoveConfirmedAt = 0;
 
-canvas.addEventListener('dblclick', (e) => {
-  // Ne pas ouvrir la fiche si on vient de confirmer un déplacement via double-clic
-  if (Date.now() - lastMoveConfirmedAt < 300) return;
-  const hex = getHexUnderMouse(e);
-  const units = gameState?.units || deployState?.units || [];
-  const unit = units.find(u => u.q === hex.q && u.r === hex.r);
-  if (unit) showUnitCard(unit);
-});
 
 canvas.addEventListener('mousedown', (e) => {
   if (e.button === 1 || e.button === 2) {
@@ -1053,48 +1128,151 @@ canvas.addEventListener('mousemove', (e) => {
 
 canvas.addEventListener('mouseleave', hideTerrainTooltip);
 
+canvas.addEventListener('dblclick', (e) => {
+  const hex = getHexUnderMouse(e);
+  if (!hex) return;
+  const allUnits = [...(gameState?.units || []), ...(deployState?.units || [])];
+  const unit = allUnits.find(u => u.q === hex.q && u.r === hex.r);
+  if (!unit) return;
+  const sidebar = document.getElementById('sidebar');
+  if (sidebar.classList.contains('collapsed')) toggleSidebar();
+  switchSidebarTab('units');
+});
+
 canvas.addEventListener('mouseup', () => { isDragging = false; });
 canvas.addEventListener('contextmenu', (e) => {
   e.preventDefault();
   if (gameState?.phase !== 'battle' || gameState?.currentPlayerId !== myId) return;
   const hex = getHexUnderMouse(e);
+  if (!hex) return;
   const unit = gameState.units.find(u => u.q === hex.q && u.r === hex.r && u.isMine);
   if (!unit) return;
-  if (unit.speedRemaining <= 0) { showToast('Plus de vitesse disponible.'); return; }
-  showFacingPopup(unit, e.clientX, e.clientY);
+  selectUnit(unit);
+  showUnitContextMenu(unit, e.clientX, e.clientY);
 });
 
-function showFacingPopup(unit, clientX, clientY) {
-  document.getElementById('facing-popup')?.remove();
-  const popup = document.createElement('div');
-  popup.id = 'facing-popup';
-  // Layout 3x2 : NW(3) N(2) NE(1) / SW(4) S(5) SE(0)
-  const dirs = [
-    { idx: 3, label: '↖' }, { idx: 2, label: '↑' }, { idx: 1, label: '↗' },
-    { idx: 4, label: '↙' }, { idx: 5, label: '↓' }, { idx: 0, label: '↘' },
-  ];
-  Object.assign(popup.style, {
-    position: 'fixed', left: `${clientX - 54}px`, top: `${clientY - 40}px`,
-    display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '3px',
-    background: 'rgba(10,5,0,0.95)', border: '1px solid #5a3c10',
-    borderRadius: '8px', padding: '6px', zIndex: '1000',
+function showUnitContextMenu(unit, clientX, clientY) {
+  document.getElementById('unit-ctx-menu')?.remove();
+  const full = gameState?.myUnits?.find(u => u.id === unit.id) || unit;
+  const spd = full.speedRemaining ?? 0;
+  const isMyTurn = gameState?.currentPlayerId === myId;
+
+  const menu = document.createElement('div');
+  menu.id = 'unit-ctx-menu';
+  Object.assign(menu.style, {
+    position: 'fixed', left: `${clientX}px`, top: `${clientY}px`,
+    background: '#100804', border: '1px solid #5a3c10', borderRadius: '6px',
+    padding: '4px 0', zIndex: '2000', minWidth: '190px',
+    boxShadow: '0 4px 16px rgba(0,0,0,0.7)', fontFamily: 'inherit',
   });
-  for (const { idx, label } of dirs) {
+
+  function addItem(label, cost, enabled, onClick) {
     const btn = document.createElement('button');
-    btn.textContent = label;
-    Object.assign(btn.style, {
-      background: unit.facing === idx ? '#5a3c10' : '#2a1408',
-      color: '#e8d5a0', border: '1px solid #5a3c10', borderRadius: '4px',
-      cursor: 'pointer', fontSize: '18px', width: '34px', height: '34px',
-    });
-    btn.onclick = () => {
-      wsSend('rotate_facing', { roomCode, unitId: unit.id, facing: idx });
-      popup.remove();
-    };
-    popup.appendChild(btn);
+    btn.style.cssText = 'display:flex;justify-content:space-between;align-items:center;width:100%;padding:7px 14px;background:none;border:none;cursor:pointer;font-size:0.82em;text-align:left;gap:12px;';
+    btn.innerHTML = `<span style="color:${enabled ? '#e0c080' : '#5a4020'}">${label}</span><span style="color:${enabled && cost <= spd ? '#c8960c' : '#5a3c10'};font-size:0.85em;flex-shrink:0">${cost} ⚡</span>`;
+    if (!enabled) { btn.style.cursor = 'not-allowed'; }
+    btn.onmouseenter = () => { if (enabled) btn.style.background = '#1a0d04'; };
+    btn.onmouseleave = () => { btn.style.background = 'none'; };
+    btn.onclick = () => { menu.remove(); if (enabled) onClick(); };
+    menu.appendChild(btn);
   }
-  document.body.appendChild(popup);
-  setTimeout(() => document.addEventListener('click', () => popup.remove(), { once: true }), 0);
+
+  function addSeparator() {
+    const sep = document.createElement('div');
+    sep.style.cssText = 'height:1px;background:#2a1408;margin:3px 0;';
+    menu.appendChild(sep);
+  }
+
+  // Tourner (1 vitesse)
+  addItem('Tourner l\'unité', 1, spd >= 1, () => showFacingPopup(full));
+
+  // Changer de posture (2 vitesse) — non-généraux seulement
+  if (!unit.isGeneral) {
+    addSeparator();
+    const canStance = spd >= 2;
+    const wrapper = document.createElement('div');
+    wrapper.style.position = 'relative';
+
+    const stanceBtn = document.createElement('button');
+    stanceBtn.style.cssText = 'display:flex;justify-content:space-between;align-items:center;width:100%;padding:7px 14px;background:none;border:none;font-size:0.82em;gap:12px;' + (canStance ? 'cursor:pointer;' : 'cursor:not-allowed;');
+    stanceBtn.innerHTML = `<span style="color:${canStance ? '#e0c080' : '#5a4020'}">Changer de posture</span><span style="color:${canStance ? '#c8960c' : '#5a3c10'};font-size:0.85em">2 ⚡${canStance ? ' ▶' : ''}</span>`;
+    wrapper.appendChild(stanceBtn);
+
+    if (canStance) {
+      const subMenu = document.createElement('div');
+      subMenu.style.cssText = 'display:none;position:absolute;left:100%;top:0;background:#100804;border:1px solid #5a3c10;border-radius:6px;padding:4px 0;min-width:160px;box-shadow:0 4px 16px rgba(0,0,0,0.7);z-index:2001;';
+      for (const s of stanceList) {
+        const sb = document.createElement('button');
+        const isCurrent = full.stance === s;
+        sb.style.cssText = `display:flex;align-items:center;gap:8px;width:100%;padding:7px 14px;background:${isCurrent ? '#2a1408' : 'none'};border:none;cursor:${isCurrent ? 'default' : 'pointer'};font-size:0.82em;`;
+        sb.innerHTML = `<img src="/assets/icons/${stanceIconFiles[s]}.svg" style="width:16px;height:16px;opacity:0.8"><span style="color:${isCurrent ? '#ffd700' : '#e0c080'}">${stanceNames[s]}</span>`;
+        sb.onmouseenter = () => {
+          if (!isCurrent) sb.style.background = '#1a0d04';
+          const sidebar = document.getElementById('sidebar');
+          if (sidebar.classList.contains('collapsed')) toggleSidebar();
+          switchSidebarTab('units');
+          const previewUnit = { ...full, stance: s, speedRemaining: Math.max(0, (full.speedRemaining ?? 0) - 2) };
+          showUnitDetail(previewUnit, true, `${stanceNames[s]} (−2 ⚡)`);
+        };
+        sb.onmouseleave = () => {
+          if (!isCurrent) sb.style.background = 'none';
+          showUnitDetail(full);
+        };
+        sb.onclick = () => { menu.remove(); if (!isCurrent) wsSend('change_stance', { roomCode, unitId: full.id, stanceId: s }); };
+        subMenu.appendChild(sb);
+      }
+      wrapper.appendChild(subMenu);
+      stanceBtn.onmouseenter = () => { stanceBtn.style.background = '#1a0d04'; subMenu.style.display = 'block'; };
+      wrapper.onmouseleave = () => { stanceBtn.style.background = 'none'; subMenu.style.display = 'none'; };
+    }
+    menu.appendChild(wrapper);
+  }
+
+  // Capacités spécifiques
+  if (!unit.isGeneral) {
+    // Bâtisseurs : Construire
+    if (unit.typeId === 'batisseurs') {
+      addSeparator();
+      addItem('Construire', 2, spd >= 2, () => enterBuildMode());
+    }
+  } else {
+    // Général : Motiver
+    addSeparator();
+    const canMotivate = !full.hasAttacked && spd >= 1;
+    const motivateCost = Math.max(1, spd);
+    addItem('Motiver les troupes', motivateCost, canMotivate, () => motivateAll());
+    // Général : Capacité active
+    const active = full.activeAbility || (GENERALS_GAME_DATA.find(g => g.id === getGeneralIdForUnit(full))?.activeAbility);
+    if (active) {
+      const canAbility = !full.hasUsedAbility && full.abilityCooldown === 0;
+      const cooldownInfo = full.abilityCooldown > 0 ? ` (CD: ${full.abilityCooldown})` : '';
+      addItem(`⚡ ${active.name}${cooldownInfo}`, 0, canAbility, () => useAbility());
+    }
+  }
+
+  document.body.appendChild(menu);
+
+  // Repositionner si déborde en bas ou à droite
+  requestAnimationFrame(() => {
+    const rect = menu.getBoundingClientRect();
+    if (rect.right > window.innerWidth) menu.style.left = `${clientX - rect.width}px`;
+    if (rect.bottom > window.innerHeight) menu.style.top = `${clientY - rect.height}px`;
+  });
+
+  setTimeout(() => document.addEventListener('click', () => menu.remove(), { once: true }), 0);
+}
+
+
+function showFacingPopup(unit) {
+  facingTiles.clear();
+  for (let idx = 0; idx < FACING_DIRS.length; idx++) {
+    const { dq, dr, label } = FACING_DIRS[idx];
+    const nq = unit.q + dq, nr = unit.r + dr;
+    if (!mapHexSet.has(`${nq},${nr}`)) continue;
+    facingTiles.set(`${nq},${nr}`, { facingIdx: idx, label, isCurrent: unit.facing === idx });
+  }
+  mode = 'facing';
+  render();
 }
 
 canvas.addEventListener('wheel', (e) => {
@@ -1164,6 +1342,17 @@ function handleHexClick(hex) {
     return;
   }
 
+  if (mode === 'facing') {
+    const ft = facingTiles.get(key);
+    if (ft && !ft.isCurrent) {
+      wsSend('rotate_facing', { roomCode, unitId: selectedUnit.id, facing: ft.facingIdx });
+    }
+    facingTiles.clear();
+    mode = 'select';
+    render();
+    return;
+  }
+
   if (selectedUnit) {
     // Clic sur case de déplacement → 1er clic = aperçu, 2e clic = confirmer
     if (movableTiles.has(key)) {
@@ -1175,9 +1364,11 @@ function handleHexClick(hex) {
         movableTiles.clear();
         attackableTiles.clear();
         rangeTiles.clear(); rangeCenter = null; motivateTiles.clear(); motivateCenter = null;
+        showUnitDetail(selectedUnit);
       } else {
         pendingMoveTarget = { q: hex.q, r: hex.r };
         pendingMovePath = findPathClient(selectedUnit, hex.q, hex.r);
+        showMovePreview(selectedUnit, hex.q, hex.r);
       }
       render();
       return;
@@ -1208,8 +1399,8 @@ function handleHexClick(hex) {
 
     // Clic sur une autre unité alliée → changer de sélection
     const ally = gameState?.units.find(u => u.q === hex.q && u.r === hex.r && u.isMine);
-    if (ally && ally.id !== selectedUnit.id) {
-      selectUnit(ally);
+    if (ally) {
+      if (ally.id !== selectedUnit.id) selectUnit(ally);
       return;
     }
 
@@ -1230,6 +1421,51 @@ function handleHexClick(hex) {
   const unit = gameState?.units.find(u => u.q === hex.q && u.r === hex.r && u.isMine);
   if (unit) selectUnit(unit);
   render();
+}
+
+function showMovePreview(unit, tq, tr) {
+  // Calcule le coût du chemin vers la tuile cible
+  const targetKey = `${tq},${tr}`;
+  const maxSpeed = unit.speedRemaining != null ? unit.speedRemaining : unit.speed;
+  const isCavalry = unit.category === 'Chevaux' || unit.category === 'Chars';
+  const dirs = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
+  const dist = new Map();
+  dist.set(`${unit.q},${unit.r}`, 0);
+  const queue = [{ q: unit.q, r: unit.r, cost: 0 }];
+  while (queue.length > 0) {
+    queue.sort((a, b) => a.cost - b.cost);
+    const { q, r, cost } = queue.shift();
+    const key = `${q},${r}`;
+    if (cost > (dist.get(key) ?? Infinity)) continue;
+    if (key === targetKey) break;
+    if (cost >= maxSpeed) continue;
+    for (const [dq, dr] of dirs) {
+      const nq = q + dq, nr = r + dr;
+      const nk = `${nq},${nr}`;
+      if (!movableTiles.has(nk) && nk !== targetKey) continue;
+      const edgeK = segmentEdgeKey(q, r, nq, nr);
+      const segDef = segmentData[edgeK] ? SEGMENT_DEFS_CLIENT[segmentData[edgeK]] : null;
+      if (segDef?.infranchissable) continue;
+      if (segDef?.infranchissable_cavalerie && isCavalry) continue;
+      let stepCost = terrainMoveCost(key);
+      if (segDef) {
+        if (segDef.vitesse_fixe != null) stepCost = segDef.vitesse_fixe;
+        else stepCost += Math.max(0, -(segDef.vitesse || 0));
+      }
+      const newCost = cost + stepCost;
+      if (newCost > maxSpeed) continue;
+      if (!dist.has(nk) || newCost < dist.get(nk)) {
+        dist.set(nk, newCost);
+        queue.push({ q: nq, r: nr, cost: newCost });
+      }
+    }
+  }
+  const pathCost = dist.get(targetKey) ?? 0;
+  const speedAfter = Math.max(0, maxSpeed - pathCost);
+  const arrivalTerrain = terrainData[targetKey] || 'plain';
+  const terrainName = TERRAINS_DATA[arrivalTerrain]?.name || arrivalTerrain;
+  const previewUnit = { ...unit, q: tq, r: tr, speedRemaining: speedAfter };
+  showUnitDetail(previewUnit, true, `${terrainName} (−${Math.floor(pathCost)} ⚡)`);
 }
 
 function handleDeployClick(hex) {
@@ -1272,6 +1508,9 @@ function handleDeployClick(hex) {
 }
 
 function selectUnit(unit) {
+  // Toujours utiliser les données complètes de myUnits (contient activeAbility, passiveAbility, etc.)
+  const full = gameState?.myUnits?.find(u => u.id === unit.id);
+  if (full) unit = { ...full, isMine: unit.isMine };
   selectedUnit = unit;
   pendingMoveTarget = null;
   pendingMovePath = [];
@@ -1459,10 +1698,10 @@ function computeRangeTiles(unit) {
   visited.add(`${unit.q},${unit.r}`);
   while (queue.length) {
     const { q, r, d } = queue.shift();
-    if (Math.max(Math.abs(q), Math.abs(r), Math.abs(q + r)) > 70) continue; // hors carte
+    if (Math.max(Math.abs(q), Math.abs(r), Math.abs(q + r)) > 70) continue;
     const hT = hd[`${q},${r}`] || 0;
     const effectiveRange = Math.max(1, (unit.range || 1) + (hA - hT));
-    if (d > 0 && d <= effectiveRange) rangeTiles.add(`${q},${r}`);
+    if (d > 0 && d <= effectiveRange && mapHexSet.has(`${q},${r}`)) rangeTiles.add(`${q},${r}`);
     if (d >= effectiveRange || d >= maxRange) continue;
     for (const [dq, dr] of dirs) {
       const nq = q + dq, nr = r + dr;
@@ -1503,6 +1742,7 @@ function setMode(newMode) {
   const indicator = document.getElementById('mode-indicator');
   const labels = { select: 'Sélection', move: 'Déplacement', attack: 'Attaque', motivate: 'Motiver', deploy: 'Déploiement', build: 'Construction' };
   indicator.textContent = `Mode : ${labels[newMode] || newMode}`;
+  if (newMode !== 'facing') facingTiles.clear();
   if (newMode !== 'move') movableTiles.clear();
   if (newMode !== 'attack') {
     attackableTiles.clear();
@@ -1558,11 +1798,39 @@ function updateActionButtons() {
   }
 }
 
-function showUnitDetail(unit) {
+function showUnitDetail(unit, previewOnly = false, previewLabel = null) {
   const panel = document.getElementById('selected-unit-detail');
   if (!unit) { panel.style.display = 'none'; return; }
+  // Enrichir avec myUnits si activeAbility/passiveAbility manquants
+  if (unit.isGeneral && !unit.activeAbility) {
+    const full = gameState?.myUnits?.find(u => u.id === unit.id);
+    if (full) unit = { ...full, stance: unit.stance };
+  }
   panel.style.display = 'block';
-  document.getElementById('detail-name').textContent = unit.name + (unit.isFleeing ? ' (EN FUITE)' : '');
+  if (!previewOnly) {
+    const nameEl = document.getElementById('detail-name');
+    nameEl.textContent = unit.name + (unit.isFleeing ? ' (EN FUITE)' : '');
+    nameEl.style.textAlign = 'center';
+  }
+
+  // Image
+  if (!previewOnly) {
+    const imgEl = document.getElementById('detail-unit-img');
+    if (unit.isGeneral) {
+      const generalId = getGeneralIdForUnit(unit);
+      const entry = generalId ? GENERAL_IMAGE1_MAP[generalId] : null;
+      if (entry && imgEl) {
+        imgEl.src = `/assets/unites/GENERAL IMAGE 1-1/${encodeURIComponent(entry.file)}.${entry.ext}`;
+        imgEl.style.display = 'block';
+      } else if (imgEl) { imgEl.style.display = 'none'; }
+    } else {
+      const entry = unit.typeId ? UNIT_IMAGE1_MAP[unit.typeId] : null;
+      if (entry && imgEl) {
+        imgEl.src = `/assets/unites/UNIT IMAGE 1-1/${encodeURIComponent(entry.file)}.${entry.ext}`;
+        imgEl.style.display = 'block';
+      } else if (imgEl) { imgEl.style.display = 'none'; }
+    }
+  }
 
   const st = (!unit.isGeneral && unit.stance) ? (STANCES_DATA[unit.stance] || {}) : {};
   const terrainKey = (unit.q != null && unit.r != null) ? `${unit.q},${unit.r}` : null;
@@ -1570,59 +1838,82 @@ function showUnitDetail(unit) {
   const tr = TERRAINS_DATA[terrainType] || TERRAINS_DATA.plain;
   const terrainName = tr.name || terrainType;
 
-  // Build a stat row with delta coloring and hover tooltip
-  const statRows = [];
-  function addStat(label, base, stKey, trKey, suffix) {
+  function sb(label, value, color, tooltip) {
+    const style = color ? ` style="color:${color}"` : '';
+    const tip = tooltip ? ` title="${tooltip}"` : '';
+    return `<div class="stat-box"${tip}><div class="stat-box-label">${label}</div><div class="stat-box-value"${style}>${value}</div></div>`;
+  }
+
+  function sbMod(label, base, stKey, trKey) {
     const sDelta = st[stKey] || 0;
     const tDelta = trKey ? (tr[trKey] || 0) : 0;
     const total = sDelta + tDelta;
-    let valueHtml;
-    if (total === 0) {
-      valueHtml = `<span>${base}${suffix||''}</span>`;
-    } else {
-      const effective = base + total;
-      const color = total > 0 ? '#80e080' : '#e08080';
-      const sign = total > 0 ? '+' : '';
-      valueHtml = `<span style="color:${color}" title="Base: ${base}${suffix||''}${sDelta!==0?` | Posture: ${sDelta>0?'+':''}${sDelta}`:''}${tDelta!==0?` | Terrain: ${tDelta>0?'+':''}${tDelta}`:''}">`;
-      valueHtml += `${effective}${suffix||''} <small style="opacity:0.75">(${sign}${total})</small></span>`;
-    }
-    statRows.push(`<div class="stat-row" style="cursor:default" title="${label}: base ${base}${suffix||''}${sDelta!==0?`, posture ${sDelta>0?'+':''}${sDelta}`:''}${tDelta!==0?`, terrain ${tDelta>0?'+':''}${tDelta}`:''}"><span>${label}</span>${valueHtml}</div>`);
+    if (total === 0) return sb(label, base);
+    const effective = base + total;
+    const color = total > 0 ? '#80e080' : '#e08080';
+    const sign = total > 0 ? '+' : '';
+    const tip = `Base: ${base}${sDelta !== 0 ? ` | Posture: ${sDelta > 0 ? '+' : ''}${sDelta}` : ''}${tDelta !== 0 ? ` | Terrain: ${tDelta > 0 ? '+' : ''}${tDelta}` : ''}`;
+    return sb(label, `${effective} <small style="opacity:0.7">(${sign}${total})</small>`, color, tip);
   }
 
   const speedLabel = unit.speedRemaining != null ? `${unit.speedRemaining}/${unit.speed}` : `${unit.speed}`;
-  const stanceLabel = unit.stance ? (stanceNames[unit.stance] || unit.stance) : '—';
+  const rows = [];
 
-  statRows.push(`<div class="stat-row"><span>Vitalité</span><span>${unit.vitality}/${unit.maxVitality}</span></div>`);
-  statRows.push(`<div class="stat-row"><span>Moral</span><span>${unit.morale != null ? unit.morale : '—'}/${unit.maxMorale != null ? unit.maxMorale : '—'}</span></div>`);
   if (!unit.isGeneral) {
-    addStat('Attaque', unit.attack, 'attack_cac', 'attack_cac');
-    addStat('Puissance', unit.power, 'puissance_cac', 'puissance_cac');
-    addStat('Défense', unit.defense, 'defense_cac', 'defense_cac');
-    addStat('Armure', unit.armor, 'armure', 'armure');
-    // Bonus conditionnels
-    if (unit.typeId === 'phalange') {
-      statRows.push(`<div class="stat-row" style="color:#80c060;font-size:0.82em"><span>Armure (vs tirs)</span><span>+2</span></div>`);
-    }
-    if (unit.typeId === 'lancier') {
-      statRows.push(`<div class="stat-row" style="color:#80c060;font-size:0.82em"><span>Puissance (vs cav.)</span><span>+6</span></div>`);
-    }
+    // Vitalité / Moral
+    rows.push(`<div class="stat-row">${sb('Vitalité', `${unit.vitality}/${unit.maxVitality}`)}${sb('Moral', `${unit.morale ?? '—'}/${unit.maxMorale ?? '—'}`)}</div>`);
+    // Attaque / Défense
+    rows.push(`<div class="stat-row">${sbMod('Attaque', unit.attack, 'attack_cac', 'attack_cac')}${sbMod('Défense', unit.defense, 'defense_cac', 'defense_cac')}</div>`);
+    // Puissance / Armure / Intimidation
+    rows.push(`<div class="stat-row">${sbMod('Puissance', unit.power, 'puissance_cac', 'puissance_cac')}${sbMod('Armure', unit.armor, 'armure', 'armure')}${sb('Intimidation', unit.intimidation ?? 0)}</div>`);
+    // Vitesse
+    rows.push(`<div class="stat-row">${sb('Vitesse', speedLabel)}${unit.range > 1 ? sb('Portée', `${unit.range} cases`) : ''}</div>`);
   } else {
-    statRows.push(`<div class="stat-row"><span>Attaque</span><span>${unit.attack}</span></div>`);
-    statRows.push(`<div class="stat-row"><span>Puissance</span><span>${unit.power}</span></div>`);
-    statRows.push(`<div class="stat-row"><span>Défense</span><span>${unit.defense}</span></div>`);
-    statRows.push(`<div class="stat-row"><span>Armure</span><span>${unit.armor}</span></div>`);
+    // Vitalité
+    rows.push(`<div class="stat-row">${sb('Vitalité', `${unit.vitality}/${unit.maxVitality}`)}</div>`);
+    // Force / Stratégie / Charisme
+    rows.push(`<div class="stat-row">${sb('Force', unit.force)}${sb('Stratégie', unit.strategy)}${sb('Charisme', unit.charisma)}</div>`);
+    // Puissance / Armure / Intimidation
+    rows.push(`<div class="stat-row">${sb('Puissance', unit.power)}${sb('Armure', unit.armor)}${sb('Intimidation', unit.intimidation ?? 0)}</div>`);
+    // Vitesse
+    rows.push(`<div class="stat-row">${sb('Vitesse', speedLabel)}</div>`);
   }
-  statRows.push(`<div class="stat-row"><span>Vitesse</span><span>${speedLabel}</span></div>`);
-  if (unit.range > 1) statRows.push(`<div class="stat-row"><span>Portée</span><span>${unit.range} cases</span></div>`);
-  if (unit.visionRange > 0) statRows.push(`<div class="stat-row"><span>Vision</span><span>${unit.visionRange} cases</span></div>`);
-  if (!unit.isGeneral) {
-    statRows.push(`<div class="stat-row"><span>Posture</span><span>${stanceLabel}</span></div>`);
-    statRows.push(`<div class="stat-row" style="color:#a89060;font-size:0.8em"><span>Terrain</span><span>${terrainName}</span></div>`);
-  }
-  statRows.push(`<div class="stat-row"><span>Déplacé</span><span>${unit.hasMoved ? 'Oui' : 'Non'}</span></div>`);
-  statRows.push(`<div class="stat-row"><span>Attaqué</span><span>${unit.hasAttacked ? 'Oui' : 'Non'}</span></div>`);
 
-  document.getElementById('detail-stats').innerHTML = statRows.join('');
+  const bonusTitle = `<div style="text-align:center;font-size:0.68em;color:#5a3c10;text-transform:uppercase;letter-spacing:0.08em;margin-top:8px;margin-bottom:3px">Bonus</div>`;
+
+  // Bonus de l'unité
+  if (!unit.isGeneral && unit.bonus) {
+    rows.push(bonusTitle + `<div style="padding:6px 4px;background:#0a0603;border:1px solid #3a2408;border-radius:3px;font-size:0.72em;line-height:1.5;color:#a89060">${unit.bonus}</div>`);
+  }
+
+  // Capacités du général
+  if (unit.isGeneral) {
+    const gData = GENERALS_GAME_DATA.find(g => g.id === unit.generalId) || unit;
+    const active = unit.activeAbility || gData?.activeAbility;
+    const passive = unit.passiveAbility || gData?.passiveAbility;
+    if (active || passive) rows.push(bonusTitle);
+    if (active) {
+      rows.push(`<div style="padding:6px 4px;background:#0a0603;border:1px solid #3a2408;border-radius:3px;font-size:0.72em;line-height:1.5;margin-bottom:3px">
+        <div style="color:#ffd700;font-weight:bold;margin-bottom:2px">⚡ ${active.name}</div>
+        <div style="color:#a89060">${active.description}</div>
+        <div style="color:#5a3c10;margin-top:2px">Recharge : ${active.cooldown} tours</div>
+      </div>`);
+    }
+    if (passive) {
+      rows.push(`<div style="padding:6px 4px;background:#0a0603;border:1px solid #3a2408;border-radius:3px;font-size:0.72em;line-height:1.5">
+        <div style="color:#c8a84b;font-weight:bold;margin-bottom:2px">☽ ${passive.name}</div>
+        <div style="color:#a89060">${passive.description}</div>
+      </div>`);
+    }
+  }
+
+  const statsEl = document.getElementById('detail-stats');
+  if (previewOnly) {
+    const label = previewLabel || stanceNames[unit.stance] || unit.stance || '';
+    statsEl.innerHTML = `<div style="font-size:0.68em;color:#c8960c;text-align:center;margin-bottom:4px;letter-spacing:0.05em">↳ Aperçu : ${label}</div>` + rows.join('');
+  } else {
+    statsEl.innerHTML = rows.join('');
+  }
 }
 
 function renderUnitList() {
@@ -1745,6 +2036,12 @@ function toggleTerrain() {
 function toggleCoords() {
   showCoords = !showCoords;
   document.getElementById('tool-coords').classList.toggle('active', showCoords);
+  render();
+}
+
+function toggleWeakness() {
+  showWeakness = !showWeakness;
+  document.getElementById('tool-weakness').classList.toggle('active', showWeakness);
   render();
 }
 
@@ -1930,163 +2227,29 @@ function addCombatLog(log) {
   if (container.children.length > 20) container.lastChild.remove();
 }
 
-function showUnitCard(unit) {
-  const overlay = document.getElementById('overlay-unit-card');
-  const content = document.getElementById('unit-card-content');
-
-  // Image portrait
-  let imgHtml = '';
-  if (unit.isGeneral) {
-    const gid = unit.generalId || (gameState?.players.find(p => p.id === unit.playerId)?.generalId);
-    const src = img1Url(GENERAL_IMAGE1_MAP, gid, 'GENERAL IMAGE 1-1');
-    if (src) {
-      imgHtml = `<img class="uc-pdf-img" src="${src}" alt="${unit.name}">`;
-    } else {
-      imgHtml = `<div class="uc-pdf-img-placeholder" style="font-size:52px;flex-direction:column;gap:8px">★<span style="font-size:14px;color:#7a5820">${unit.name}</span></div>`;
-    }
-  } else {
-    const src = img1Url(UNIT_IMAGE1_MAP, unit.typeId, 'UNIT IMAGE 1-1');
-    const imgToken = UNIT_TOKEN_MAP[unit.typeId];
-    if (src) {
-      imgHtml = `<img class="uc-pdf-img" src="${src}" alt="${unit.name}">`;
-    } else if (imgToken) {
-      imgHtml = `<img class="uc-pdf-img" src="/assets/unites/UNIT TOKEN/${encodeURIComponent(imgToken)}.png" alt="${unit.name}">`;
-    } else {
-      imgHtml = `<div class="uc-pdf-img-placeholder">${unit.name.charAt(0)}</div>`;
-    }
-  }
-
-  // Barre de vie
-  const hpPct = Math.round(unit.vitality / unit.maxVitality * 100);
-  const hpColor = hpPct > 50 ? '#2a8c2a' : hpPct > 25 ? '#c8960c' : '#a02020';
-  const hpBar = `<div class="uc-pdf-hpbar-wrap"><div class="uc-pdf-hpbar" style="width:${hpPct}%;background:${hpColor}"></div></div>`;
-
-  // Modificateurs stance + terrain
-  const _st = (!unit.isGeneral && unit.stance) ? (STANCES_DATA[unit.stance] || {}) : {};
-  const _terrainKey = (unit.q != null && unit.r != null) ? `${unit.q},${unit.r}` : null;
-  const _terrainType = _terrainKey ? (terrainData[_terrainKey] || 'plain') : 'plain';
-  const _tr = TERRAINS_DATA[_terrainType] || TERRAINS_DATA.plain;
-  const _stanceName = unit.stance ? (stanceNames[unit.stance] || unit.stance) : null;
-  const _terrainName = _tr.name || _terrainType;
-
-  // Retourne { html, tip } pour une stat avec modificateurs cac/tir (ou single si cac===tir)
-  function _mod(base, stCacKey, stTirKey, trCacKey, trTirKey) {
-    const sCac = _st[stCacKey] || 0, sTir = stTirKey ? (_st[stTirKey] || 0) : sCac;
-    const tCac = trCacKey ? (_tr[trCacKey] || 0) : 0, tTir = trTirKey ? (_tr[trTirKey] || 0) : tCac;
-    const dCac = sCac + tCac, dTir = sTir + tTir;
-
-    const tipParts = [`Base : ${base}`];
-    if (_stanceName && (sCac !== 0 || sTir !== 0)) {
-      tipParts.push(`Posture (${_stanceName}) : ${sCac >= 0 ? '+' : ''}${sCac} cac / ${sTir >= 0 ? '+' : ''}${sTir} tir`);
-    }
-    if (_terrainType !== 'plain' && (tCac !== 0 || tTir !== 0)) {
-      tipParts.push(`Terrain (${_terrainName}) : ${tCac >= 0 ? '+' : ''}${tCac} cac / ${tTir >= 0 ? '+' : ''}${tTir} tir`);
-    }
-    const tip = tipParts.join(' | ');
-
-    if (dCac === 0 && dTir === 0) return { html: String(base), tip };
-
-    const fmt = (base, d) => {
-      const eff = base + d;
-      const color = d > 0 ? '#2e7d32' : '#c62828';
-      const sign = d > 0 ? '+' : '';
-      return `<span style="color:${color};font-weight:bold">${eff}<sup style="font-size:0.6em">(${sign}${d})</sup></span>`;
-    };
-
-    if (dCac === dTir) return { html: fmt(base, dCac), tip };
-    return { html: `${fmt(base, dCac)}<span style="color:#888;font-size:0.75em"> / ${fmt(base, dTir)}</span>`, tip };
-  }
-
-  function _statDiv(label, html, tip) {
-    return `<div class="uc-pdf-stat" title="${tip.replace(/"/g, '&quot;')}"><div class="uc-pdf-stat-label">${label}</div><div class="uc-pdf-stat-value">${html}</div></div>`;
-  }
-
-  // Stats — fiche spéciale pour les généraux
-  let statsHtml;
-  if (unit.isGeneral) {
-    const row2 = [
-      { label: 'Force',      value: unit.force },
-      { label: 'Stratégie',  value: unit.strategy },
-      { label: 'Charisme',   value: unit.charisma },
-    ];
-    const row3 = [
-      { label: 'Puissance',    value: unit.power },
-      { label: 'Armure',       value: unit.armor },
-      { label: 'Intimidation', value: unit.intimidation ?? 0 },
-      { label: 'Vitesse',      value: unit.speed },
-    ];
-    const vit = `<div class="uc-pdf-stat" style="grid-column:1/-1"><div class="uc-pdf-stat-label">Vitalité</div><div class="uc-pdf-stat-value">${unit.vitality}/${unit.maxVitality}</div></div>`;
-    const r2 = `<div style="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px">${row2.map(s => `<div class="uc-pdf-stat"><div class="uc-pdf-stat-label">${s.label}</div><div class="uc-pdf-stat-value">${s.value}</div></div>`).join('')}</div>`;
-    const r3 = row3.map(s => `<div class="uc-pdf-stat"><div class="uc-pdf-stat-label">${s.label}</div><div class="uc-pdf-stat-value">${s.value}</div></div>`).join('');
-    statsHtml = vit + r2 + r3;
-  } else {
-    const atk  = _mod(unit.attack,           'attack_cac',       'attack_tir',       'attack_cac',       'attack_tir');
-    const def  = _mod(unit.defense,          'defense_cac',      'defense_tir',      'defense_cac',      'defense_tir');
-    const pui  = _mod(unit.power,            'puissance_cac',    'puissance_tir',    'puissance_cac',    'puissance_tir');
-    const inti = _mod(unit.intimidation ?? 0,'intimidation_cac', 'intimidation_tir', 'intimidation_cac', 'intimidation_tir');
-    const arm  = _mod(unit.armor,            'armure',           null,               'armure',           null);
-    const spd  = _mod(unit.speed,            'vitesse',          null,               'vitesse',          null);
-
-    statsHtml = [
-      `<div class="uc-pdf-stat" style="grid-column:1/-1"><div class="uc-pdf-stat-label">Vitalité</div><div class="uc-pdf-stat-value">${unit.vitality}/${unit.maxVitality}</div></div>`,
-      `<div class="uc-pdf-stat" style="grid-column:1/-1"><div class="uc-pdf-stat-label">Morale</div><div class="uc-pdf-stat-value">${unit.morale ?? '—'}/${unit.maxMorale ?? '—'}</div></div>`,
-      _statDiv('Attaque',      atk.html,  atk.tip),
-      _statDiv('Défense',      def.html,  def.tip),
-      _statDiv('Puissance',    pui.html,  pui.tip),
-      _statDiv('Intimidation', inti.html, inti.tip),
-      _statDiv('Armure',       arm.html,  arm.tip),
-      _statDiv('Vitesse',      spd.html,  spd.tip),
-    ].join('');
-    if (unit.range > 1) statsHtml += `<div class="uc-pdf-stat"><div class="uc-pdf-stat-label">Portée</div><div class="uc-pdf-stat-value">${unit.range} cases</div></div>`;
-  }
-
-  // Bonus / capacités
-  const bonusLines = [];
-  if (unit.bonus) bonusLines.push(`<strong>Bonus :</strong> ${unit.bonus}`);
-  if (unit.activeAbility) bonusLines.push(`<strong>Capacité active :</strong> ${unit.activeAbility.name} — ${unit.activeAbility.description} (recharge : ${unit.activeAbility.cooldown} tours)`);
-  if (unit.passiveAbility) bonusLines.push(`<strong>Passif :</strong> ${unit.passiveAbility.name} — ${unit.passiveAbility.description}`);
-  const bonusHtml = bonusLines.length
-    ? `<div class="uc-pdf-bonus">${bonusLines.join('<br>')}</div>`
-    : `<div class="uc-pdf-bonus" style="color:#888;font-style:italic">Aucun bonus spécial</div>`;
-
-  // Titre
-  const titleSub = unit.isGeneral ? `${unit.kingdom || ''}</span>` : (unit.category ? `(${unit.category})</span>` : '</span>');
-  const category = `<br><span style="font-size:0.85em">${titleSub}`;
-  const titleHtml = `<div class="uc-pdf-title">${unit.name}${category}</div>`;
-
-  // Description
-  const descHtml = unit.description || unit.citation
-    ? `<div class="uc-pdf-desc"><strong>Description :</strong> ${unit.description || unit.citation}</div>`
-    : '';
-
-  content.innerHTML = `
-    <div class="uc-pdf">
-      <div class="uc-pdf-left">
-        ${imgHtml}
-        ${hpBar}
-        ${bonusHtml}
-      </div>
-      <div class="uc-pdf-right">
-        ${titleHtml}
-        <div class="uc-pdf-stats">${statsHtml}</div>
-      </div>
-      ${descHtml}
-    </div>
-  `;
-
-  overlay.style.display = 'flex';
+function toggleToolbar() {
+  const toolbar = document.getElementById('toolbar');
+  const btn = document.getElementById('tool-toggle');
+  const collapsed = toolbar.classList.toggle('collapsed');
+  btn.textContent = collapsed ? '▲' : '▼';
 }
 
-function closeUnitCard() {
-  document.getElementById('overlay-unit-card').style.display = 'none';
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const container = document.getElementById('game-container');
+  const btn = document.getElementById('sidebar-toggle');
+  const collapsed = sidebar.classList.toggle('collapsed');
+  container.classList.toggle('sidebar-collapsed', collapsed);
+  btn.textContent = collapsed ? '◀' : '▶';
 }
 
 function switchSidebarTab(tab) {
-  const tabs = ['units', 'history', 'chat'];
+  const tabs = ['units', 'army', 'history', 'chat'];
   document.querySelectorAll('.sidebar-tab').forEach((el, i) => {
     el.classList.toggle('active', tabs[i] === tab);
   });
   document.getElementById('pane-units').classList.toggle('active', tab === 'units');
+  document.getElementById('pane-army').classList.toggle('active', tab === 'army');
   document.getElementById('pane-history').classList.toggle('active', tab === 'history');
   document.getElementById('pane-chat').classList.toggle('active', tab === 'chat');
   if (tab === 'chat') {
@@ -2095,7 +2258,87 @@ function switchSidebarTab(tab) {
     msgs.scrollTop = msgs.scrollHeight;
     document.getElementById('chat-input').focus();
   }
+  if (tab === 'army') renderArmyList();
   updateActionButtons();
+}
+
+function renderArmyList() {
+  const container = document.getElementById('army-list');
+  if (!container) return;
+  const units = gameState?.myUnits;
+  if (!units || units.length === 0) {
+    container.innerHTML = '<div style="color:#5a3c10;font-style:italic;padding:12px">Aucune unité.</div>';
+    return;
+  }
+
+  // Général en premier, puis les autres triés par nom
+  const sorted = [...units].sort((a, b) => {
+    if (a.isGeneral && !b.isGeneral) return -1;
+    if (!a.isGeneral && b.isGeneral) return 1;
+    return (a.name || '').localeCompare(b.name || '');
+  });
+
+  container.innerHTML = '';
+  for (const unit of sorted) {
+    const isDead = unit.vitality <= 0;
+    const row = document.createElement('div');
+    row.className = 'army-unit-row' + (unit.isGeneral ? ' is-general' : '') + (isDead ? ' dead' : '');
+    row.onclick = () => {
+      switchSidebarTab('units');
+      selectUnit({ ...unit, isMine: true });
+    };
+
+    // Image
+    let imgHtml = '';
+    if (unit.isGeneral) {
+      const gid = getGeneralIdForUnit(unit);
+      const entry = gid ? GENERAL_IMAGE1_MAP[gid] : null;
+      if (entry) {
+        imgHtml = `<img class="army-unit-icon" src="/assets/unites/GENERAL IMAGE 1-1/${encodeURIComponent(entry.file)}.${entry.ext}" onerror="this.style.display='none'">`;
+      } else {
+        imgHtml = `<div class="army-unit-icon-placeholder"></div>`;
+      }
+    } else {
+      const entry = unit.typeId ? UNIT_IMAGE1_MAP[unit.typeId] : null;
+      if (entry) {
+        imgHtml = `<img class="army-unit-icon" src="/assets/unites/UNIT IMAGE 1-1/${encodeURIComponent(entry.file)}.${entry.ext}" onerror="this.style.display='none'">`;
+      } else {
+        imgHtml = `<div class="army-unit-icon-placeholder"></div>`;
+      }
+    }
+
+    // Barres
+    const hpPct = unit.maxVitality > 0 ? Math.max(0, unit.vitality / unit.maxVitality * 100) : 0;
+    const hpColor = hpPct > 60 ? '#4a9040' : hpPct > 30 ? '#b07020' : '#902020';
+    const morPct = unit.maxMorale > 0 ? Math.max(0, unit.morale / unit.maxMorale * 100) : 0;
+    const morColor = morPct > 60 ? '#4060b0' : morPct > 30 ? '#7050a0' : '#902020';
+
+    // Statuts
+    const statuses = [];
+    if (unit.isFleeing) statuses.push('En fuite');
+    if (unit.moved) statuses.push('Déplacé');
+    if (unit.attacked) statuses.push('Attaqué');
+    if (isDead) statuses.push('Mort');
+
+    const armorHtml = unit.armor != null ? `<span style="color:#7a9060;margin-left:6px">🛡 ${unit.armor}</span>` : '';
+
+    row.innerHTML = imgHtml + `
+      <div class="army-unit-info">
+        <div class="army-unit-name${unit.isGeneral ? ' general' : ''}">${unit.name}${unit.isGeneral ? ' ★' : ''}</div>
+        <div style="display:flex;align-items:center;gap:4px;margin-top:2px">
+          <span style="font-size:0.65em;color:#5a7a40;flex-shrink:0">PV</span>
+          <div class="army-unit-hp" style="flex:1"><div class="army-unit-hp-bar" style="width:${hpPct}%;background:${hpColor}"></div></div>
+          <span style="font-size:0.65em;color:#7a5820;flex-shrink:0">${unit.vitality}/${unit.maxVitality}</span>
+        </div>
+        ${unit.maxMorale > 0 ? `<div style="display:flex;align-items:center;gap:4px;margin-top:2px">
+          <span style="font-size:0.65em;color:#405080;flex-shrink:0">Mo</span>
+          <div class="army-unit-hp" style="flex:1"><div class="army-unit-hp-bar" style="width:${morPct}%;background:${morColor}"></div></div>
+          <span style="font-size:0.65em;color:#7a5820;flex-shrink:0">${unit.morale}/${unit.maxMorale}</span>
+        </div>` : ''}
+        <div class="army-unit-status">${armorHtml}${statuses.length ? (armorHtml ? ' · ' : '') + statuses.join(', ') : ''}</div>
+      </div>`;
+    container.appendChild(row);
+  }
 }
 
 function sendChat() {
@@ -2486,38 +2729,7 @@ function notify(msg, type = 'error') {
 // ---- STANCE PANEL ----
 function renderStancePanel(unit) {
   const panel = document.getElementById('stance-panel');
-  const listEl = document.getElementById('stance-list');
-  if (!panel || !listEl) return;
-  if (!unit || unit.isGeneral || gameState?.phase !== 'battle') {
-    panel.style.display = 'none';
-    return;
-  }
-  const isMyTurn = gameState?.currentPlayerId === myId;
-  const readOnly = !isMyTurn || unit.isFleeing;
-  panel.style.display = 'block';
-  panel.style.opacity = readOnly ? '0.5' : '1';
-  listEl.innerHTML = '';
-  for (const s of stanceList) {
-    const btn = document.createElement('button');
-    btn.className = 'stance-btn' + (unit.stance === s ? ' active' : '');
-    btn.title = stanceNames[s] || s;
-    const icon = stanceIcons[s];
-    if (icon && icon.complete && icon.naturalWidth) {
-      btn.innerHTML = `<img src="${icon.src}" alt="${s}"> ${stanceNames[s] || s}`;
-    } else {
-      btn.textContent = stanceNames[s] || s;
-    }
-    if (!readOnly) {
-      btn.onclick = () => { hideStanceTooltip(); changeStance(unit.id, s); };
-    } else {
-      btn.disabled = true;
-      btn.style.cursor = 'default';
-    }
-    btn.addEventListener('mouseenter', e => showStanceTooltip(e, s));
-    btn.addEventListener('mousemove', positionStanceTooltip);
-    btn.addEventListener('mouseleave', hideStanceTooltip);
-    listEl.appendChild(btn);
-  }
+  if (panel) panel.style.display = 'none';
 }
 
 // ---- TERRAIN / SEGMENT TOOLTIP ----
@@ -2669,15 +2881,7 @@ function hideStanceTooltip() {
 
 function changeStance(unitId, stanceId) {
   if (!roomCode) return;
-  const overlay = document.getElementById('overlay-stance');
-  if (!overlay) { wsSend('change_stance', { roomCode, unitId, stanceId }); return; }
-  const unit = selectedUnit || gameState?.units?.find(u => u.id === unitId);
-  document.getElementById('stance-unit-name').textContent = unit?.name || '';
-  document.getElementById('stance-from').textContent = stanceNames[unit?.stance] || unit?.stance || '?';
-  document.getElementById('stance-to').textContent = stanceNames[stanceId] || stanceId;
-  overlay.dataset.unitId = unitId;
-  overlay.dataset.stanceId = stanceId;
-  overlay.style.display = 'flex';
+  wsSend('change_stance', { roomCode, unitId, stanceId });
 }
 
 function confirmStanceChange() {
@@ -2889,6 +3093,7 @@ function wsDispatch(event, data) {
 
       renderTurnOrder(data.turnOrder, data.initiativeRolls, data.currentPlayerId);
       renderUnitList();
+      renderArmyList();
       updateActionButtons();
       render();
       if (pendingTurnPopup && pendingTurnPopup.playerId === data.currentPlayerId) {

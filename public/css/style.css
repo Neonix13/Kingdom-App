@@ -33,7 +33,18 @@ body {
 }
 .lobby-container.army-mode {
   max-width: none;
-  padding: 24px 32px;
+  padding: 0;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.lobby-container.army-mode .logo { display: none; }
+.lobby-container.army-mode #screen-army {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 .lobby-layout {
   display: grid;
@@ -271,6 +282,7 @@ body {
 .pl-ready {
   font-size: 0.72em; font-weight: bold; border-radius: 3px;
   padding: 2px 6px; white-space: nowrap;
+  min-width: 72px; text-align: center; display: inline-block;
 }
 .pl-ready-yes { background: #1a5c1a; color: #7fff7f; }
 .pl-ready-no  { background: #3a1a08; color: #c87040; }
@@ -319,16 +331,29 @@ body {
 .general-card .gen-stats-row { display: flex; gap: 3px; padding: 4px; }
 
 /* Army builder */
-.army-layout {
+.army-header {
+  flex-shrink: 0;
+  padding: 10px 24px;
+  border-bottom: 1px solid #2a1a06;
   display: grid;
   grid-template-columns: 1fr 1.5fr 1.5fr;
   gap: 16px;
-  align-items: stretch;
-  min-height: calc(100vh - 180px);
+  align-items: center;
+}
+.army-header-col { min-width: 0; display: flex; flex-direction: column; align-items: center; }
+.army-header-center { align-items: center; }
+.army-layout {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr 1.5fr;
+  grid-template-rows: 1fr;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+  padding: 16px 24px;
 }
 .army-detail-panel {
-  position: sticky;
-  top: 20px;
+  min-height: 0;
+  overflow-y: hidden;
   background: #0f0804;
   border: 1px solid #3a2408;
   border-radius: 6px;
@@ -374,9 +399,29 @@ body {
   padding-top: 8px;
   margin-top: 4px;
 }
-.army-shop-panel { min-width: 0; }
+.army-shop-panel {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.army-shop-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.army-roster-bottom {
+  flex-shrink: 0;
+  padding-top: 8px;
+  border-top: 1px solid #2a1a06;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 .army-roster-panel {
   min-width: 0;
+  min-height: 0;
+  overflow-y: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -420,13 +465,24 @@ body {
   margin-bottom: 10px;
   margin-top: 6px;
 }
+.roster-flag-img {
+  height: 95px;
+  width: auto;
+  object-fit: cover;
+  border-radius: 3px;
+  border: 1px solid #3a2408;
+  flex-shrink: 0;
+  display: block;
+}
 .roster-gen-img {
-  width: 130px;
-  height: auto;
+  height: 95px;
+  width: auto;
   flex-shrink: 0;
   border-radius: 3px;
   border: 1px solid #5a3c10;
   display: block;
+  object-fit: cover;
+  object-position: top;
 }
 .roster-gen-img-placeholder {
   width: 80px;
@@ -569,11 +625,12 @@ body {
   display: flex;
   height: 100vh;
   overflow: hidden;
+  position: relative;
 }
 
 #canvas-area {
-  flex: 1;
-  position: relative;
+  position: absolute;
+  inset: 0;
   overflow: hidden;
   background: #0a0604;
 }
@@ -584,12 +641,46 @@ body {
 }
 
 #sidebar {
-  width: 420px;
-  background: #12080 4;
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 320px;
+  background: #120804;
   border-left: 1px solid #3a2408;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  transition: width 0.2s ease;
+}
+#sidebar.collapsed {
+  width: 0;
+  border-left: none;
+}
+#sidebar-toggle {
+  position: absolute;
+  right: 320px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 48px;
+  background: #1a0f04;
+  border: 1px solid #3a2408;
+  border-right: none;
+  border-radius: 6px 0 0 6px;
+  color: #c8960c;
+  font-size: 0.8em;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  transition: right 0.2s ease;
+}
+#game-container.sidebar-collapsed #sidebar-toggle {
+  right: 0;
+  border-right: 1px solid #3a2408;
+  border-radius: 6px;
 }
 
 #sidebar-header {
@@ -636,18 +727,14 @@ body {
 .action-btns .btn { text-align: center; font-size: 0.85em; padding: 8px; }
 
 #selected-unit-detail {
-  padding: 12px;
   border-top: 1px solid #3a2408;
-  font-size: 0.8em;
   background: #0f0804;
 }
-#selected-unit-detail h4 { color: #c8960c; margin-bottom: 8px; }
-#selected-unit-detail .stat-row {
-  display: flex; justify-content: space-between;
-  padding: 2px 0; border-bottom: 1px solid #1a0f04;
-  color: #a89060;
-}
-#selected-unit-detail .stat-row span:last-child { color: #e8d5a0; }
+#selected-unit-detail h4 { color: #c8960c; margin: 0; padding: 6px 8px 4px; font-size: 0.85em; text-align: center; }
+#selected-unit-detail .stat-row { display: flex; gap: 3px; margin-bottom: 3px; }
+#selected-unit-detail .stat-box { padding: 3px 4px; }
+#selected-unit-detail .stat-box-label { font-size: 0.52em; }
+#selected-unit-detail .stat-box-value { font-size: 0.72em; }
 
 /* Combat log */
 #combat-log {
