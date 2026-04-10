@@ -730,7 +730,7 @@ function render() {
     for (const u of myUnits) {
       if (u.q === null) continue;
       const { x, y } = hexToPixel(u.q, u.r);
-      drawUnit(ctx, x, y, u, myId, false, hoveredUnitVisible?.id === u.id);
+      drawUnit(ctx, x, y, u, myId, false, hoveredUnit?.id === u.id);
     }
   }
 
@@ -746,7 +746,7 @@ function render() {
       drawHex(ctx, x, y, 'transparent', '#ffd70060', 0.5);
     }
 
-    drawUnit(ctx, x, y, u, u.playerId, isSelected, hoveredUnitVisible?.id === u.id);
+    drawUnit(ctx, x, y, u, u.playerId, isSelected, hoveredUnit?.id === u.id);
   }
 
   // Arbres par dessus les unités
@@ -1048,6 +1048,39 @@ function drawUnit(ctx, x, y, unit, playerId, isSelected = false, isHovered = fal
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(label, x, y);
+
+    // Barres de vie et de moral sous le badge
+    const barW = Math.max(bw, HEX_SIZE * 1.1);
+    const barH = Math.round(HEX_SIZE * 0.13);
+    const barX = x - barW / 2;
+    let barY = by + bh + 3;
+
+    if (unit.maxVitality > 0) {
+      const hpPct = Math.max(0, Math.min(1, unit.vitality / unit.maxVitality));
+      const hpColor = hpPct > 0.6 ? '#3a9030' : hpPct > 0.3 ? '#b07020' : '#902020';
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.beginPath(); ctx.roundRect(barX, barY, barW, barH, 2); ctx.fill();
+      ctx.fillStyle = hpColor;
+      ctx.beginPath(); ctx.roundRect(barX, barY, barW * hpPct, barH, 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.font = `bold ${Math.round(HEX_SIZE * 0.22)}px sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(`${unit.vitality}/${unit.maxVitality}`, x, barY + barH / 2);
+      barY += barH + 2;
+    }
+
+    if (unit.maxMorale > 0) {
+      const moPct = Math.max(0, Math.min(1, unit.morale / unit.maxMorale));
+      const moColor = moPct > 0.6 ? '#3060a0' : moPct > 0.3 ? '#7050a0' : '#902020';
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.beginPath(); ctx.roundRect(barX, barY, barW, barH, 2); ctx.fill();
+      ctx.fillStyle = moColor;
+      ctx.beginPath(); ctx.roundRect(barX, barY, barW * moPct, barH, 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.font = `bold ${Math.round(HEX_SIZE * 0.22)}px sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(`${unit.morale}/${unit.maxMorale}`, x, barY + barH / 2);
+    }
   }
 
   ctx.restore();
@@ -1100,11 +1133,6 @@ canvas.addEventListener('mousemove', (e) => {
   const newUnit = hoveredHex ? allUnits.find(u => u.q === hoveredHex.q && u.r === hoveredHex.r) || null : null;
   if (newUnit?.id !== hoveredUnit?.id) {
     hoveredUnit = newUnit;
-    hoveredUnitVisible = null;
-    clearTimeout(hoverTimer);
-    if (hoveredUnit) {
-      hoverTimer = setTimeout(() => { hoveredUnitVisible = hoveredUnit; render(); }, 1000);
-    }
   }
   render();
 
