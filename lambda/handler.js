@@ -176,14 +176,85 @@ async function handleAction(apigw, connectionId, action, data) {
       break;
     }
 
-    case 'set_player_color': {
-      const { roomCode, color } = data;
+    case 'set_player_flag': {
+      const { roomCode, flagId } = data;
+      const room = await getRoom(roomCode);
+      if (!room || room.phase !== 'lobby') return;
+      const FLAG_COLORS = { qin:'#1a5fa8', zhao:'#e07820', wei:'#1a7a3a', chu:'#20b8c8', yan:'#c8b84a', qi:'#e8e8e8', han:'#9060c0' };
+      if (!FLAG_COLORS[flagId]) return;
+      const takenFlags = room.players.filter(p => p.id !== connectionId).map(p => p.flag);
+      if (takenFlags.includes(flagId)) return send(apigw, connectionId, { event: 'error', message: 'Ce drapeau est déjà pris.' });
+      const player = room.getPlayer(connectionId);
+      if (player) { player.flag = flagId; player.color = FLAG_COLORS[flagId]; }
+      await saveRoom(room);
+      await broadcast(apigw, room, { event: 'room_update', ...room.getLobbyState() });
+      break;
+    }
+
+    case 'lobby_ready': {
+      const { roomCode } = data;
       const room = await getRoom(roomCode);
       if (!room || room.phase !== 'lobby') return;
       const player = room.getPlayer(connectionId);
-      const allowed = ['#4a90d9','#e05050','#50c050','#e0a030','#a050d0','#e07840','#40c0c0','#e050a0','#ffffff'];
-      if (player && allowed.includes(color)) player.color = color;
+      if (!player) return;
+      if (!player.generalId) return send(apigw, connectionId, { event: 'error', message: 'Choisissez un général avant de vous préparer.' });
+      if (!player.flag) return send(apigw, connectionId, { event: 'error', message: 'Choisissez un drapeau avant de vous préparer.' });
+      player.isReady = !player.isReady;
       await saveRoom(room);
+      await broadcast(apigw, room, { event: 'room_update', ...room.getLobbyState() });
+      break;
+    }
+
+    case 'add_ai': {
+      const { roomCode, generalId: requestedGeneralId, flagId: requestedFlagId } = data;
+      const room = await getRoom(roomCode);
+      if (!room || room.hostId !== connectionId || room.phase !== 'lobby') return;
+      if (room.players.length >= 8) return send(apigw, connectionId, { event: 'error', message: 'Salle pleine.' });
+      const FLAG_COLORS_AI = { qin:'#1a5fa8', zhao:'#e07820', wei:'#1a7a3a', chu:'#20b8c8', yan:'#c8b84a', qi:'#e8e8e8', han:'#9060c0' };
+      const botId = 'bot_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+      room.addPlayer(botId, '🤖 IA');
+      const bot = room.getPlayer(botId);
+      bot.isBot = true;
+      const takenGenerals = room.players.filter(p => p.id !== botId).map(p => p.generalId).filter(Boolean);
+      const GENERALS_LIST = require('../game/data/generals');
+      if (requestedGeneralId && !takenGenerals.includes(requestedGeneralId) && GENERALS_LIST.find(g => g.id === requestedGeneralId)) {
+        bot.generalId = requestedGeneralId;
+      } else {
+        const available = GENERALS_LIST.filter(g => !takenGenerals.includes(g.id));
+        if (available.length > 0) bot.generalId = available[Math.floor(Math.random() * available.length)].id;
+      }
+      const takenFlags = room.players.filter(p => p.id !== botId).map(p => p.flag).filter(Boolean);
+      if (requestedFlagId && !takenFlags.includes(requestedFlagId) && FLAG_COLORS_AI[requestedFlagId]) {
+        bot.flag = requestedFlagId; bot.color = FLAG_COLORS_AI[requestedFlagId];
+      } else { bot.color = '#888888'; }
+      const botGeneral = GENERALS_LIST.find(g => g.id === bot.generalId);
+      bot.name = `🤖 ${botGeneral?.name || 'IA'}`;
+      bot.isReady = true;
+      await saveRoom(room);
+      await broadcast(apigw, room, { event: 'room_update', ...room.getLobbyState() });
+      break;
+    }
+
+    case 'remove_bot': {
+      const { roomCode, botId } = data;
+      const room = await getRoom(roomCode);
+      if (!room || room.hostId !== connectionId || room.phase !== 'lobby') return;
+      const idx = room.players.findIndex(p => p.id === botId && p.isBot);
+      if (idx === -1) return;
+      room.players.splice(idx, 1);
+      await saveRoom(room);
+      await broadcast(apigw, room, { event: 'room_update', ...room.getLobbyState() });
+      break;
+    }
+
+    case 'back_to_lobby': {
+      const { roomCode } = data;
+      const room = await getRoom(roomCode);
+      if (!room || room.hostId !== connectionId || room.phase !== 'army_building') return;
+      room.phase = 'lobby';
+      for (const p of room.players) { p.units = []; p.isReady = false; }
+      await saveRoom(room);
+      await broadcast(apigw, room, { event: 'phase_change', phase: 'lobby' });
       await broadcast(apigw, room, { event: 'room_update', ...room.getLobbyState() });
       break;
     }
@@ -206,7 +277,8 @@ async function handleAction(apigw, connectionId, action, data) {
       const room = await getRoom(roomCode);
       if (!room || room.hostId !== connectionId) return;
       if (room.players.length < 1) return send(apigw, connectionId, { event: 'error', message: 'Il faut au moins 1 joueur.' });
-      if (room.players.some(p => !p.generalId)) return send(apigw, connectionId, { event: 'error', message: 'Tous les joueurs doivent choisir un général.' });
+      if (room.players.some(p => !p.isBot && !p.generalId)) return send(apigw, connectionId, { event: 'error', message: 'Tous les joueurs doivent choisir un général.' });
+      if (room.players.some(p => !p.isBot && !p.flag)) return send(apigw, connectionId, { event: 'error', message: 'Tous les joueurs doivent choisir un drapeau.' });
       room.startGame();
       await saveRoom(room);
       await broadcast(apigw, room, { event: 'phase_change', phase: 'army_building', budget: room.budget });
@@ -231,6 +303,17 @@ async function handleAction(apigw, connectionId, action, data) {
       } else {
         await saveRoom(room);
       }
+      break;
+    }
+
+    case 'build_segment': {
+      const { roomCode, unitId, neighborQ, neighborR } = data;
+      const room = await getRoom(roomCode);
+      if (!room || room.phase !== 'battle') return;
+      const result = room.buildSegment(connectionId, unitId, neighborQ, neighborR);
+      if (result.error) return send(apigw, connectionId, { event: 'error', message: result.error });
+      await saveRoom(room);
+      for (const p of room.players) await send(apigw, p.id, { event: 'game_state', ...room.getGameState(p.id) });
       break;
     }
 
