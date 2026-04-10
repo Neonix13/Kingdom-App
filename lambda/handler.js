@@ -259,7 +259,7 @@ async function handleAction(apigw, connectionId, action, data) {
       const room = await getRoom(roomCode);
       if (!room || room.hostId !== connectionId || room.phase !== 'army_building') return;
       room.phase = 'lobby';
-      for (const p of room.players) { p.units = []; p.isReady = false; }
+      for (const p of room.players) { p.units = []; p.isReady = false; p.armySubmitted = false; }
       await saveRoom(room);
       await broadcast(apigw, room, { event: 'phase_change', phase: 'lobby' });
       await broadcast(apigw, room, { event: 'room_update', ...room.getLobbyState() });

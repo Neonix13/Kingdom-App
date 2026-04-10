@@ -158,7 +158,7 @@ class GameRoom {
 
     player.units = [generalUnit, ...units];
     player.generalUnit = generalUnit;
-    player.isReady = true;
+    player.armySubmitted = true;
 
     return { ok: true };
   }
@@ -200,7 +200,7 @@ class GameRoom {
   }
 
   allArmiesSubmitted() {
-    return this.players.every(p => p.isReady);
+    return this.players.every(p => p.armySubmitted);
   }
 
   startDeployment() {
