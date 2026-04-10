@@ -202,6 +202,13 @@ async function handleAction(apigw, connectionId, action, data) {
       player.isReady = !player.isReady;
       await saveRoom(room);
       await broadcast(apigw, room, { event: 'room_update', ...room.getLobbyState() });
+      const humanPlayers = room.players.filter(p => !p.isBot);
+      if (humanPlayers.length > 0 && humanPlayers.every(p => p.isReady)) {
+        room.startGame();
+        await saveRoom(room);
+        await broadcast(apigw, room, { event: 'phase_change', phase: 'army_building', budget: room.budget });
+        await broadcast(apigw, room, { event: 'room_update', ...room.getLobbyState() });
+      }
       break;
     }
 
