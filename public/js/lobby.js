@@ -150,14 +150,18 @@ function joinRoom() {
 }
 
 function setBudget() {
-  const val = parseInt(document.getElementById('budget-input').value);
-  if (isNaN(val) || val < 1000) return notify('Budget minimum : 1000 or');
+  const raw = parseInt(document.getElementById('budget-input').value);
+  if (isNaN(raw) || raw < 1000) return notify('Budget minimum : 1000 or');
+  const val = Math.round(raw / 100) * 100;
+  document.getElementById('budget-input').value = val;
   wsSend('set_budget', { roomCode, budget: val });
 }
 
 function setBudgetFromArmy() {
-  const val = parseInt(document.getElementById('army-budget-input').value);
-  if (isNaN(val) || val < 1000) return notify('Budget minimum : 1000 or');
+  const raw = parseInt(document.getElementById('army-budget-input').value);
+  if (isNaN(raw) || raw < 1000) return notify('Budget minimum : 1000 or');
+  const val = Math.round(raw / 100) * 100;
+  document.getElementById('army-budget-input').value = val;
   wsSend('set_budget', { roomCode, budget: val });
 }
 
@@ -764,9 +768,24 @@ function wsDispatch(event, data) {
       }
       break;
     }
-    case 'army_accepted':
-      notify('Armée confirmée ! En attente des autres joueurs...', 'success');
+    case 'army_accepted': {
+      const btn = document.getElementById('btn-submit-army');
+      if (btn) { btn.textContent = '✓ Prêt'; btn.disabled = true; btn.style.opacity = '0.6'; }
       break;
+    }
+    case 'army_status': {
+      const container = document.getElementById('army-nations-ready');
+      if (container && data.players) {
+        container.innerHTML = data.players.map(p => {
+          const ready = p.armySubmitted;
+          return `<div style="display:flex;align-items:center;gap:4px;background:${ready ? '#1a3a1a' : '#1a1008'};border:1px solid ${ready ? '#2a8c2a' : '#3a2408'};border-radius:4px;padding:3px 6px;font-size:0.78em">
+            ${flagImg(p.flag, 16)}
+            <span style="color:${ready ? '#7fff7f' : '#c87040'}">${ready ? '✓' : '…'}</span>
+          </div>`;
+        }).join('');
+      }
+      break;
+    }
     case 'deployment_state':
       sessionStorage.setItem('deploymentState', JSON.stringify(data));
       sessionStorage.setItem('roomCode', roomCode);

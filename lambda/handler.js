@@ -304,6 +304,7 @@ async function handleAction(apigw, connectionId, action, data) {
       await saveRoom(room);
       // Re-read to get the latest submissions from all players
       const freshRoom = await getRoom(roomCode);
+      await broadcast(apigw, freshRoom, { event: 'army_status', players: freshRoom.players.map(p => ({ id: p.id, flag: p.flag, name: p.name, armySubmitted: p.armySubmitted || false })) });
       if (freshRoom.allArmiesSubmitted() && freshRoom.phase === 'army_building') {
         freshRoom.startDeployment();
         await saveRoom(freshRoom);
