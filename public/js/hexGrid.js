@@ -40,68 +40,52 @@ function hexCorners(cx, cy) {
   return pts;
 }
 
-// Dessine une bande de faiblesse sur chaque bord de l'hex (dégradé bord→intérieur)
+// Dessine les indicateurs de faiblesse : trait coloré sur chaque bord extérieur
 // colors : tableau de 6 couleurs (string rgba) ou null, indexées par edgeIdx
 function drawHexWeakness(ctx, cx, cy, colors) {
   const pts = hexCorners(cx, cy);
-  const depth = 0.28; // profondeur de la bande (fraction coin→centre)
-  const t = 0.2;      // fraction du bord réservée aux coins de chaque côté
-
-  // Points intérieurs (coins ramenés vers le centre par depth)
-  const inner = pts.map(p => ({
-    x: p.x + (cx - p.x) * depth,
-    y: p.y + (cy - p.y) * depth,
-  }));
-
-  // Bandes trapézoïdales : bord extérieur plat droit, dégradé vers l'intérieur
+  ctx.save();
+  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  const margin = 0.15;
+  const inset = 2;
   for (let i = 0; i < 6; i++) {
     if (!colors[i]) continue;
     const a = pts[i], b = pts[(i + 1) % 6];
-    const ia = inner[i], ib = inner[(i + 1) % 6];
-    const pA  = { x: a.x  + (b.x  - a.x)  * t, y: a.y  + (b.y  - a.y)  * t };
-    const pB  = { x: b.x  + (a.x  - b.x)  * t, y: b.y  + (a.y  - b.y)  * t };
-    const piA = { x: ia.x + (ib.x - ia.x) * t, y: ia.y + (ib.y - ia.y) * t };
-    const piB = { x: ib.x + (ia.x - ib.x) * t, y: ib.y + (ia.y - ib.y) * t };
+    const ex = b.x - a.x, ey = b.y - a.y;
+    const len = Math.hypot(ex, ey);
+    let nx = -ey / len, ny = ex / len;
     const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-    const imx = (ia.x + ib.x) / 2, imy = (ia.y + ib.y) / 2;
-    const grad = ctx.createLinearGradient(mx, my, imx, imy);
-    grad.addColorStop(0, colors[i]);
-    grad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.save();
+    if (nx * (cx - mx) + ny * (cy - my) < 0) { nx = -nx; ny = -ny; }
+    const ox = nx * inset, oy = ny * inset;
+    const p1 = { x: a.x + ex * margin       + ox, y: a.y + ey * margin       + oy };
+    const p2 = { x: a.x + ex * (1 - margin) + ox, y: a.y + ey * (1 - margin) + oy };
     ctx.beginPath();
-    ctx.moveTo(pA.x, pA.y);
-    ctx.lineTo(pB.x, pB.y);
-    ctx.lineTo(piB.x, piB.y);
-    ctx.lineTo(piA.x, piA.y);
-    ctx.closePath();
-    ctx.fillStyle = grad;
-    ctx.fill();
-    ctx.restore();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.strokeStyle = colors[i];
+    ctx.stroke();
   }
+  ctx.restore();
+}
 
-  // Coins : petit triangle extérieur uniquement (pas d'extension vers l'intérieur)
-  for (let j = 0; j < 6; j++) {
-    const cA = colors[(j - 1 + 6) % 6];
-    const cB = colors[j];
-    if (!cA || !cB || cA === cB) continue;
-    const corner = pts[j];
-    const prev = pts[(j - 1 + 6) % 6];
-    const next = pts[(j + 1) % 6];
-    const pR = { x: corner.x + (prev.x - corner.x) * t, y: corner.y + (prev.y - corner.y) * t };
-    const pL = { x: corner.x + (next.x - corner.x) * t, y: corner.y + (next.y - corner.y) * t };
-    const grad = ctx.createLinearGradient(pR.x, pR.y, pL.x, pL.y);
-    grad.addColorStop(0, cA);
-    grad.addColorStop(1, cB);
-    ctx.save();
+// Trace le contour blanc d'un hex sur les bords non partagés avec un allié
+// outerEdges : tableau de 6 booléens (true = bord extérieur à tracer)
+function drawHexGroupOutline(ctx, cx, cy, outerEdges) {
+  const pts = hexCorners(cx, cy);
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 6; i++) {
+    if (!outerEdges[i]) continue;
     ctx.beginPath();
-    ctx.moveTo(pR.x, pR.y);
-    ctx.lineTo(corner.x, corner.y);
-    ctx.lineTo(pL.x, pL.y);
-    ctx.closePath();
-    ctx.fillStyle = grad;
-    ctx.fill();
-    ctx.restore();
+    ctx.moveTo(pts[i].x, pts[i].y);
+    ctx.lineTo(pts[(i + 1) % 6].x, pts[(i + 1) % 6].y);
+    ctx.stroke();
   }
+  ctx.restore();
 }
 
 function drawHex(ctx, cx, cy, fillColor, strokeColor, alpha = 1, lineWidth = 1) {

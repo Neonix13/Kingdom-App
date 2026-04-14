@@ -696,6 +696,145 @@ function render() {
     ctx.restore();
   }
 
+  // Contour blanc continu des groupes d'unités adjacentes
+  {
+    const allUnits = gameState?.units || [];
+    const byPlayer = {};
+    for (const u of allUnits) {
+      if (u.q === null || u.r === null) continue;
+      if (!byPlayer[u.playerId]) byPlayer[u.playerId] = { pos: new Set(), units: [] };
+      byPlayer[u.playerId].pos.add(`${u.q},${u.r}`);
+      byPlayer[u.playerId].units.push(u);
+    }
+    const rk = p => `${Math.round(p.x)},${Math.round(p.y)}`;
+    ctx.save();
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    for (const { pos, units } of Object.values(byPlayer)) {
+      // Collecte les bords extérieurs : fromKey → {from, to}
+      const edgeMap = new Map();
+      for (const u of units) {
+        const { x: hx, y: hy } = hexToPixel(u.q, u.r);
+        const pts = hexCorners(hx, hy);
+        for (let dirIdx = 0; dirIdx < 6; dirIdx++) {
+          const { dq, dr } = FACING_DIRS[dirIdx];
+          if (pos.has(`${u.q + dq},${u.r + dr}`)) continue;
+          const ei = (6 - dirIdx) % 6;
+          const from = pts[ei], to = pts[(ei + 1) % 6];
+          let color = 'rgba(255,255,255,0.92)';
+          if (showWeakness && u.facing != null) {
+            const offset = (dirIdx - u.facing + 6) % 6;
+            if (offset === 0 || offset === 1 || offset === 5)  color = 'rgba(20,120,20,0.92)';
+            else if (offset === 2 || offset === 4)             color = 'rgba(160,70,0,0.92)';
+            else                                                color = 'rgba(140,10,10,0.92)';
+          }
+          edgeMap.set(rk(from), { from, to, hx, hy, color });
+        }
+      }
+      // Chaîne les bords en boucles, dessine avec coins arrondis
+      const visited = new Set();
+      const cr = 0.2; // fraction du segment utilisée pour l'arrondi
+      const inset = 2; // décalage vers l'intérieur (px) pour que le trait ne déborde pas
+      const lerp = (a, b, t) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+      // Calcule le point décalé vers l'intérieur de l'hex
+      const insetPt = (p, e) => {
+        const ex = e.to.x - e.from.x, ey = e.to.y - e.from.y;
+        const len = Math.hypot(ex, ey);
+        let nx = -ey / len, ny = ex / len;
+        const mx = (e.from.x + e.to.x) / 2, my = (e.from.y + e.to.y) / 2;
+        if (nx * (e.hx - mx) + ny * (e.hy - my) < 0) { nx = -nx; ny = -ny; }
+        return { x: p.x + nx * inset, y: p.y + ny * inset };
+      };
+      const drawLoop = (loop) => {
+        const n = loop.length;
+        const iFrom0 = insetPt(loop[0].from, loop[0]);
+        const iTo0   = insetPt(loop[0].to,   loop[0]);
+        const start = lerp(iFrom0, iTo0, cr);
+        ctx.beginPath();
+        ctx.moveTo(start.x, start.y);
+        for (let i = 0; i < n; i++) {
+          const e  = loop[i];
+          const en = loop[(i + 1) % n];
+          const iFrom = insetPt(e.from, e);
+          const iTo   = insetPt(e.to,   e);
+          const iFromN = insetPt(en.from, en);
+          const iToN   = insetPt(en.to,   en);
+          const p1 = lerp(iFrom, iTo, 1 - cr);
+          const p2 = lerp(iFromN, iToN, cr);
+          ctx.lineTo(p1.x, p1.y);
+          const corner = insetPt(e.to, e);
+          const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+          const ctrl = { x: mid.x + (corner.x - mid.x) * 0.6, y: mid.y + (corner.y - mid.y) * 0.6 };
+          ctx.quadraticCurveTo(ctrl.x, ctrl.y, p2.x, p2.y);
+        }
+        ctx.closePath();
+      };
+      for (const [startKey, startEdge] of edgeMap) {
+        if (visited.has(startKey)) continue;
+        const loop = [];
+        let cur = startEdge, curKey = startKey;
+        while (!visited.has(curKey)) {
+          visited.add(curKey);
+          loop.push(cur);
+          const nk = rk(cur.to);
+          cur = edgeMap.get(nk);
+          if (!cur) break;
+          curKey = nk;
+        }
+        if (loop.length === 0) continue;
+        drawLoop(loop);
+        // Dégradé vers l'intérieur uniquement (clip restreint au remplissage du chemin)
+        ctx.save();
+        ctx.clip();
+        ctx.lineWidth = 36;
+        ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+        ctx.stroke();
+        ctx.lineWidth = 22;
+        ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+        ctx.stroke();
+        ctx.lineWidth = 10;
+        ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+        ctx.stroke();
+        ctx.restore();
+        // Trait principal coloré segment par segment avec dégradé aux coins
+        ctx.lineWidth = 4;
+        const n = loop.length;
+        for (let i = 0; i < n; i++) {
+          const e  = loop[i];
+          const en = loop[(i + 1) % n];
+          const iFromE  = insetPt(e.from,  e),  iToE   = insetPt(e.to,   e);
+          const iFromEN = insetPt(en.from, en),  iToEN  = insetPt(en.to,  en);
+          const pStart = lerp(iFromE,  iToE,  cr);
+          const p1     = lerp(iFromE,  iToE,  1 - cr);
+          const p2     = lerp(iFromEN, iToEN, cr);
+          const corner = insetPt(e.to, e);
+          const mid    = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+          const ctrl   = { x: mid.x + (corner.x - mid.x) * 0.6, y: mid.y + (corner.y - mid.y) * 0.6 };
+          // Segment droit
+          ctx.beginPath();
+          ctx.moveTo(pStart.x, pStart.y);
+          ctx.lineTo(p1.x, p1.y);
+          ctx.strokeStyle = e.color;
+          ctx.stroke();
+          // Courbe de coin — dégradé si couleurs différentes
+          ctx.beginPath();
+          ctx.moveTo(p1.x, p1.y);
+          ctx.quadraticCurveTo(ctrl.x, ctrl.y, p2.x, p2.y);
+          if (e.color === en.color) {
+            ctx.strokeStyle = e.color;
+          } else {
+            const grad = ctx.createLinearGradient(p1.x, p1.y, p2.x, p2.y);
+            grad.addColorStop(0, e.color);
+            grad.addColorStop(1, en.color);
+            ctx.strokeStyle = grad;
+          }
+          ctx.stroke();
+        }
+      }
+    }
+    ctx.restore();
+  }
+
   // Faiblesses directionnelles — derrière les unités
   if (showWeakness) {
     const allUnits = gameState?.units || [];
