@@ -233,7 +233,10 @@ function handleAction(ws, connectionId, action, data) {
       player.id = connectionId;
       if (room.hostId === oldPlayerId) room.hostId = connectionId;
       console.log(`Rejoin: ${player.name} (${oldPlayerId} → ${connectionId})`);
-      if (room.phase === 'deployment') {
+      if (room.phase === 'lobby') {
+        send(connectionId, { event: 'room_joined', roomCode, playerId: connectionId });
+        broadcast(room, { event: 'room_update', ...room.getLobbyState() });
+      } else if (room.phase === 'deployment') {
         send(connectionId, { event: 'deployment_state', ...room.getDeploymentState(connectionId) });
       } else if (room.phase === 'battle') {
         send(connectionId, { event: 'game_state', ...room.getGameState(connectionId) });
