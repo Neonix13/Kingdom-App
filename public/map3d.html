@@ -637,7 +637,7 @@ function seededRandom(seed) {
   };
 }
 
-const trunkGeo = new THREE.CylinderGeometry(0.03, 0.06, 0.5, 5);
+const trunkGeo = new THREE.CylinderGeometry(0.03, 0.06, 1.2, 5);
 const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3520, roughness: 0.9 });
 const canopyGeos = [
   new THREE.ConeGeometry(0.25, 0.6, 6),
@@ -665,14 +665,14 @@ for (const hex of forestHexes) {
     const scale = 0.6 + rng() * 0.8;
 
     const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-    trunk.position.set(tx, baseY + 0.25 * scale, tz);
+    trunk.position.set(tx, baseY - 0.15 * scale, tz);
     trunk.scale.setScalar(scale);
     trunk.castShadow = true;
     treeGroup.add(trunk);
 
     const canopyType = Math.floor(rng() * canopyGeos.length);
     const canopy = new THREE.Mesh(canopyGeos[canopyType], canopyMats[Math.floor(rng() * canopyMats.length)]);
-    canopy.position.set(tx, baseY + 0.55 * scale, tz);
+    canopy.position.set(tx, baseY + 0.35 * scale, tz);
     canopy.scale.setScalar(scale);
     canopy.rotation.y = rng() * Math.PI;
     canopy.castShadow = true;
@@ -765,6 +765,7 @@ setProgress(85, 'Adding buildings...');
 
 // --- Building compounds ---
 const buildingHexes = hexesByType['building'] || [];
+const waterwheels = [];
 {
   const WALL_HEIGHT = 0.7;
   const WALL_THICKNESS = 0.1;
@@ -834,10 +835,11 @@ const buildingHexes = hexesByType['building'] || [];
         const normals = [];
         const indices = [];
 
-        // Outer face (facing neighbor)
+        // Outer face (facing neighbor) — walls sink into ground
+        const wallBottom = baseY - 0.5;
         const oi = 0;
-        positions.push(c0.x + nx * halfT, baseY, c0.z + nz * halfT);
-        positions.push(c1.x + nx * halfT, baseY, c1.z + nz * halfT);
+        positions.push(c0.x + nx * halfT, wallBottom, c0.z + nz * halfT);
+        positions.push(c1.x + nx * halfT, wallBottom, c1.z + nz * halfT);
         positions.push(c1.x + nx * halfT, baseY + WALL_HEIGHT, c1.z + nz * halfT);
         positions.push(c0.x + nx * halfT, baseY + WALL_HEIGHT, c0.z + nz * halfT);
         for (let v = 0; v < 4; v++) normals.push(nx, 0, nz);
@@ -845,8 +847,8 @@ const buildingHexes = hexesByType['building'] || [];
 
         // Inner face
         const ii = 4;
-        positions.push(c0.x - nx * halfT, baseY, c0.z - nz * halfT);
-        positions.push(c1.x - nx * halfT, baseY, c1.z - nz * halfT);
+        positions.push(c0.x - nx * halfT, wallBottom, c0.z - nz * halfT);
+        positions.push(c1.x - nx * halfT, wallBottom, c1.z - nz * halfT);
         positions.push(c1.x - nx * halfT, baseY + WALL_HEIGHT, c1.z - nz * halfT);
         positions.push(c0.x - nx * halfT, baseY + WALL_HEIGHT, c0.z - nz * halfT);
         for (let v = 0; v < 4; v++) normals.push(-nx, 0, -nz);
@@ -872,107 +874,183 @@ const buildingHexes = hexesByType['building'] || [];
       }
     }
 
-    // --- Ridge line via graph diameter + branches ---
-    const ROOF_PEAK = 0.55;
+    // --- Roof: triangle-vertex peaks ---
+    const ROOF_HIGH = 0.55;
+    const ROOF_LOW = 0.3;
     const baseY = cluster[0].height * HEX_HEIGHT_STEP + WALL_HEIGHT;
-    const peakY = baseY + ROOF_PEAK;
+    const peakY = baseY + ROOF_HIGH;
+    const centerY = baseY + ROOF_LOW;
 
-    const hexPositions = new Map();
-    const adj = new Map();
+    // Find peak vertices: corners where all 3 surrounding hexes are in cluster
+    const peakSet = new Set();
     for (const hex of cluster) {
-      const k = `${hex.q},${hex.r}`;
       const wp = hexToWorld(hex.q, hex.r);
-      hexPositions.set(k, wp);
-      adj.set(k, []);
+      for (let i = 0; i < 6; i++) {
+        const [d0, d1] = CORNER_NEIGHBORS[i];
+        const n0 = `${hex.q + d0[0]},${hex.r + d0[1]}`;
+        const n1 = `${hex.q + d1[0]},${hex.r + d1[1]}`;
+        if (clusterSet.has(n0) && clusterSet.has(n1)) {
+          const c = hexCorner(wp.x, wp.z, i);
+          peakSet.add(`${c.x.toFixed(3)},${c.z.toFixed(3)}`);
+        }
+      }
     }
+
+    function isPeak(wx, wz) {
+      return peakSet.has(`${wx.toFixed(3)},${wz.toFixed(3)}`);
+    }
+
+    // Build roof mesh per hex: triangle fan from center to corners
     for (const hex of cluster) {
-      const hk = `${hex.q},${hex.r}`;
-      for (const [dq, dr] of HEX_DIRS) {
-        const nk = `${hex.q + dq},${hex.r + dr}`;
-        if (clusterSet.has(nk) && !adj.get(hk).includes(nk)) {
-          adj.get(hk).push(nk);
-          adj.get(nk).push(hk);
-        }
+      const wp = hexToWorld(hex.q, hex.r);
+      const corners = [];
+      for (let i = 0; i < 6; i++) {
+        const c = hexCorner(wp.x, wp.z, i);
+        corners.push(c);
       }
+
+      const positions = [];
+      const normals = [];
+      const indices = [];
+
+      // Count peaks around this hex to decide center height
+      let peakCount = 0;
+      for (let i = 0; i < 6; i++) {
+        if (isPeak(corners[i].x, corners[i].z)) peakCount++;
+      }
+      const hexCenterY = peakCount >= 2 ? peakY : centerY;
+
+      // Vertex 0: hex center
+      positions.push(wp.x, hexCenterY, wp.z);
+      normals.push(0, 1, 0);
+
+      // Vertices 1-6: corners
+      for (let i = 0; i < 6; i++) {
+        const cy = isPeak(corners[i].x, corners[i].z) ? peakY : baseY;
+        positions.push(corners[i].x, cy, corners[i].z);
+        normals.push(0, 1, 0);
+      }
+
+      // 6 triangles: (center, corner_i, corner_{i+1})
+      for (let i = 0; i < 6; i++) {
+        const a = 0, b = 1 + i, c = 1 + (i + 1) % 6;
+        indices.push(a, c, b);
+      }
+
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+      geo.setIndex(indices);
+      geo.computeVertexNormals();
+      const roof = new THREE.Mesh(geo, roofMat);
+      roof.castShadow = true;
+      roof.receiveShadow = true;
+      scene.add(roof);
     }
 
-    // BFS returning parent map
-    function bfsFrom(start) {
-      const prev = new Map();
-      prev.set(start, null);
-      const queue = [start];
-      let last = start;
-      while (queue.length > 0) {
-        const cur = queue.shift();
-        last = cur;
-        for (const nb of adj.get(cur)) {
-          if (!prev.has(nb)) { prev.set(nb, cur); queue.push(nb); }
-        }
-      }
-      return { prev, farthest: last };
-    }
+    // Waterwheels at vertices with building-water-water configuration
+    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x6b4226, roughness: 0.7, flatShading: true });
+    const placedWheels = new Set();
+    for (const hex of cluster) {
+      const wp = hexToWorld(hex.q, hex.r);
+      for (let i = 0; i < 6; i++) {
+        const [d0, d1] = CORNER_NEIGHBORS[i];
+        const n0 = allHexes.get(`${hex.q + d0[0]},${hex.r + d0[1]}`);
+        const n1 = allHexes.get(`${hex.q + d1[0]},${hex.r + d1[1]}`);
+        if (!n0 || !n1 || n0.terrain !== 'river' || n1.terrain !== 'river') continue;
 
-    // Find diameter: BFS from arbitrary node, then BFS from farthest
-    const ridgeSegments = [];
-    if (cluster.length === 1) {
-      // Single hex: no ridge edges
-    } else {
-      const first = `${cluster[0].q},${cluster[0].r}`;
-      const { farthest: endA } = bfsFrom(first);
-      const { prev, farthest: endB } = bfsFrom(endA);
+        const c = hexCorner(wp.x, wp.z, i);
+        const wKey = `${c.x.toFixed(3)},${c.z.toFixed(3)}`;
+        if (placedWheels.has(wKey)) continue;
+        placedWheels.add(wKey);
 
-      // Extract diameter path
-      const spine = [];
-      let c = endB;
-      while (c !== null) { spine.push(c); c = prev.get(c); }
-      const spineSet = new Set(spine);
+        // Face outward: from hex center toward the corner vertex
+        const outDx = c.x - wp.x;
+        const outDz = c.z - wp.z;
+        const faceAngle = Math.atan2(outDx, outDz);
 
-      // Add spine edges
-      for (let i = 0; i < spine.length - 1; i++) {
-        ridgeSegments.push([spine[i], spine[i + 1]]);
-      }
+        const wheelRadius = 0.55;
+        const wheelWidth = 0.45;
+        const wheelY = WATER_LEVEL + wheelRadius * 0.6;
 
-      // Attach any remaining hexes not on spine to nearest spine node
-      const remaining = cluster.filter(h => !spineSet.has(`${h.q},${h.r}`));
-      for (const hex of remaining) {
-        const hk = `${hex.q},${hex.r}`;
-        // BFS from hk to find nearest spine node
-        const vis = new Map();
-        vis.set(hk, null);
-        const q = [hk];
-        let target = null;
-        while (q.length > 0) {
-          const cur = q.shift();
-          if (spineSet.has(cur)) { target = cur; break; }
-          for (const nb of adj.get(cur)) {
-            if (!vis.has(nb)) { vis.set(nb, cur); q.push(nb); }
+        // Offset away from building
+        const dist = 0.3;
+        const offX = c.x + (outDx / Math.sqrt(outDx * outDx + outDz * outDz)) * dist;
+        const offZ = c.z + (outDz / Math.sqrt(outDx * outDx + outDz * outDz)) * dist;
+
+        const wheelBase = new THREE.Group();
+        wheelBase.position.set(offX, wheelY, offZ);
+        wheelBase.rotation.y = faceAngle + Math.PI / 2 + Math.PI;
+
+        const spin = new THREE.Group();
+        wheelBase.add(spin);
+
+        // Rims at paddle extremities, 2 pairs along width
+        const paddleH = 0.12;
+        const rimInnerR = wheelRadius - paddleH / 2;
+        const rimOuterR = wheelRadius + paddleH / 2;
+        const xNear = -wheelWidth * 0.35;
+        const xFar = wheelWidth * 0.35;
+        for (const rr of [rimInnerR, rimOuterR]) {
+          for (const xOff of [xNear, xFar]) {
+            const rim = new THREE.Mesh(
+              new THREE.TorusGeometry(rr, 0.04, 4, 24),
+              wheelMat
+            );
+            rim.rotation.y = Math.PI / 2;
+            rim.rotation.z = Math.PI / 4;
+            rim.scale.set(1, 1, 1.5);
+            rim.position.x = xOff;
+            spin.add(rim);
           }
         }
-        if (target) {
-          let node = target;
-          while (vis.get(node) !== null) {
-            const parent = vis.get(node);
-            ridgeSegments.push([node, parent]);
-            spineSet.add(parent);
-            node = parent;
+
+        // Spokes (fewer, thicker, doubled at near/far positions)
+        for (let s = 0; s < 5; s++) {
+          for (const xOff of [xNear, xFar]) {
+            const spoke = new THREE.Mesh(
+              new THREE.CylinderGeometry(0.04, 0.04, rimOuterR * 2, 4),
+              wheelMat
+            );
+            spoke.rotation.y = Math.PI / 2;
+            spoke.rotation.z = (Math.PI * 2 / 5) * s;
+            spoke.position.x = xOff;
+            spin.add(spoke);
           }
         }
+
+        // Paddles
+        const numPaddles = 24;
+        const tilt = 10 * Math.PI / 180;
+        for (let p = 0; p < numPaddles; p++) {
+          const a = (Math.PI * 2 / numPaddles) * p;
+          const paddle = new THREE.Mesh(
+            new THREE.BoxGeometry(wheelWidth, 0.12, 0.04),
+            wheelMat
+          );
+          paddle.position.set(0, wheelRadius * Math.sin(a), wheelRadius * Math.cos(a));
+          paddle.rotation.x = -a + tilt;
+          spin.add(paddle);
+        }
+
+        // Axle from building to far spoke row
+        const axleStart = -wheelWidth * 0.7;
+        const axleEnd = xFar;
+        const axleLen = axleEnd - axleStart;
+        const axle = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.04, 0.04, axleLen, 6),
+          wheelMat
+        );
+        axle.rotation.z = Math.PI / 2;
+        axle.position.x = (axleStart + axleEnd) / 2;
+        wheelBase.add(axle);
+
+        wheelBase.castShadow = true;
+        scene.add(wheelBase);
+        waterwheels.push(spin);
       }
     }
 
-    // Render ridge as red tubes (debug)
-    const ridgeMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-    for (const [ka, kb] of ridgeSegments) {
-      const pA = hexPositions.get(ka), pB = hexPositions.get(kb);
-      const dx = pB.x - pA.x, dz = pB.z - pA.z;
-      const len = Math.sqrt(dx * dx + dz * dz);
-      if (len < 0.001) continue;
-      const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, len, 4), ridgeMat);
-      tube.position.set((pA.x + pB.x) / 2, peakY, (pA.z + pB.z) / 2);
-      tube.lookAt(pB.x, peakY, pB.z);
-      tube.rotateX(Math.PI / 2);
-      scene.add(tube);
-    }
   }
 
 }
@@ -1377,6 +1455,7 @@ function animate() {
   const elapsed = clock.getElapsedTime();
 
   water.material.uniforms['time'].value = elapsed * 0.5;
+  for (const ww of waterwheels) ww.rotation.x = elapsed * 0.3;
   controls.update();
   renderer.render(scene, camera);
 }
