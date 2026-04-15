@@ -498,6 +498,9 @@ function render() {
 
   const visibleSet = new Set(gameState?.visibleHexes || []);
   const startZone = deployState?.startingZone;
+  const myDeployPlayer = deployState?.players?.find(p => p.id === deployState?.myId);
+  const myColorHex = myDeployPlayer?.color || '#40c040';
+  const myColorRGB = parseInt(myColorHex.slice(1,3),16)+','+parseInt(myColorHex.slice(3,5),16)+','+parseInt(myColorHex.slice(5,7),16);
 
   const S = Math.sqrt(3);
   const qMin = Math.floor(-MAP_ORIG_X / (MAP_HEX_SIZE * 1.5)) - 1;
@@ -572,9 +575,9 @@ function render() {
         const { x, y } = hexToPixel(q, r);
         const inZone = startZone?.tileSet ? startZone.tileSet.has(`${q},${r}`) : (startZone ? hexDistance(q, r, startZone.q, startZone.r) <= (startZone.radius || 4) : false);
         const isHovered = hoveredHex && hoveredHex.q === q && hoveredHex.r === r;
-        let fill = inZone ? 'rgba(60,180,30,0.12)' : (startZone ? 'rgba(0,0,0,0.05)' : 'rgba(0,0,0,0)');
-        let stroke = inZone ? 'rgba(100,240,60,0.85)' : (startZone ? 'rgba(0,0,0,0)' : `rgba(${gridColorRGB},${gridOpacity * 0.6})`);
-        if (inZone && isHovered) fill = 'rgba(80,220,50,0.25)';
+        let fill = inZone ? `rgba(${myColorRGB},0.12)` : (startZone ? 'rgba(0,0,0,0.05)' : 'rgba(0,0,0,0)');
+        let stroke = inZone ? `rgba(${myColorRGB},0.85)` : (startZone ? 'rgba(0,0,0,0)' : `rgba(${gridColorRGB},${gridOpacity * 0.6})`);
+        if (inZone && isHovered) fill = `rgba(${myColorRGB},0.25)`;
         if (isHovered && !inZone) stroke = 'rgba(200,160,80,0.5)';
         drawHex(ctx, x, y, fill, stroke, 1, gridThickness);
       }
@@ -585,7 +588,7 @@ function render() {
   if (startZone?.tileSet && startZone.tileSet.size > 0) {
     const dirs = SEGMENT_EDGE_DIRS;
     ctx.save();
-    ctx.strokeStyle = 'rgba(100,255,60,0.95)';
+    ctx.strokeStyle = `rgba(${myColorRGB},0.95)`;
     ctx.lineWidth = 3;
     ctx.lineCap = 'round';
     ctx.beginPath();
@@ -696,8 +699,27 @@ function render() {
     ctx.restore();
   }
 
+  // Table des mods d'angle par stance (index = offset directionnel 0-5 depuis le facing du défenseur)
+  const ANGLE_MODS_CLIENT = {
+    marche:           [0, 2, 2, 4, 2, 2],
+    combat:           [0, 0, 2, 4, 2, 0],
+    charge:           [2, 2, 4, 4, 4, 2],
+    repos:            [0, 2, 4, 4, 4, 2],
+    defense_combat:   [0, 0, 0, 4, 0, 0],
+    defense_distance: [0, 2, 4, 4, 4, 2],
+  };
+  const weaknessColor = (unit, dirIdx, alpha) => {
+    if (unit.facing == null) return null;
+    const offset = (dirIdx - unit.facing + 6) % 6;
+    const table = ANGLE_MODS_CLIENT[unit.stance] || ANGLE_MODS_CLIENT['combat'];
+    const mod = table[offset];
+    if (mod === 0) return `rgba(20,120,20,${alpha})`;
+    if (mod === 2) return `rgba(160,70,0,${alpha})`;
+    return `rgba(140,10,10,${alpha})`;
+  };
+
   // Contour blanc continu des groupes d'unités adjacentes
-  {
+  if (showWeakness) {
     const allUnits = gameState?.units || [];
     const byPlayer = {};
     for (const u of allUnits) {
@@ -721,13 +743,7 @@ function render() {
           if (pos.has(`${u.q + dq},${u.r + dr}`)) continue;
           const ei = (6 - dirIdx) % 6;
           const from = pts[ei], to = pts[(ei + 1) % 6];
-          let color = 'rgba(255,255,255,0.92)';
-          if (showWeakness && u.facing != null) {
-            const offset = (dirIdx - u.facing + 6) % 6;
-            if (offset === 0 || offset === 1 || offset === 5)  color = 'rgba(20,120,20,0.92)';
-            else if (offset === 2 || offset === 4)             color = 'rgba(160,70,0,0.92)';
-            else                                                color = 'rgba(140,10,10,0.92)';
-          }
+          const color = weaknessColor(u, dirIdx, 0.92) || 'rgba(255,255,255,0.92)';
           edgeMap.set(rk(from), { from, to, hx, hy, color });
         }
       }
@@ -745,29 +761,59 @@ function render() {
         if (nx * (e.hx - mx) + ny * (e.hy - my) < 0) { nx = -nx; ny = -ny; }
         return { x: p.x + nx * inset, y: p.y + ny * inset };
       };
-      const drawLoop = (loop) => {
+      const withAlpha = (color, alpha) => color.replace(/[\d.]+\)$/, `${alpha})`);
+      // Construit le chemin fermé de la boucle (pour ctx.clip)
+      const buildPath = (loop) => {
         const n = loop.length;
         const iFrom0 = insetPt(loop[0].from, loop[0]);
         const iTo0   = insetPt(loop[0].to,   loop[0]);
-        const start = lerp(iFrom0, iTo0, cr);
         ctx.beginPath();
-        ctx.moveTo(start.x, start.y);
+        ctx.moveTo(lerp(iFrom0, iTo0, cr).x, lerp(iFrom0, iTo0, cr).y);
         for (let i = 0; i < n; i++) {
-          const e  = loop[i];
-          const en = loop[(i + 1) % n];
-          const iFrom = insetPt(e.from, e);
-          const iTo   = insetPt(e.to,   e);
-          const iFromN = insetPt(en.from, en);
-          const iToN   = insetPt(en.to,   en);
-          const p1 = lerp(iFrom, iTo, 1 - cr);
-          const p2 = lerp(iFromN, iToN, cr);
-          ctx.lineTo(p1.x, p1.y);
+          const e  = loop[i], en = loop[(i + 1) % n];
+          const iFrom = insetPt(e.from, e), iTo = insetPt(e.to, e);
+          const iFromN = insetPt(en.from, en), iToN = insetPt(en.to, en);
+          const p1 = lerp(iFrom, iTo, 1 - cr), p2 = lerp(iFromN, iToN, cr);
           const corner = insetPt(e.to, e);
           const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
           const ctrl = { x: mid.x + (corner.x - mid.x) * 0.6, y: mid.y + (corner.y - mid.y) * 0.6 };
+          ctx.lineTo(p1.x, p1.y);
           ctx.quadraticCurveTo(ctrl.x, ctrl.y, p2.x, p2.y);
         }
         ctx.closePath();
+      };
+      // Dessine tous les segments colorés de la boucle à un alpha donné
+      const drawSegments = (loop, lineWidth, alpha) => {
+        ctx.lineWidth = lineWidth;
+        const n = loop.length;
+        for (let i = 0; i < n; i++) {
+          const e  = loop[i], en = loop[(i + 1) % n];
+          const iFromE  = insetPt(e.from, e),   iToE   = insetPt(e.to,   e);
+          const iFromEN = insetPt(en.from, en),  iToEN  = insetPt(en.to,  en);
+          const pStart = lerp(iFromE, iToE, cr);
+          const p1     = lerp(iFromE, iToE, 1 - cr);
+          const p2     = lerp(iFromEN, iToEN, cr);
+          const corner = insetPt(e.to, e);
+          const mid    = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+          const ctrl   = { x: mid.x + (corner.x - mid.x) * 0.6, y: mid.y + (corner.y - mid.y) * 0.6 };
+          ctx.beginPath();
+          ctx.moveTo(pStart.x, pStart.y);
+          ctx.lineTo(p1.x, p1.y);
+          ctx.strokeStyle = withAlpha(e.color, alpha);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(p1.x, p1.y);
+          ctx.quadraticCurveTo(ctrl.x, ctrl.y, p2.x, p2.y);
+          if (e.color === en.color) {
+            ctx.strokeStyle = withAlpha(e.color, alpha);
+          } else {
+            const grad = ctx.createLinearGradient(p1.x, p1.y, p2.x, p2.y);
+            grad.addColorStop(0, withAlpha(e.color, alpha));
+            grad.addColorStop(1, withAlpha(en.color, alpha));
+            ctx.strokeStyle = grad;
+          }
+          ctx.stroke();
+        }
       };
       for (const [startKey, startEdge] of edgeMap) {
         if (visited.has(startKey)) continue;
@@ -782,54 +828,16 @@ function render() {
           curKey = nk;
         }
         if (loop.length === 0) continue;
-        drawLoop(loop);
-        // Dégradé vers l'intérieur uniquement (clip restreint au remplissage du chemin)
+        // Dégradé vers l'intérieur avec couleurs de faiblesse
+        buildPath(loop);
         ctx.save();
         ctx.clip();
-        ctx.lineWidth = 36;
-        ctx.strokeStyle = 'rgba(255,255,255,0.07)';
-        ctx.stroke();
-        ctx.lineWidth = 22;
-        ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-        ctx.stroke();
-        ctx.lineWidth = 10;
-        ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-        ctx.stroke();
+        drawSegments(loop, 36, 0.07);
+        drawSegments(loop, 22, 0.15);
+        drawSegments(loop, 10, 0.35);
         ctx.restore();
-        // Trait principal coloré segment par segment avec dégradé aux coins
-        ctx.lineWidth = 4;
-        const n = loop.length;
-        for (let i = 0; i < n; i++) {
-          const e  = loop[i];
-          const en = loop[(i + 1) % n];
-          const iFromE  = insetPt(e.from,  e),  iToE   = insetPt(e.to,   e);
-          const iFromEN = insetPt(en.from, en),  iToEN  = insetPt(en.to,  en);
-          const pStart = lerp(iFromE,  iToE,  cr);
-          const p1     = lerp(iFromE,  iToE,  1 - cr);
-          const p2     = lerp(iFromEN, iToEN, cr);
-          const corner = insetPt(e.to, e);
-          const mid    = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
-          const ctrl   = { x: mid.x + (corner.x - mid.x) * 0.6, y: mid.y + (corner.y - mid.y) * 0.6 };
-          // Segment droit
-          ctx.beginPath();
-          ctx.moveTo(pStart.x, pStart.y);
-          ctx.lineTo(p1.x, p1.y);
-          ctx.strokeStyle = e.color;
-          ctx.stroke();
-          // Courbe de coin — dégradé si couleurs différentes
-          ctx.beginPath();
-          ctx.moveTo(p1.x, p1.y);
-          ctx.quadraticCurveTo(ctrl.x, ctrl.y, p2.x, p2.y);
-          if (e.color === en.color) {
-            ctx.strokeStyle = e.color;
-          } else {
-            const grad = ctx.createLinearGradient(p1.x, p1.y, p2.x, p2.y);
-            grad.addColorStop(0, e.color);
-            grad.addColorStop(1, en.color);
-            ctx.strokeStyle = grad;
-          }
-          ctx.stroke();
-        }
+        // Trait principal
+        drawSegments(loop, 4, 0.92);
       }
     }
     ctx.restore();
@@ -852,9 +860,7 @@ function render() {
         const nq = unit.q + dq, nr = unit.r + dr;
         if (friendlyPos.has(`${nq},${nr}`)) continue;
         const edgeIdx = (6 - dirIdx) % 6;
-        if (offset === 0 || offset === 1 || offset === 5) edgeColors[edgeIdx] = 'rgba(20,120,20,0.85)';
-        else if (offset === 2 || offset === 4)            edgeColors[edgeIdx] = 'rgba(160,70,0,0.85)';
-        else                                               edgeColors[edgeIdx] = 'rgba(140,10,10,0.85)';
+        edgeColors[edgeIdx] = weaknessColor(unit, dirIdx, 0.85);
       }
       drawHexWeakness(ctx, x, y, edgeColors);
     }
@@ -2798,7 +2804,7 @@ function formatHistoryEntry(log) {
   // ── ROLLS ──
   const isGeneralAtk = b.generalD20 != null;
   const atkMods = modsLine(
-    [b.modAtkStance, atkStanceName], [b.modAtkTerrain, atkTerrainName],
+    [b.modAngle, b.angleName], [b.modAtkStance, atkStanceName], [b.modAtkTerrain, atkTerrainName],
     [b.modEsquive, 'esquive'], [b.modHauteur, 'hauteur']
   );
   let leftRoll = '';
@@ -2824,7 +2830,7 @@ function formatHistoryEntry(log) {
       rightRoll += row('Résultat', `<b>${b.generalAttValueDef ?? '?'}</b>`);
     } else {
       const defMods = modsLine(
-        [b.modDefStance, defStanceName], [b.modDefTerrain, defTerrainName],
+        [b.modDefAngle, b.angleName], [b.modDefStance, defStanceName], [b.modDefTerrain, defTerrainName],
         [b.modPrecision, 'précision'], [b.modHauteurDef, 'hauteur']
       );
       rightRoll += row('GO', ngoDef);
@@ -2841,7 +2847,7 @@ function formatHistoryEntry(log) {
   const pwrAttBase = statVal(b.basePowerAtt ?? '?', b.effectivePowerAtt ?? '?');
   const pwrAttMods = modsLine([(b.lancierBonus || 0), 'lancier'], [b.modPwrAtt, atkStanceName]);
   const arDefBase  = statVal(b.baseArmorDef ?? '?', b.effectiveArmorDef ?? '?');
-  const arDefMods  = modsLine([b.modArmorDefStance, defStanceName], [b.modArmorDefTerrain, defTerrainName],
+  const arDefMods  = modsLine([b.modArmorDefAngle, b.angleName], [b.modArmorDefStance, defStanceName], [b.modArmorDefTerrain, defTerrainName],
     [(b.phalangeBonus || 0), 'phalange'], [(b.lancierRangedBonus || 0), 'lancier']);
   const ratARDefPct = b.ratARDef != null ? `${Math.round(b.ratARDef * 100)}%` : '?';
 
