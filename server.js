@@ -1,6 +1,7 @@
 const express = require('express');
 const http = require('http');
 const path = require('path');
+const fs = require('fs');
 const WebSocket = require('ws');
 const GameRoom = require('./game/GameRoom');
 const AIAgent = require('./simulation/AIAgent');
@@ -14,9 +15,38 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/simulation/results', express.static(path.join(__dirname, 'simulation/results')));
 app.get('/data/stances.json', (req, res) => res.json(require('./game/data/stances')));
 
+const ROOMS_FILE = path.join(__dirname, 'rooms.json');
 const rooms = {};
 const connections = {}; // connectionId -> ws
 const disconnectTimers = {};
+
+function saveRooms() {
+  try {
+    const data = {};
+    for (const code in rooms) {
+      const room = rooms[code];
+      if (room.phase === 'lobby' || room.phase === 'ended') continue;
+      data[code] = room.serialize();
+    }
+    fs.writeFileSync(ROOMS_FILE, JSON.stringify(data));
+  } catch (e) { console.error('saveRooms error:', e); }
+}
+
+function loadRooms() {
+  try {
+    if (!fs.existsSync(ROOMS_FILE)) return;
+    const data = JSON.parse(fs.readFileSync(ROOMS_FILE, 'utf8'));
+    for (const code in data) {
+      try {
+        rooms[code] = GameRoom.deserialize(data[code]);
+        console.log(`Room restaurée: ${code} (${rooms[code].phase})`);
+      } catch (e) { console.error(`Erreur restauration room ${code}:`, e); }
+    }
+  } catch (e) { console.error('loadRooms error:', e); }
+}
+
+loadRooms();
+setInterval(saveRooms, 5000);
 
 function generateId() {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
@@ -211,7 +241,7 @@ function handleDisconnect(connectionId) {
         if (room.hostId === connectionId) room.hostId = room.players[0].id;
         broadcast(room, { event: 'room_update', ...room.getLobbyState() });
       }
-    }, 10000);
+    }, 30000);
     break;
   }
 }
@@ -411,6 +441,7 @@ function handleAction(ws, connectionId, action, data) {
           send(p.id, { event: 'phase_change', phase: 'deployment' });
           send(p.id, { event: 'deployment_state', ...room.getDeploymentState(p.id) });
         });
+        saveRooms();
         runBotDeployment(room);
         if (room.allDeployed()) {
           room.startBattle();
@@ -419,6 +450,7 @@ function handleAction(ws, connectionId, action, data) {
             send(p.id, { event: 'initiative_rolled', rolls: room.initiativeRolls, turnOrder: room.turnOrder, turn: room.turn });
             send(p.id, { event: 'game_state', ...room.getGameState(p.id) });
           });
+          saveRooms();
           runBotTurn(room);
         }
       }
@@ -465,6 +497,7 @@ function handleAction(ws, connectionId, action, data) {
             send(p.id, { event: 'initiative_rolled', rolls: room.initiativeRolls, turnOrder: room.turnOrder, turn: room.turn });
             send(p.id, { event: 'game_state', ...room.getGameState(p.id) });
           });
+          saveRooms();
           console.log(`[deployment_ready] Bataille démarrée!`);
           runBotTurn(room);
         } catch (e) {
