@@ -217,6 +217,7 @@ function toggleReady() {
 }
 
 function setOption(key, value) {
+  if (!isHost) return;
   wsSend('set_option', { roomCode, key, value });
 }
 
@@ -418,7 +419,7 @@ function flagImg(flagId, size = 24) {
   return `<img src="/assets/flag/${f.file}" style="width:${size}px;height:${size}px;object-fit:cover;border-radius:2px;flex-shrink:0;border:1px solid #5a3c10" title="${f.name}">`;
 }
 
-function renderPlayerList(players, hostId) {
+function renderPlayerList(players, hostId, teamMode) {
   const list = document.getElementById('player-list');
   list.innerHTML = '';
 
@@ -456,15 +457,26 @@ function renderPlayerList(players, hostId) {
   }
 
   let html = '';
-  for (const flagId of flagsWithPlayers) {
-    const flagName = FLAGS.find(f => f.id === flagId)?.name || flagId.toUpperCase();
-    html += `<li class="pl-nation-header">${flagName}</li>`;
-    for (const { p, gen } of groups[flagId]) {
-      html += makeRow(p, gen, hostId);
+  if (teamMode) {
+    for (const flagId of flagsWithPlayers) {
+      const flagName = FLAGS.find(f => f.id === flagId)?.name || flagId.toUpperCase();
+      html += `<li class="pl-nation-header">${flagName}</li>`;
+      for (const { p, gen } of groups[flagId]) {
+        html += makeRow(p, gen, hostId);
+      }
     }
-  }
-  if (ungrouped.length) {
-    if (flagsWithPlayers.length) html += `<li class="pl-nation-header">—</li>`;
+    if (ungrouped.length) {
+      if (flagsWithPlayers.length) html += `<li class="pl-nation-header">—</li>`;
+      for (const { p, gen } of ungrouped) {
+        html += makeRow(p, gen, hostId);
+      }
+    }
+  } else {
+    for (const flagId of flagsWithPlayers) {
+      for (const { p, gen } of groups[flagId]) {
+        html += makeRow(p, gen, hostId);
+      }
+    }
     for (const { p, gen } of ungrouped) {
       html += makeRow(p, gen, hostId);
     }
@@ -722,6 +734,7 @@ function wsDispatch(event, data) {
     }
     case 'room_update': {
       budget = data.budget;
+      isHost = data.hostId === myId;
       if (data.options) roomOptions = data.options;
       document.getElementById('current-budget').textContent = data.budget.toLocaleString();
       const budgetInput = document.getElementById('budget-input');
@@ -729,7 +742,7 @@ function wsDispatch(event, data) {
       const me = data.players.find(p => p.id === myId);
       if (me?.flag) selectedFlag = me.flag;
       if (me?.generalId) selectedGeneral = me.generalId;
-      renderPlayerList(data.players, data.hostId);
+      renderPlayerList(data.players, data.hostId, roomOptions.teamMode);
       renderArmyStatus(data.players);
       renderGenerals(data.takenGenerals);
       renderFlagPicker(data.players.filter(p => p.id !== myId).map(p => p.flag).filter(Boolean));
@@ -741,12 +754,16 @@ function wsDispatch(event, data) {
         readyBtn.textContent = meReady ? '✅ Prêt !' : 'Je suis prêt';
         readyBtn.className = `btn ${meReady ? 'btn-ready-on' : canReady ? 'btn-ready-on' : 'btn-ready'}`;
       }
+      const tmCb = document.getElementById('opt-team-mode');
+      if (tmCb && data.options) {
+        tmCb.checked = !!data.options.teamMode;
+        tmCb.disabled = data.hostId !== myId;
+        tmCb.style.cursor = data.hostId === myId ? 'pointer' : 'default';
+      }
+      document.getElementById('lobby-options').style.display = 'block';
       if (data.hostId === myId) {
         document.getElementById('budget-card').style.display = 'block';
         document.getElementById('host-actions').style.display = 'block';
-        document.getElementById('lobby-options').style.display = 'block';
-        const tmCb = document.getElementById('opt-team-mode');
-        if (tmCb && data.options) tmCb.checked = !!data.options.teamMode;
         updateAIGeneralSelect(data.takenGenerals);
         updateAIFlagSelect(data.players.map(p => p.flag).filter(Boolean));
         renderBotList(data.players);
