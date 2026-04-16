@@ -37,6 +37,7 @@ let roomCode = null;
 let isHost = false;
 let selectedGeneral = null;
 let selectedFlag = null;
+let roomOptions = {};
 
 const FLAGS = [
   { id: 'qin',  name: 'Qin',  file: 'Quin.webp', color: '#1a5fa8' },
@@ -215,11 +216,16 @@ function toggleReady() {
   wsSend('lobby_ready', { roomCode });
 }
 
+function setOption(key, value) {
+  wsSend('set_option', { roomCode, key, value });
+}
+
 function renderFlagPicker(takenFlags) {
   const container = document.getElementById('flag-picker');
   if (!container) return;
+  const teamMode = roomOptions.teamMode;
   container.innerHTML = FLAGS.map(f => {
-    const isTaken = takenFlags.includes(f.id);
+    const isTaken = !teamMode && takenFlags.includes(f.id);
     const isSel = f.id === selectedFlag;
     return `<div class="flag-item${isSel ? ' selected' : ''}${isTaken ? ' taken' : ''}" onclick="${isTaken ? '' : `pickFlag('${f.id}')`}">
       <img src="/assets/flag/${f.file}" title="${f.name}">
@@ -398,7 +404,7 @@ function renderArmyStatus(players) {
   const el = document.getElementById('army-players-status');
   if (!el) return;
   el.innerHTML = players.filter(p => !p.offline).map(p => {
-    const ready = p.isReady;
+    const ready = p.armySubmitted;
     return `<div style="display:flex;align-items:center;gap:4px;background:${ready ? '#1a3a1a' : '#1a1008'};border:1px solid ${ready ? '#2a8c2a' : '#3a2408'};border-radius:4px;padding:3px 8px">
       ${flagImg(p.flag, 18)}
       <span style="font-size:0.78em;color:${ready ? '#7fff7f' : '#c87040'}">${ready ? 'Prêt' : 'En attente'}</span>
@@ -716,6 +722,7 @@ function wsDispatch(event, data) {
     }
     case 'room_update': {
       budget = data.budget;
+      if (data.options) roomOptions = data.options;
       document.getElementById('current-budget').textContent = data.budget.toLocaleString();
       const budgetInput = document.getElementById('budget-input');
       if (budgetInput && document.activeElement !== budgetInput) budgetInput.value = data.budget;
@@ -737,6 +744,9 @@ function wsDispatch(event, data) {
       if (data.hostId === myId) {
         document.getElementById('budget-card').style.display = 'block';
         document.getElementById('host-actions').style.display = 'block';
+        document.getElementById('lobby-options').style.display = 'block';
+        const tmCb = document.getElementById('opt-team-mode');
+        if (tmCb && data.options) tmCb.checked = !!data.options.teamMode;
         updateAIGeneralSelect(data.takenGenerals);
         updateAIFlagSelect(data.players.map(p => p.flag).filter(Boolean));
         renderBotList(data.players);

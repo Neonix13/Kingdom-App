@@ -298,6 +298,16 @@ function handleAction(ws, connectionId, action, data) {
       break;
     }
 
+    case 'set_option': {
+      const { roomCode, key, value } = data;
+      const room = rooms[roomCode];
+      if (!room || room.hostId !== connectionId) return;
+      if (!room.options) room.options = {};
+      room.options[key] = value;
+      broadcast(room, { event: 'room_update', ...room.getLobbyState() });
+      break;
+    }
+
     case 'set_budget': {
       const { roomCode, budget } = data;
       const room = rooms[roomCode];
@@ -322,7 +332,7 @@ function handleAction(ws, connectionId, action, data) {
       const FLAG_COLORS = { qin:'#1a5fa8', zhao:'#e07820', wei:'#1a7a3a', chu:'#20b8c8', yan:'#c8b84a', qi:'#e8e8e8', han:'#9060c0' };
       if (!FLAG_COLORS[flagId]) return;
       const takenFlags = room.players.filter(p => p.id !== connectionId).map(p => p.flag);
-      if (takenFlags.includes(flagId)) return send(connectionId, { event: 'error', message: 'Ce drapeau est déjà pris.' });
+      if (!room.options?.teamMode && takenFlags.includes(flagId)) return send(connectionId, { event: 'error', message: 'Ce drapeau est déjà pris.' });
       if (player) { player.flag = flagId; player.color = FLAG_COLORS[flagId]; }
       broadcast(room, { event: 'room_update', ...room.getLobbyState() });
       break;

@@ -33,6 +33,7 @@ class GameRoom {
     this.activeEffects = []; // { type, targetPlayerId, turnsLeft, value }
     this.pendingAttacks = {}; // attackId -> pending attack data
     this._unitCounter = 0;
+    this.options = { teamMode: false };
     this._loadStaticData();
   }
 
@@ -77,6 +78,7 @@ class GameRoom {
           generalId: p.generalId,
           generalName: gd ? gd.name : null,
           isReady: p.isReady,
+          armySubmitted: p.armySubmitted || false,
           isEliminated: p.isEliminated,
           isBot: p.isBot || false,
           color: p.color || '#4a90d9',
@@ -84,6 +86,7 @@ class GameRoom {
         };
       }),
       takenGenerals: this.players.filter(p => p.generalId && !p.offline).map(p => p.generalId),
+      options: this.options || { teamMode: false },
     };
   }
 

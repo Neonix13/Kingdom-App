@@ -71,6 +71,13 @@
               <h2>Joueurs (<span id="player-count">0</span>/8)</h2>
               <ul class="player-list" id="player-list"></ul>
             </div>
+            <div class="card" id="lobby-options" style="display:none">
+              <h2>Options</h2>
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:4px 0">
+                <input type="checkbox" id="opt-team-mode" onchange="setOption('teamMode', this.checked)" style="width:16px;height:16px;accent-color:#c8960c;cursor:pointer">
+                <span style="font-size:0.92em;color:#d4b483">Mode par équipe</span>
+              </label>
+            </div>
           </div>
           <div class="lobby-col-bottom" id="host-actions" style="display:none">
             <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
