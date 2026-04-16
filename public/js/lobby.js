@@ -217,8 +217,10 @@ function toggleReady() {
 }
 
 function setOption(key, value) {
+  console.log('[setOption] key=', key, 'value=', value, 'isHost=', isHost, 'roomCode=', roomCode);
   if (!isHost) return;
   wsSend('set_option', { roomCode, key, value });
+  console.log('[setOption] sent');
 }
 
 function renderFlagPicker(takenFlags) {
