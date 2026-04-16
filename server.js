@@ -219,6 +219,7 @@ wss.on('connection', (ws) => {
     let parsed;
     try { parsed = JSON.parse(raw); } catch { return; }
     const { action, ...data } = parsed;
+    console.log(`[msg] ${connectionId} → action=${action}`);
     handleAction(ws, connectionId, action, data);
   });
 
