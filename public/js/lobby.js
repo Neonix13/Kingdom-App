@@ -757,6 +757,7 @@ function wsDispatch(event, data) {
       const tmCb = document.getElementById('opt-team-mode');
       const tmLabel = document.getElementById('opt-team-mode-label');
       const teamModeVal = !!(data.options && data.options.teamMode);
+      console.log('[room_update] options=', data.options, 'teamModeVal=', teamModeVal, 'tmCb=', !!tmCb);
       if (tmCb) tmCb.checked = teamModeVal;
       if (tmLabel) {
         const canEdit = data.hostId === myId;

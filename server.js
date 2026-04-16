@@ -11,7 +11,7 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), { etag: false, lastModified: false, setHeaders: (res, filePath) => { if (filePath.endsWith('.js') || filePath.endsWith('.css')) res.setHeader('Cache-Control', 'no-store'); } }));
 app.use('/simulation/results', express.static(path.join(__dirname, 'simulation/results')));
 app.get('/data/stances.json', (req, res) => res.json(require('./game/data/stances')));
 
@@ -300,10 +300,12 @@ function handleAction(ws, connectionId, action, data) {
 
     case 'set_option': {
       const { roomCode, key, value } = data;
+      console.log(`[set_option] roomCode=${roomCode} key=${key} value=${value} from=${connectionId}`);
       const room = rooms[roomCode];
-      if (!room || room.hostId !== connectionId) return;
+      if (!room || room.hostId !== connectionId) { console.log(`[set_option] rejected: room=${!!room} hostId=${room?.hostId} conn=${connectionId}`); return; }
       if (!room.options) room.options = {};
       room.options[key] = value;
+      console.log(`[set_option] options now:`, room.options, `players:`, room.players.map(p=>p.id));
       broadcast(room, { event: 'room_update', ...room.getLobbyState() });
       break;
     }
