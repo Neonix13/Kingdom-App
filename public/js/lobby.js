@@ -755,10 +755,14 @@ function wsDispatch(event, data) {
         readyBtn.className = `btn ${meReady ? 'btn-ready-on' : canReady ? 'btn-ready-on' : 'btn-ready'}`;
       }
       const tmCb = document.getElementById('opt-team-mode');
-      if (tmCb && data.options) {
-        tmCb.checked = !!data.options.teamMode;
-        tmCb.disabled = data.hostId !== myId;
-        tmCb.style.cursor = data.hostId === myId ? 'pointer' : 'default';
+      const tmLabel = document.getElementById('opt-team-mode-label');
+      const teamModeVal = !!(data.options && data.options.teamMode);
+      if (tmCb) tmCb.checked = teamModeVal;
+      if (tmLabel) {
+        const canEdit = data.hostId === myId;
+        tmLabel.style.pointerEvents = canEdit ? '' : 'none';
+        tmLabel.style.cursor = canEdit ? 'pointer' : 'default';
+        tmLabel.style.opacity = canEdit ? '' : '0.75';
       }
       document.getElementById('lobby-options').style.display = 'block';
       if (data.hostId === myId) {
