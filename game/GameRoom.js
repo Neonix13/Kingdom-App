@@ -547,9 +547,12 @@ class GameRoom {
         const assassinHidden = u.typeId === 'assassin' && p.id !== playerId && !isSpectator
           && player.units.every(myU => myU.q === null || hexDistance(myU.q, myU.r, u.q, u.r) > 4);
         if (!assassinHidden && (isSpectator || p.id === playerId || visibleHexes.has(key))) {
+          const isMine = p.id === playerId;
+          const isAlly = !isMine && this.options?.teamMode && p.flag && p.flag === player?.flag;
           visibleUnits.push({
             ...u,
-            isMine: p.id === playerId,
+            isMine,
+            isAlly,
             playerId: p.id,
           });
         }
@@ -871,9 +874,11 @@ class GameRoom {
     if (!attacker) return { error: 'Unité attaquante introuvable.' };
     if (attacker.hasAttacked) return { error: 'Cette unité a déjà attaqué ce tour.' };
 
+    const attackerFlag = player.flag;
     let targetPlayer = null, target = null;
     for (const p of this.players) {
       if (p.id === playerId) continue;
+      if (this.options?.teamMode && p.flag && p.flag === attackerFlag) continue;
       const u = p.units.find(u => u.id === targetId);
       if (u) { targetPlayer = p; target = u; break; }
     }

@@ -1558,7 +1558,7 @@ function handleHexClick(hex) {
 
     // Clic sur ennemi attaquable → attaquer
     if (attackableTiles.has(key)) {
-      const target = gameState.units.find(u => u.q === hex.q && u.r === hex.r && !u.isMine);
+      const target = gameState.units.find(u => u.q === hex.q && u.r === hex.r && !u.isMine && !u.isAlly);
       if (target) {
         wsSend('attack_unit', { roomCode, attackerId: selectedUnit.id, targetId: target.id });
         movableTiles.clear();
@@ -1847,7 +1847,7 @@ function computeAttackableTiles(unit) {
   const hA = hd[`${unit.q},${unit.r}`] || 0;
 
   for (const u of gameState.units) {
-    if (u.isMine) continue;
+    if (u.isMine || u.isAlly) continue;
     const dist = hexDistance(unit.q, unit.r, u.q, u.r);
     const hT = hd[`${u.q},${u.r}`] || 0;
     const effectiveRange = Math.max(1, (unit.range || 1) + (hA - hT));
