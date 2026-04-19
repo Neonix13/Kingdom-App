@@ -1,6 +1,7 @@
 const express = require('express');
 const http = require('http');
 const path = require('path');
+const fs = require('fs');
 const WebSocket = require('ws');
 const GameRoom = require('./game/GameRoom');
 const AIAgent = require('./simulation/AIAgent');
@@ -10,13 +11,42 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), { etag: false, lastModified: false, setHeaders: (res, filePath) => { if (filePath.endsWith('.js') || filePath.endsWith('.css')) res.setHeader('Cache-Control', 'no-store'); } }));
 app.use('/simulation/results', express.static(path.join(__dirname, 'simulation/results')));
 app.get('/data/stances.json', (req, res) => res.json(require('./game/data/stances')));
 
+const ROOMS_FILE = path.join(__dirname, 'rooms.json');
 const rooms = {};
 const connections = {}; // connectionId -> ws
 const disconnectTimers = {};
+
+function saveRooms() {
+  try {
+    const data = {};
+    for (const code in rooms) {
+      const room = rooms[code];
+      if (room.phase === 'lobby' || room.phase === 'ended') continue;
+      data[code] = room.serialize();
+    }
+    fs.writeFileSync(ROOMS_FILE, JSON.stringify(data));
+  } catch (e) { console.error('saveRooms error:', e); }
+}
+
+function loadRooms() {
+  try {
+    if (!fs.existsSync(ROOMS_FILE)) return;
+    const data = JSON.parse(fs.readFileSync(ROOMS_FILE, 'utf8'));
+    for (const code in data) {
+      try {
+        rooms[code] = GameRoom.deserialize(data[code]);
+        console.log(`Room restaurée: ${code} (${rooms[code].phase})`);
+      } catch (e) { console.error(`Erreur restauration room ${code}:`, e); }
+    }
+  } catch (e) { console.error('loadRooms error:', e); }
+}
+
+loadRooms();
+setInterval(saveRooms, 5000);
 
 function generateId() {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
@@ -189,6 +219,7 @@ wss.on('connection', (ws) => {
     let parsed;
     try { parsed = JSON.parse(raw); } catch { return; }
     const { action, ...data } = parsed;
+    console.log(`[msg] ${connectionId} → action=${action}`);
     handleAction(ws, connectionId, action, data);
   });
 
@@ -211,7 +242,7 @@ function handleDisconnect(connectionId) {
         if (room.hostId === connectionId) room.hostId = room.players[0].id;
         broadcast(room, { event: 'room_update', ...room.getLobbyState() });
       }
-    }, 10000);
+    }, 30000);
     break;
   }
 }
@@ -268,6 +299,18 @@ function handleAction(ws, connectionId, action, data) {
       break;
     }
 
+    case 'set_option': {
+      const { roomCode, key, value } = data;
+      console.log(`[set_option] roomCode=${roomCode} key=${key} value=${value} from=${connectionId}`);
+      const room = rooms[roomCode];
+      if (!room || room.hostId !== connectionId) { console.log(`[set_option] rejected: room=${!!room} hostId=${room?.hostId} conn=${connectionId}`); return; }
+      if (!room.options) room.options = {};
+      room.options[key] = value;
+      console.log(`[set_option] options now:`, room.options, `players:`, room.players.map(p=>p.id));
+      broadcast(room, { event: 'room_update', ...room.getLobbyState() });
+      break;
+    }
+
     case 'set_budget': {
       const { roomCode, budget } = data;
       const room = rooms[roomCode];
@@ -292,7 +335,7 @@ function handleAction(ws, connectionId, action, data) {
       const FLAG_COLORS = { qin:'#1a5fa8', zhao:'#e07820', wei:'#1a7a3a', chu:'#20b8c8', yan:'#c8b84a', qi:'#e8e8e8', han:'#9060c0' };
       if (!FLAG_COLORS[flagId]) return;
       const takenFlags = room.players.filter(p => p.id !== connectionId).map(p => p.flag);
-      if (takenFlags.includes(flagId)) return send(connectionId, { event: 'error', message: 'Ce drapeau est déjà pris.' });
+      if (!room.options?.teamMode && takenFlags.includes(flagId)) return send(connectionId, { event: 'error', message: 'Ce drapeau est déjà pris.' });
       if (player) { player.flag = flagId; player.color = FLAG_COLORS[flagId]; }
       broadcast(room, { event: 'room_update', ...room.getLobbyState() });
       break;
@@ -411,6 +454,7 @@ function handleAction(ws, connectionId, action, data) {
           send(p.id, { event: 'phase_change', phase: 'deployment' });
           send(p.id, { event: 'deployment_state', ...room.getDeploymentState(p.id) });
         });
+        saveRooms();
         runBotDeployment(room);
         if (room.allDeployed()) {
           room.startBattle();
@@ -419,6 +463,7 @@ function handleAction(ws, connectionId, action, data) {
             send(p.id, { event: 'initiative_rolled', rolls: room.initiativeRolls, turnOrder: room.turnOrder, turn: room.turn });
             send(p.id, { event: 'game_state', ...room.getGameState(p.id) });
           });
+          saveRooms();
           runBotTurn(room);
         }
       }
@@ -465,6 +510,7 @@ function handleAction(ws, connectionId, action, data) {
             send(p.id, { event: 'initiative_rolled', rolls: room.initiativeRolls, turnOrder: room.turnOrder, turn: room.turn });
             send(p.id, { event: 'game_state', ...room.getGameState(p.id) });
           });
+          saveRooms();
           console.log(`[deployment_ready] Bataille démarrée!`);
           runBotTurn(room);
         } catch (e) {

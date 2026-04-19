@@ -37,6 +37,7 @@ let roomCode = null;
 let isHost = false;
 let selectedGeneral = null;
 let selectedFlag = null;
+let roomOptions = {};
 
 const FLAGS = [
   { id: 'qin',  name: 'Qin',  file: 'Quin.webp', color: '#1a5fa8' },
@@ -219,11 +220,19 @@ function toggleReady() {
   wsSend('lobby_ready', { roomCode });
 }
 
+function setOption(key, value) {
+  console.log('[setOption] key=', key, 'value=', value, 'isHost=', isHost, 'roomCode=', roomCode);
+  if (!isHost) return;
+  wsSend('set_option', { roomCode, key, value });
+  console.log('[setOption] sent');
+}
+
 function renderFlagPicker(takenFlags) {
   const container = document.getElementById('flag-picker');
   if (!container) return;
+  const teamMode = roomOptions.teamMode;
   container.innerHTML = FLAGS.map(f => {
-    const isTaken = takenFlags.includes(f.id);
+    const isTaken = !teamMode && takenFlags.includes(f.id);
     const isSel = f.id === selectedFlag;
     return `<div class="flag-item${isSel ? ' selected' : ''}${isTaken ? ' taken' : ''}" onclick="${isTaken ? '' : `pickFlag('${f.id}')`}">
       <img src="/assets/flag/${f.file}" title="${f.name}">
@@ -402,7 +411,7 @@ function renderArmyStatus(players) {
   const el = document.getElementById('army-players-status');
   if (!el) return;
   el.innerHTML = players.filter(p => !p.offline).map(p => {
-    const ready = p.isReady;
+    const ready = p.armySubmitted;
     return `<div style="display:flex;align-items:center;gap:4px;background:${ready ? '#1a3a1a' : '#1a1008'};border:1px solid ${ready ? '#2a8c2a' : '#3a2408'};border-radius:4px;padding:3px 8px">
       ${flagImg(p.flag, 18)}
       <span style="font-size:0.78em;color:${ready ? '#7fff7f' : '#c87040'}">${ready ? 'Prêt' : 'En attente'}</span>
@@ -416,7 +425,7 @@ function flagImg(flagId, size = 24) {
   return `<img src="/assets/flag/${f.file}" style="width:${size}px;height:${size}px;object-fit:cover;border-radius:2px;flex-shrink:0;border:1px solid #5a3c10" title="${f.name}">`;
 }
 
-function renderPlayerList(players, hostId) {
+function renderPlayerList(players, hostId, teamMode) {
   const list = document.getElementById('player-list');
   list.innerHTML = '';
 
@@ -454,15 +463,26 @@ function renderPlayerList(players, hostId) {
   }
 
   let html = '';
-  for (const flagId of flagsWithPlayers) {
-    const flagName = FLAGS.find(f => f.id === flagId)?.name || flagId.toUpperCase();
-    html += `<li class="pl-nation-header">${flagName}</li>`;
-    for (const { p, gen } of groups[flagId]) {
-      html += makeRow(p, gen, hostId);
+  if (teamMode) {
+    for (const flagId of flagsWithPlayers) {
+      const flagName = FLAGS.find(f => f.id === flagId)?.name || flagId.toUpperCase();
+      html += `<li class="pl-nation-header">${flagName}</li>`;
+      for (const { p, gen } of groups[flagId]) {
+        html += makeRow(p, gen, hostId);
+      }
     }
-  }
-  if (ungrouped.length) {
-    if (flagsWithPlayers.length) html += `<li class="pl-nation-header">—</li>`;
+    if (ungrouped.length) {
+      if (flagsWithPlayers.length) html += `<li class="pl-nation-header">—</li>`;
+      for (const { p, gen } of ungrouped) {
+        html += makeRow(p, gen, hostId);
+      }
+    }
+  } else {
+    for (const flagId of flagsWithPlayers) {
+      for (const { p, gen } of groups[flagId]) {
+        html += makeRow(p, gen, hostId);
+      }
+    }
     for (const { p, gen } of ungrouped) {
       html += makeRow(p, gen, hostId);
     }
@@ -720,13 +740,15 @@ function wsDispatch(event, data) {
     }
     case 'room_update': {
       budget = data.budget;
+      isHost = data.hostId === myId;
+      if (data.options) roomOptions = data.options;
       document.getElementById('current-budget').textContent = data.budget.toLocaleString();
       const budgetInput = document.getElementById('budget-input');
       if (budgetInput && document.activeElement !== budgetInput) budgetInput.value = data.budget;
       const me = data.players.find(p => p.id === myId);
       if (me?.flag) selectedFlag = me.flag;
       if (me?.generalId) selectedGeneral = me.generalId;
-      renderPlayerList(data.players, data.hostId);
+      renderPlayerList(data.players, data.hostId, roomOptions.teamMode);
       renderArmyStatus(data.players);
       renderGenerals(data.takenGenerals);
       renderFlagPicker(data.players.filter(p => p.id !== myId).map(p => p.flag).filter(Boolean));
@@ -738,6 +760,18 @@ function wsDispatch(event, data) {
         readyBtn.textContent = meReady ? '✅ Prêt !' : 'Je suis prêt';
         readyBtn.className = `btn ${meReady ? 'btn-ready-on' : canReady ? 'btn-ready-on' : 'btn-ready'}`;
       }
+      const tmCb = document.getElementById('opt-team-mode');
+      const tmLabel = document.getElementById('opt-team-mode-label');
+      const teamModeVal = !!(data.options && data.options.teamMode);
+      console.log('[room_update] options=', data.options, 'teamModeVal=', teamModeVal, 'tmCb=', !!tmCb);
+      if (tmCb) tmCb.checked = teamModeVal;
+      if (tmLabel) {
+        const canEdit = data.hostId === myId;
+        tmLabel.style.pointerEvents = canEdit ? '' : 'none';
+        tmLabel.style.cursor = canEdit ? 'pointer' : 'default';
+        tmLabel.style.opacity = canEdit ? '' : '0.75';
+      }
+      document.getElementById('lobby-options').style.display = 'block';
       if (data.hostId === myId) {
         document.getElementById('budget-card').style.display = 'block';
         document.getElementById('host-actions').style.display = 'block';
