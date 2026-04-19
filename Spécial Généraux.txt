@@ -10,28 +10,28 @@ passif: Réduit de 1 la FORCE, la STRATEGIE et le CHARISME des généraux ennemi
 
 Mou Bu
 
-actif:  Détruit une unité d'infanterie
-passif:
+actif:  charge en ligne droite et traverse jusqu'à 3 cases, écrasant toute unité sur son passage (dégâts à chaque unité traversée).
+passif: Mou Bu ignore 3 points d'armure adverse dans ses attaques personnelles. Quand il tue une unité, il récupère 10 de vitalité.
 
 ---------------------------------------------------------------------------------------------------
 
 Ou Sen
 
-actif: 
+actif: Désigne une zone de 3 cases : toute unité ennemie dedans est ralentie (-2 vitesse) et subit -2 en attaque pendant 3 tours
 passif: +2 de défense pour toutes les unités de sont armée
 
 ---------------------------------------------------------------------------------------------------
 
 Kan Ki
 
-actif:  Fait apparaitre une unité d'assassin dans son rayon de Charisme
+actif:  Construit un totem sur un cases vide. Le totem démoralise de 50 par tour les unités ennemies dans un rayon de 3 cases 
 passif: Les Forets ne ralentisse pas sont armée
 
 ---------------------------------------------------------------------------------------------------
 
 Ri Boku
 
-actif:
+actif: perçoit l'ensemble du champ de bataille : révèle la position de toutes les unités ennemies pendant 2 tours.
 passif: Les unités ont +2 de vision
 
 ---------------------------------------------------------------------------------------------------
@@ -71,11 +71,107 @@ passif: Les unité de son armé ont +1 de vitesse
 
 ---------------------------------------------------------------------------------------------------
 
-
-
-
 Gai Mou
 
 actif: Inflige 10*D20 au moral des unités ennemies dans la zone de Charisme
 passif:
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+QIN
+Ou Ki — "Le Monstre de Qin"
+⚡ Actif — "Instinct du Monstre" (CD 3)
+Ou Ki  Les unités alliées à portée de son charisme ignorent la pénalité de moral ce tour.
+
+
+
+Mou Bu — "La Force Pure"
+⚡ Actif — "Percée Titanesque" (CD 3)
+Mou Bu  Les unités alliées dans son sillage gagnent +1 Puissance ce tour.
+
+☽ Passif — "L'Invincible"
+
+
+Ou Sen — "L'Architecte Froid"
+⚡ Actif — "Filet du Stratège" (CD 4)
+. Ou Sen ne peut pas utiliser d'autre action ce tour.
+
+☽ Passif — "Calcul Parfait"
+Chaque tour, Ou Sen prédit le mouvement ennemi : si une unité ennemie attaque une unité alliée en position défensive, l'attaque a 20% de chance d'être annulée complètement.
+
+Kan Ki — "Le Démon Bandit"
+⚡ Actif — "Embuscade Infernale" (CD 4)
+3 unités alliées de ton choix disparaissent du champ de vision ennemi pendant 2 tours. Quand elles réapparaissent ou attaquent, elles infligent +3 en Puissance et -20 moral sur la cible.
+
+☽ Passif — "Terreur Absolue"
+Après chaque kill de Kan Ki, toutes les unités ennemies dans un rayon de 3 cases perdent 15 de moral. Les unités en fuite ne peuvent pas se rallier tant que Kan Ki est en vie.
+
+ZHAO
+Ri Boku — "Le Grand Stratège"
+⚡ Actif — "Contre-Piège" (CD 3)
+Ri Boku annule la capacité active d'un général ennemi et la met en recharge forcée pour 3 tours supplémentaires. (La capacité est "retournée" contre son utilisateur.)
+
+☽ Passif — "Vision Omnisciente"
+Ri Boku voit toujours les unités ennemies même dans le brouillard de guerre à portée de Stratégie. Ses unités ne peuvent pas être surprises par une embuscade.
+
+Kei Sha — "L'Insaisissable"
+⚡ Actif — "Retraite Calculée" (CD 4)
+Toute l'armée de Kei Sha recule de 2 cases instantanément. Les unités ennemies qui avançaient vers elles ce tour font un mouvement inutile et perdent leur action d'attaque.
+
+☽ Passif — "Danse de la Guerre"
+Chaque fois qu'une unité de Kei Sha esquive ou défend avec succès, l'attaquant perd 5 de moral. Kei Sha lui-même ne peut jamais être tué par une unité non-générale.
+
+Shi Ba Shou — "Le Bouclier de Zhao"
+⚡ Actif — "Mur Impénétrable" (CD 4)
+Pendant 2 tours, toutes les unités alliées dans un rayon de 3 cases autour de Shi Ba Shou gagnent +5 Armure et absorbent les dégâts à la place des unités voisines (se sacrifient).
+
+☽ Passif — "Loyauté de Fer"
+Shi Ba Shou ne peut pas fuir ni être repoussé. Quand une unité alliée adjacente est détruite, Shi Ba Shou gagne +1 Puissance et +1 Armure (permanent, jusqu'à 5 fois max).
+
+CHU / WEI
+Ren Pa — "La Fureur des 4 Rois"
+⚡ Actif — "Exécution Royale" (CD 3)
+Ren Pa cible une unité ennemie adjacente avec moins de 35% de vitalité et l'exécute instantanément, peu importe son armure. Gagne +2 Puissance pour le reste du tour.
+
+☽ Passif — "Volonté Indomptable"
+Ren Pa continue de combattre même à 0 moral pendant 2 tours supplémentaires. Ses troupes ne fuient pas tant que Ren Pa est en vie et à portée de charisme.
+
+Go Kei — "Le Rempart de Wei"
+⚡ Actif — "Contre-Offensive" (CD 3)
+Les unités alliées en position défensive ce tour peuvent contre-attaquer avec 100% de leur puissance (au lieu de 50%). Toute unité qui tue en contre-attaque ce tour ne perd pas de moral.
+
+☽ Passif — "Discipline de Fer"
+Les unités de Go Kei ne perdent jamais plus de 10 moral par attaque. Quand elles défendent et survivent, elles récupèrent 5 de moral à la fin du tour.
+
+Go Hou Mei — "Le Génie des Échecs"
+⚡ Actif — "Coup de Maître" (CD 3)
+Go Hou Mei rejoue l'action d'une de ses unités déjà activée ce tour (mouvement + attaque réinitialisés). De plus, toutes ses unités gagnent +1 Attaque et Défense jusqu'à la fin du tour.
+
+☽ Passif — "3 Coups d'Avance"
+Si Go Hou Mei a l'initiative au début d'un tour, toutes ses unités connaissent déjà les positions ennemies (brouillard levé) et gagnent +1 en Attaque et Esquive pour ce tour.
+
+Gai Mou — "Le Lion de Wei"
+⚡ Actif — "Rugissement du Lion" (CD 3)
+Toutes les unités ennemies dans un rayon de 5 cases perdent 20 de moral et 1 en Intimidation instantanément. Les unités déjà proches du seuil de fuite fuient immédiatement.
+
+☽ Passif — "Fierté du Lion"
+Gai Mou gagne +1 Puissance pour chaque unité alliée détruite dans la bataille (rage croissante, pas de limite). En dessous de 50% de vitalité, il gagne en plus +2 Armure.

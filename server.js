@@ -332,11 +332,23 @@ function handleAction(ws, connectionId, action, data) {
       const room = rooms[roomCode];
       if (!room || room.phase !== 'lobby') return;
       const player = room.getPlayer(connectionId);
-      const FLAG_COLORS = { qin:'#1a5fa8', zhao:'#e07820', wei:'#1a7a3a', chu:'#20b8c8', yan:'#c8b84a', qi:'#e8e8e8', han:'#9060c0' };
-      if (!FLAG_COLORS[flagId]) return;
+      const FLAG_VARIANTS = {
+        qin:  ['#1a5fa8','#4a8fd8','#0a3578','#5aaff8'],
+        zhao: ['#e07820','#b05010','#f0a040','#804000'],
+        wei:  ['#1a7a3a','#3aaa5a','#0a5020','#6acc8a'],
+        chu:  ['#20b8c8','#1080a0','#50d8e8','#008878'],
+        yan:  ['#c8b84a','#a89030','#e8d870','#786820'],
+        qi:   ['#e8e8e8','#b8b8b8','#f8f8f8','#d0d0d0'],
+        han:  ['#9060c0','#7040a0','#b080e0','#502080'],
+      };
+      if (!FLAG_VARIANTS[flagId]) return;
       const takenFlags = room.players.filter(p => p.id !== connectionId).map(p => p.flag);
       if (!room.options?.teamMode && takenFlags.includes(flagId)) return send(connectionId, { event: 'error', message: 'Ce drapeau est déjà pris.' });
-      if (player) { player.flag = flagId; player.color = FLAG_COLORS[flagId]; }
+      if (player) {
+        player.flag = flagId;
+        const teammates = room.players.filter(p => p.id !== connectionId && p.flag === flagId).length;
+        player.color = FLAG_VARIANTS[flagId][Math.min(teammates, FLAG_VARIANTS[flagId].length - 1)];
+      }
       broadcast(room, { event: 'room_update', ...room.getLobbyState() });
       break;
     }
@@ -358,7 +370,15 @@ function handleAction(ws, connectionId, action, data) {
       const room = rooms[roomCode];
       if (!room || room.hostId !== connectionId || room.phase !== 'lobby') return;
       if (room.players.length >= 8) return send(connectionId, { event: 'error', message: 'Salle pleine.' });
-      const FLAG_COLORS = { qin:'#1a5fa8', zhao:'#e07820', wei:'#1a7a3a', chu:'#20b8c8', yan:'#c8b84a', qi:'#e8e8e8', han:'#9060c0' };
+      const FLAG_VARIANTS_BOT = {
+        qin:  ['#1a5fa8','#4a8fd8','#0a3578','#5aaff8'],
+        zhao: ['#e07820','#b05010','#f0a040','#804000'],
+        wei:  ['#1a7a3a','#3aaa5a','#0a5020','#6acc8a'],
+        chu:  ['#20b8c8','#1080a0','#50d8e8','#008878'],
+        yan:  ['#c8b84a','#a89030','#e8d870','#786820'],
+        qi:   ['#e8e8e8','#b8b8b8','#f8f8f8','#d0d0d0'],
+        han:  ['#9060c0','#7040a0','#b080e0','#502080'],
+      };
       const botId = 'bot_' + generateId();
       room.addPlayer(botId, '🤖 IA');
       const bot = room.getPlayer(botId);
@@ -370,10 +390,10 @@ function handleAction(ws, connectionId, action, data) {
         const available = GENERALS.filter(g => !takenGenerals.includes(g.id));
         if (available.length > 0) bot.generalId = available[Math.floor(Math.random() * available.length)].id;
       }
-      const takenFlags = room.players.filter(p => p.id !== botId).map(p => p.flag).filter(Boolean);
-      if (requestedFlagId && !takenFlags.includes(requestedFlagId) && FLAG_COLORS[requestedFlagId]) {
+      if (requestedFlagId && FLAG_VARIANTS_BOT[requestedFlagId]) {
         bot.flag = requestedFlagId;
-        bot.color = FLAG_COLORS[requestedFlagId];
+        const teammates = room.players.filter(p => p.id !== botId && p.flag === requestedFlagId).length;
+        bot.color = FLAG_VARIANTS_BOT[requestedFlagId][Math.min(teammates, FLAG_VARIANTS_BOT[requestedFlagId].length - 1)];
       } else {
         bot.color = '#888888';
       }
