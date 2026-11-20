@@ -92,6 +92,8 @@ function getMap(id = 'default') {
 }
 
 function mapExists(id) {
+  if (typeof id !== 'string') return false;
+  if (cache.has(id)) return true;
   try { return fs.existsSync(mapPath(id)); } catch (e) { return false; }
 }
 
@@ -113,6 +115,18 @@ function deleteMap(id) {
   cache.delete(id);
 }
 
+function registerMap(raw) {
+  const map = normalizeMap(raw);
+  const errors = validateMap(map);
+  if (errors.length) throw new Error(errors.join(' '));
+  cache.set(map.id, map);
+  return map;
+}
+
+function publicSummary(m) {
+  return { id: m.id, name: m.name, description: m.description, hexCount: Object.keys(m.height).length, hasBackground: !!m.background };
+}
+
 // Terrain lookup with plain as default for every hex of the map
 function terrainLookup(map) {
   const out = {};
@@ -120,4 +134,4 @@ function terrainLookup(map) {
   return out;
 }
 
-module.exports = { listMaps, getMap, mapExists, saveMap, deleteMap, validateMap, normalizeMap, terrainLookup, MAPS_DIR };
+module.exports = { listMaps, getMap, mapExists, saveMap, deleteMap, registerMap, publicSummary, validateMap, normalizeMap, terrainLookup, MAPS_DIR };

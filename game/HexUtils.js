@@ -1,45 +1,21 @@
 // Axial coordinate hex utilities (flat-top hexagons)
 // 1 hex = 100m
 
-const fs = require('fs');
-const path = require('path');
-let _terrainData = null;
-function getTerrainData() {
-  if (!_terrainData) {
-    try {
-      _terrainData = JSON.parse(fs.readFileSync(path.join(__dirname, '../public/data/terrain.json'), 'utf8'));
-    } catch(e) { _terrainData = {}; }
-    // terrain.json only lists non-plain hexes: every hex of the map (height.json) defaults to plain
-    try {
-      const heights = JSON.parse(fs.readFileSync(path.join(__dirname, '../public/data/height.json'), 'utf8'));
-      for (const key of Object.keys(heights)) if (!_terrainData[key]) _terrainData[key] = 'plain';
-    } catch(e) {}
-  }
-  return _terrainData;
+const maps = require('./maps');
+const SEGMENT_DEFS = require('./data/segments');
+
+function getTerrainData(map = maps.getMap('default')) {
+  return maps.terrainLookup(map);
 }
 
-const SEGMENT_DEFS = require('./data/segments');
-let _segmentData = null;
-function getSegmentData() {
-  if (!_segmentData) {
-    try {
-      _segmentData = JSON.parse(fs.readFileSync(path.join(__dirname, '../public/data/segments.json'), 'utf8'));
-    } catch(e) { _segmentData = {}; }
-  }
-  return _segmentData;
+function getSegmentData(map = maps.getMap('default')) {
+  return map.segments || {};
 }
 
 function segmentEdgeKey(q1, r1, q2, r2) {
   if (q1 < q2 || (q1 === q2 && r1 < r2)) return `${q1},${r1}|${q2},${r2}`;
   return `${q2},${r2}|${q1},${r1}`;
 }
-
-// Calibration carte (synchronisé avec public/js/hexGrid.js)
-const MAP_HEX_SIZE = 101.5;
-const MAP_ORIG_X   = 137;
-const MAP_ORIG_Y   = 190;
-const MAP_IMG_W    = 8800;
-const MAP_IMG_H    = 7200;
 
 const HEX_DIRECTIONS = [
   [1, 0], [1, -1], [0, -1],
@@ -71,26 +47,18 @@ function hexesInRange(q, r, radius) {
   return results;
 }
 
-// Generate a hex map that couvre exactement la zone de l'image
-function generateHexMap(radius) {
+// Playable hexes of a map: exactly the keys of map.height, terrain defaulting to plain
+function buildHexMap(map) {
   const hexes = {};
-  const S = Math.sqrt(3);
-  const qMin = Math.floor(-MAP_ORIG_X / (MAP_HEX_SIZE * 1.5)) - 1;
-  const qMax = Math.ceil((MAP_IMG_W - MAP_ORIG_X) / (MAP_HEX_SIZE * 1.5)) + 1;
-
-  for (let q = qMin; q <= qMax; q++) {
-    const rMin = Math.floor((-MAP_ORIG_Y - MAP_HEX_SIZE * S / 2 * q) / (MAP_HEX_SIZE * S)) - 1;
-    const rMax = Math.ceil((MAP_IMG_H - MAP_ORIG_Y - MAP_HEX_SIZE * S / 2 * q) / (MAP_HEX_SIZE * S)) + 1;
-    for (let r = rMin; r <= rMax; r++) {
-      const imgX = MAP_HEX_SIZE * 1.5 * q + MAP_ORIG_X;
-      const imgY = MAP_HEX_SIZE * (S / 2 * q + S * r) + MAP_ORIG_Y;
-      if (imgX >= 0 && imgX <= MAP_IMG_W && imgY >= 0 && imgY <= MAP_IMG_H) {
-        const key = hexKey(q, r);
-        hexes[key] = { q, r, terrain: getTerrainData()[key] || 'plain' };
-      }
-    }
+  for (const key of Object.keys(map.height)) {
+    const [q, r] = key.split(',').map(Number);
+    hexes[key] = { q, r, terrain: map.terrain[key] || 'plain' };
   }
   return hexes;
+}
+
+function generateHexMap() {
+  return buildHexMap(maps.getMap('default'));
 }
 
 // Terrain movement cost: entering a tile costs max(1, 1 - vitesse_modifier)
@@ -100,10 +68,9 @@ function terrainMoveCost(terrain) {
 }
 
 // Dijkstra pathfinding with terrain + segment movement costs (returns path array or null)
-function findPath(hexMap, unitMap, q1, r1, q2, r2, maxSpeed, playerId, unit) {
+function findPath(hexMap, unitMap, q1, r1, q2, r2, maxSpeed, playerId, unit, segMap = getSegmentData()) {
   if (q1 === q2 && r1 === r2) return [];
 
-  const segMap = getSegmentData();
   const isCavalry = unit && (unit.category === 'Chevaux' || unit.category === 'Chars');
 
   const dist = new Map();
@@ -166,9 +133,7 @@ const DEPLOY_BORDER_EXCLUSION = 12;
 // Expansion radiale depuis un centre de déploiement.
 // Priorité = distance_hexagonale_au_centre × SCALE + modificateur_terrain
 // → forme proche d'un cercle, avec préférence légère pour plaines/routes
-function _deployZoneDijkstra(centerQ, centerR, maxTiles, forbiddenKeys) {
-  const td = getTerrainData();
-  const sd = getSegmentData();
+function _deployZoneDijkstra(centerQ, centerR, maxTiles, forbiddenKeys, td, sd) {
   const DIRS = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
   const visited = new Set();
   const tiles = [];
@@ -205,8 +170,31 @@ function _deployZoneDijkstra(centerQ, centerR, maxTiles, forbiddenKeys) {
   return tiles;
 }
 
-function getStartingZones(numPlayers, mapRadius, budget) {
-  const td = getTerrainData();
+function fixedZones(numPlayers, zones, td) {
+  if (!Array.isArray(zones) || zones.length < numPlayers) return null;
+  const picked = zones.slice(0, numPlayers).map((z) => {
+    const tiles = (z.tiles || [])
+      .filter((k) => typeof k === 'string' && td[k] && td[k] !== 'river')
+      .map((k) => { const [q, r] = k.split(',').map(Number); return { q, r }; });
+    if (!tiles.length) return null;
+    const cq = tiles.reduce((s, t) => s + t.q, 0) / tiles.length;
+    const cr = tiles.reduce((s, t) => s + t.r, 0) / tiles.length;
+    let center = tiles[0], best = Infinity;
+    for (const t of tiles) {
+      const d = hexDistance(t.q, t.r, Math.round(cq), Math.round(cr));
+      if (d < best) { best = d; center = t; }
+    }
+    return { q: center.q, r: center.r, tiles };
+  });
+  return picked.every(Boolean) ? picked : null;
+}
+
+// map: a registry map (game/maps.js). Fixed map.zones are used when there are enough of them.
+function getStartingZones(numPlayers, mapRadius, budget, map = maps.getMap('default')) {
+  const td = getTerrainData(map);
+  const sd = getSegmentData(map);
+  const fixed = fixedZones(numPlayers, map.zones, td);
+  if (fixed) return fixed;
   const maxTiles = Math.max(5, Math.floor((budget || 2500) / 1000) * 5);
 
   const validHexes = [];
@@ -258,7 +246,7 @@ function getStartingZones(numPlayers, mapRadius, budget) {
 
   // Construire les zones (on demande 2x maxTiles pour avoir de la marge avant filtrage)
   const zoneTiles = playerCenters.map(c =>
-    _deployZoneDijkstra(c.q, c.r, maxTiles * 2, centralExcluded)
+    _deployZoneDijkstra(c.q, c.r, maxTiles * 2, centralExcluded, td, sd)
   );
 
   // Supprimer les tuiles trop proches d'une autre zone
@@ -306,4 +294,4 @@ function hexFacingRanged(q, r, targetQ, targetR) {
   return best;
 }
 
-module.exports = { hexDistance, hexKey, hexNeighbors, hexesInRange, generateHexMap, findPath, getStartingZones, segmentEdgeKey, getSegmentData, SEGMENT_DEFS, hexFacing, hexFacingRanged };
+module.exports = { hexDistance, hexKey, hexNeighbors, hexesInRange, buildHexMap, generateHexMap, findPath, getStartingZones, segmentEdgeKey, getTerrainData, getSegmentData, SEGMENT_DEFS, hexFacing, hexFacingRanged };

@@ -1,0 +1,813 @@
+// Transport-agnostic game protocol shared by the local server (server.js) and the AWS lambda (lambda/handler.js).
+//
+// createProtocol({ store, transport, scheduler, now, config, log })
+//   store:     async get(code), create(room) -> bool, update(code, fn) -> room|null, getConn(connId), putConn(connId, rec), deleteConn(connId)
+//              update() loads the room, calls fn(room) -> { save, remove } and persists atomically (it may call fn again on conflict).
+//   transport: async send(connId, msg) -> false when the connection is gone
+//   scheduler: schedule(roomCode, atMs) — optional; wakes the room with tick() for deadlines (lambda processes them lazily)
+//
+// Inbound messages: { action, ...data }. Outbound: { event, ...data }. Errors: { event: 'error', code, message, action }.
+const crypto = require('crypto');
+const GameRoom = require('./GameRoom');
+const GENERALS = require('./data/generals');
+const maps = require('./maps');
+const { MODES, isModeAvailable } = require('./turns');
+const { hexKey } = require('./HexUtils');
+const v = require('./validate');
+
+const { ProtocolError, fail } = v;
+
+const DEFAULTS = {
+  defenseMs: 20000,
+  lobbyDropMs: 30000,
+  preBattleDropMs: 120000,
+  disconnectGraceMs: 60000,
+  absentTurnMs: 30000,
+  abandonMs: 600000,
+  idleRoomMs: 1800000,
+  endedRoomMs: 1800000,
+  maxPlayers: 8,
+  maxSpectators: 16,
+  chatHistory: 50,
+};
+
+const PALETTE = ['#4a90d9', '#e05050', '#50c050', '#e0a030', '#a050d0', '#e07840', '#40c0c0', '#e050a0', '#ffffff'];
+const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const DEFENSE_CHOICES = ['rien', 'counter', 'absorb'];
+
+function randomId(prefix) {
+  return prefix + crypto.randomBytes(6).toString('hex');
+}
+
+function randomToken() {
+  return crypto.randomBytes(18).toString('base64url');
+}
+
+function randomRoomCode() {
+  let code = '';
+  for (let i = 0; i < 6; i++) code += CODE_CHARS[crypto.randomInt(CODE_CHARS.length)];
+  return code;
+}
+
+function tokenMatches(expected, given) {
+  if (typeof expected !== 'string' || typeof given !== 'string') return false;
+  const a = Buffer.from(expected);
+  const b = Buffer.from(given);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+function findMember(room, id) {
+  const p = room.players.find(x => x.id === id);
+  if (p) return { member: p, role: 'player' };
+  const s = (room.spectators || []).find(x => x.id === id);
+  if (s) return { member: s, role: 'spectator' };
+  return null;
+}
+
+function memberByConn(room, connId) {
+  if (!connId) return null;
+  const p = room.players.find(x => x.connId === connId);
+  if (p) return { member: p, role: 'player' };
+  const s = (room.spectators || []).find(x => x.connId === connId);
+  if (s) return { member: s, role: 'spectator' };
+  return null;
+}
+
+function createProtocol({ store, transport, scheduler = null, now = Date.now, config = {}, log = console } = {}) {
+  const cfg = { ...DEFAULTS, ...config };
+
+  // ---------- outbox ----------
+
+  function recipients(room, to) {
+    const all = [
+      ...room.players.map(m => ({ member: m, role: 'player' })),
+      ...(room.spectators || []).map(m => ({ member: m, role: 'spectator' })),
+    ];
+    if (to === 'all') return all;
+    if (to === 'players') return all.filter(r => r.role === 'player');
+    if (to === 'spectators') return all.filter(r => r.role === 'spectator');
+    if (typeof to === 'function') return all.filter(to);
+    const ids = Array.isArray(to) ? to : [to];
+    return all.filter(r => ids.includes(r.member.id));
+  }
+
+  function emit(tx, to, msg) {
+    tx.out.push({ to, msg });
+  }
+
+  function emitBuild(tx, to, build) {
+    tx.out.push({ to, build });
+  }
+
+  function reply(tx, connId, msg) {
+    tx.out.push({ conn: connId, msg });
+  }
+
+  function lobbyMessage(room) {
+    return { event: 'room_update', ...room.getLobbyState() };
+  }
+
+  function stateFor(room, r) {
+    const phase = room.phase;
+    if (phase === 'lobby' || phase === 'army_building') return lobbyMessage(room);
+    if (r.role === 'spectator') return { event: 'game_state', ...room.getSpectatorState(r.member.id) };
+    if (phase === 'deployment') {
+      const ds = room.getDeploymentState(r.member.id);
+      return ds && { event: 'deployment_state', ...ds };
+    }
+    const gs = room.getGameState(r.member.id);
+    return gs && { event: 'game_state', ...gs };
+  }
+
+  function emitState(tx, to = 'all') {
+    emitBuild(tx, to, r => stateFor(tx.room, r));
+  }
+
+  function emitPresence(tx) {
+    const room = tx.room;
+    if (room.phase === 'lobby' || room.phase === 'army_building') emit(tx, 'all', lobbyMessage(room));
+    else emit(tx, 'all', { event: 'presence', players: room.publicPlayers(), spectators: room.publicSpectators() });
+  }
+
+  async function deliver(tx) {
+    const room = tx.room;
+    const queues = new Map();
+    const push = (connId, msg) => {
+      if (!connId || !msg) return;
+      if (!queues.has(connId)) queues.set(connId, []);
+      queues.get(connId).push(msg);
+    };
+    for (const o of tx.out) {
+      if (o.conn) { push(o.conn, o.msg); continue; }
+      for (const r of recipients(room, o.to)) {
+        if (!r.member.connId || r.member.connected === false) continue;
+        push(r.member.connId, o.msg || o.build(r));
+      }
+    }
+    const gone = [];
+    await Promise.all([...queues.entries()].map(async ([connId, msgs]) => {
+      for (const msg of msgs) {
+        let ok = true;
+        try { ok = await transport.send(connId, msg); } catch (e) { ok = false; }
+        if (ok === false) { gone.push(connId); break; }
+      }
+    }));
+    return gone;
+  }
+
+  // ---------- room transactions ----------
+
+  async function withRoom(code, fn) {
+    let tx = null;
+    const room = await store.update(code, async (r) => {
+      tx = { room: r, out: [], dirty: false, deleted: false, error: null, t: now(), after: [] };
+      processDeadlines(tx);
+      try {
+        await fn(tx);
+      } catch (e) {
+        if (!(e instanceof ProtocolError)) throw e;
+        tx.error = e;
+      }
+      if (tx.dirty) r.lastActivity = tx.t;
+      return { save: tx.dirty || tx.deleted, remove: tx.deleted };
+    });
+    if (!room || !tx) fail('room_not_found', 'Salle introuvable.');
+    const gone = await deliver(tx);
+    for (const fnAfter of tx.after) await fnAfter();
+    if (!tx.deleted && scheduler) {
+      const at = nextDeadline(tx.room);
+      if (at != null) scheduler.schedule(code, at);
+    }
+    for (const connId of gone) await disconnect(connId);
+    if (tx.error) throw tx.error;
+    return tx;
+  }
+
+  function requireMember(tx, connId) {
+    const found = memberByConn(tx.room, connId);
+    if (!found) fail('not_in_room', 'Vous ne faites pas partie de cette salle.');
+    return found;
+  }
+
+  function requirePlayer(tx, connId) {
+    const found = requireMember(tx, connId);
+    if (found.role !== 'player') fail('spectator_read_only', 'Les spectateurs ne peuvent pas agir.');
+    return found.member;
+  }
+
+  function requireHost(tx, connId) {
+    const p = requirePlayer(tx, connId);
+    if (tx.room.hostId !== p.id) fail('not_host', 'Seul l\'hôte peut faire cela.');
+    return p;
+  }
+
+  function requirePhase(tx, ...phases) {
+    if (!phases.includes(tx.room.phase)) fail('wrong_phase', 'Action impossible dans cette phase de jeu.');
+  }
+
+  function requireTurn(tx, connId) {
+    const p = requirePlayer(tx, connId);
+    requirePhase(tx, 'battle');
+    if (!tx.room.canAct(p.id)) fail('not_your_turn', 'Ce n\'est pas votre tour.');
+    if (Object.keys(tx.room.pendingAttacks).length) fail('defense_pending', 'En attente de la réponse du défenseur.');
+    return p;
+  }
+
+  function engine(result) {
+    if (!result) fail('invalid_action', 'Action invalide.');
+    if (result.error) fail('rejected', result.error);
+    return result;
+  }
+
+  function ensureHost(room) {
+    if (room.players.some(p => p.id === room.hostId)) return;
+    const next = room.players.find(p => p.connected !== false) || room.players[0];
+    room.hostId = next ? next.id : null;
+  }
+
+  function freeColor(room) {
+    const used = new Set(room.players.map(p => (p.color || '').toLowerCase()));
+    return PALETTE.find(c => !used.has(c)) || PALETTE[room.players.length % PALETTE.length];
+  }
+
+  // ---------- game flows ----------
+
+  function refreshTurnDeadline(tx, ms = cfg.absentTurnMs) {
+    const room = tx.room;
+    const cur = room.phase === 'battle' ? room.getCurrentPlayerId() : null;
+    const p = cur && room.getPlayer(cur);
+    room.turnDeadline = p && p.connected === false ? tx.t + ms : null;
+  }
+
+  function gameOverFlow(tx) {
+    const room = tx.room;
+    if (room.phase !== 'ended' || room.endedAt) return;
+    room.endedAt = tx.t;
+    room.turnDeadline = null;
+    emit(tx, 'all', { event: 'game_over', winnerId: room.winner, winnerName: room.getPlayer(room.winner)?.name || null });
+  }
+
+  function turnChangeFlow(tx, res) {
+    const room = tx.room;
+    if (res && res.newRound) emit(tx, 'all', { event: 'initiative_rolled', rolls: room.initiativeRolls, turnOrder: room.turnOrder, turn: room.turn });
+    emit(tx, 'all', { event: 'turn_change', currentPlayerId: room.getCurrentPlayerId(), turn: room.turn, manche: room.manche });
+    if (res && res.fled && res.fled.length) {
+      const owner = room.getCurrentPlayerId();
+      emit(tx, r => r.role === 'spectator' || r.member.id === owner, { event: 'units_fled', fled: res.fled });
+    }
+    refreshTurnDeadline(tx);
+    gameOverFlow(tx);
+  }
+
+  function settleFlow(tx) {
+    const res = tx.room.settleTurn();
+    if (res) turnChangeFlow(tx, res);
+    gameOverFlow(tx);
+  }
+
+  function combatFlow(tx, pending, resolved) {
+    const room = tx.room;
+    const hexes = [hexKey(pending.attackerQ, pending.attackerR), hexKey(pending.targetQ, pending.targetR)];
+    const msg = { event: 'combat_result', combatLog: resolved.combatLog };
+    emitBuild(tx, 'all', (r) => {
+      if (r.role === 'spectator') return msg;
+      const id = r.member.id;
+      if (id === pending.attackerPlayerId || id === pending.targetPlayerId) return msg;
+      const vis = room.getVisibleHexes(id);
+      return hexes.some(h => vis.has(h)) ? msg : null;
+    });
+    settleFlow(tx);
+    emitState(tx);
+  }
+
+  function resolvePending(tx, attackId, choice) {
+    const pending = tx.room.pendingAttacks[attackId];
+    const resolved = tx.room.resolveAttack(attackId, choice);
+    tx.dirty = true;
+    if (resolved.ok) combatFlow(tx, pending, resolved);
+    else emitState(tx);
+    return resolved;
+  }
+
+  function startDeploymentFlow(tx) {
+    const room = tx.room;
+    room.startDeployment();
+    emit(tx, 'all', { event: 'phase_change', phase: 'deployment', mapId: room.mapId });
+    emitState(tx);
+  }
+
+  function startBattleFlow(tx) {
+    const room = tx.room;
+    room.startBattle();
+    emit(tx, 'all', { event: 'phase_change', phase: 'battle', mapId: room.mapId });
+    emit(tx, 'all', { event: 'initiative_rolled', rolls: room.initiativeRolls, turnOrder: room.turnOrder, turn: room.turn });
+    refreshTurnDeadline(tx);
+    emitState(tx);
+  }
+
+  function checkPhaseTransitions(tx) {
+    const room = tx.room;
+    if (!room.players.length) return;
+    if (room.phase === 'army_building' && room.allArmiesSubmitted()) startDeploymentFlow(tx);
+    else if (room.phase === 'deployment' && room.allDeployed()) startBattleFlow(tx);
+  }
+
+  function removePlayerFlow(tx, p, reason) {
+    const room = tx.room;
+    room.removePlayer(p.id);
+    if (p.connId) tx.after.push(() => store.deleteConn(p.connId));
+    emit(tx, 'all', { event: 'player_left', playerId: p.id, name: p.name, reason });
+    ensureHost(room);
+    if (!room.players.length) { tx.deleted = true; return; }
+    emitPresence(tx);
+    checkPhaseTransitions(tx);
+  }
+
+  function abandonFlow(tx, p, reason) {
+    const room = tx.room;
+    if (!room.eliminatePlayer(p.id)) return;
+    emit(tx, 'all', { event: 'player_left', playerId: p.id, name: p.name, reason });
+    settleFlow(tx);
+    emitState(tx);
+  }
+
+  function processDeadlines(tx) {
+    const room = tx.room;
+    const t = tx.t;
+    for (const [attackId, a] of Object.entries(room.pendingAttacks || {})) {
+      if (a.expiresAt && a.expiresAt <= t) resolvePending(tx, attackId, 'rien');
+    }
+    for (const p of [...room.players]) {
+      if (p.connected !== false || !p.disconnectedAt) continue;
+      const gone = t - p.disconnectedAt;
+      if (room.phase === 'lobby' && gone >= cfg.lobbyDropMs) { tx.dirty = true; removePlayerFlow(tx, p, 'timeout'); }
+      else if ((room.phase === 'army_building' || room.phase === 'deployment') && gone >= cfg.preBattleDropMs) { tx.dirty = true; removePlayerFlow(tx, p, 'timeout'); }
+      else if (room.phase === 'battle' && !p.isEliminated && gone >= cfg.abandonMs) { tx.dirty = true; abandonFlow(tx, p, 'abandon'); }
+    }
+    if (tx.deleted) return;
+    const staleSpectators = (room.spectators || []).filter(s => s.connected === false && t - (s.disconnectedAt || 0) >= cfg.lobbyDropMs);
+    if (staleSpectators.length) {
+      room.spectators = room.spectators.filter(s => !staleSpectators.includes(s));
+      tx.dirty = true;
+      emitPresence(tx);
+    }
+    if (room.phase === 'battle' && room.turnDeadline && room.turnDeadline <= t) {
+      tx.dirty = true;
+      const cur = room.getPlayer(room.getCurrentPlayerId());
+      if (cur && cur.connected === false && !Object.keys(room.pendingAttacks).length) {
+        emit(tx, 'all', { event: 'turn_auto_ended', playerId: cur.id, name: cur.name });
+        turnChangeFlow(tx, room.endTurn());
+        emitState(tx);
+      } else {
+        refreshTurnDeadline(tx);
+      }
+    }
+    const anyConnected = room.players.some(p => p.connected !== false) || (room.spectators || []).some(s => s.connected !== false);
+    if (room.phase === 'ended' && room.endedAt && t - room.endedAt >= cfg.endedRoomMs) tx.deleted = true;
+    if (!anyConnected && t - (room.lastActivity || t) >= cfg.idleRoomMs) tx.deleted = true;
+  }
+
+  function nextDeadline(room) {
+    const times = [];
+    for (const a of Object.values(room.pendingAttacks || {})) if (a.expiresAt) times.push(a.expiresAt);
+    if (room.phase === 'battle' && room.turnDeadline) times.push(room.turnDeadline);
+    const dropMs = room.phase === 'lobby' ? cfg.lobbyDropMs
+      : (room.phase === 'army_building' || room.phase === 'deployment') ? cfg.preBattleDropMs
+        : room.phase === 'battle' ? cfg.abandonMs : null;
+    for (const p of room.players) {
+      if (p.connected === false && p.disconnectedAt && dropMs != null && !p.isEliminated) times.push(p.disconnectedAt + dropMs);
+    }
+    for (const s of room.spectators || []) if (s.connected === false && s.disconnectedAt) times.push(s.disconnectedAt + cfg.lobbyDropMs);
+    if (room.phase === 'ended' && room.endedAt) times.push(room.endedAt + cfg.endedRoomMs);
+    const anyConnected = room.players.some(p => p.connected !== false) || (room.spectators || []).some(s => s.connected !== false);
+    if (!anyConnected) times.push((room.lastActivity || now()) + cfg.idleRoomMs);
+    return times.length ? Math.min(...times) : null;
+  }
+
+  // ---------- session helpers ----------
+
+  function sessionMessage(room, m, role) {
+    return { event: 'session', roomCode: room.roomCode, playerId: m.id, token: m.token, role, name: m.name };
+  }
+
+  function resync(tx, connId, found) {
+    const room = tx.room;
+    const { member, role } = found;
+    reply(tx, connId, sessionMessage(room, member, role));
+    reply(tx, connId, lobbyMessage(room));
+    if (room.phase !== 'lobby' && room.phase !== 'army_building') {
+      reply(tx, connId, stateFor(room, found));
+    }
+    if (room.phase === 'army_building' && role === 'player') {
+      reply(tx, connId, { event: 'phase_change', phase: 'army_building', budget: room.budget, armySubmitted: !!member.isReady });
+    }
+    if (room.chat && room.chat.length) reply(tx, connId, { event: 'chat_history', messages: room.chat });
+    if (room.phase === 'battle') {
+      for (const [attackId, a] of Object.entries(room.pendingAttacks)) {
+        const seconds = Math.max(1, Math.ceil(((a.expiresAt || tx.t) - tx.t) / 1000));
+        if (a.targetPlayerId === member.id) reply(tx, connId, defenseRequest(room, attackId, a, seconds));
+        if (a.attackerPlayerId === member.id) reply(tx, connId, { event: 'waiting_defense', attackId, seconds });
+      }
+    }
+    if (room.phase === 'ended') {
+      reply(tx, connId, { event: 'game_over', winnerId: room.winner, winnerName: room.getPlayer(room.winner)?.name || null });
+    }
+  }
+
+  function defenseRequest(room, attackId, a, seconds) {
+    return {
+      event: 'defense_request', attackId, roomCode: room.roomCode,
+      attackerName: a.attackerName, targetName: a.targetName, targetId: a.targetId,
+      targetQ: a.targetQ, targetR: a.targetR, isRanged: a.isRanged, targetTypeId: a.targetTypeId,
+      seconds, expiresAt: a.expiresAt,
+    };
+  }
+
+  async function bindConn(connId, roomCode, memberId) {
+    const prev = await store.getConn(connId);
+    if (prev && prev.roomCode && (prev.roomCode !== roomCode || prev.memberId !== memberId)) {
+      await detach(prev.roomCode, connId, prev.memberId);
+    }
+    await store.putConn(connId, { roomCode, memberId });
+  }
+
+  async function detach(roomCode, connId, memberId) {
+    try {
+      await withRoom(roomCode, (tx) => markDisconnected(tx, connId, memberId));
+    } catch (e) {
+      if (!(e instanceof ProtocolError)) throw e;
+    }
+  }
+
+  function markDisconnected(tx, connId, memberId) {
+    const found = memberId ? findMember(tx.room, memberId) : memberByConn(tx.room, connId);
+    if (!found || found.member.connId !== connId) return;
+    const m = found.member;
+    m.connId = null;
+    m.connected = false;
+    m.disconnectedAt = tx.t;
+    tx.dirty = true;
+    const room = tx.room;
+    if (found.role === 'player' && room.phase === 'battle' && room.getCurrentPlayerId() === m.id) {
+      room.turnDeadline = tx.t + cfg.disconnectGraceMs;
+    }
+    emit(tx, 'all', { event: 'player_disconnected', playerId: m.id, name: m.name, role: found.role });
+    emitPresence(tx);
+  }
+
+  // ---------- handlers ----------
+
+  const H = {};
+
+  H.list_maps = async (connId) => {
+    await transport.send(connId, { event: 'maps_list', maps: maps.listMaps().map(m => ({ id: m.id, name: m.name, description: m.description, hexCount: m.hexCount })), modes: MODES });
+  };
+
+  H.create_room = async (connId, data) => {
+    const name = v.name(data.playerName);
+    const mapId = typeof data.mapId === 'string' && maps.mapExists(data.mapId) ? data.mapId : 'default';
+    const playerId = randomId('p_');
+    const token = randomToken();
+    let room = null;
+    for (let i = 0; i < 20 && !room; i++) {
+      const candidate = new GameRoom(randomRoomCode(), playerId, { mapId });
+      candidate.addPlayer(playerId, name, { token, connId, connected: true, color: PALETTE[0] });
+      candidate.createdAt = candidate.lastActivity = now();
+      if (await store.create(candidate)) room = candidate;
+    }
+    if (!room) fail('server_busy', 'Impossible de créer une salle, réessayez.');
+    await bindConn(connId, room.roomCode, playerId);
+    const found = { member: room.getPlayer(playerId), role: 'player' };
+    await transport.send(connId, sessionMessage(room, found.member, 'player'));
+    await transport.send(connId, { event: 'room_created', roomCode: room.roomCode, playerId });
+    await transport.send(connId, lobbyMessage(room));
+    if (scheduler) {
+      const at = nextDeadline(room);
+      if (at != null) scheduler.schedule(room.roomCode, at);
+    }
+  };
+
+  H.join_room = async (connId, data) => {
+    const code = v.roomCode(data.roomCode);
+    const name = v.name(data.playerName);
+    const asSpectator = data.spectator === true || data.role === 'spectator';
+    let joined = null;
+    await withRoom(code, (tx) => {
+      const room = tx.room;
+      const id = randomId(asSpectator ? 's_' : 'p_');
+      const token = randomToken();
+      if (asSpectator) {
+        if (room.spectators.length >= cfg.maxSpectators) fail('room_full', 'Trop de spectateurs dans cette salle.');
+        room.spectators.push({ id, name, token, connId, connected: true, disconnectedAt: null });
+        joined = { member: room.spectators[room.spectators.length - 1], role: 'spectator' };
+      } else {
+        if (room.phase !== 'lobby') fail('game_started', 'La partie a déjà commencé. Vous pouvez la regarder en spectateur.');
+        if (room.players.length >= cfg.maxPlayers) fail('room_full', `La salle est pleine (${cfg.maxPlayers} joueurs max).`);
+        room.addPlayer(id, name, { token, connId, connected: true, color: freeColor(room) });
+        joined = { member: room.getPlayer(id), role: 'player' };
+      }
+      tx.dirty = true;
+      reply(tx, connId, { event: 'room_joined', roomCode: code, playerId: id, role: joined.role });
+      resync(tx, connId, joined);
+      emit(tx, r => r.member.id !== id, asSpectator ? { event: 'spectator_joined', spectatorId: id, name } : { event: 'player_joined', playerId: id, name });
+      emitPresence(tx);
+    });
+    await bindConn(connId, code, joined.member.id);
+  };
+
+  H.spectate_room = (connId, data) => H.join_room(connId, { ...data, spectator: true });
+
+  H.rejoin_game = async (connId, data) => {
+    const code = v.roomCode(data.roomCode);
+    const memberId = v.id(data.playerId, 'rejoin_failed', 'Session invalide.');
+    let found = null;
+    await withRoom(code, (tx) => {
+      const room = tx.room;
+      found = findMember(room, memberId);
+      if (!found || !tokenMatches(found.member.token, data.token)) fail('rejoin_failed', 'Session expirée ou invalide.');
+      const m = found.member;
+      const old = m.connId;
+      const wasOffline = m.connected === false;
+      if (old && old !== connId) {
+        reply(tx, old, { event: 'session_replaced', message: 'Votre session a été ouverte ailleurs.' });
+        tx.after.push(() => store.deleteConn(old));
+      }
+      m.connId = connId;
+      m.connected = true;
+      m.disconnectedAt = null;
+      tx.dirty = true;
+      if (found.role === 'player' && room.phase === 'battle' && room.getCurrentPlayerId() === m.id) room.turnDeadline = null;
+      resync(tx, connId, found);
+      if (wasOffline) emit(tx, r => r.member.id !== m.id, { event: 'player_reconnected', playerId: m.id, name: m.name, role: found.role });
+      emitPresence(tx);
+    });
+    await bindConn(connId, code, memberId);
+  };
+
+  H.get_state = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    resync(tx, connId, requireMember(tx, connId));
+  });
+
+  H.leave_room = async (connId, data) => {
+    const code = v.roomCode(data.roomCode);
+    await withRoom(code, (tx) => {
+      const room = tx.room;
+      const found = requireMember(tx, connId);
+      const m = found.member;
+      tx.dirty = true;
+      reply(tx, connId, { event: 'left_room', roomCode: code });
+      if (found.role === 'spectator') {
+        room.spectators = room.spectators.filter(s => s !== m);
+        emitPresence(tx);
+      } else if (room.phase === 'lobby' || room.phase === 'army_building' || room.phase === 'deployment') {
+        removePlayerFlow(tx, m, 'left');
+      } else {
+        m.connId = null;
+        m.connected = false;
+        m.disconnectedAt = tx.t;
+        if (room.phase === 'battle') abandonFlow(tx, m, 'left');
+        emitPresence(tx);
+      }
+    });
+    await store.deleteConn(connId);
+  };
+
+  H.set_budget = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    requireHost(tx, connId);
+    requirePhase(tx, 'lobby');
+    tx.room.budget = v.int(typeof data.budget === 'number' ? Math.round(data.budget) : data.budget, 1000, 100000, 'invalid_budget', 'Budget invalide (1000 à 100000).');
+    tx.dirty = true;
+    emit(tx, 'all', lobbyMessage(tx.room));
+  });
+
+  H.set_map = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    requireHost(tx, connId);
+    requirePhase(tx, 'lobby');
+    engine(tx.room.setMap(v.id(data.mapId, 'invalid_map', 'Carte invalide.')));
+    tx.dirty = true;
+    emit(tx, 'all', lobbyMessage(tx.room));
+  });
+
+  H.set_mode = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    requireHost(tx, connId);
+    requirePhase(tx, 'lobby');
+    if (!isModeAvailable(data.mode)) fail('invalid_mode', 'Ce mode de jeu n\'est pas encore disponible.');
+    tx.room.mode = data.mode;
+    tx.dirty = true;
+    emit(tx, 'all', lobbyMessage(tx.room));
+  });
+
+  H.set_player_color = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    const p = requirePlayer(tx, connId);
+    requirePhase(tx, 'lobby');
+    const color = v.color(data.color);
+    if (tx.room.players.some(o => o !== p && (o.color || '').toLowerCase() === color)) fail('color_taken', 'Cette couleur est déjà prise.');
+    p.color = color;
+    tx.dirty = true;
+    emit(tx, 'all', lobbyMessage(tx.room));
+  });
+
+  H.select_general = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    const p = requirePlayer(tx, connId);
+    requirePhase(tx, 'lobby');
+    const generalId = data.generalId;
+    if (!GENERALS.some(g => g.id === generalId)) fail('invalid_general', 'Général inconnu.');
+    if (tx.room.players.some(o => o !== p && o.generalId === generalId)) fail('general_taken', 'Ce général est déjà pris.');
+    p.generalId = generalId;
+    tx.dirty = true;
+    emit(tx, 'all', lobbyMessage(tx.room));
+  });
+
+  H.start_game = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    requireHost(tx, connId);
+    requirePhase(tx, 'lobby');
+    const room = tx.room;
+    if (room.players.length < 1) fail('not_enough_players', 'Il faut au moins 1 joueur.');
+    if (room.players.some(p => !p.generalId)) fail('generals_missing', 'Tous les joueurs doivent choisir un général.');
+    room.startGame();
+    tx.dirty = true;
+    emit(tx, 'all', { event: 'phase_change', phase: 'army_building', budget: room.budget, mapId: room.mapId });
+    emit(tx, 'all', lobbyMessage(room));
+  });
+
+  H.submit_army = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    const p = requirePlayer(tx, connId);
+    requirePhase(tx, 'army_building');
+    if (!Array.isArray(data.units) || data.units.length > 40) fail('invalid_army', 'Armée invalide.');
+    const units = data.units.map(u => ({ typeId: u && u.typeId, count: u && u.count }));
+    engine(tx.room.submitArmy(p.id, units));
+    tx.dirty = true;
+    reply(tx, connId, { event: 'army_accepted' });
+    emit(tx, 'all', lobbyMessage(tx.room));
+    checkPhaseTransitions(tx);
+  });
+
+  H.place_unit = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    const p = requirePlayer(tx, connId);
+    requirePhase(tx, 'deployment');
+    engine(tx.room.placeUnit(p.id, v.id(data.unitId), v.int(data.q, -10000, 10000), v.int(data.r, -10000, 10000)));
+    tx.dirty = true;
+    emitState(tx, [p.id]);
+    emitState(tx, 'spectators');
+  });
+
+  H.deployment_ready = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    const p = requirePlayer(tx, connId);
+    requirePhase(tx, 'deployment');
+    const room = tx.room;
+    if (p.isReady) fail('already_ready', 'Vous êtes déjà prêt.');
+    engine(room.setDeploymentReady(p.id));
+    tx.dirty = true;
+    const readyIds = room.players.filter(x => x.isReady).map(x => x.id);
+    emit(tx, 'all', { event: 'deployment_ready_update', readyCount: readyIds.length, total: room.players.length, readyIds });
+    checkPhaseTransitions(tx);
+  });
+
+  H.move_unit = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    const p = requireTurn(tx, connId);
+    const room = tx.room;
+    const result = engine(room.moveUnit(p.id, v.id(data.unitId), v.int(data.targetQ, -10000, 10000), v.int(data.targetR, -10000, 10000)));
+    tx.dirty = true;
+    const full = [[result.fromQ, result.fromR], ...result.path];
+    const anim = { event: 'unit_move_anim', unitId: result.unitId, fromQ: result.fromQ, fromR: result.fromR, path: result.path };
+    emitBuild(tx, 'all', (r) => {
+      if (r.role === 'spectator' || r.member.id === p.id) return anim;
+      const vis = room.getVisibleHexes(r.member.id);
+      if (!vis.has(hexKey(result.path.length ? full[full.length - 1][0] : result.fromQ, result.path.length ? full[full.length - 1][1] : result.fromR))) return null;
+      const i = full.findIndex(([q, rr]) => vis.has(hexKey(q, rr)));
+      return { ...anim, fromQ: full[i][0], fromR: full[i][1], path: full.slice(i + 1).filter(([q, rr]) => vis.has(hexKey(q, rr))) };
+    });
+    emitState(tx);
+  });
+
+  H.attack_unit = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    const p = requireTurn(tx, connId);
+    const room = tx.room;
+    const result = engine(room.initiateCombat(p.id, v.id(data.attackerId), v.id(data.targetId)));
+    tx.dirty = true;
+    const pending = room.pendingAttacks[result.attackId];
+    pending.expiresAt = tx.t + cfg.defenseMs;
+    const seconds = Math.round(cfg.defenseMs / 1000);
+    emit(tx, [result.targetPlayerId], defenseRequest(room, result.attackId, pending, seconds));
+    emit(tx, [result.targetPlayerId], { event: 'defense_timer', attackId: result.attackId, seconds });
+    reply(tx, connId, { event: 'waiting_defense', attackId: result.attackId, seconds });
+    emitState(tx, [p.id]);
+  });
+
+  H.defend_choice = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    const p = requirePlayer(tx, connId);
+    const attackId = v.id(data.attackId);
+    const pending = tx.room.pendingAttacks[attackId];
+    if (!pending) fail('attack_not_found', 'Attaque introuvable ou déjà résolue.');
+    if (pending.targetPlayerId !== p.id) fail('not_defender', 'Vous n\'êtes pas le défenseur.');
+    const choice = data.choice == null ? 'rien' : v.oneOf(data.choice, DEFENSE_CHOICES, 'invalid_choice', 'Choix de défense invalide.');
+    resolvePending(tx, attackId, choice);
+  });
+
+  H.rotate_facing = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    const p = requireTurn(tx, connId);
+    engine(tx.room.rotateFacing(p.id, v.id(data.unitId), v.int(data.facing, 0, 5, 'invalid_facing', 'Orientation invalide.')));
+    tx.dirty = true;
+    emitState(tx);
+  });
+
+  H.change_stance = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    const p = requireTurn(tx, connId);
+    engine(tx.room.changeStance(p.id, v.id(data.unitId), v.id(data.stanceId)));
+    tx.dirty = true;
+    emitState(tx);
+  });
+
+  H.motivate_unit = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    const p = requireTurn(tx, connId);
+    const result = engine(tx.room.motivateUnit(p.id, v.id(data.generalId)));
+    tx.dirty = true;
+    reply(tx, connId, { event: 'motivate_result', ...result });
+    emitState(tx);
+  });
+
+  H.use_ability = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    const p = requireTurn(tx, connId);
+    const targetId = data.targetId == null ? null : v.id(data.targetId);
+    const result = engine(tx.room.useGeneralAbility(p.id, null, targetId));
+    tx.dirty = true;
+    emit(tx, 'all', { event: 'combat_result', combatLog: result.combatLog });
+    emitState(tx);
+  });
+
+  H.end_turn = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    requireTurn(tx, connId);
+    tx.dirty = true;
+    turnChangeFlow(tx, tx.room.endTurn());
+    emitState(tx);
+  });
+
+  H.chat_message = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    const { member, role } = requireMember(tx, connId);
+    const text = v.cleanText(data.text, 200);
+    if (!text) return;
+    const msg = { authorId: member.id, authorName: member.name, text, isSpectator: role === 'spectator', at: tx.t };
+    tx.room.chat = [...(tx.room.chat || []), msg].slice(-cfg.chatHistory);
+    tx.dirty = true;
+    emit(tx, 'all', { event: 'chat_message', ...msg });
+  });
+
+  H.ping = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    const p = requirePlayer(tx, connId);
+    const q = v.int(data.q, -10000, 10000);
+    const r = v.int(data.r, -10000, 10000);
+    if (!tx.room.hexMap[hexKey(q, r)]) return;
+    emit(tx, 'all', { event: 'ping', q, r, color: p.color || '#ffd700', playerId: p.id });
+  });
+
+  H.tick = async (connId, data) => {
+    await withRoom(v.roomCode(data.roomCode), (tx) => {
+      requireMember(tx, connId);
+      reply(tx, connId, { event: 'pong', t: tx.t });
+    });
+    if (store.touchConn) await store.touchConn(connId);
+  };
+
+  // ---------- entry points ----------
+
+  async function handle(connId, action, data) {
+    try {
+      if (typeof action !== 'string' || !Object.prototype.hasOwnProperty.call(H, action)) fail('unknown_action', 'Action inconnue.');
+      await H[action](connId, data && typeof data === 'object' ? data : {});
+    } catch (e) {
+      const known = e instanceof ProtocolError;
+      if (!known) log.error(`[protocol] ${action}:`, e && (e.stack || e.message));
+      try {
+        await transport.send(connId, { event: 'error', code: known ? e.code : 'server_error', message: known ? e.message : 'Erreur serveur.', action: typeof action === 'string' ? action : null });
+      } catch (err) { /* connection gone */ }
+    }
+  }
+
+  async function disconnect(connId) {
+    try {
+      const rec = await store.getConn(connId);
+      if (rec && rec.roomCode) {
+        try {
+          await withRoom(rec.roomCode, (tx) => markDisconnected(tx, connId, rec.memberId));
+        } catch (e) {
+          if (!(e instanceof ProtocolError)) throw e;
+        }
+      }
+      await store.deleteConn(connId);
+    } catch (e) {
+      log.error('[protocol] disconnect:', e && (e.stack || e.message));
+    }
+  }
+
+  async function tick(roomCode) {
+    try {
+      await withRoom(roomCode, () => {});
+    } catch (e) {
+      if (!(e instanceof ProtocolError)) log.error('[protocol] tick:', e && (e.stack || e.message));
+    }
+  }
+
+  return { handle, disconnect, tick, config: cfg, actions: Object.keys(H) };
+}
+
+module.exports = { createProtocol, ProtocolError, PALETTE, DEFAULTS };

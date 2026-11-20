@@ -1,13 +1,15 @@
 const GENERALS = require('./data/generals');
 const UNITS = require('./data/units');
-const { hexDistance, hexKey, hexesInRange, generateHexMap, findPath, getStartingZones, segmentEdgeKey, getSegmentData, SEGMENT_DEFS, hexFacing, hexFacingRanged } = require('./HexUtils');
+const { hexDistance, hexKey, buildHexMap, findPath, getStartingZones, segmentEdgeKey, SEGMENT_DEFS, hexFacing, hexFacingRanged } = require('./HexUtils');
 const STANCES = require('./data/stances');
 const TERRAINS = require('./data/terrains');
 const SEGMENTS = require('./data/segments');
-const fs = require('fs');
-const nodePath = require('path');
+const maps = require('./maps');
+const { getTurnController } = require('./turns');
 
 const MAP_RADIUS = 70;
+// Derived from the map or rebuilt on load: never serialized
+const TRANSIENT = new Set(['map', 'hexMap', 'unitMap', 'terrainData', 'segmentData', 'heightData', 'mapCenter']);
 
 function newUnitId(room) {
   room._unitCounter = (room._unitCounter || 0) + 1;
@@ -15,12 +17,15 @@ function newUnitId(room) {
 }
 
 class GameRoom {
-  constructor(roomCode, hostId) {
+  constructor(roomCode, hostId, options = {}) {
     this.roomCode = roomCode;
     this.hostId = hostId;
     this.players = [];
+    this.spectators = [];
     this.phase = 'lobby'; // lobby | army_building | deployment | battle | ended
     this.budget = 2500;
+    this.mapId = options.mapId || 'default';
+    this.mode = options.mode || 'sequential';
     this.hexMap = {};
     this.unitMap = {}; // hexKey -> unit
     this.turn = 1;
@@ -33,17 +38,38 @@ class GameRoom {
     this.activeEffects = []; // { type, targetPlayerId, turnsLeft, value }
     this.pendingAttacks = {}; // attackId -> pending attack data
     this._unitCounter = 0;
-    this._loadStaticData();
+    this._loadMap();
   }
 
-  _loadStaticData() {
-    try { this.terrainData = JSON.parse(fs.readFileSync(nodePath.join(__dirname, '../public/data/terrain.json'), 'utf8')); } catch(e) { this.terrainData = {}; }
-    try { this.segmentData = JSON.parse(fs.readFileSync(nodePath.join(__dirname, '../public/data/segments.json'), 'utf8')); } catch(e) { this.segmentData = {}; }
-    try { this.heightData = JSON.parse(fs.readFileSync(nodePath.join(__dirname, '../public/data/height.json'), 'utf8')); } catch(e) { this.heightData = {}; }
+  get turns() {
+    return getTurnController(this.mode);
   }
 
-  addPlayer(id, name) {
+  _loadMap() {
+    let map;
+    try { map = maps.getMap(this.mapId); } catch (e) { this.mapId = 'default'; map = maps.getMap('default'); }
+    this.map = map;
+    this.terrainData = maps.terrainLookup(map);
+    this.segmentData = map.segments || {};
+    this.heightData = map.height || {};
+    this.hexMap = buildHexMap(map);
+    const keys = Object.keys(this.hexMap);
+    let sq = 0, sr = 0;
+    for (const k of keys) { sq += this.hexMap[k].q; sr += this.hexMap[k].r; }
+    this.mapCenter = keys.length ? { q: Math.round(sq / keys.length), r: Math.round(sr / keys.length) } : { q: 0, r: 0 };
+  }
+
+  setMap(mapId) {
+    if (this.phase !== 'lobby') return { error: 'La carte ne peut être changée qu\'avant le début de la partie.' };
+    if (!maps.mapExists(mapId)) return { error: 'Carte introuvable.' };
+    this.mapId = mapId;
+    this._loadMap();
+    return { ok: true };
+  }
+
+  addPlayer(id, name, extra = {}) {
     this.players.push({
+      ...extra,
       id,
       name,
       generalId: null,
@@ -63,27 +89,40 @@ class GameRoom {
     this.players = this.players.filter(p => p.id !== id);
   }
 
+  publicPlayers() {
+    return this.players.map(p => ({
+      id: p.id,
+      name: p.name,
+      generalId: p.generalId,
+      isReady: !!p.isReady,
+      isEliminated: !!p.isEliminated,
+      connected: p.connected !== false,
+      color: p.color || '#4a90d9',
+    }));
+  }
+
+  publicSpectators() {
+    return this.spectators.map(s => ({ id: s.id, name: s.name, connected: s.connected !== false }));
+  }
+
   getLobbyState() {
     return {
       roomCode: this.roomCode,
       hostId: this.hostId,
       phase: this.phase,
       budget: this.budget,
-      players: this.players.filter(p => !p.offline).map(p => ({
-        id: p.id,
-        name: p.name,
-        generalId: p.generalId,
-        isReady: p.isReady,
-        isEliminated: p.isEliminated,
-        color: p.color || '#4a90d9',
-      })),
-      takenGenerals: this.players.filter(p => p.generalId && !p.offline).map(p => p.generalId),
+      mapId: this.mapId,
+      mapName: this.map ? this.map.name : this.mapId,
+      mode: this.mode,
+      players: this.publicPlayers(),
+      spectators: this.publicSpectators(),
+      takenGenerals: this.players.filter(p => p.generalId).map(p => p.generalId),
     };
   }
 
   startGame() {
     this.phase = 'army_building';
-    this.hexMap = generateHexMap(MAP_RADIUS);
+    for (const p of this.players) p.isReady = false;
   }
 
   submitArmy(playerId, unitList) {
@@ -91,18 +130,18 @@ class GameRoom {
     const player = this.getPlayer(playerId);
     if (!player) return { error: 'Joueur introuvable.' };
 
-    let totalCost = 0;
-    const units = [];
+    if (!Array.isArray(unitList)) return { error: 'Armée invalide.' };
 
-    for (const { typeId, count } of unitList) {
-      const unitData = UNITS[typeId];
-      if (!unitData) return { error: `Unité inconnue: ${typeId}` };
-      if (count < 0) return { error: 'Quantité invalide.' };
-      totalCost += unitData.cost * count;
-      for (let i = 0; i < count; i++) {
-        units.push(this._createUnit(typeId, playerId));
-      }
+    let totalCost = 0;
+    let totalCount = 0;
+    for (const entry of unitList) {
+      const unitData = entry && Object.prototype.hasOwnProperty.call(UNITS, entry.typeId) ? UNITS[entry.typeId] : null;
+      if (!unitData) return { error: `Unité inconnue: ${entry && entry.typeId}` };
+      if (!Number.isInteger(entry.count) || entry.count < 0 || entry.count > 200) return { error: 'Quantité invalide.' };
+      totalCost += unitData.cost * entry.count;
+      totalCount += entry.count;
     }
+    if (totalCount > 200) return { error: 'Trop d\'unités.' };
 
     if (totalCost > this.budget) {
       return { error: `Budget dépassé. Max: ${this.budget}, utilisé: ${totalCost}` };
@@ -111,6 +150,11 @@ class GameRoom {
     // Add the general as a special unit
     const generalData = GENERALS.find(g => g.id === player.generalId);
     if (!generalData) return { error: 'Général non sélectionné.' };
+
+    const units = [];
+    for (const { typeId, count } of unitList) {
+      for (let i = 0; i < count; i++) units.push(this._createUnit(typeId, playerId));
+    }
 
     const generalUnit = {
       id: newUnitId(this),
@@ -197,7 +241,7 @@ class GameRoom {
 
   startDeployment() {
     this.phase = 'deployment';
-    const zones = getStartingZones(this.players.length, MAP_RADIUS, this.budget);
+    const zones = getStartingZones(this.players.length, MAP_RADIUS, this.budget, this.map);
     this.players.forEach((p, i) => {
       p.startingZone = zones[i];
       p.isReady = false;
@@ -206,78 +250,65 @@ class GameRoom {
 
   getDeploymentState(playerId) {
     const player = this.getPlayer(playerId);
+    if (!player) return null;
     const general = GENERALS.find(g => g.id === player.generalId);
+    const occupiedHexes = {};
+    for (const unit of player.units) {
+      if (unit.q !== null) occupiedHexes[hexKey(unit.q, unit.r)] = { unitId: unit.id, playerId: player.id };
+    }
     return {
       phase: 'deployment',
       myId: playerId,
+      mapId: this.mapId,
+      mode: this.mode,
       budget: this.budget,
+      isReady: !!player.isReady,
       startingZone: player.startingZone,
       units: player.units,
       placedUnits: player.placedUnits,
       generalData: general,
-      occupiedHexes: this._getAllOccupiedHexes(),
-      players: this.players.map(p => ({ id: p.id, name: p.name, color: p.color || '#4a90d9' })),
+      occupiedHexes,
+      players: this.publicPlayers(),
+      spectators: this.publicSpectators(),
     };
   }
 
   serialize() {
-    return {
-      roomCode: this.roomCode,
-      hostId: this.hostId,
-      players: this.players,
-      phase: this.phase,
-      budget: this.budget,
-      turn: this.turn,
-      manche: this.manche,
-      turnOrder: this.turnOrder,
-      initiativeRolls: this.initiativeRolls,
-      currentTurnIndex: this.currentTurnIndex,
-      winner: this.winner,
-      abilityCooldowns: this.abilityCooldowns,
-      activeEffects: this.activeEffects,
-      pendingAttacks: this.pendingAttacks,
-      _unitCounter: this._unitCounter,
-    };
+    const out = {};
+    for (const [k, v] of Object.entries(this)) {
+      if (TRANSIENT.has(k)) continue;
+      out[k] = v;
+    }
+    out.players = this.players.map(p => ({ ...p, generalUnit: null }));
+    return JSON.parse(JSON.stringify(out));
   }
 
   static deserialize(data) {
-    const room = new GameRoom(data.roomCode, data.hostId);
-    room.players = data.players;
-    room.phase = data.phase;
-    room.budget = data.budget;
-    room.turn = data.turn || 1;
-    room.turnOrder = data.turnOrder || [];
-    room.initiativeRolls = data.initiativeRolls || {};
-    room.currentTurnIndex = data.currentTurnIndex || 0;
-    room.winner = data.winner || null;
-    room.abilityCooldowns = data.abilityCooldowns || {};
-    room.activeEffects = data.activeEffects || [];
-    room.pendingAttacks = data.pendingAttacks || {};
-    room._unitCounter = data._unitCounter || 0;
-    // Recharger les données statiques (terrain/segments) depuis fichiers
-    room._loadStaticData();
-    if (['deployment', 'battle', 'ended'].includes(data.phase)) {
-      room.hexMap = generateHexMap(MAP_RADIUS);
-      room._rebuildUnitMap();
+    const room = new GameRoom(data.roomCode, data.hostId, { mapId: data.mapId || 'default', mode: data.mode || 'sequential' });
+    for (const [k, v] of Object.entries(data)) {
+      if (TRANSIENT.has(k)) continue;
+      room[k] = v;
     }
+    room.spectators = room.spectators || [];
+    room.manche = room.manche || 1;
+    room.turn = room.turn || 1;
+    room.turnOrder = room.turnOrder || [];
+    room.pendingAttacks = room.pendingAttacks || {};
+    room.activeEffects = room.activeEffects || [];
+    for (const p of room.players) p.generalUnit = p.units.find(u => u.isGeneral) || null;
+    room._loadMap();
+    room._rebuildUnitMap();
     return room;
-  }
-
-  _getAllOccupiedHexes() {
-    const occupied = {};
-    for (const p of this.players) {
-      for (const unit of p.units) {
-        if (unit.q !== null) occupied[hexKey(unit.q, unit.r)] = { unitId: unit.id, playerId: p.id };
-      }
-    }
-    return occupied;
   }
 
   placeUnit(playerId, unitId, q, r) {
     const player = this.getPlayer(playerId);
     if (!player) return { error: 'Joueur introuvable.' };
+    if (!Number.isInteger(q) || !Number.isInteger(r)) return { error: 'Case invalide.' };
+    if (player.isReady) return { error: 'Vous êtes déjà prêt.' };
 
     const zone = player.startingZone;
+    if (!zone) return { error: 'Aucune zone de déploiement.' };
     const tileSet = new Set((zone.tiles || []).map(t => `${t.q},${t.r}`));
     if (!tileSet.has(`${q},${r}`)) return { error: 'Hors de la zone de déploiement.' };
 
@@ -333,22 +364,15 @@ class GameRoom {
 
   startBattle() {
     this.phase = 'battle';
-    this.turn = 1;
-    this._rollInitiative();
     this._rebuildUnitMap();
     for (const p of this.players) {
+      p.isReady = false;
       for (const u of p.units) {
         u.hasMoved = false;
         u.hasAttacked = false;
       }
     }
-    // Init speed for first player
-    const firstPlayer = this.getPlayer(this.getCurrentPlayerId());
-    if (firstPlayer) {
-      for (const u of firstPlayer.units) {
-        this._initUnitSpeedForTurn(u);
-      }
-    }
+    this.turns.start(this);
   }
 
   _rollInitiative() {
@@ -389,14 +413,11 @@ class GameRoom {
   }
 
   getCurrentPlayerId() {
-    if (this.turnOrder.length === 0) return null;
-    // Passer les joueurs éliminés en cours de round
-    for (let i = 0; i < this.turnOrder.length; i++) {
-      const id = this.turnOrder[(this.currentTurnIndex + i) % this.turnOrder.length];
-      const player = this.getPlayer(id);
-      if (player && !player.isEliminated) return id;
-    }
-    return null;
+    return this.turns.currentPlayerId(this);
+  }
+
+  canAct(playerId) {
+    return this.turns.canAct(this, playerId);
   }
 
   // Compute visible hexes for a player
@@ -405,7 +426,7 @@ class GameRoom {
     if (!player) return new Set();
     const visible = new Set();
 
-    const sd = getSegmentData();
+    const sd = this.segmentData;
     const DIRS = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
     for (const unit of player.units) {
       if (unit.q === null) continue;
@@ -442,8 +463,55 @@ class GameRoom {
     return visible;
   }
 
+  _commonState() {
+    return {
+      phase: this.phase,
+      turn: this.turn,
+      manche: this.manche,
+      currentPlayerId: this.getCurrentPlayerId(),
+      mapId: this.mapId,
+      mode: this.mode,
+      budget: this.budget,
+      players: this.players.map(p => ({
+        id: p.id,
+        name: p.name,
+        generalId: p.generalId,
+        isEliminated: !!p.isEliminated,
+        connected: p.connected !== false,
+        unitCount: p.units.length,
+        color: p.color || '#4a90d9',
+      })),
+      spectators: this.publicSpectators(),
+      turnOrder: this.turnOrder,
+      initiativeRolls: this.initiativeRolls,
+      winner: this.winner,
+      turnDeadline: this.turnDeadline || null,
+    };
+  }
+
+  getSpectatorState(spectatorId) {
+    const units = [];
+    for (const p of this.players) {
+      for (const u of p.units) {
+        if (u.q === null) continue;
+        units.push({ ...u, isMine: false, playerId: p.id });
+      }
+    }
+    return {
+      ...this._commonState(),
+      myId: spectatorId,
+      isSpectator: true,
+      generalData: null,
+      visibleHexes: Object.keys(this.hexMap),
+      units,
+      myUnits: [],
+      activeEffects: this.activeEffects,
+    };
+  }
+
   getGameState(playerId) {
     const player = this.getPlayer(playerId);
+    if (!player) return null;
     const visibleHexes = this.getVisibleHexes(playerId);
     const general = GENERALS.find(g => g.id === player.generalId);
 
@@ -464,40 +532,25 @@ class GameRoom {
     }
 
     return {
-      phase: this.phase,
-      turn: this.turn,
-      manche: this.manche,
-      currentPlayerId: this.getCurrentPlayerId(),
+      ...this._commonState(),
       myId: playerId,
-      budget: this.budget,
       generalData: general,
       visibleHexes: Array.from(visibleHexes),
       units: visibleUnits,
       myUnits: player.units,
-      players: this.players.map(p => ({
-        id: p.id,
-        name: p.name,
-        generalId: p.generalId,
-        isEliminated: p.isEliminated,
-        unitCount: p.units.length,
-        color: p.color || '#4a90d9',
-      })),
-      turnOrder: this.turnOrder,
-      initiativeRolls: this.initiativeRolls,
       activeEffects: this.activeEffects.filter(e => e.targetPlayerId === playerId),
-      winner: this.winner,
-      heightData: this.heightData,
     };
   }
 
   moveUnit(playerId, unitId, targetQ, targetR) {
     const player = this.getPlayer(playerId);
-    const unit = player.units.find(u => u.id === unitId);
-    if (!unit) return { error: 'Unité introuvable.' };
+    const unit = player?.units.find(u => u.id === unitId);
+    if (!unit || unit.q === null) return { error: 'Unité introuvable.' };
+    if (!Number.isInteger(targetQ) || !Number.isInteger(targetR) || !this.hexMap[hexKey(targetQ, targetR)]) return { error: 'Case invalide.' };
     if (unit.isFleeing) return { error: 'Unité en fuite.' };
     if (unit.speedRemaining <= 0) return { error: 'Plus de déplacement disponible.' };
 
-    const path = findPath(this.hexMap, this.unitMap, unit.q, unit.r, targetQ, targetR, unit.speedRemaining, playerId, unit);
+    const path = findPath(this.hexMap, this.unitMap, unit.q, unit.r, targetQ, targetR, unit.speedRemaining, playerId, unit, this.segmentData);
     if (path === null) return { error: 'Chemin inaccessible.' };
 
     const fromQ = unit.q, fromR = unit.r;
@@ -584,8 +637,9 @@ class GameRoom {
     const fled = [];
     for (const unit of [...player.units]) {
       if (!unit.isFleeing || unit.q === null) continue;
-      // Move toward nearest edge
-      const dist = hexDistance(0, 0, unit.q, unit.r);
+      // Move away from the map center toward the nearest edge
+      const c = this.mapCenter || { q: 0, r: 0 };
+      const dist = hexDistance(c.q, c.r, unit.q, unit.r);
       if (dist === 0) {
         // At center, pick direction q+1
         const tq = unit.q + 1, tr = unit.r;
@@ -598,8 +652,8 @@ class GameRoom {
       }
       const speed = unit.speedRemaining || unit.speed;
       const scale = (dist + speed) / dist;
-      const targetQ = Math.round(unit.q * scale);
-      const targetR = Math.round(unit.r * scale);
+      const targetQ = Math.round(c.q + (unit.q - c.q) * scale);
+      const targetR = Math.round(c.r + (unit.r - c.r) * scale);
       if (!this.hexMap[hexKey(targetQ, targetR)]) {
         // Outside map - unit has fled
         player.units = player.units.filter(u => u.id !== unit.id);
@@ -619,10 +673,10 @@ class GameRoom {
   }
 
   rotateFacing(playerId, unitId, facing) {
-    if (facing < 0 || facing > 5) return { error: 'Orientation invalide.' };
+    if (!Number.isInteger(facing) || facing < 0 || facing > 5) return { error: 'Orientation invalide.' };
     const player = this.getPlayer(playerId);
     const unit = player?.units.find(u => u.id === unitId);
-    if (!unit) return { error: 'Unité introuvable.' };
+    if (!unit || unit.q === null) return { error: 'Unité introuvable.' };
     if (unit.speedRemaining <= 0) return { error: 'Plus de vitesse disponible.' };
     unit.speedRemaining = Math.max(0, unit.speedRemaining - 1);
     unit.facing = facing;
@@ -630,11 +684,11 @@ class GameRoom {
   }
 
   changeStance(playerId, unitId, stanceId) {
-    if (!STANCES[stanceId]) return { error: 'Posture invalide.' };
+    if (!Object.prototype.hasOwnProperty.call(STANCES, stanceId)) return { error: 'Posture invalide.' };
     const player = this.getPlayer(playerId);
     if (!player) return { error: 'Joueur introuvable.' };
     const unit = player.units.find(u => u.id === unitId);
-    if (!unit) return { error: 'Unité introuvable.' };
+    if (!unit || unit.q === null) return { error: 'Unité introuvable.' };
     if (unit.isGeneral) return { error: 'Les généraux n\'ont pas de posture.' };
     if (unit.isFleeing) return { error: 'Unité en fuite.' };
     if (unit.speedRemaining <= 0) return { error: 'Plus de vitesse disponible pour changer de posture.' };
@@ -648,13 +702,13 @@ class GameRoom {
     const player = this.getPlayer(playerId);
     if (!player) return { error: 'Joueur introuvable.' };
     const general = player.units.find(u => u.id === generalId && u.isGeneral);
-    if (!general) return { error: 'Général introuvable.' };
+    if (!general || general.q === null) return { error: 'Général introuvable.' };
     if (general.hasAttacked) return { error: 'Le général a déjà agi ce tour.' };
 
     const generalData = GENERALS.find(g => g.id === general.generalId);
     const charisma = generalData ? generalData.charisma : 10;
     const range = Math.floor(charisma / 5);
-    const targets = player.units.filter(u => !u.isGeneral && hexDistance(general.q, general.r, u.q, u.r) <= range);
+    const targets = player.units.filter(u => !u.isGeneral && u.q !== null && hexDistance(general.q, general.r, u.q, u.r) <= range);
     if (targets.length === 0) return { error: 'Aucune unité à portée.' };
 
     const d20 = Math.floor(Math.random() * 20) + 1;
@@ -678,8 +732,9 @@ class GameRoom {
   initiateCombat(playerId, attackerId, targetId) {
     const player = this.getPlayer(playerId);
     const attacker = player?.units.find(u => u.id === attackerId);
-    if (!attacker) return { error: 'Unité attaquante introuvable.' };
+    if (!attacker || attacker.q === null) return { error: 'Unité attaquante introuvable.' };
     if (attacker.hasAttacked) return { error: 'Cette unité a déjà attaqué ce tour.' };
+    if (attacker.isFleeing) return { error: 'Unité en fuite.' };
 
     let targetPlayer = null, target = null;
     for (const p of this.players) {
@@ -687,7 +742,7 @@ class GameRoom {
       const u = p.units.find(u => u.id === targetId);
       if (u) { targetPlayer = p; target = u; break; }
     }
-    if (!target) return { error: 'Cible introuvable.' };
+    if (!target || target.q === null || !this.getVisibleHexes(playerId).has(hexKey(target.q, target.r))) return { error: 'Cible introuvable.' };
 
     const dist = hexDistance(attacker.q, attacker.r, target.q, target.r);
     const hA = this.heightData[hexKey(attacker.q, attacker.r)] || 0;
@@ -700,8 +755,13 @@ class GameRoom {
     attacker.speedRemaining = Math.max(0, attacker.speedRemaining - speedCost);
     attacker.hasAttacked = true;
 
-    const attackId = `atk_${Date.now()}_${Math.random()}`;
-    this.pendingAttacks[attackId] = { attackerPlayerId: playerId, attackerId, targetPlayerId: targetPlayer.id, targetId, dist };
+    const attackId = `atk_${require('crypto').randomBytes(8).toString('hex')}`;
+    this.pendingAttacks[attackId] = {
+      attackerPlayerId: playerId, attackerId, targetPlayerId: targetPlayer.id, targetId, dist,
+      attackerName: attacker.name, targetName: target.name,
+      attackerQ: attacker.q, attackerR: attacker.r, targetQ: target.q, targetR: target.r,
+      isRanged: dist > 1, targetTypeId: target.typeId,
+    };
 
     return { pending: true, attackId, targetPlayerId: targetPlayer.id, attackerName: attacker.name, targetName: target.name, targetQ: target.q, targetR: target.r, isRanged: dist > 1, targetTypeId: target.typeId };
   }
@@ -726,7 +786,7 @@ class GameRoom {
     } else {
       attacker.facing = hexFacingRanged(attacker.q, attacker.r, target.q, target.r);
     }
-    if (defenseChoice === 'contre_attaque' || defenseChoice === 'encaissement') {
+    if (defenseChoice === 'counter' || defenseChoice === 'absorb') {
       target.facing = hexFacing(target.q, target.r, attacker.q, attacker.r);
     }
 
@@ -924,6 +984,7 @@ class GameRoom {
 
   useGeneralAbility(playerId, targetHex, targetId) {
     const player = this.getPlayer(playerId);
+    if (!player) return { error: 'Joueur introuvable.' };
     const general = GENERALS.find(g => g.id === player.generalId);
     const generalUnit = player.units.find(u => u.isGeneral);
 
@@ -952,7 +1013,7 @@ class GameRoom {
       }
       case 'mou_bu': {
         // -1 armor to target enemy army for 2 turns
-        if (!targetId) return { error: 'Choisissez une armée cible.' };
+        if (!targetId || targetId === playerId || !this.getPlayer(targetId)) return { error: 'Choisissez une armée cible.' };
         this.activeEffects.push({ type: 'armor_reduction', targetPlayerId: targetId, turnsLeft: 2, value: 1 });
         combatLog.effects.push('Armure ennemie -1 pendant 2 tours');
         break;
@@ -981,44 +1042,24 @@ class GameRoom {
   }
 
   endTurn() {
-    const currentPlayer = this.getPlayer(this.getCurrentPlayerId());
-    if (currentPlayer) {
-      for (const u of currentPlayer.units) {
-        u.hasMoved = false;
-        u.hasAttacked = false;
-        if (u.isGeneral) {
-          u.hasUsedAbility = false;
-          if (u.abilityCooldown > 0) u.abilityCooldown--;
-        }
-      }
+    return this.turns.endTurn(this);
+  }
+
+  // Pass the turn if the active player got eliminated during their own turn
+  settleTurn() {
+    return this.turns.settle(this);
+  }
+
+  eliminatePlayer(playerId) {
+    const p = this.getPlayer(playerId);
+    if (!p || p.isEliminated) return false;
+    p.isEliminated = true;
+    for (const id of Object.keys(this.pendingAttacks)) {
+      const a = this.pendingAttacks[id];
+      if (a.attackerPlayerId === playerId || a.targetPlayerId === playerId) delete this.pendingAttacks[id];
     }
-
-    this.currentTurnIndex++;
-    this.manche++;
-
-    const newRound = this.currentTurnIndex >= this.turnOrder.length;
-    if (newRound) {
-      this.turn++;
-      this.manche = 1;
-      this.activeEffects = this.activeEffects
-        .map(e => ({ ...e, turnsLeft: e.turnsLeft - 1 }))
-        .filter(e => e.turnsLeft > 0);
-      this._applyPassives();
-      this._rollInitiative();
-    }
-
-    // Init speed for new current player's units + apply regen + process fleeing
-    const nextPlayer = this.getPlayer(this.getCurrentPlayerId());
-    let fled = [];
-    if (nextPlayer) {
-      for (const u of nextPlayer.units) {
-        this._applyTurnRegen(u);
-        this._initUnitSpeedForTurn(u);
-      }
-      fled = this._processFleeing(nextPlayer.id);
-    }
-
-    return { newRound, fled };
+    this._checkVictory();
+    return true;
   }
 
   _applyPassives() {
