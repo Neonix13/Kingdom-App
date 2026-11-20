@@ -1298,7 +1298,7 @@ function showUnitDetail(unit) {
   if (unit.range > 1) statRows.push(`<div class="stat-row"><span>Portée</span><span>${unit.range} cases</span></div>`);
   if (unit.visionRange > 0) statRows.push(`<div class="stat-row"><span>Vision</span><span>${unit.visionRange} cases</span></div>`);
   if (unit.isMine && unit.concealed) statRows.push(`<div class="stat-row" style="color:#8cdc8c"><span>Embuscade</span><span>cachée</span></div>`);
-  if (unit.stunnedUntilRound != null && gameState && unit.stunnedUntilRound >= gameState.turn) statRows.push(`<div class="stat-row" style="color:#e08080"><span>Duel perdu</span><span>sonné</span></div>`);
+  if (unit.stunned) statRows.push(`<div class="stat-row" style="color:#e08080"><span>Duel perdu</span><span>sonné</span></div>`);
   if (!unit.isGeneral) {
     statRows.push(`<div class="stat-row"><span>Posture</span><span>${stanceLabel}</span></div>`);
     statRows.push(`<div class="stat-row" style="color:#a89060;font-size:0.8em"><span>Terrain</span><span>${terrainName}</span></div>`);

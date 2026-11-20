@@ -9,6 +9,7 @@
 //   keyframes: [{ e, turn, manche, currentPlayerId, timeOfDay, isNight, units: [[id, q, r, vitality, morale, facing, stance, flags]] }],
 //              // e = index in events where the keyframe applies (state BEFORE events[e]); flags: 1 fleeing, 2 concealed terrain
 //              // taken at battle start and at the start of every player turn; units absent from a keyframe are dead / gone
+//   winnerId, reason (set when the battle ends),
 //   events: [ { k, turn, manche, ... } ]  (k = kind)
 //     move     { u, path: [[q, r], ...] (starts at the origin), ambush?: unitId }
 //     combat   { log: combatLog without the breakdown }          (log.duel present for general duels)
@@ -66,9 +67,9 @@ function keyframe(rep, room, force = false) {
   }, force);
 }
 
-function event(rep, room, k, data) {
+function event(rep, room, k, data, force = false) {
   if (!rep) return;
-  push(rep, 'events', { k, turn: room.turn, manche: room.manche, ...data });
+  push(rep, 'events', { k, turn: room.turn, manche: room.manche, ...data }, force);
 }
 
 function finish(rep, room) {

@@ -679,7 +679,7 @@ class GameRoom {
   getSpectatorState(spectatorId) {
     const vision = this.phase === 'ended' ? 'full' : this.settings.spectatorVision;
     let units = [];
-    if (vision === 'full' || this.phase === 'deployment') {
+    if (vision === 'full') {
       for (const p of this.players) {
         for (const u of p.units) {
           if (u.q === null) continue;
@@ -697,7 +697,7 @@ class GameRoom {
       spectatorVision: vision,
       delayedTurn,
       generalData: null,
-      visibleHexes: vision === 'off' && this.phase !== 'deployment' ? [] : Object.keys(this.hexMap),
+      visibleHexes: vision === 'off' ? [] : Object.keys(this.hexMap),
       units,
       myUnits: [],
       activeEffects: vision === 'full' ? this.activeEffects : [],
@@ -824,7 +824,8 @@ class GameRoom {
       unit.speedRemaining = Math.floor(unit.speed / 2);
       return;
     }
-    if (unit.stunnedUntilRound != null && unit.stunnedUntilRound >= this.turn) {
+    if (unit.stunned) { // beaten in a duel: loses the movement of its next turn
+      unit.stunned = false;
       unit.speedRemaining = 0;
       return;
     }
@@ -1130,7 +1131,7 @@ class GameRoom {
           u.morale = Math.max(0, u.morale - Math.round(u.maxMorale * D.loserMoraleShock));
           if (u.morale <= 0 && !u.isFleeing) { u.stance = 'marche'; u.isFleeing = true; }
         }
-        loser.stunnedUntilRound = this.turn + D.loserStunRounds;
+        loser.stunned = true;
         duel.stunned = true;
       }
       for (const u of winP.units) {
@@ -1368,7 +1369,8 @@ class GameRoom {
     this.endReason = reason;
     this.phase = 'ended';
     this.pendingAttacks = {};
-    this._record('end', { winnerId, reason });
+    if (this.replay) replay.event(this.replay, this, 'end', { winnerId, reason }, true);
+    if (this.replay) Object.assign(this.replay, { winnerId, reason });
     if (this.replay) replay.finish(this.replay, this);
   }
 

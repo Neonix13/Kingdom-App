@@ -56,7 +56,7 @@
       loserMoraleShock: 0.15, // loser's army loses 15% of max morale
       winnerMoraleBoost: 0.10, // winner's units within boostRadius gain 10% of max morale
       boostRadius: 5,
-      loserStunRounds: 1,    // the beaten general cannot move during his next turn
+      // the beaten general cannot move during his next turn
     },
     objectives: {
       defaultPoints: 1,      // points per round for each objective held

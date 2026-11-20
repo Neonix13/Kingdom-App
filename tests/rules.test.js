@@ -210,7 +210,12 @@ test('duel : général contre général au corps à corps, issue décisive, char
     if (d.winnerId) {
       const loser = d.loserId === g0.id ? g0 : g1;
       if (loser.vitality > 0) {
-        assert.equal(loser.stunnedUntilRound, room.turn + 1);
+        assert.equal(loser.stunned, true);
+        loser.speed = 3;
+        room._initUnitSpeedForTurn(loser);
+        assert.equal(loser.speedRemaining, 0, 'sonné : pas de mouvement au tour suivant');
+        room._initUnitSpeedForTurn(loser);
+        assert.ok(loser.speedRemaining > 0, 'une seule fois');
         assert.ok(d.moraleShock > 0);
       } else {
         assert.equal(room.phase, 'ended', 'mort du général : partie finie');
@@ -409,6 +414,8 @@ test('protocole : vision des spectateurs off / différée', async () => {
       for (let i = 0; i < ds.units.length; i++) await c.send('place_unit', { unitId: ds.units[i].id, q: ds.startingZone.tiles[i * 3].q, r: ds.startingZone.tiles[i * 3].r });
       await c.send('deployment_ready');
     }
+    const deploy = spec.all('game_state').filter(m => m.phase === 'deployment');
+    assert.ok(deploy.length && deploy.every(m => m.units.length === 0), `${vision} : placements cachés au déploiement`);
     const gs = spec.last('game_state');
     assert.equal(gs.spectatorVision, vision);
     assert.equal(gs.units.length, 0, `${vision} : rien en direct au premier tour`);
