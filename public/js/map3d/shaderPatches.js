@@ -49,13 +49,6 @@ export function installHeightFog(base = 0.0, falloff = 0.055) {
 #endif`;
 }
 
-/**
- * Patch a lit built-in material (Standard / Lambert) with:
- *  - world-position varying (vPWorld)
- *  - moving cloud shadows on direct light
- *  - optional wind sway (instanced vegetation), with distance fade
- * `extra(shader)` lets callers inject further code.
- */
 export function patchLit(material, opts = {}, extra = null, cacheKey = '') {
   const o = {
     cloud: true,

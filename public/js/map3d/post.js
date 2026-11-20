@@ -59,23 +59,34 @@ export function createPost(renderer, scene, camera) {
 }
 
 // Adaptive quality: keep frame time under budget by trading resolution and effects.
+// On vsync-capped displays headroom is invisible, so after a downgrade it periodically
+// probes one level up and backs off (exponentially) if the probe drops frames.
 export class QualityGovernor {
-  constructor(levels, apply, { budgetMs = 17.5, upMs = 11.0 } = {}) {
+  constructor(levels, apply, { budgetMs = 17.5, fastMs = 11.0 } = {}) {
     this.levels = levels;
     this.apply = apply;
     this.level = 0;
     this.budgetMs = budgetMs;
-    this.upMs = upMs;
+    this.fastMs = fastMs;
     this.acc = 0;
     this.frames = 0;
-    this.windowStart = 0;
+    this.windowStart = performance.now();
     this.slowWindows = 0;
-    this.fastWindows = 0;
+    this.okWindows = 0;
     this.cooldownUntil = 0;
     this.blockUpUntil = 0;
-    this.warmupUntil = performance.now() + 2500;
+    this.backoff = 20000;
+    this.probing = false;
+    this.warmupUntil = Infinity;
+    this.pausedUntil = 0;
     this.locked = false;
-    this.avgMs = 16.7;
+    this.avgMs = 0;
+  }
+  start(delayMs = 2000) {
+    this.warmupUntil = performance.now() + delayMs;
+  }
+  pause(ms = 800) {
+    this.pausedUntil = performance.now() + ms;
   }
   set(level, now = performance.now()) {
     level = Math.max(0, Math.min(this.levels.length - 1, level));
@@ -83,12 +94,15 @@ export class QualityGovernor {
     this.level = level;
     this.apply(this.levels[level], level);
     this.cooldownUntil = now + 1500;
-    this.slowWindows = this.fastWindows = 0;
+    this.slowWindows = this.okWindows = 0;
+    this.acc = 0; this.frames = 0; this.windowStart = now;
   }
   frame(dtMs) {
     const now = performance.now();
-    if (dtMs > 250) { this.acc = 0; this.frames = 0; this.windowStart = now; return; }
-    if (now < this.warmupUntil) { this.windowStart = now; return; }
+    if (dtMs > 250 || now < this.warmupUntil || now < this.pausedUntil) {
+      this.acc = 0; this.frames = 0; this.windowStart = now;
+      return;
+    }
     this.acc += dtMs;
     this.frames++;
     if (now - this.windowStart < 1000) return;
@@ -97,16 +111,23 @@ export class QualityGovernor {
     this.acc = 0; this.frames = 0; this.windowStart = now;
     if (this.locked || now < this.cooldownUntil) return;
     if (avg > this.budgetMs) {
-      this.fastWindows = 0;
-      if (++this.slowWindows >= 2 && this.level < this.levels.length - 1) {
-        this.blockUpUntil = now + 30000;
+      this.okWindows = 0;
+      const need = this.probing ? 1 : 2;
+      if (++this.slowWindows >= need && this.level < this.levels.length - 1) {
+        if (this.probing) this.backoff = Math.min(this.backoff * 2, 300000);
+        this.probing = false;
+        this.blockUpUntil = now + this.backoff;
         this.set(this.level + 1, now);
       }
-    } else if (avg < this.upMs) {
-      this.slowWindows = 0;
-      if (++this.fastWindows >= 6 && this.level > 0 && now > this.blockUpUntil) this.set(this.level - 1, now);
-    } else {
-      this.slowWindows = 0; this.fastWindows = 0;
+      return;
+    }
+    this.slowWindows = 0;
+    if (this.probing && ++this.okWindows >= 4) { this.probing = false; this.okWindows = 0; }
+    if (this.level === 0 || now < this.blockUpUntil || this.probing) return;
+    const needOk = avg < this.fastMs ? 4 : 10;
+    if (++this.okWindows >= needOk) {
+      this.probing = true;
+      this.set(this.level - 1, now);
     }
   }
 }

@@ -1294,6 +1294,27 @@ for (const [segKey, type] of Object.entries(segmentData)) {
   }
 }
 
+// Meadow band just outside the board so grass density doesn't stop at the board edge
+{
+  const rng = makeRng(9191);
+  const step = 0.36, band = 10;
+  for (let z = bz0 - band; z <= bz1 + band; z += step) {
+    for (let x = bx0 - band; x <= bx1 + band; x += step) {
+      const jx = x + (rng() - 0.5) * step, jz = z + (rng() - 0.5) * step;
+      const d = Math.hypot(Math.max(0, bx0 - jx, jx - bx1), Math.max(0, bz0 - jz, jz - bz1));
+      if (d <= 0.05 || d > band) continue;
+      if (rng() > Math.pow(1 - d / band, 1.5)) continue;
+      const y = groundHeight(jx, jz);
+      if (y < WATER_LEVEL + 0.2 || roadAt(jx, jz) > 0.12) continue;
+      const e = 0.4;
+      const sl = Math.hypot(groundHeight(jx + e, jz) - groundHeight(jx - e, jz), groundHeight(jx, jz + e) - groundHeight(jx, jz - e)) / (2 * e);
+      if (sl > 0.8) continue;
+      grass.push({ x: jx, y: y - 0.01, z: jz, s: 0.8 + rng() * 0.8, sy: 0.8 + rng() * 0.6, ry: rng() * 6.28, color: mul(rng, 1.0, 1.0, 0.9, 0.3) });
+      if (rng() < 0.02) flowers.push({ x: jx, y: y - 0.005, z: jz, s: 0.8 + rng() * 0.6, ry: rng() * 6.28, color: new THREE.Color(...FLOWER_COLORS[Math.floor(rng() * FLOWER_COLORS.length)]) });
+    }
+  }
+}
+
 const vegGroup = new THREE.Group();
 scene.add(vegGroup);
 [VEG.makeConiferGeometry(0), VEG.makeConiferGeometry(1)].forEach((g, i) => vegGroup.add(VEG.instanced(g, treeMatConifer, conifers[i], { castShadow: true })));
@@ -1844,9 +1865,13 @@ const LEVELS = [
   { name: 'Ultra', dpr: maxDpr, samples: maxDpr > 1.6 ? 2 : 4, bloom: true, post: true, grass: true, far: true },
   { name: 'High', dpr: Math.min(maxDpr, 1.5), samples: 4, bloom: true, post: true, grass: true, far: true },
   { name: 'Medium', dpr: Math.min(maxDpr, 1.25), samples: 2, bloom: false, post: true, grass: true, far: true },
-  { name: 'Low', dpr: 1.0, samples: 0, bloom: false, post: true, grass: false, far: true },
+  { name: 'Low', dpr: Math.min(maxDpr, 1.0), samples: 0, bloom: false, post: true, grass: false, far: true },
   { name: 'Minimum', dpr: 0.75, samples: 0, bloom: false, post: false, grass: false, far: false },
-];
+].filter((l, i, arr) => {
+  if (i === 0) return true;
+  const sig = (x) => [x.dpr, x.samples, x.bloom, x.post, x.grass, x.far].join();
+  return sig(l) !== sig(arr[i - 1]);
+});
 function applyQuality(l) {
   renderer.setPixelRatio(l.dpr);
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -1877,10 +1902,14 @@ const savedHour = parseFloat(localStorage.getItem('map3d_hour'));
 const startHour = Number.isFinite(savedHour) ? savedHour : 16.2;
 todInput.value = startHour;
 setTimeOfDay(startHour);
-todInput.addEventListener('input', () => setTimeOfDay(parseFloat(todInput.value), { env: false }));
+let pendingHour = null;
+todInput.addEventListener('input', () => { pendingHour = parseFloat(todInput.value); governor.pause(1200); });
 todInput.addEventListener('change', () => {
+  pendingHour = null;
   setTimeOfDay(parseFloat(todInput.value));
   localStorage.setItem('map3d_hour', todInput.value);
+  governor.pause(1200);
+  todInput.blur();
 });
 
 if (renderer.compileAsync) await renderer.compileAsync(scene, camera);
@@ -1920,27 +1949,32 @@ function updateIntro(dt) {
   if (intro.t >= 1) intro.active = false;
 }
 
-setTimeout(() => document.getElementById('loading').classList.add('hidden'), 150);
+setTimeout(() => { document.getElementById('loading').classList.add('hidden'); governor.start(2500); }, 150);
 
 // --- HUD ---
 const statsEl = document.getElementById('stats');
 function updateHud() {
-  const fps = 1000 / Math.max(1, governor.avgMs);
+  const ms = governor.avgMs;
+  const perfTxt = ms > 0 ? `${(1000 / ms).toFixed(0)} fps · ${ms.toFixed(1)} ms` : 'measuring…';
   statsEl.innerHTML = `${allHexes.size.toLocaleString()} hexes · ${(hexesByType.forest || []).length} forests<br>`
-    + `${fps.toFixed(0)} fps · ${governor.avgMs.toFixed(1)} ms · ${LEVELS[governor.level].name}${governor.locked ? ' (locked)' : ''}`;
+    + `${perfTxt} · ${LEVELS[governor.level].name}${governor.locked ? ' (locked)' : ' (auto)'}`;
 }
 setInterval(updateHud, 500);
 updateHud();
 
 // --- Keys ---
 window.addEventListener('keydown', (e) => {
-  if (e.target && e.target.tagName === 'INPUT') return;
+  if (e.target && e.target.tagName === 'INPUT' && e.target.type !== 'range') return;
   const k = e.key.toLowerCase();
   if (k === 'r') { intro.active = false; applyView(DEFAULT_VIEW); }
   else if (k === 'g') terrainUniforms.uGrid.value = terrainUniforms.uGrid.value > 0 ? 0 : 0.11;
   else if (k === 'c') controls.autoRotate = !controls.autoRotate;
   else if (k === 'h') document.body.classList.toggle('clean');
-  else if (k === 'q') { governor.locked = true; governor.set((governor.level + 1) % LEVELS.length); applyQuality(LEVELS[governor.level]); updateHud(); }
+  else if (k === 'q') {
+    if (governor.locked && governor.level === LEVELS.length - 1) { governor.locked = false; governor.set(0); }
+    else { governor.locked = true; governor.set(governor.level + 1); }
+    updateHud();
+  }
 });
 
 window.addEventListener('resize', () => {
@@ -1954,7 +1988,9 @@ const clock = new THREE.Clock();
 const perf = { cpu: 0, frame: 16.7 };
 function animate() {
   requestAnimationFrame(animate);
-  const dt = Math.min(clock.getDelta(), 0.1);
+  const rawDt = clock.getDelta();
+  const dt = Math.min(rawDt, 0.1);
+  if (pendingHour !== null) { setTimeOfDay(pendingHour, { env: false }); pendingHour = null; }
   const t = clock.elapsedTime;
   G.uTime.value = t;
   G.uWindStrength.value = 0.75 + 0.35 * Math.sin(t * 0.13) + 0.2 * Math.sin(t * 0.41);
@@ -1974,7 +2010,7 @@ function animate() {
   else renderer.render(scene, camera);
   perf.cpu = perf.cpu * 0.95 + (performance.now() - t0) * 0.05;
   perf.frame = perf.frame * 0.95 + dt * 1000 * 0.05;
-  governor.frame(dt * 1000);
+  governor.frame(rawDt * 1000);
 }
 window.__map3d = { renderer, scene, camera, controls, perf, governor, post, setTimeOfDay, applyView, LEVELS, applyQuality };
 animate();
