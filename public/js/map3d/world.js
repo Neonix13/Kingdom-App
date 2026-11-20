@@ -11,6 +11,7 @@ import { createCloudLayer } from './clouds.js';
 import { createStars, createMoon, createFireflies, createLightPools } from './night.js';
 import { buildStructures } from './buildings.js';
 import { createBoardLayers } from './overlays.js';
+import { createObjectiveMarkers } from './objectives3d.js';
 
 export async function createWorld(opts = {}) {
 
@@ -1430,6 +1431,7 @@ function updateBirds(t) {
 }
 
 const boardLayers = createBoardLayers({ scene, hexToWorld, groundHeight, bounds: { bx0, bx1, bz0, bz1 } });
+const objectiveMarkers = createObjectiveMarkers({ scene, hexToWorld, groundHeight, objectives: mapDoc.objectives || [] });
 
 await setProgress(92, 'Compiling shaders...');
 
@@ -1611,7 +1613,7 @@ function resize() {
 // --- Animate ---
 const clock = new THREE.Clock();
 const perf = { cpu: 0, frame: 16.7 };
-const frameHooks = [(dt) => boardLayers.update(dt)];
+const frameHooks = [(dt) => boardLayers.update(dt), (dt, t) => objectiveMarkers.update(dt, t)];
 let running = true;
 function animate() {
   if (!running) return;
@@ -1657,6 +1659,6 @@ return {
   setTimeOfDay, previewTimeOfDay, commitTimeOfDay, get hour() { return timeState.hour; }, timeState,
   applyQuality, qualityHooks, frameHooks,
   setGrid(v) { terrainUniforms.uGrid.value = v; }, get grid() { return terrainUniforms.uGrid.value; },
-  sunDir, G, layers: boardLayers,
+  sunDir, G, layers: boardLayers, objectives: objectiveMarkers, map: mapDoc,
 };
 }
