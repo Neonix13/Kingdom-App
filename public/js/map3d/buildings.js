@@ -837,6 +837,9 @@ export function buildStructures(ctx) {
     }
   }
 
+  // Map-specific structures (fortifications.js: ramparts, gatehouses, towers, camps) drawn with the same buffers
+  if (ctx.decorate) ctx.decorate({ B, R, W, COL, V, C, box, beam, hbox, prism, tube, hipRoof, banners: gateInfo, lanternSpots, smokeSources });
+
   if (W.count) {
     const wm = new THREE.MeshStandardMaterial({ color: 0x24170c, emissive: 0xffa24a, emissiveIntensity: 0, roughness: 0.8, side: THREE.DoubleSide });
     windowMats.push(wm);

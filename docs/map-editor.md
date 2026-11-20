@@ -16,17 +16,24 @@ Accès : `http://localhost:3000/admin/` → connexion avec le mot de passe admin
 | Afficher terrain / hauteurs / calque | `M` |
 | Grille, étiquettes (hauteur, coordonnées), fond | `G`, `L`, `B` |
 
-## Outils (touches 1 à 8)
+## Outils (touches 1 à 9)
 1. **Terrain** : plaines, forêts, fleuves, routes, bâtiments, ponts. Pinceau (taille `[` `]`) ou remplissage de la zone contiguë. Maj = repeindre en plaine.
 2. **Hauteur** (−2 à 20) : Élever / Abaisser (+1/−1 une fois par passage, Maj inverse), Fixer (valeur), Aplanir (hauteur du point de départ), Lisser (moyenne des voisins). Boutons « Tout +1 / −1 ».
 3. **Cases** : ajouter / supprimer des cases (forme de la carte). Supprimer une case retire aussi son terrain, ses champs, sa zone, ses objectifs et les segments qui n'ont plus aucune case.
 4. **Segments** : cliquer ou glisser le long des bords de cases (falaise, mur, rivière, barrière, passerelle, pont, échelle, chevaux de frise). Gomme ou Maj = effacer. Seuls les bords entre deux cases de la carte sont peints.
-5. **Décor** : champs de blé (visuel, sur plaines).
+5. **Décor** : champs de blé (visuel, sur plaines) ou **remparts** (chemin de ronde : en 3D, murailles maçonnées avec créneaux et piliers sur les bords où une falaise ou un mur borde la case et où le terrain descend ; dallage sur le dessus). Purement visuel : les règles viennent de la hauteur (remparts plus hauts que leurs abords) et des segments (falaise sur la face extérieure, barrières sur la porte, échelle pour l'assaut à pied).
 6. **Zones** : zones de déploiement fixes (facultatif ; sans zone, le jeu les génère). « + Zone », choisir la zone puis peindre. Maj = gomme.
 7. **Objectifs** : clic sur une case = nouvel objectif ; clic sur un objectif = sélection (nom, type, points dans le panneau) ; glisser pour déplacer ; `Suppr` pour supprimer.
 8. **Fond** : image peinte sous la grille et calibration. Glisser = déplacer l'image, Maj + glisser vertical = changer la taille d'hex. Réglages fins (taille d'hex, origine X/Y) dans le panneau. « Mode calque » rend les cases transparentes pour décalquer la peinture ; « Ajouter les cases couvertes par l'image » crée les cases manquantes.
+9. **Éléments** (`9`) : tour de guet, porte fortifiée (tours de flanquement, linteau, battants, pavillon à deux toits), tente, tente de commandement, bannière (texte de 8 caractères max, ex. 秦), escalier de pierre, feu de camp. Clic sur une case vide = poser l'élément choisi ; clic sur un élément = le sélectionner (glisser pour déplacer) ; `R` = tourner (6 orientations, pour la porte : axe du passage ; tente : entrée ; escalier : sens de la montée) ; `Suppr` ou Maj+clic = supprimer ; « Changer le type » dans le panneau. Purement visuels, dessinés en 2D (jeu et éditeur) et en 3D.
 
 Communs : **pipette** = Alt + clic ou `I` puis clic (reprend le terrain, la hauteur, le segment, la zone… de la case visée). **Annuler / rétablir** : Ctrl/Cmd+Z, Ctrl/Cmd+Maj+Z ou Ctrl+Y. La barre du bas affiche la case survolée (coordonnées, terrain, hauteur, segments par direction, zone, champ, objectif). `?` affiche tous les raccourcis.
+
+## Format du décor
+`decor.fields` (champs), `decor.ramparts` (cases de remparts) et `decor.props` (`[{ type, q, r, rot, label }]`, types dans `public/js/mapProps.js`) ; vérifiés par `validateMap` (cases hors carte, type ou orientation inconnus). Le rendu 3D est dans `public/js/map3d/fortifications.js`, le 2D dans `public/js/mapProps.js`.
+
+## Col de Kankoku
+`node scripts/maps/kankoku.mjs` régénère `data/maps/kankoku.json` (passe fermée par la porte de Qin, ligne de falaises continue à travers les deux massifs : la porte à double barrière et l'échelle du sentier sud sont les seuls passages ; hauteur du guet au nord, rivière et pont dans la plaine, camp de la coalition à l'est, 4 zones fixes dans l'ordre Qin forteresse / coalition camp / coalition nord / Qin arrière). Les retouches faites ensuite dans l'éditeur sont perdues si on relance le script. `tests/kankoku.test.js` vérifie les passages, les zones et une partie IA contre IA.
 
 ## Créer une carte
 **Nouveau** → identifiant (a-z, 0-9, `-`, `_`) + nom, puis :

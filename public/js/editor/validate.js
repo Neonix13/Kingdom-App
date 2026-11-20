@@ -79,6 +79,9 @@ export function validate(model, opts = {}) {
   }
 
   // Decor
+  if (window.KBMapProps) {
+    for (const msg of window.KBMapProps.validateDecor({ ramparts: [...model.ramparts], props: model.props }, new Set(H.keys()))) push(errors, 'decor', msg, null, 'decoroff');
+  }
   for (const k of model.fields) {
     if (!H.has(k)) push(warnings, 'fieldoff', `Champ hors carte : ${k}`, { hex: k }, 'fieldoff');
     else if (model.terrainAt(k) !== 'plain') push(warnings, 'fieldterrain', `Champ sur ${model.terrainAt(k)} : ${k}`, { hex: k });
@@ -145,6 +148,11 @@ export function applyFix(model, fix) {
       }
     } else if (fix === 'terrainoff') {
       for (const [k] of [...model.terrain]) if (!model.has(k)) model.set('terrain', k, undefined);
+    } else if (fix === 'decoroff') {
+      for (const k of [...model.ramparts]) if (!model.has(k)) model.set('rampart', k, undefined);
+      const types = window.KBMapProps ? window.KBMapProps.PROP_BY_ID : {};
+      const keep = model.props.filter((p) => types[p.type] && model.has(`${p.q},${p.r}`));
+      if (keep.length !== model.props.length) model.setWhole('props', keep);
     } else if (fix === 'fieldoff') {
       for (const k of [...model.fields]) if (!model.has(k)) model.set('field', k, undefined);
     } else if (fix === 'zoneoff') {
@@ -163,6 +171,7 @@ export const FIX_LABELS = {
   segbad: 'Supprimer les segments invalides',
   terrainoff: 'Supprimer les terrains hors carte',
   fieldoff: 'Supprimer les champs hors carte',
+  decoroff: 'Retirer les remparts et éléments hors carte',
   zoneoff: 'Retirer ces cases des zones',
   isolated: 'Supprimer les cases isolées',
 };

@@ -6,7 +6,9 @@
 //   height:   { "q,r": level },          // defines the set of hexes on the map (every hex must be listed)
 //   terrain:  { "q,r": type },           // only non-plain hexes (missing = plain)
 //   segments: { "q1,r1|q2,r2": type },   // edge features: river, cliff, mur, barriere, passerelle, echelle, chevaux_de_frise
-//   decor:    { fields: ["q,r", ...] },  // purely visual
+//   decor:    { fields: ["q,r", ...],    // purely visual (public/js/mapProps.js): wheat fields,
+//               ramparts: ["q,r", ...],  // wall-walk hexes drawn as fortress walls (rules come from height + cliff segments),
+//               props: [{ type, q, r, rot, label }] },  // towers, gatehouses, tents, banners, stairs, campfires
 //   zones:    [ { tiles: ["q,r", ...] } ],                 // optional fixed deployment zones (else generated)
 //   objectives: [ { q, r, type, points, name } ],          // optional victory points
 // }
@@ -18,6 +20,7 @@ const TERRAINS = new Set(['plain', 'forest', 'river', 'road', 'building', 'bridg
 const SEGMENTS = new Set(['river', 'cliff', 'bridge', 'passerelle', 'barriere', 'chevaux_de_frise', 'mur', 'echelle']);
 const ID_RE = /^[a-z0-9][a-z0-9_-]{0,62}$/;
 const KEY_RE = /^-?\d+,-?\d+$/;
+const { validateDecor } = require('../public/js/mapProps.js');
 
 const cache = new Map();
 
@@ -47,6 +50,7 @@ function validateMap(map) {
     if (parts.length !== 2 || !KEY_RE.test(parts[0]) || !KEY_RE.test(parts[1])) { errors.push(`Segment invalide : ${k}`); break; }
     if (!SEGMENTS.has(v)) { errors.push(`Type de segment inconnu "${v}" en ${k}`); break; }
   }
+  errors.push(...validateDecor(map.decor, hexes));
   return errors;
 }
 

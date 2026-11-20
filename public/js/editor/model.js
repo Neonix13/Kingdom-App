@@ -19,6 +19,8 @@ export class MapModel {
     this.terrain = new Map();
     this.segments = new Map();
     this.fields = new Set();
+    this.ramparts = new Set();
+    this.props = [];
     this.decorExtra = {};
     this.zoneOf = new Map();
     this.zoneCount = 0;
@@ -52,8 +54,10 @@ export class MapModel {
       this.segments.set(ck, v);
     }
     const decor = doc.decor || {};
-    for (const [k, v] of Object.entries(decor)) if (k !== 'fields') this.decorExtra[k] = clone(v);
+    for (const [k, v] of Object.entries(decor)) if (k !== 'fields' && k !== 'ramparts' && k !== 'props') this.decorExtra[k] = clone(v);
     for (const k of decor.fields || []) this.fields.add(k);
+    for (const k of decor.ramparts || []) this.ramparts.add(k);
+    this.props = Array.isArray(decor.props) ? clone(decor.props) : [];
     const zones = Array.isArray(doc.zones) ? doc.zones : [];
     this.zoneCount = zones.length;
     zones.forEach((z, i) => {
@@ -70,6 +74,8 @@ export class MapModel {
     for (let i = 0; i < this.zoneCount; i++) zones.push({ ...(this.zoneMeta[i] || {}), tiles: [] });
     for (const [k, z] of this.zoneOf) if (zones[z]) zones[z].tiles.push(k);
     const decor = { ...clone(this.decorExtra), fields: [...this.fields] };
+    if (this.ramparts.size) decor.ramparts = [...this.ramparts];
+    if (this.props.length) decor.props = clone(this.props);
     return {
       ...clone(this.extra),
       format: 2,
@@ -133,13 +139,13 @@ export class MapModel {
 
   rawSet(t, k, v) {
     const m = this.store(t);
-    if (t === 'field') { if (v) m.add(k); else m.delete(k); return; }
+    if (t === 'field' || t === 'rampart') { if (v) m.add(k); else m.delete(k); return; }
     if (v === undefined) m.delete(k); else m.set(k, v);
   }
 
   rawGet(t, k) {
     const m = this.store(t);
-    if (t === 'field') return m.has(k) ? true : undefined;
+    if (t === 'field' || t === 'rampart') return m.has(k) ? true : undefined;
     return m.get(k);
   }
 
@@ -149,6 +155,7 @@ export class MapModel {
       case 'terrain': return this.terrain;
       case 'seg': return this.segments;
       case 'field': return this.fields;
+      case 'rampart': return this.ramparts;
       case 'zone': return this.zoneOf;
       default: throw new Error('unknown layer ' + t);
     }
@@ -156,6 +163,7 @@ export class MapModel {
 
   applyWhole(t, v) {
     if (t === 'obj') this.objectives = clone(v);
+    else if (t === 'props') this.props = clone(v);
     else if (t === 'meta') this.meta = { ...this.meta, ...clone(v) };
     else if (t === 'zoneCount') this.zoneCount = v;
   }
@@ -163,7 +171,7 @@ export class MapModel {
   // Generic keyed setter (undefined = delete)
   set(t, k, v) {
     if (t === 'terrain' && v === 'plain') v = undefined;
-    if (t === 'field') v = v ? true : undefined;
+    if (t === 'field' || t === 'rampart') v = v ? true : undefined;
     const prev = this.rawGet(t, k);
     if (prev === v) return false;
     this.rawSet(t, k, v);
@@ -184,7 +192,7 @@ export class MapModel {
       this.record({ t, a, b });
       return true;
     }
-    const prev = t === 'obj' ? this.objectives : this.zoneCount;
+    const prev = t === 'obj' ? this.objectives : t === 'props' ? this.props : this.zoneCount;
     if (JSON.stringify(prev) === JSON.stringify(next)) return false;
     const a = clone(prev);
     this.applyWhole(t, next);
@@ -224,6 +232,7 @@ export class MapModel {
     this.set('height', k, undefined);
     this.set('terrain', k, undefined);
     this.set('field', k, undefined);
+    this.set('rampart', k, undefined);
     this.set('zone', k, undefined);
     for (const [sk] of [...this.segments]) {
       const e = parseEdge(sk);
@@ -234,6 +243,9 @@ export class MapModel {
     const [q, r] = parseKey(k);
     if (this.objectives.some((o) => o.q === q && o.r === r)) {
       this.setWhole('obj', this.objectives.filter((o) => !(o.q === q && o.r === r)));
+    }
+    if (this.props.some((o) => o.q === q && o.r === r)) {
+      this.setWhole('props', this.props.filter((o) => !(o.q === q && o.r === r)));
     }
     return true;
   }
