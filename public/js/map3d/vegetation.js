@@ -235,7 +235,7 @@ export function makeRockGeometry(seed = 3, kind = 'boulder') {
     pos.setXYZ(i, out.x, out.y, out.z);
   }
   g.computeVertexNormals();
-  const light = lin(0xb2a692), dark = lin(0x6b6152), moss = lin(0x6f7a45);
+  const light = lin(0xc8bba3), dark = lin(0x7f725f), moss = lin(0x7a8550);
   paint(g, (x, y, z, c) => {
     const t = Math.min(1, Math.max(0, (y + 0.2) / 0.6));
     c.copy(dark).lerp(light, t);
@@ -266,4 +266,56 @@ export function instanced(geo, mat, items, { castShadow = false, receiveShadow =
   mesh.receiveShadow = receiveShadow;
   mesh.frustumCulled = false;
   return mesh;
+}
+
+export function makeFlowerGeometry(seed = 21) {
+  const rng = makeRng(seed);
+  const parts = [];
+  const stemCol = lin(0x4f6e2c);
+  for (let i = 0; i < 4; i++) {
+    const x = (rng() - 0.5) * 0.12, z = (rng() - 0.5) * 0.12;
+    const h = 0.07 + rng() * 0.07;
+    const stem = strip(new THREE.CylinderGeometry(0.003, 0.004, h, 3, 1, true));
+    stem.translate(x, h / 2, z);
+    parts.push(paint(stem, (px, py, pz, c) => c.copy(stemCol)));
+    const head = strip(new THREE.OctahedronGeometry(0.02 + rng() * 0.01, 0));
+    head.scale(1, 0.6, 1);
+    head.translate(x, h + 0.008, z);
+    parts.push(paint(head, (px, py, pz, c) => c.setRGB(1, 1, 1)));
+  }
+  const g = mergeGeometries(parts);
+  const n = g.attributes.normal, tmp = new THREE.Vector3();
+  for (let i = 0; i < n.count; i++) { tmp.fromBufferAttribute(n, i); tmp.y += 1.2; tmp.normalize(); n.setXYZ(i, tmp.x, tmp.y, tmp.z); }
+  g.computeBoundingSphere();
+  return g;
+}
+
+export function makeBannerGeometry() {
+  const parts = [];
+  const pole = strip(new THREE.CylinderGeometry(0.018, 0.024, 1.7, 6, 1, false));
+  pole.translate(0, 0.85, 0);
+  parts.push(paint(pole, (x, y, z, c) => c.set(0x3b2a1a)));
+  const tip = strip(new THREE.ConeGeometry(0.035, 0.08, 6));
+  tip.translate(0, 1.74, 0);
+  parts.push(paint(tip, (x, y, z, c) => c.set(0xc9a24a)));
+  const g = mergeGeometries(parts);
+  g.computeBoundingSphere();
+  return g;
+}
+
+export function makeClothGeometry(w = 0.55, h = 0.34) {
+  const g = new THREE.PlaneGeometry(w, h, 10, 4);
+  g.translate(w / 2, 0, 0);
+  const pos = g.attributes.position;
+  const col = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i);
+    const border = Math.abs(y) > h * 0.36 || x > w * 0.92;
+    const emblem = Math.hypot(x - w * 0.45, y) < h * 0.2;
+    _c.set(border ? 0x1c1410 : emblem ? 0xe8c25a : 0x9c1f1a);
+    col[i * 3] = _c.r; col[i * 3 + 1] = _c.g; col[i * 3 + 2] = _c.b;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  g.deleteAttribute('uv');
+  return g;
 }
