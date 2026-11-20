@@ -1,20 +1,26 @@
 import { createWorld } from './world.js';
+import { createPathPreview } from './pathPreview.js';
+import { createGameUI } from './gameUI.js';
 
 const PLATE_CSS = `
 #view3d-canvas { position:absolute; inset:0; width:100%; height:100%; display:block; z-index:1; outline:none; touch-action:none; }
 #view3d-plates { position:absolute; inset:0; pointer-events:none; z-index:2; overflow:hidden; }
-.u3-plate { position:absolute; transform:translate(-50%,-100%); display:flex; align-items:center; gap:3px;
-  padding:2px 5px 2px 2px; border-radius:12px; background:rgba(14,9,4,0.78); border:1px solid rgba(200,150,40,0.45);
+.u3-plate { position:absolute; left:0; top:0; display:flex; align-items:center; gap:3px;
+  padding:1px 4px 1px 1px; border-radius:11px; background:rgba(14,9,4,0.72); border:1px solid rgba(200,150,40,0.4);
   pointer-events:auto; cursor:pointer; white-space:nowrap; font:600 10px 'Segoe UI',system-ui,sans-serif; color:#e8d5a0;
-  transition:opacity .15s; will-change:transform; }
+  will-change:transform; }
+.u3-plate .u3-name { display:none; }
+.u3-plate.sel .u3-name, .u3-plate.hov .u3-name, #view3d-plates.names .u3-name { display:block; }
+.u3-plate.hov { z-index:5; border-color:#e8c060; }
+.u3-plate.sel { z-index:6; }
 .u3-plate.sel { border-color:#ffd700; box-shadow:0 0 6px rgba(255,215,0,.6); }
 .u3-plate.enemy { border-color:rgba(160,160,220,0.5); }
 .u3-plate.moved { opacity:.62; }
 .u3-plate.fleeing { border-color:#ff6020; }
-.u3-plate img.tok { width:20px; height:20px; border-radius:50%; object-fit:cover; border:2px solid var(--pc); }
+.u3-plate img.tok { width:17px; height:17px; border-radius:50%; object-fit:cover; border:2px solid var(--pc); }
 .u3-plate img.st { width:13px; height:13px; opacity:.9; }
 .u3-bars { display:flex; flex-direction:column; gap:2px; }
-.u3-bar { width:38px; height:4px; background:#1a0a04; border-radius:2px; overflow:hidden; }
+.u3-bar { width:30px; height:3px; background:#1a0a04; border-radius:2px; overflow:hidden; }
 .u3-bar > i { display:block; height:100%; }
 .u3-name { max-width:70px; overflow:hidden; text-overflow:ellipsis; }
 #view3d-loading { position:absolute; inset:0; z-index:3; display:flex; flex-direction:column; align-items:center; justify-content:center;
@@ -69,6 +75,10 @@ export async function mountGameView(bridge, { container }) {
     console.warn('[3D] unit layer unavailable', e);
   }
 
+  const preview = createPathPreview(world);
+  let view = null;
+  const ui = createGameUI({ world, container, bridge, getView: () => view });
+
   // --- Input: click vs drag, hover, context menu ---
   let down = null;
   canvas.addEventListener('pointerdown', (e) => {
@@ -93,7 +103,7 @@ export async function mountGameView(bridge, { container }) {
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   let lastMove = null;
   canvas.addEventListener('pointermove', (e) => { lastMove = e; });
-  canvas.addEventListener('pointerleave', () => { lastMove = null; hovered = null; bridge.hover(null); world.layers.setHover(null); });
+  canvas.addEventListener('pointerleave', () => { lastMove = null; hovered = null; bridge.hover(null); world.layers.setHover(null); preview.clear(); ui.showAttackTip(null); });
   let hovered = null;
 
   // --- Unit plates (HTML overlays following the formations) ---
@@ -158,6 +168,7 @@ export async function mountGameView(bridge, { container }) {
   }
   function syncNow() {
     dirty = false;
+    ui.applyHour();
     const st = bridge.state;
     const ds = bridge.deployState;
     const inBattle = !!(st && st.phase === 'battle');
@@ -218,22 +229,52 @@ export async function mountGameView(bridge, { container }) {
     return _v.set(p.x, world.groundHeight(p.x, p.z) + 0.7, p.z);
   }
 
-  function frame() {
+  function frame(dt = 0.016) {
     if (!view.active) return;
     if (dirty) syncNow();
     if (lastMove) {
-      const hex = world.pickHex(lastMove.clientX, lastMove.clientY);
-      const key = hex ? hexKey(hex.q, hex.r) : null;
+      const e = lastMove;
+      lastMove = null;
+      const pt = world.pickPoint(e.clientX, e.clientY);
+      const hex = pt ? world.worldToHex(pt.x, pt.z) : null;
+      const valid = hex && world.allHexes.has(hexKey(hex.q, hex.r)) ? hex : null;
+      const key = valid ? hexKey(valid.q, valid.r) : null;
       if (key !== (hovered && hexKey(hovered.q, hovered.r))) {
-        hovered = hex;
-        world.layers.setHover(hex, bridge.attackableTiles.has(key) ? '#ff6040' : bridge.movableTiles.has(key) ? '#a0ff70' : '#ffd25a');
-        if (units3d) {
-          const u = hex && shownUnits.find((x) => x.q === hex.q && x.r === hex.r);
-          units3d.setHovered(u ? u.id : null);
+        hovered = valid;
+        const sel = bridge.selectedUnit;
+        const attackable = key && bridge.attackableTiles.has(key);
+        const movable = key && bridge.movableTiles.has(key);
+        world.layers.setHover(valid, attackable ? '#ff6040' : movable ? '#a0ff70' : '#ffd25a');
+        const hu = valid && shownUnits.find((x) => x.q === valid.q && x.r === valid.r);
+        if (units3d) units3d.setHovered(hu ? hu.id : null);
+        for (const el of plateEls.values()) el.classList.toggle('hov', !!(hu && el._unit.id === hu.id));
+        if (sel && movable) {
+          const res = bridge.pathTo(sel, valid.q, valid.r);
+          preview.showPath(res ? [[sel.q, sel.r], ...res.path.slice(1)] : null);
+        } else preview.showPath(null);
+        if (sel && attackable && hu) {
+          preview.showAttack(anchorOf(sel).clone().setY(anchorOf(sel).y - 0.35), anchorOf(hu).clone().setY(anchorOf(hu).y - 0.35), (sel.range || 1) > 1);
+        } else preview.showAttack(null, null);
+      }
+      const sel = bridge.selectedUnit;
+      const hu = valid && shownUnits.find((x) => x.q === valid.q && x.r === valid.r);
+      if (sel && hu && key && bridge.attackableTiles.has(key)) ui.showAttackTip(sel, hu, e);
+      else ui.showAttackTip(null);
+      // Segment tooltip when hovering close to a hex edge (terrain overlay mode)
+      let segShown = false;
+      if (bridge.showTerrain && valid && pt) {
+        const c = world.hexToWorld(valid.q, valid.r);
+        const ang = Math.atan2(pt.z - c.z, pt.x - c.x);
+        const r = Math.hypot(pt.x - c.x, pt.z - c.z);
+        if (r > 0.62) {
+          const DIRS6 = [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]];
+          const edge = ((Math.floor(((ang < 0 ? ang + Math.PI * 2 : ang)) / (Math.PI / 3)) % 6) + 6) % 6;
+          const [dq, dr] = DIRS6[edge];
+          const seg = bridge.segmentAt(valid.q, valid.r, valid.q + dq, valid.r + dr);
+          if (seg) { bridge.segmentTooltip(seg, e); segShown = true; }
         }
       }
-      bridge.hover(hex, lastMove);
-      lastMove = null;
+      if (!segShown) bridge.hover(valid, e);
     }
     if (units3d) {
       for (const u of shownUnits) {
@@ -248,8 +289,12 @@ export async function mountGameView(bridge, { container }) {
         }
       }
     }
+    ui.update(dt);
+    preview.update(dt);
     const camDist = world.camera.position.distanceTo(world.controls.target);
-    const showPlates = camDist < 55;
+    const pm = ui.platesMode();
+    const showPlates = !ui.photo && (pm === 'always' || (pm === 'auto' && camDist < 48));
+    plates.classList.toggle('names', camDist < 14);
     plates.style.display = showPlates ? '' : 'none';
     if (showPlates) {
       for (const el of plateEls.values()) {
@@ -258,14 +303,12 @@ export async function mountGameView(bridge, { container }) {
         if (!s.visible) { el.style.display = 'none'; continue; }
         el.style.display = '';
         el.style.transform = `translate(${s.x.toFixed(1)}px, ${s.y.toFixed(1)}px) translate(-50%, -100%)`;
-        el.style.left = '0';
-        el.style.top = '0';
       }
     }
   }
   world.frameHooks.push(frame);
 
-  const view = {
+  view = {
     active: false,
     world,
     markDirty() { dirty = true; },
@@ -274,9 +317,31 @@ export async function mountGameView(bridge, { container }) {
       if (!view.active) return;
       if (event === 'combat_result') {
         const log = data.combatLog || data;
-        if (units3d && log && log.attackerId != null && log.targetId != null) {
-          const impact = units3d.playAttack(log.attackerId, log.targetId, { ranged: !!log.ranged });
-          units3d.playHit(log.targetId, { delay: typeof impact === 'number' ? impact : 0.5 });
+        if (log && log.attackerId != null && log.targetId != null) {
+          const att = shownUnits.find((u) => u.id === log.attackerId);
+          const tgt = shownUnits.find((u) => u.id === log.targetId);
+          let impact = log.ranged ? 0.9 : 0.45;
+          if (units3d) {
+            const r = units3d.playAttack(log.attackerId, log.targetId, { ranged: !!log.ranged });
+            if (typeof r === 'number') impact = r;
+            units3d.playHit(log.targetId, { delay: impact });
+          }
+          if (att && tgt && ui.staging()) {
+            const a = anchorOf(att).clone(), b = anchorOf(tgt).clone();
+            const mid = a.clone().lerp(b, 0.5);
+            mid.y = world.groundHeight(mid.x, mid.z);
+            const off = world.camera.position.clone().sub(world.controls.target);
+            if (off.length() > 22) off.setLength(22);
+            world.flyTo(mid.clone().add(off), mid, 0.8);
+          }
+          if (tgt) {
+            const tA = anchorOf(tgt).clone();
+            if (log.hit === false) ui.floatText(tA, 'Raté', 'miss', impact);
+            else if (log.dmgReceived != null) ui.floatText(tA, `-${log.dmgReceived}`, '', impact);
+            if (log.moralDmg) ui.floatText(tA.clone().setY(tA.y - 0.25), `-${log.moralDmg} moral`, 'morale', impact + 0.25);
+            if (log.targetKilled) ui.floatText(tA.clone().setY(tA.y + 0.3), 'Détruite !', 'kill', impact + 0.5);
+          }
+          if (att && log.counterDmgReceived) ui.floatText(anchorOf(att).clone(), `-${log.counterDmgReceived}`, '', impact + 0.6);
         }
       } else if (event === 'ping') {
         world.layers.addPing(data.q, data.r, data.color || '#ffd700');
@@ -285,6 +350,7 @@ export async function mountGameView(bridge, { container }) {
     },
     setActive(on) {
       view.active = on;
+      ui.hide(!on);
       canvas.style.display = on ? '' : 'none';
       plates.style.display = on ? '' : 'none';
       world.setRunning(on);
