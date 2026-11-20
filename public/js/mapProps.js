@@ -49,34 +49,42 @@
     if (!ramparts.length && !props.length) return;
     const lw = (opts && opts.lineWidth) || s * 0.06;
     ctx.save();
+    // ramparts: one thick wall through the centres of neighbouring rampart hexes (and on to adjacent gates), as in 3D
     const set = new Set(ramparts);
-    const corner = (c, i) => ({ x: c.x + s * Math.cos(Math.PI / 3 * i), y: c.y + s * Math.sin(Math.PI / 3 * i) });
+    const gates = new Set(props.filter((p) => p.type === 'porte').map((p) => `${p.q},${p.r}`));
+    const links = [];
     for (const k of ramparts) {
       const [q, r] = k.split(',').map(Number);
-      const c = toXY(q, r);
-      ctx.beginPath();
-      for (let i = 0; i < 6; i++) { const p = corner(c, i); if (i) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); }
-      ctx.closePath();
-      ctx.fillStyle = 'rgba(138,128,112,0.92)';
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(70,62,52,0.6)';
-      ctx.lineWidth = lw * 0.5;
-      ctx.stroke();
-      // battlements on the edges that face a non-rampart neighbour
-      for (let d = 0; d < 6; d++) {
-        const nk = `${q + DIRS[d][0]},${r + DIRS[d][1]}`;
-        if (set.has(nk)) continue;
-        const n = toXY(q + DIRS[d][0], r + DIRS[d][1]);
-        const ang = Math.atan2(n.y - c.y, n.x - c.x);
-        // corners of the shared edge are at angle ±30° from the neighbour direction
-        const a = { x: c.x + s * Math.cos(ang - Math.PI / 6), y: c.y + s * Math.sin(ang - Math.PI / 6) };
-        const b = { x: c.x + s * Math.cos(ang + Math.PI / 6), y: c.y + s * Math.sin(ang + Math.PI / 6) };
-        ctx.strokeStyle = '#2b2620';
-        ctx.lineWidth = lw * 2.2;
-        ctx.setLineDash([s * 0.16, s * 0.1]);
-        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-        ctx.setLineDash([]);
+      for (const [dq, dr] of DIRS) {
+        const nk = `${q + dq},${r + dr}`;
+        if ((set.has(nk) && nk > k) || gates.has(nk)) links.push([toXY(q, r), toXY(q + dq, r + dr), gates.has(nk)]);
       }
+    }
+    const strokeLinks = (width, style, dash) => {
+      ctx.strokeStyle = style;
+      ctx.lineWidth = width;
+      ctx.setLineDash(dash || []);
+      ctx.beginPath();
+      for (const [a, b, toGate] of links) {
+        const e = toGate ? { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } : b;
+        ctx.moveTo(a.x, a.y); ctx.lineTo(e.x, e.y);
+      }
+      ctx.stroke();
+    };
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    strokeLinks(s * 1.25, 'rgba(43,38,32,0.9)');
+    strokeLinks(s * 1.05, 'rgba(150,140,122,0.96)');
+    strokeLinks(s * 0.16, 'rgba(43,38,32,0.75)', [s * 0.16, s * 0.12]);
+    ctx.lineCap = 'butt';
+    for (const k of ramparts) {
+      const [q, r] = k.split(',').map(Number);
+      if (DIRS.some(([dq, dr]) => set.has(`${q + dq},${r + dr}`) || gates.has(`${q + dq},${r + dr}`))) continue;
+      const c = toXY(q, r);
+      ctx.fillStyle = 'rgba(150,140,122,0.96)';
+      ctx.strokeStyle = 'rgba(43,38,32,0.9)';
+      ctx.lineWidth = lw;
+      ctx.beginPath(); ctx.arc(c.x, c.y, s * 0.55, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     }
     for (const p of props) {
       const c = toXY(p.q, p.r);
