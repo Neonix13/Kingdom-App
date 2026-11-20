@@ -192,7 +192,7 @@ function setMode(mode) {
   KBNet.send('set_mode', { mode });
 }
 
-const SETTING_KEYS = ['turnsPerHalfDay', 'maxTurns', 'victoryPoints', 'turnTimer', 'spectatorVision'];
+const SETTING_KEYS = ['turnsPerHalfDay', 'maxTurns', 'victoryPoints', 'turnTimer', 'spectatorVision', 'planningTimer', 'commandPoints'];
 
 function setSetting(el) {
   const key = el.dataset.setting;
@@ -205,7 +205,7 @@ function setSetting(el) {
       if (lastLobby) renderSettings(lastLobby);
       return;
     }
-    if (key === 'turnTimer' && value > 0 && value < 15) {
+    if ((key === 'turnTimer' || key === 'planningTimer') && value > 0 && value < 15) {
       notify('Minuteur : 0 (désactivé) ou au moins 15 secondes.');
       if (lastLobby) renderSettings(lastLobby);
       return;
@@ -222,6 +222,10 @@ function renderGameSettings(data, host) {
     if (document.activeElement !== el && settings[key] !== undefined) el.value = settings[key];
     el.disabled = !host;
   }
+  const sim = data.mode === 'simultaneous';
+  document.querySelectorAll('.sim-only').forEach(el => { el.style.display = sim ? '' : 'none'; });
+  const tt = document.getElementById('set-turnTimer');
+  if (tt && tt.closest('.input-group')) tt.closest('.input-group').style.display = sim ? 'none' : '';
 }
 
 function pickColor(hex) {

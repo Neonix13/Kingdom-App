@@ -117,6 +117,16 @@
             <input type="number" id="set-turnTimer" data-setting="turnTimer" value="0" min="0" max="600" step="5" onchange="setSetting(this)">
             <div class="hint">0 = sans minuteur, sinon 15 à 600 s.</div>
           </div>
+          <div class="input-group sim-only" style="display:none">
+            <label for="set-planningTimer">Minuteur de planification (secondes)</label>
+            <input type="number" id="set-planningTimer" data-setting="planningTimer" value="90" min="0" max="600" step="5" onchange="setSetting(this)">
+            <div class="hint">Mode simultané : 0 = sans minuteur, sinon 15 à 600 s. À l'expiration, les ordres donnés sont exécutés.</div>
+          </div>
+          <div class="input-group sim-only" style="display:none">
+            <label for="set-commandPoints">Points de commandement par tour</label>
+            <input type="number" id="set-commandPoints" data-setting="commandPoints" value="0" min="0" max="50" step="1" onchange="setSetting(this)">
+            <div class="hint">Mode simultané : nombre d'unités pouvant recevoir un ordre. 0 = 2 + Stratégie du général / 3.</div>
+          </div>
           <div class="input-group">
             <label for="set-spectatorVision">Vision des spectateurs</label>
             <select id="set-spectatorVision" data-setting="spectatorVision" onchange="setSetting(this)">

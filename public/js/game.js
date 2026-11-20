@@ -589,6 +589,7 @@ function render() {
   drawForestTrees(ctx);
 
   if (gameState) drawObjectives(ctx);
+  if (window.KBSim) KBSim.draw(ctx);
 
   // Overlays de terrain (si activé) — par dessus les arbres
   if (showTerrain) {
@@ -905,6 +906,7 @@ canvas.addEventListener('mouseleave', hideTerrainTooltip);
 canvas.addEventListener('mouseup', () => { isDragging = false; });
 canvas.addEventListener('contextmenu', (e) => {
   e.preventDefault();
+  if (window.KBSim && KBSim.active()) { KBSim.contextMenu(getHexUnderMouse(e), e.clientX, e.clientY); return; }
   if (gameState?.phase !== 'battle' || gameState?.currentPlayerId !== myId) return;
   const hex = getHexUnderMouse(e);
   const unit = gameState.units.find(u => u.q === hex.q && u.r === hex.r && u.isMine);
@@ -1012,6 +1014,7 @@ function handleHexClick(hex) {
     handleDeployClick(hex);
     return;
   }
+  if (window.KBSim && KBSim.active()) { KBSim.click(hex); return; }
 
   if (selectedUnit) {
     // Clic sur case de déplacement → déplacer
@@ -1103,6 +1106,7 @@ function handleDeployClick(hex) {
 }
 
 function selectUnit(unit) {
+  if (window.KBSim && KBSim.active()) { KBSim.select(unit); return; }
   selectedUnit = unit;
   movableTiles.clear();
   attackableTiles.clear();
@@ -2429,6 +2433,7 @@ function initGame() {
 }
 
 function wsDispatch(event, data) {
+  if (window.KBSim && KBSim.intercept(event, data)) return;
   if (window.view3d) window.view3d.onEvent(event, data);
   if (window.gameEventHooks) for (const h of window.gameEventHooks) { try { h(event, data); } catch (e) { console.warn(e); } }
   switch (event) {
@@ -2522,6 +2527,7 @@ function wsDispatch(event, data) {
       renderUnitList();
       updateActionButtons();
       render();
+      if (window.KBSim) KBSim.onState(data);
       if (pendingTurnPopup && pendingTurnPopup.playerId === data.currentPlayerId) {
         const ptp = pendingTurnPopup;
         pendingTurnPopup = null;
@@ -2725,6 +2731,7 @@ window.gameBridge = {
     if (unit) showUnitCard(unit);
   },
   contextMenu(hex, clientX, clientY) {
+    if (window.KBSim && KBSim.active()) { KBSim.contextMenu(hex, clientX, clientY); return; }
     if (gameState?.phase !== 'battle' || gameState?.currentPlayerId !== myId || !hex) return;
     const unit = gameState.units.find(u => u.q === hex.q && u.r === hex.r && u.isMine);
     if (!unit) return;
@@ -2738,6 +2745,7 @@ window.gameBridge = {
   },
   redraw2D() { resizeCanvas(); },
   pathTo(unit, tq, tr) {
+    if (window.KBSim && KBSim.active()) return KBSim.pathTo(unit, tq, tr);
     if (!unit || unit.q == null) return null;
     const target = `${tq},${tr}`;
     if (!movableTiles.has(target)) return null;
@@ -2747,6 +2755,11 @@ window.gameBridge = {
     path.unshift([unit.q, unit.r]);
     return { path, cost: dist.get(target) };
   },
+  // Simultaneous mode (public/js/simultaneous.js): planning, my planned orders, playback of the resolution
+  get simultaneous() { return !!(window.KBSim && KBSim.isSim()); },
+  get planning() { return window.KBSim ? KBSim.planning() : null; },
+  get plannedOrders() { return window.KBSim ? KBSim.plannedOrders() : []; },
+  get playback() { return window.KBSim ? KBSim.playbackInfo() : null; },
   segmentAt(q1, r1, q2, r2) {
     const t = segmentData[segmentEdgeKey(q1, r1, q2, r2)];
     return t || null;

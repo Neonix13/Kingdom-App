@@ -1,0 +1,700 @@
+// Kingdom Battleground — 2D client of the simultaneous mode (loaded after game.js, shares its globals).
+// Planning: select a unit, click a hex (move), an enemy (attack, or charge with the Charge tool), set stance / facing /
+// motivation / ability in the side panel; orders are kept by the server (set_orders) and shown as arrows.
+// Playback: the `resolution` timeline is replayed tick by tick on gameState.units (unitAnimations drive the 2D and 3D
+// views); ws events received meanwhile (new game_state, captures, game over...) are applied once the playback ends.
+// Local events for the 3D / audio layers (window.view3d.onEvent + window.gameEventHooks):
+//   playback_start { turn, ticks }, playback_tick { turn, t, index }, unit_move_anim { unitId, fromQ, fromR, path, playback: true },
+//   combat_result { combatLog, playback: true, kind }, ambush {...}, playback_end { turn }
+(function () {
+  const S = KBRules.RULES.simultaneous;
+  const DEFERRED = new Set(['game_state', 'planning_start', 'objective_captured', 'time_change', 'game_over', 'units_fled', 'turn_auto_ended', 'planning_timeout']);
+  const ORDER_LABEL = { move: 'Déplacement', attack: 'Attaque', charge: 'Charge', hold: 'Tenir', motivate: 'Motiver' };
+  const FACING_BTNS = [{ idx: 3, label: '↖' }, { idx: 2, label: '↑' }, { idx: 1, label: '↗' }, { idx: 4, label: '↙' }, { idx: 5, label: '↓' }, { idx: 0, label: '↘' }];
+
+  const st = {
+    orders: {},          // my orders as stored by the server
+    cp: { max: 0, used: 0 },
+    committed: false,
+    committedIds: [],
+    lastStatus: null,    // freshest commit_status { turn, committed }
+    turn: null,
+    endsAt: null,
+    startsAt: null,
+    tool: null,          // 'charge' | 'ability' (waiting for a click)
+    playback: null,
+    tickSent: 0,
+    popupTurn: null,
+  };
+
+  function isSim() {
+    return !!gameState && gameState.mode === 'simultaneous' && (gameState.phase === 'battle' || gameState.phase === 'ended');
+  }
+  function me() { return gameState && gameState.players.find(p => p.id === myId); }
+  function canPlan() {
+    const p = me();
+    return isSim() && gameState.phase === 'battle' && !isSpectator && !!p && !p.isEliminated && !st.committed && !st.playback;
+  }
+  function myUnit(id) { return (gameState?.myUnits || []).find(u => u.id === id) || (gameState?.units || []).find(u => u.id === id && u.isMine); }
+  function anyUnit(id) { return (gameState?.units || []).find(u => u.id === id); }
+
+  function emitLocal(event, data) {
+    if (window.view3d) { try { window.view3d.onEvent(event, data); } catch (e) { console.warn(e); } }
+    if (window.gameEventHooks) for (const h of window.gameEventHooks) { try { h(event, data); } catch (e) { console.warn(e); } }
+  }
+
+  function send(action, data = {}) { wsSend(action, { roomCode, ...data }); }
+
+  // ---------- movement preview: same rules as the server (paths checked by cost; only visible enemies block) ----------
+  function budgetFor(unit, order = st.orders[unit.id]) {
+    let b = unit.speedRemaining || 0;
+    if (order && order.stance && order.stance !== unit.stance) b -= S.stanceCost;
+    if (order && order.facing != null) b -= S.facingCost;
+    return Math.max(0, KBRules.snap(b));
+  }
+
+  function reach(unit, budget) {
+    const enemies = new Set((gameState?.units || []).filter(u => !u.isMine).map(u => `${u.q},${u.r}`));
+    return KBRules.reachable(movementTable(), {
+      start: { q: unit.q, r: unit.r }, maxCost: budget, mounted: KBRules.isMounted(unit),
+      hexAt: (k) => (k in mapHeight ? { terrain: terrainData[k] || 'plain', height: mapHeight[k] || 0 } : null),
+      blocked: (k) => enemies.has(k),
+      segAt: (a, b, c, d) => segmentData[segmentEdgeKey(a, b, c, d)] || null,
+    });
+  }
+
+  function clearTiles() {
+    movableTiles.clear(); attackableTiles.clear();
+    rangeTiles.clear(); rangeCenter = null; motivateTiles.clear(); motivateCenter = null;
+  }
+
+  function computeTiles(unit) {
+    clearTiles();
+    if (!unit || !canPlan() || unit.isFleeing) return;
+    const { dist } = reach(unit, budgetFor(unit));
+    for (const k of dist.keys()) movableTiles.add(k);
+    movableTiles.delete(`${unit.q},${unit.r}`);
+    for (const e of gameState.units) if (!e.isMine) attackableTiles.add(`${e.q},${e.r}`);
+    if (unit.range > 1) computeRangeTiles(unit);
+    if (unit.isGeneral) computeMotivateTiles(unit);
+  }
+
+  // ---------- orders ----------
+  function setOrder(unitId, order) {
+    if (!canPlan()) return;
+    send('set_orders', { orders: { [unitId]: order } });
+  }
+
+  function current(unit) { return st.orders[unit.id] || null; }
+
+  function patchOrder(unit, patch) {
+    const o = { type: 'hold', ...(current(unit) || {}), ...patch };
+    for (const k of Object.keys(o)) if (o[k] === undefined) delete o[k];
+    if (o.type !== 'move') delete o.path;
+    if (o.type !== 'attack' && o.type !== 'charge') delete o.targetId;
+    // a stance or facing change shrinks the budget: drop a path that no longer fits
+    if (o.type === 'move' && o.path) {
+      const { dist } = reach(unit, budgetFor(unit, o));
+      const last = o.path[o.path.length - 1];
+      if (!dist.has(`${last[0]},${last[1]}`)) { o.type = 'hold'; delete o.path; notify('Chemin trop long avec ce changement : déplacement annulé.', 'info'); }
+    }
+    setOrder(unit.id, o);
+  }
+
+  function describe(order, unit) {
+    if (!order) return 'Aucun ordre : l\'unité tient sa position.';
+    const parts = [ORDER_LABEL[order.type] || order.type];
+    if (order.type === 'move' && order.path) parts[0] += ` (${order.path.length} case${order.path.length > 1 ? 's' : ''})`;
+    if (order.targetId) {
+      const t = anyUnit(order.targetId);
+      parts[0] += ` → ${t ? t.name : 'cible'}`;
+      if (order.type === 'attack' && unit && unit.range > 1) parts[0] += ' (tir dès qu\'elle est à portée)';
+    }
+    if (order.stance) parts.push(`posture ${stanceNames[order.stance] || order.stance}`);
+    if (order.facing != null) parts.push('orientation');
+    if (order.ability) parts.push('capacité');
+    return parts.join(' · ');
+  }
+
+  // ---------- selection / clicks ----------
+  function select(unit) {
+    if (!isSim()) return;
+    selectedUnit = unit && unit.isMine ? unit : null;
+    st.tool = null;
+    computeTiles(selectedUnit);
+    showUnitDetail(selectedUnit || unit || null);
+    renderStancePanel(null);
+    updateActionButtons();
+    renderPanel();
+    render();
+  }
+
+  function click(hex) {
+    if (!hex || !isSim()) return;
+    const key = `${hex.q},${hex.r}`;
+    const unitAt = (gameState.units || []).find(u => u.q === hex.q && u.r === hex.r);
+    if (!canPlan()) { if (unitAt) showUnitDetail(unitAt); return; }
+    if (selectedUnit) {
+      const sel = myUnit(selectedUnit.id) || selectedUnit;
+      if (unitAt && !unitAt.isMine) {
+        const type = st.tool === 'charge' ? 'charge' : 'attack';
+        if (type === 'charge' && sel.range > 1) { notify('Les tireurs ne chargent pas.', 'info'); return; }
+        patchOrder(sel, { type, targetId: unitAt.id });
+        st.tool = null;
+        return;
+      }
+      if (unitAt && unitAt.isMine) {
+        if (unitAt.id === sel.id) { select(null); return; }
+        select(unitAt);
+        return;
+      }
+      if (movableTiles.has(key)) {
+        const path = pathTo(sel, hex.q, hex.r);
+        if (path) patchOrder(sel, { type: 'move', path: path.path.slice(1) });
+        return;
+      }
+      select(null);
+      return;
+    }
+    if (unitAt && unitAt.isMine) select(unitAt);
+    else if (unitAt) showUnitDetail(unitAt);
+  }
+
+  function pathTo(unit, tq, tr) {
+    if (!unit || unit.q == null || !canPlan()) return null;
+    const target = `${tq},${tr}`;
+    if (!movableTiles.has(target)) return null;
+    const { dist, prev } = reach(unit, budgetFor(unit));
+    const path = KBRules.pathFromPrev(prev, `${unit.q},${unit.r}`, target);
+    if (!path) return null;
+    path.unshift([unit.q, unit.r]);
+    return { path, cost: dist.get(target) };
+  }
+
+  function contextMenu(hex, clientX, clientY) {
+    if (!hex || !canPlan()) return;
+    const unit = gameState.units.find(u => u.q === hex.q && u.r === hex.r && u.isMine);
+    if (!unit) return;
+    document.getElementById('facing-popup')?.remove();
+    const popup = document.createElement('div');
+    popup.id = 'facing-popup';
+    Object.assign(popup.style, { position: 'fixed', left: `${clientX - 54}px`, top: `${clientY - 40}px`, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '3px', background: 'rgba(10,5,0,0.95)', border: '1px solid #5a3c10', borderRadius: '8px', padding: '6px', zIndex: '1000' });
+    const o = current(unit);
+    for (const { idx, label } of FACING_BTNS) {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.className = 'sim-facing-btn' + ((o && o.facing === idx) ? ' active' : '');
+      b.onclick = () => { patchOrder(unit, { facing: o && o.facing === idx ? undefined : idx }); popup.remove(); };
+      popup.appendChild(b);
+    }
+    document.body.appendChild(popup);
+    setTimeout(() => document.addEventListener('click', () => popup.remove(), { once: true }), 0);
+  }
+
+  // ---------- side panel (orders of the selected unit) and bottom bar (commit, timer, status) ----------
+  function ensureDom() {
+    if (document.getElementById('sim-bar')) return;
+    const css = document.createElement('style');
+    css.textContent = `
+      #sim-bar { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); z-index:300; display:none; align-items:center; gap:12px;
+        background:rgba(12,6,2,0.94); border:1px solid #5a3c10; border-radius:10px; padding:8px 14px; box-shadow:0 2px 14px #000a; color:#e0c080; font-size:0.9em; }
+      #sim-bar .sim-cp { color:#ffd700; font-weight:bold; }
+      #sim-bar .sim-timer { min-width:46px; text-align:center; font-variant-numeric:tabular-nums; }
+      #sim-bar .sim-chip { padding:2px 7px; border-radius:10px; border:1px solid #3a2408; font-size:0.85em; white-space:nowrap; }
+      #sim-bar .sim-chip.ok { border-color:#4a8020; color:#a0e080; }
+      #sim-commit { padding:8px 20px; font-weight:bold; background:#1a3a08; border:2px solid #4a8020; color:#a0e080; border-radius:7px; cursor:pointer; }
+      #sim-commit.cancel { background:#3a2408; border-color:#7a5820; color:#e0c080; }
+      #sim-commit:disabled { opacity:0.5; cursor:default; }
+      #sim-panel { padding:6px 8px; border-top:1px solid #3a2408; font-size:0.8em; color:#c8a060; display:none; }
+      #sim-panel h4 { margin:0 0 4px; color:#ffd700; font-size:0.95em; }
+      #sim-panel .sim-row { display:flex; flex-wrap:wrap; gap:4px; margin:4px 0; }
+      #sim-panel .sim-desc { color:#e0c080; margin-bottom:4px; }
+      #sim-panel button, .sim-facing-btn { background:#1a0f04; border:1px solid #3a2408; color:#a89060; cursor:pointer; padding:3px 7px; font-size:0.95em; border-radius:3px; }
+      #sim-panel button:hover, .sim-facing-btn:hover { border-color:#7a5820; color:#e0c080; }
+      #sim-panel button.active, .sim-facing-btn.active { border-color:#c8960c; background:#3a2408; color:#ffd700; }
+      .sim-facing-btn { width:30px; height:30px; font-size:16px; }
+      #sim-panel .sim-label { color:#7a5820; font-size:0.85em; margin-top:6px; }
+    `;
+    document.head.appendChild(css);
+    const bar = document.createElement('div');
+    bar.id = 'sim-bar';
+    bar.innerHTML = '<span id="sim-phase"></span><span class="sim-cp" id="sim-cp"></span><span class="sim-timer" id="sim-timer"></span><span id="sim-status"></span><button id="sim-commit"></button>';
+    document.body.appendChild(bar);
+    document.getElementById('sim-commit').onclick = onCommitClick;
+    const panel = document.createElement('div');
+    panel.id = 'sim-panel';
+    const anchor = document.getElementById('action-panel');
+    anchor.parentNode.insertBefore(panel, anchor);
+  }
+
+  function onCommitClick() {
+    if (st.playback) { skipPlayback(); return; }
+    if (!isSim() || isSpectator) return;
+    if (st.committed) send('cancel_commit');
+    else send('commit_orders', { turn: gameState.turn });
+  }
+
+  function fmt(ms) {
+    const s = Math.max(0, Math.ceil(ms / 1000));
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  }
+
+  function renderBar() {
+    ensureDom();
+    const bar = document.getElementById('sim-bar');
+    if (!isSim() || gameState.phase !== 'battle') { bar.style.display = 'none'; return; }
+    bar.style.display = 'flex';
+    const btn = document.getElementById('sim-commit');
+    const phase = document.getElementById('sim-phase');
+    if (st.playback) {
+      phase.textContent = `Résolution du tour ${st.playback.data.turn}…`;
+      document.getElementById('sim-cp').textContent = '';
+      document.getElementById('sim-status').innerHTML = '';
+      btn.textContent = 'Passer ⏭';
+      btn.className = 'cancel';
+      btn.disabled = false;
+      btn.style.display = '';
+      return;
+    }
+    phase.textContent = `Tour ${gameState.turn} · Planification`;
+    document.getElementById('sim-cp').textContent = isSpectator ? '' : `Ordres ${st.cp.used}/${st.cp.max}`;
+    const alive = gameState.players.filter(p => !p.isEliminated);
+    document.getElementById('sim-status').innerHTML = alive.map(p => {
+      const ok = st.committedIds.includes(p.id);
+      return `<span class="sim-chip${ok ? ' ok' : ''}" style="color:${ok ? '' : p.color}" title="${ok ? 'Ordres prêts' : 'Planifie…'}">${ok ? '✓ ' : '… '}${escapeHtml(p.name)}</span>`;
+    }).join(' ');
+    const p = me();
+    btn.style.display = isSpectator || !p || p.isEliminated ? 'none' : '';
+    btn.textContent = st.committed ? 'Modifier les ordres' : 'Ordres prêts ✓';
+    btn.className = st.committed ? 'cancel' : '';
+    btn.disabled = false;
+  }
+
+  function renderPanel() {
+    ensureDom();
+    const panel = document.getElementById('sim-panel');
+    const unit = selectedUnit && myUnit(selectedUnit.id);
+    if (!canPlan() || !unit) { panel.style.display = 'none'; return; }
+    panel.style.display = 'block';
+    const o = current(unit);
+    const melee = (unit.range || 1) <= 1;
+    let html = `<h4>Ordre : ${escapeHtml(unit.name)}</h4><div class="sim-desc">${escapeHtml(describe(o, unit))}</div>`;
+    html += `<div class="sim-label">Vitesse disponible : ${fmtSpeed(budgetFor(unit))} / ${fmtSpeed(unit.speedRemaining)} · clic sur une case verte = déplacement, sur un ennemi = ${melee ? 'attaque (approche puis frappe)' : 'tir (dès qu\'il est à portée)'}</div>`;
+    html += '<div class="sim-row">';
+    html += `<button data-a="hold">Tenir</button>`;
+    if (melee) html += `<button data-a="charge" class="${st.tool === 'charge' ? 'active' : ''}" title="Choisissez ensuite la cible : bonus si ≥ ${S.charge.minHexes} cases parcourues">Charger…</button>`;
+    if (unit.isGeneral) html += `<button data-a="motivate" class="${o && o.type === 'motivate' ? 'active' : ''}">Motiver</button>`;
+    if (unit.isGeneral && unit.activeAbility) {
+      const cd = unit.abilityCooldown > 0;
+      html += `<button data-a="ability" class="${o && o.ability ? 'active' : ''}" ${cd ? 'disabled' : ''} title="${escapeHtml(unit.activeAbility.description || '')}">${escapeHtml(unit.activeAbility.name)}${cd ? ` (${unit.abilityCooldown})` : ''}</button>`;
+    }
+    html += `<button data-a="clear">Annuler l'ordre</button></div>`;
+    if (!unit.isGeneral) {
+      html += `<div class="sim-label">Posture (coût ${S.stanceCost} vitesse, au début de la résolution)</div><div class="sim-row">`;
+      for (const s of stanceList) {
+        const active = (o && o.stance) ? o.stance === s : unit.stance === s;
+        html += `<button data-stance="${s}" class="${active ? 'active' : ''}">${escapeHtml(stanceNames[s] || s)}</button>`;
+      }
+      html += '</div>';
+    }
+    html += `<div class="sim-label">Orientation finale (coût ${S.facingCost}) — ou clic droit sur l'unité</div><div class="sim-row">`;
+    for (const { idx, label } of FACING_BTNS) html += `<button data-facing="${idx}" class="sim-facing-btn${o && o.facing === idx ? ' active' : ''}">${label}</button>`;
+    html += '</div>';
+    if (unit.isGeneral && unit.activeAbility && unit.activeAbility.target === 'enemy_army' && st.tool === 'ability') {
+      html += '<div class="sim-label">Armée ciblée</div><div class="sim-row">';
+      for (const p of gameState.players) if (p.id !== myId && !p.isEliminated) html += `<button data-ability-target="${escapeHtml(p.id)}" style="color:${p.color}">${escapeHtml(p.name)}</button>`;
+      html += '</div>';
+    }
+    panel.innerHTML = html;
+    panel.querySelectorAll('button[data-a]').forEach(b => { b.onclick = () => panelAction(unit, b.dataset.a); });
+    panel.querySelectorAll('button[data-stance]').forEach(b => {
+      const s = b.dataset.stance;
+      b.onclick = () => { hideStanceTooltip(); patchOrder(unit, { stance: s === unit.stance ? undefined : s }); };
+      b.addEventListener('mouseenter', e => showStanceTooltip(e, s));
+      b.addEventListener('mousemove', positionStanceTooltip);
+      b.addEventListener('mouseleave', hideStanceTooltip);
+    });
+    panel.querySelectorAll('button[data-facing]').forEach(b => {
+      const f = Number(b.dataset.facing);
+      b.onclick = () => patchOrder(unit, { facing: o && o.facing === f ? undefined : f });
+    });
+    panel.querySelectorAll('button[data-ability-target]').forEach(b => {
+      b.onclick = () => { st.tool = null; patchOrder(unit, { ability: { targetId: b.dataset.abilityTarget } }); };
+    });
+  }
+
+  function panelAction(unit, a) {
+    const o = current(unit);
+    if (a === 'hold') patchOrder(unit, { type: 'hold' });
+    else if (a === 'clear') setOrder(unit.id, null);
+    else if (a === 'charge') { st.tool = st.tool === 'charge' ? null : 'charge'; notify(st.tool ? 'Charge : cliquez sur l\'unité ennemie visée.' : 'Charge annulée.', 'info'); renderPanel(); }
+    else if (a === 'motivate') patchOrder(unit, { type: o && o.type === 'motivate' ? 'hold' : 'motivate' });
+    else if (a === 'ability') {
+      if (o && o.ability) patchOrder(unit, { ability: undefined });
+      else if (unit.activeAbility.target === 'enemy_army') { st.tool = 'ability'; renderPanel(); }
+      else patchOrder(unit, { ability: {} });
+    }
+  }
+
+  // ---------- drawing of the planned orders (2D) ----------
+  function arrowHead(ctx, from, to, size) {
+    const ang = Math.atan2(to.y - from.y, to.x - from.x);
+    ctx.beginPath();
+    ctx.moveTo(to.x, to.y);
+    ctx.lineTo(to.x - size * Math.cos(ang - 0.45), to.y - size * Math.sin(ang - 0.45));
+    ctx.lineTo(to.x - size * Math.cos(ang + 0.45), to.y - size * Math.sin(ang + 0.45));
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function draw(ctx) {
+    if (!isSim() || st.playback || gameState.phase !== 'battle') return;
+    const color = getPlayerColor(myId);
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const order of plannedOrders()) {
+      const u = myUnit(order.unitId);
+      if (!u) continue;
+      const p0 = hexToPixel(u.q, u.r);
+      const selected = selectedUnit && selectedUnit.id === u.id;
+      ctx.globalAlpha = selected ? 1 : 0.8;
+      if (order.type === 'move' && order.path) {
+        const pts = [p0, ...order.path.map(([q, r]) => hexToPixel(q, r))];
+        ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = selected ? 5 : 3.5;
+        ctx.setLineDash(st.committed ? [] : [10, 7]);
+        ctx.beginPath(); pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); ctx.stroke();
+        ctx.setLineDash([]);
+        arrowHead(ctx, pts[pts.length - 2], pts[pts.length - 1], 14);
+      } else if ((order.type === 'attack' || order.type === 'charge') && order.target) {
+        const p1 = hexToPixel(order.target.q, order.target.r);
+        const ranged = (u.range || 1) > 1;
+        ctx.strokeStyle = order.type === 'charge' ? '#ff9020' : '#ff3020';
+        ctx.fillStyle = ctx.strokeStyle;
+        ctx.lineWidth = order.type === 'charge' ? 6 : 3.5;
+        ctx.setLineDash(ranged ? [3, 8] : []);
+        ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke();
+        ctx.setLineDash([]);
+        arrowHead(ctx, p0, p1, order.type === 'charge' ? 20 : 15);
+      } else if (order.type === 'motivate') {
+        ctx.strokeStyle = 'rgba(80,180,255,0.9)'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(p0.x, p0.y, HEX_SIZE * 0.95, 0, Math.PI * 2); ctx.stroke();
+      }
+      const tags = [];
+      if (order.type === 'hold') tags.push('Tenir');
+      if (order.stance) tags.push(stanceNames[order.stance] || order.stance);
+      if (order.ability) tags.push('⚡');
+      if (order.facing != null) {
+        const a = FACING_ANGLES[order.facing];
+        ctx.strokeStyle = '#ffd700'; ctx.fillStyle = '#ffd700'; ctx.lineWidth = 2.5;
+        const end = { x: p0.x + Math.cos(a) * HEX_SIZE * 0.95, y: p0.y + Math.sin(a) * HEX_SIZE * 0.95 };
+        const mid = { x: p0.x + Math.cos(a) * HEX_SIZE * 0.55, y: p0.y + Math.sin(a) * HEX_SIZE * 0.55 };
+        ctx.beginPath(); ctx.moveTo(mid.x, mid.y); ctx.lineTo(end.x, end.y); ctx.stroke();
+        arrowHead(ctx, mid, end, 8);
+      }
+      if (tags.length) {
+        ctx.globalAlpha = 1;
+        ctx.font = `bold ${Math.round(HEX_SIZE * 0.32)}px sans-serif`;
+        ctx.textAlign = 'center';
+        const text = tags.join(' · ');
+        const w = ctx.measureText(text).width + 8;
+        ctx.fillStyle = 'rgba(10,5,0,0.8)';
+        ctx.fillRect(p0.x - w / 2, p0.y + HEX_SIZE * 0.55, w, HEX_SIZE * 0.42);
+        ctx.fillStyle = '#ffd700';
+        ctx.fillText(text, p0.x, p0.y + HEX_SIZE * 0.88);
+      }
+    }
+    // hover preview of a move
+    if (selectedUnit && hoveredHex && canPlan() && movableTiles.has(`${hoveredHex.q},${hoveredHex.r}`)) {
+      const sel = myUnit(selectedUnit.id);
+      const pv = sel && pathTo(sel, hoveredHex.q, hoveredHex.r);
+      if (pv) {
+        ctx.globalAlpha = 0.6;
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.5; ctx.setLineDash([4, 6]);
+        ctx.beginPath(); pv.path.forEach(([q, r], i) => { const p = hexToPixel(q, r); if (i) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); }); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+    ctx.restore();
+  }
+
+  // Orders as data, for the 3D view: [{ unitId, type, path: [[q, r]...] (origin included), target: { id, q, r } | null, stance, facing, ability }]
+  function plannedOrders() {
+    if (!isSim()) return [];
+    const out = [];
+    for (const [unitId, o] of Object.entries(st.orders)) {
+      const u = myUnit(unitId);
+      if (!u) continue;
+      const t = o.targetId ? anyUnit(o.targetId) : null;
+      out.push({ unitId, type: o.type, path: o.path ? [[u.q, u.r], ...o.path] : null, target: t ? { id: t.id, q: t.q, r: t.r } : null, stance: o.stance || null, facing: o.facing != null ? o.facing : null, ability: o.ability || null, ranged: (u.range || 1) > 1 });
+    }
+    return out;
+  }
+
+  function planning() {
+    if (!isSim()) return null;
+    return { turn: gameState.turn, endsAt: st.endsAt, startsAt: st.startsAt, commandPoints: { ...st.cp }, committed: st.committed, committedIds: st.committedIds.slice(), canPlan: canPlan(), tool: st.tool };
+  }
+
+  // ---------- state sync ----------
+  function applyPlanning(pl) {
+    if (!pl) return;
+    st.turn = pl.turn;
+    st.endsAt = pl.endsAt;
+    st.startsAt = pl.startsAt;
+    if (pl.myOrders) st.orders = pl.myOrders;
+    if (pl.commandPoints) st.cp = pl.commandPoints;
+    if (pl.myCommitted != null) st.committed = pl.myCommitted;
+    st.committedIds = st.lastStatus && st.lastStatus.turn === pl.turn ? st.lastStatus.committed : (pl.committed || []);
+  }
+
+  function onState(data) {
+    if (!isSim()) { const bar = document.getElementById('sim-bar'); if (bar) bar.style.display = 'none'; return; }
+    applyPlanning(data.planning);
+    const p = me();
+    document.getElementById('top-current-player').textContent = data.phase !== 'battle' ? '' : isSpectator ? 'Planification des généraux' : p && p.isEliminated ? 'Éliminé' : st.committed ? 'Ordres prêts — en attente des autres' : '✍ Donnez vos ordres';
+    document.getElementById('sidebar-title').textContent = isSpectator ? 'Spectateur' : `Tour ${data.turn} · ordres secrets`;
+    document.getElementById('top-turn').textContent = `Tour ${data.turn}${data.settings?.maxTurns ? '/' + data.settings.maxTurns : ''} · Simultané`;
+    document.getElementById('turn-order-panel').style.display = 'none';
+    if (selectedUnit) {
+      const u = myUnit(selectedUnit.id);
+      selectedUnit = u || null;
+      computeTiles(selectedUnit);
+      if (!u) showUnitDetail(null);
+    }
+    renderBar();
+    renderPanel();
+    render();
+    const replaying = st.playback || (data.planning && data.planning.playbackEndsAt && data.planning.playbackEndsAt > Date.now() && data.planning.turn > 1);
+    if (data.phase === 'battle' && st.popupTurn !== data.turn && !replaying && !isSpectator && p && !p.isEliminated) {
+      st.popupTurn = data.turn;
+      showTurnPopup(`Tour ${data.turn}`, 'Donnez vos ordres', p.color || '#ffd700');
+    }
+  }
+
+  function onOrders(data) {
+    st.orders = data.orders || {};
+    st.cp = data.commandPoints || st.cp;
+    st.committed = !!data.committed;
+    if (selectedUnit) computeTiles(myUnit(selectedUnit.id));
+    renderBar(); renderPanel(); render();
+  }
+
+  function onCommitStatus(data) {
+    st.lastStatus = { turn: data.turn, committed: data.committed || [] };
+    if (gameState && data.turn === gameState.turn) {
+      st.committedIds = st.lastStatus.committed;
+      const mine = st.committedIds.includes(myId);
+      if (mine !== st.committed) {
+        st.committed = mine;
+        if (mine) { selectedUnit = null; clearTiles(); showUnitDetail(null); }
+        else if (selectedUnit) computeTiles(myUnit(selectedUnit.id));
+      }
+      document.getElementById('top-current-player').textContent = isSpectator ? 'Planification des généraux' : st.committed ? 'Ordres prêts — en attente des autres' : '✍ Donnez vos ordres';
+    }
+    renderBar(); renderPanel(); render();
+  }
+
+  // ---------- playback ----------
+  function tickDuration(tk) {
+    return S.playback.tickMs + (tk.events.some(e => e.k === 'combat') ? S.playback.combatMs : 0);
+  }
+
+  function startPlayback(data) {
+    if (!gameState) return;
+    if (st.playback) finishPlayback(true);
+    const prev = new Map((gameState.units || []).map(u => [u.id, u]));
+    const units = (data.start && data.start.units ? data.start.units : gameState.units).map(su => ({ ...(prev.get(su.id) || {}), ...su, isMine: su.playerId === myId }));
+    const restore = gameState;
+    gameState = { ...gameState, units };
+    selectedUnit = null; clearTiles(); showUnitDetail(null);
+    st.tool = null;
+    st.playback = { data, restore, deferred: [], index: 0, timer: null, killTimers: [] };
+    document.getElementById('top-current-player').textContent = `Résolution du tour ${data.turn}`;
+    renderBar(); renderPanel();
+    emitLocal('playback_start', { turn: data.turn, ticks: data.ticks.length, seed: data.seed });
+    // reconnection: jump over the ticks already played
+    let skip = data.elapsedMs || 0;
+    while (st.playback.index < data.ticks.length && skip >= tickDuration(data.ticks[st.playback.index])) {
+      skip -= tickDuration(data.ticks[st.playback.index]);
+      applyTick(data.ticks[st.playback.index], false);
+      st.playback.index++;
+    }
+    render();
+    nextTick();
+  }
+
+  function nextTick() {
+    const pb = st.playback;
+    if (!pb) return;
+    if (pb.index >= pb.data.ticks.length) { pb.timer = setTimeout(() => finishPlayback(false), 400); return; }
+    const tk = pb.data.ticks[pb.index++];
+    emitLocal('playback_tick', { turn: pb.data.turn, t: tk.t, index: pb.index - 1 });
+    applyTick(tk, true);
+    pb.timer = setTimeout(nextTick, tickDuration(tk));
+  }
+
+  function removeUnit(id) {
+    gameState.units = gameState.units.filter(u => u.id !== id);
+  }
+
+  function applyTick(tk, animate) {
+    const now = performance.now();
+    let moved = false;
+    for (const e of tk.events) {
+      const u = e.u ? anyUnit(e.u) : null;
+      switch (e.k) {
+        case 'move': case 'flee': {
+          if (!u) break;
+          if (animate) {
+            unitAnimations[u.id] = { path: [e.to], fromQ: e.from[0], fromR: e.from[1], startTime: now };
+            emitLocal('unit_move_anim', { unitId: u.id, fromQ: e.from[0], fromR: e.from[1], path: [e.to], playback: true });
+            moved = true;
+          }
+          u.q = e.to[0]; u.r = e.to[1];
+          if (e.f != null) u.facing = e.f;
+          break;
+        }
+        case 'appear':
+          if (!u && e.unit) gameState.units.push({ ...e.unit, q: e.at[0], r: e.at[1], isMine: e.unit.playerId === myId });
+          else if (u) { u.q = e.at[0]; u.r = e.at[1]; }
+          break;
+        case 'vanish': case 'fled':
+          if (e.k === 'fled' && animate && u) notify(`${u.name} a fui le champ de bataille.`, 'info');
+          removeUnit(e.u);
+          break;
+        case 'stance': if (u) u.stance = e.s; break;
+        case 'facing': if (u) u.facing = e.f; break;
+        case 'ability': {
+          const log = { abilityUsed: e.name, playerId: e.playerId, targetPlayerId: e.targetPlayerId, effects: e.effects || [] };
+          if (animate) { showCombatResult(log); addCombatLog(log); emitLocal('combat_result', { combatLog: log, playback: true, kind: 'ability' }); }
+          break;
+        }
+        case 'motivate':
+          if (animate && u) notify(e.success ? `${u.name} motive ses troupes (${e.count} unité(s)).` : `${u.name} ne parvient pas à motiver ses troupes.`, e.success ? 'success' : 'info');
+          break;
+        case 'ambush':
+          if (animate) {
+            const mine = e.byPlayerId === myId;
+            notify(mine ? 'Embuscade ! Une de vos unités cachées a surpris l\'ennemi.' : 'Embuscade ! Votre unité est tombée sur un ennemi caché.', mine ? 'success' : 'error');
+            activePings.push({ q: e.q, r: e.r, color: '#ff4020', startTime: performance.now() });
+            emitLocal('ambush', { unitId: e.u, playerId: e.playerId, byUnitId: e.by, byPlayerId: e.byPlayerId, q: e.q, r: e.r, playback: true });
+          }
+          break;
+        case 'combat': applyCombat(e, animate); break;
+        case 'shot_lost':
+          if (animate && u) notify(`${u.name} : tir perdu, la cible n'est jamais passée à portée.`, 'info');
+          break;
+        default: break;
+      }
+    }
+    if (moved) startAnimLoop();
+    render();
+  }
+
+  function applyCombat(e, animate) {
+    const log = e.log;
+    const att = log.attackerId ? anyUnit(log.attackerId) : null;
+    const tgt = log.targetId ? anyUnit(log.targetId) : null;
+    if (tgt) {
+      if (log.targetVitalityLeft != null) tgt.vitality = log.targetVitalityLeft;
+      if (log.targetMoraleLeft != null) { tgt.morale = log.targetMoraleLeft; if (tgt.morale <= 0 && !tgt.isGeneral) tgt.isFleeing = true; }
+    }
+    if (att && log.attackerVitalityLeft != null) att.vitality = log.attackerVitalityLeft;
+    if (animate) {
+      if (e.charge === 'bonus') notify(`Charge de ${log.attackerName} !`, 'info');
+      else if (e.charge === 'stopped') notify(`La charge de ${log.attackerName} se brise sur les lances !`, 'info');
+      showCombatResult(log);
+      addCombatLog(log);
+      addCombatHistory(log, st.playback ? st.playback.data.turn : gameState.turn);
+      emitLocal('combat_result', { combatLog: log, playback: true, kind: e.kind });
+    }
+    // the dead leave the board after the blow has been staged (the 3D view looks them up when the event fires)
+    const dead = [];
+    if (log.targetKilled && log.targetId) dead.push(log.targetId);
+    if (log.attackerKilled && log.attackerId) dead.push(log.attackerId);
+    if (!dead.length) return;
+    if (!animate) { dead.forEach(removeUnit); return; }
+    const pb = st.playback;
+    const t = setTimeout(() => { dead.forEach(removeUnit); render(); }, Math.min(S.playback.combatMs, 1000));
+    if (pb) pb.killTimers.push({ t, dead });
+  }
+
+  function skipPlayback() {
+    const pb = st.playback;
+    if (!pb) return;
+    clearTimeout(pb.timer);
+    finishPlayback(true);
+  }
+
+  function finishPlayback(skipped) {
+    const pb = st.playback;
+    if (!pb) return;
+    clearTimeout(pb.timer);
+    for (const k of pb.killTimers) clearTimeout(k.t);
+    st.playback = null;
+    gameState = pb.restore;
+    for (const id of Object.keys(unitAnimations)) delete unitAnimations[id];
+    emitLocal('playback_end', { turn: pb.data.turn, skipped: !!skipped });
+    const queue = pb.deferred;
+    for (const [event, data] of queue) wsDispatch(event, data);
+    if (!queue.some(([ev]) => ev === 'game_state') && gameState) onState(gameState);
+    render();
+  }
+
+  // ---------- ws events ----------
+  function intercept(event, data) {
+    if (st.playback && DEFERRED.has(event)) { st.playback.deferred.push([event, data]); return true; }
+    switch (event) {
+      case 'resolution':
+        emitLocal(event, data);
+        startPlayback(data);
+        return true;
+      case 'planning_start':
+        st.turn = data.turn; st.endsAt = data.endsAt; st.startsAt = data.startsAt;
+        if (data.commandPoints) st.cp = { ...st.cp, max: data.commandPoints.max };
+        emitLocal(event, data);
+        renderBar();
+        return true;
+      case 'planning_timeout':
+        notify('Temps de planification écoulé : les ordres donnés sont exécutés.', 'info');
+        emitLocal(event, data);
+        return true;
+      case 'commit_status':
+        emitLocal(event, data);
+        onCommitStatus(data);
+        return true;
+      case 'orders_update':
+        emitLocal(event, data);
+        onOrders(data);
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  setInterval(() => {
+    const el = document.getElementById('sim-timer');
+    if (!el) return;
+    if (!isSim() || gameState.phase !== 'battle' || st.playback || !st.endsAt) { el.textContent = ''; return; }
+    const now = Date.now();
+    if (st.startsAt && now < st.startsAt) { el.textContent = `⏱ ${fmt(st.endsAt - st.startsAt)}`; return; }
+    const left = st.endsAt - now;
+    el.textContent = `⏱ ${fmt(left)}`;
+    el.style.color = left <= 10000 ? '#ff6040' : '#c8960c';
+    // deadlines are processed when a message reaches the server (lambda): nudge it when the timer runs out
+    if (left < -1000 && now - st.tickSent > 5000) { st.tickSent = now; send('tick'); }
+  }, 500);
+
+  window.KBSim = {
+    isSim,
+    active: () => isSim() && gameState.phase === 'battle',
+    intercept, onState, click, select, contextMenu, pathTo, draw,
+    plannedOrders, planning,
+    playbackInfo() {
+      const pb = st.playback;
+      return pb ? { turn: pb.data.turn, seed: pb.data.seed, tick: pb.index, ticks: pb.data.ticks.length, durationMs: pb.data.durationMs } : null;
+    },
+    skipPlayback,
+  };
+})();
