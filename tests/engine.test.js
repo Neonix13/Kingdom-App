@@ -126,3 +126,15 @@ test('déploiement : on ne voit pas les positions adverses', () => {
   room.placeUnit('p1', room.getPlayer('p1').units[0].id, t.q, t.r);
   assert.deepEqual(room.getDeploymentState('p0').occupiedHexes, {});
 });
+
+test('vitesse de début de tour : au moins 1 (une unité lente au repos ou en forêt peut toujours changer de posture)', () => {
+  const room = battleRoom();
+  const u = room.getPlayer('p0').units.find(x => x.typeId === 'soldats');
+  u.stance = 'repos';
+  room._initUnitSpeedForTurn(u);
+  assert.equal(u.speedRemaining, 1);
+  assert.ok(room.changeStance('p0', u.id, 'combat').ok);
+  u.isFleeing = true;
+  room._initUnitSpeedForTurn(u);
+  assert.equal(u.speedRemaining, Math.floor(u.speed / 2));
+});

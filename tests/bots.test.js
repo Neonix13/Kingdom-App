@@ -268,3 +268,42 @@ test('IA : mode simultané (ordres secrets) jusqu\'à la fin de la partie', { ti
   assert.equal(h.protocol.bots.stats.failures, 0, JSON.stringify(h.protocol.bots.stats.errors));
   assert.deepEqual(h.errors, []);
 });
+
+test('IA : général seul face à une armée vue -> abandon ; face au seul général adverse -> il le cherche', () => {
+  const { getProfile } = require('../game/bots/profiles');
+  const { buildWorld, loneGeneralGoal } = require('../game/bots/world');
+  const room = new GameRoom('SURR1', null, { mapId: 'test-small' });
+  bots.addBot(room, { id: 'b_one', difficulty: 'veteran', generalId: 'ou_ki' });
+  bots.addBot(room, { id: 'b_two', difficulty: 'veteran', generalId: 'mou_bu' });
+  room.hostId = 'b_one';
+  room.startGame();
+  for (const p of room.players) assert.ok(room.submitArmy(p.id, [{ typeId: 'soldats', count: 2 }]).ok);
+  room.startDeployment();
+  for (const p of room.players) {
+    const tiles = p.startingZone.tiles;
+    p.units.forEach((u, j) => assert.ok(room.placeUnit(p.id, u.id, tiles[j * 2].q, tiles[j * 2].r).ok));
+    assert.ok(room.setDeploymentReady(p.id).ok);
+  }
+  room.startBattle();
+  const one = room.getPlayer('b_one'), two = room.getPlayer('b_two');
+  const vet = getProfile('veteran');
+  assert.equal(bots.shouldSurrender(room, 'b_one', vet), false, 'armée encore présente');
+
+  const g1 = one.units.find(u => u.isGeneral);
+  one.units = one.units.filter(u => u.isGeneral);
+  room._rebuildUnitMap();
+  const free = Object.values(room.hexMap).filter(h => hexDist(h, g1) >= 2 && hexDist(h, g1) <= 3 && !room.unitMap[`${h.q},${h.r}`] && !room._inCover(h.q, h.r) && room.getVisibleHexes('b_one').has(`${h.q},${h.r}`));
+  two.units.filter(u => !u.isGeneral).forEach((u, i) => { u.q = free[i].q; u.r = free[i].r; });
+  room._rebuildUnitMap();
+  assert.equal(bots.shouldSurrender(room, 'b_one', vet), true, 'général seul face à deux unités vues');
+  assert.equal(bots.shouldSurrender(room, 'b_one', getProfile('tutorial')), false, 'jamais dans le tutoriel');
+
+  two.units = two.units.filter(u => u.isGeneral);
+  room._rebuildUnitMap();
+  assert.equal(bots.shouldSurrender(room, 'b_one', vet), false, 'les cases vues vides font oublier les unités');
+  assert.ok(loneGeneralGoal(buildWorld(room, 'b_one')), 'général contre général : il part à sa recherche');
+});
+
+function hexDist(a, b) {
+  return (Math.abs(a.q - b.q) + Math.abs(a.r - b.r) + Math.abs(a.q + a.r - b.q - b.r)) / 2;
+}

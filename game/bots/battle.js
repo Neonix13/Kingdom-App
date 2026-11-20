@@ -6,7 +6,7 @@ const rules = require('../rules');
 const AIAgent = require('../../simulation/AIAgent');
 const { hexDistance, hexKey, segmentEdgeKey } = require('../HexUtils');
 const { distanceField, reachableGoal } = require('./pathing');
-const { buildWorld, inRange, unitValue, centroid, nearestHex } = require('./world');
+const { buildWorld, inRange, unitValue, centroid, nearestHex, loneGeneralGoal } = require('./world');
 const { rngFor, pick } = require('./rng');
 
 const { RULES } = rules;
@@ -159,6 +159,8 @@ function planGeneral(world, profile, g, rng, blunder) {
   const reach = reachFrom(world, g);
   if (!reach.size) return null;
   const troops = world.mine.filter(u => !u.isGeneral);
+  const hunt = loneGeneralGoal(world);
+  if (hunt) return approach(world, profile, g, reach, hunt, null);
   if (profile.caution === 0 && world.enemies.length) {
     // Reckless general: walks to the enemy like a soldier
     return approach(world, profile, g, reach, nearestEnemy(world, g).enemy, null);
@@ -198,6 +200,7 @@ function idleStance(world, profile, u) {
   const { dist } = nearestEnemy(world, u);
   const hurt = u.vitality < u.maxVitality * 0.7 || u.morale < u.maxMorale * 0.6;
   if (world.night && dist > 5 && hurt) return 'repos';
+  if (u.stance === 'repos') return dist > 4 ? 'marche' : isRanged(u) ? 'defense_distance' : 'combat';
   if (isRanged(u) && world.enemies.some(isRanged) && dist > 2) return 'defense_distance';
   if (!isRanged(u) && dist <= 2) return profile.focus >= 1 ? 'defense_combat' : 'combat';
   if (dist > 8 && u.stance === 'repos' && !world.night) return 'marche';

@@ -83,6 +83,74 @@ function guessEnemyCenter(room, player) {
   return searchRoute(room, player)[0];
 }
 
+// Memory of a bot player (process cache, like the search routes: a lambda cold start only forgets it).
+// enemies: last sighting of each enemy unit, forgotten when its hex is seen empty (cover hexes: only from up close)
+// or after MEMORY_TURNS; seen: last turn each hex was in sight; explore: current exploration target.
+const MEMORY_TURNS = 12;
+const EXPLORE_TURNS = 14;
+const memories = new Map();
+
+function memoryFor(room, player) {
+  const zone = player.startingZone && player.startingZone.tiles && player.startingZone.tiles[0];
+  const key = `${room.roomCode}|${room.mapId}|${player.id}|${player.generalId}|${zone ? `${zone.q},${zone.r}` : ''}`;
+  let m = memories.get(key);
+  if (!m || room.turn < m.turn) {
+    m = { turn: room.turn, enemies: new Map(), seen: new Map(), explore: null };
+    memories.set(key, m);
+    if (memories.size > 200) memories.delete(memories.keys().next().value);
+  }
+  return m;
+}
+
+function observe(room, player, m, vis, enemies, mine) {
+  const turn = room.turn;
+  m.turn = turn;
+  for (const k of vis) m.seen.set(k, turn);
+  const visibleIds = new Set();
+  for (const e of enemies) {
+    visibleIds.add(e.id);
+    m.enemies.set(e.id, { id: e.id, q: e.q, r: e.r, turn, isGeneral: !!e.isGeneral, playerId: e.playerId, value: unitValue(e) });
+  }
+  const close = (q, r) => mine.some(u => hexDistance(u.q, u.r, q, r) <= 1);
+  for (const [id, e] of m.enemies) {
+    if (visibleIds.has(id)) continue;
+    const owner = room.getPlayer(e.playerId);
+    const gone = !owner || owner.isEliminated || turn - e.turn > MEMORY_TURNS;
+    const k = hexKey(e.q, e.r);
+    if (gone || (vis.has(k) && (!room._inCover(e.q, e.r) || close(e.q, e.r)))) m.enemies.delete(id);
+  }
+}
+
+// Where to look for the enemy when none is in sight: the freshest sighting (the general first), else the first
+// unexplored point of the search route, else the hex of a coarse grid unseen for the longest time near the army
+function huntGoal(room, player, m, mine) {
+  const c = centroid(mine.filter(u => !u.isGeneral)) || centroid(mine) || room.mapCenter || { q: 0, r: 0 };
+  const remembered = [...m.enemies.values()];
+  if (remembered.length) {
+    const best = remembered.sort((a, b) => (b.turn - a.turn) || (b.isGeneral - a.isGeneral)
+      || hexDistance(a.q, a.r, c.q, c.r) - hexDistance(b.q, b.r, c.q, c.r))[0];
+    return { q: best.q, r: best.r, remembered: true };
+  }
+  const turn = room.turn;
+  const t = m.explore;
+  const reached = t && (m.seen.get(hexKey(t.q, t.r)) === turn || hexDistance(t.q, t.r, c.q, c.r) <= 1 || turn - t.since > EXPLORE_TURNS);
+  if (t && !reached) return t;
+  if (t) m.seen.set(hexKey(t.q, t.r), turn);
+  let next = searchRoute(room, player).find(p => !m.seen.has(hexKey(p.q, p.r)));
+  if (!next) {
+    let bs = -Infinity;
+    for (const h of Object.values(room.hexMap)) {
+      if (h.q % 3 || h.r % 3 || h.terrain === 'river') continue;
+      const seen = m.seen.get(hexKey(h.q, h.r));
+      const stale = Math.min(40, seen == null ? turn + 10 : turn - seen);
+      const s = stale - hexDistance(h.q, h.r, c.q, c.r) * 0.5;
+      if (s > bs) { bs = s; next = { q: h.q, r: h.r }; }
+    }
+  }
+  m.explore = next ? { q: next.q, r: next.r, since: turn } : null;
+  return m.explore || searchGoal(room, player);
+}
+
 // Waypoint of the search route for this turn: about 1 turn per 2.5 hexes of walk, plus 2 turns on each point
 function searchGoal(room, player) {
   const route = searchRoute(room, player);
@@ -110,17 +178,33 @@ function buildWorld(room, playerId) {
     }
   }
   const mine = player.units.filter(u => u.q !== null);
+  const memory = memoryFor(room, player);
+  observe(room, player, memory, vis, enemies, mine);
   const height = (q, r) => room.heightData[hexKey(q, r)] || 0;
   const blocked = (k) => {
     const o = room.unitMap[k];
     return !!o && room.canSee(playerId, o, o.q, o.r, vis);
   };
   return {
-    room, player, playerId, vis, enemies, mine, height, blocked,
+    room, player, playerId, vis, enemies, mine, height, blocked, memory,
     night: room.isNight(),
-    enemyGuess: searchGoal(room, player),
+    enemyGuess: huntGoal(room, player, memory, mine),
     terrainAt: (q, r) => room.terrainData[hexKey(q, r)] || 'plain',
   };
+}
+
+const hasArmy = (world) => world.mine.some(u => !u.isGeneral);
+const knownTroops = (world) => [...world.memory.enemies.values()].filter(e => !e.isGeneral).length;
+
+// A general left without an army hunts when it only knows of enemy generals (a duel settles the battle)
+function loneGeneralGoal(world) {
+  if (hasArmy(world) || knownTroops(world)) return null;
+  return world.enemyGuess;
+}
+
+// A general left alone against an army it has seen gives up (bots only)
+function hopeless(world) {
+  return !hasArmy(world) && knownTroops(world) >= 2;
 }
 
 // Same reach rule as GameRoom.initiateCombat: base range + height advantage
@@ -129,4 +213,4 @@ function inRange(world, unit, fq, fr, t) {
   return d >= 1 && d <= (unit.range || 1) + Math.max(0, world.height(fq, fr) - world.height(t.q, t.r));
 }
 
-module.exports = { buildWorld, inRange, unitValue, guessEnemyCenter, centroid, nearestHex };
+module.exports = { buildWorld, inRange, unitValue, guessEnemyCenter, centroid, nearestHex, loneGeneralGoal, hopeless };

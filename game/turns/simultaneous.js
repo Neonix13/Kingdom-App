@@ -129,6 +129,7 @@ function validateOrder(room, playerId, unit, raw) {
 
 const simultaneous = {
   id: 'simultaneous',
+  validateOrder,
 
   start(room) {
     room.turn = 1;

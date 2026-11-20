@@ -836,7 +836,8 @@ class GameRoom {
     }
     const stance = unit.isGeneral ? {} : this._getStanceMods(unit);
     const terrain = this._getTerrainMods(unit.q, unit.r);
-    let speed = Math.max(0, unit.speed + (stance.vitesse || 0) + terrain.vitesse);
+    // at least 1: a slow unit resting or fighting in a forest must still be able to leave its stance
+    let speed = Math.max(unit.speed > 0 ? 1 : 0, unit.speed + (stance.vitesse || 0) + terrain.vitesse);
     if (this.isNight() && speed > 0) speed = Math.max(1, speed - RULES.night.speedMalus);
     unit.speedRemaining = speed;
   }

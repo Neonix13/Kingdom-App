@@ -117,7 +117,12 @@ class Simulator {
 
     while (this.simultaneous && room.phase === 'battle' && turnCount < MAX_TURNS) {
       const { planOrders } = require('../game/bots/simultaneous');
+      const { shouldSurrender } = require('../game/bots');
       const profile = require('../game/bots/profiles').getProfile('veteran');
+      for (const pid of ['p1', 'p2']) {
+        if (shouldSurrender(room, pid, profile)) room.eliminatePlayer(pid);
+      }
+      if (room.phase !== 'battle') break;
       for (const pid of ['p1', 'p2']) {
         const res = room.turns.setOrders(room, pid, planOrders(room, pid, profile), true);
         if (res.error) room.turns.setOrders(room, pid, {}, true);
@@ -152,6 +157,11 @@ class Simulator {
 
       const turnResult = room.endTurn();
       turnCount++;
+      if (turnResult.newRound) {
+        const { shouldSurrender } = require('../game/bots');
+        const profile = require('../game/bots/profiles').getProfile('veteran');
+        for (const pid of ['p1', 'p2']) if (room.phase === 'battle' && shouldSurrender(room, pid, profile)) room.eliminatePlayer(pid);
+      }
 
       if (replay) {
         replay.frames.push({

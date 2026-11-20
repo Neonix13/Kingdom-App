@@ -10,6 +10,7 @@ const simultaneous = require('./simultaneous');
 const { setupTutorial, TUTORIAL } = require('./tutorial');
 const { rngFor, pick } = require('./rng');
 const { createBotRunner } = require('./runner');
+const { buildWorld, hopeless } = require('./world');
 
 const BOT_CONN_PREFIX = 'bot:';
 
@@ -86,6 +87,7 @@ function planStep(room) {
   for (const bot of list) {
     if (bot.isEliminated) continue;
     const profile = getProfile(bot.botDifficulty);
+    if (shouldSurrender(room, bot.id, profile)) return step(bot, 'leave_room', {}, 'battle');
     if (room.mode === 'simultaneous') {
       const s = simultaneous.planStep(room, bot, profile);
       if (s) return step(bot, s.action, s.data, 'plan');
@@ -96,6 +98,13 @@ function planStep(room) {
     if (s) return { ...step(bot, s.action, s.data, 'battle'), why: s.why };
   }
   return null;
+}
+
+// A bot whose general is left alone against an army it has seen leaves the battle (it would only hide until
+// the turn limit). Never in the tutorial.
+function shouldSurrender(room, playerId, profile) {
+  if (profile.hold || room.phase !== 'battle') return false;
+  return hopeless(buildWorld(room, playerId));
 }
 
 function stepDelay(room, s, cfg) {
@@ -109,7 +118,7 @@ function stepDelay(room, s, cfg) {
 
 module.exports = {
   BOT_CONN_PREFIX, DIFFICULTIES, PROFILES, TUTORIAL,
-  isBotConn, addBot, lobbyInfo, planStep, stepDelay, humanPresent,
+  isBotConn, addBot, lobbyInfo, planStep, stepDelay, humanPresent, shouldSurrender,
   setupTutorial: (room, opts) => setupTutorial(room, { ...opts, addBot }),
   createBotRunner: (deps) => createBotRunner({ ...deps, planStep, stepDelay }),
 };
