@@ -270,8 +270,122 @@ function renderGameSettings(data, host) {
   }
   const sim = data.mode === 'simultaneous';
   document.querySelectorAll('.sim-only').forEach(el => { el.style.display = sim ? '' : 'none'; });
-  const tt = document.getElementById('set-turnTimer');
-  if (tt && tt.closest('.input-group')) tt.closest('.input-group').style.display = sim ? 'none' : '';
+  const tt = document.getElementById('row-turnTimer');
+  if (tt) tt.style.display = sim ? 'none' : '';
+  const spec = document.getElementById('set-spectatorVision');
+  document.querySelectorAll('#spec-seg button').forEach(b => {
+    b.setAttribute('aria-checked', String(b.dataset.value === (spec ? spec.value : 'full')));
+    b.disabled = !host;
+  });
+  document.querySelectorAll('#ld-settings .ld-step').forEach(b => { b.disabled = !host; });
+  const box = document.getElementById('ld-settings');
+  if (box) box.classList.toggle('readonly', !host);
+}
+
+const MODE_SHORT = { sequential: 'Classique', simultaneous: 'Simultané' };
+const MODE_HINTS = {
+  sequential: "Chacun joue à son tour, dans l'ordre d'initiative tiré à chaque manche.",
+  simultaneous: 'Tous les joueurs donnent leurs ordres en secret, puis ils sont résolus en même temps.',
+};
+
+function renderModeSeg(modes, current, host) {
+  const box = document.getElementById('mode-seg');
+  if (!box) return;
+  box.innerHTML = modes.map(m => `<button type="button" role="radio" data-mode="${escapeHtml(m.id)}" aria-checked="${m.id === current}"${!host || !m.available ? ' disabled' : ''}>${escapeHtml(MODE_SHORT[m.id] || m.name)}</button>`).join('');
+  const hint = document.getElementById('mode-hint');
+  if (hint) hint.textContent = MODE_HINTS[current] || '';
+}
+
+// Settings panel: steppers, segmented controls (installed once)
+function initSettingsControls() {
+  const box = document.getElementById('ld-settings');
+  box.addEventListener('click', (e) => {
+    const step = e.target.closest('.ld-step');
+    if (step) {
+      const input = document.getElementById(step.dataset.for);
+      if (!input || input.disabled) return;
+      const dir = Number(step.dataset.step);
+      const min = Number(input.min), max = Number(input.max), inc = Number(input.step) || 1;
+      let v = (parseInt(input.value, 10) || 0) + dir * inc;
+      if (/Timer$/.test(input.id) && v > 0 && v < 15) v = dir > 0 ? 15 : 0;
+      v = Math.max(min, Math.min(max, v));
+      if (String(v) === input.value) return;
+      input.value = v;
+      input.dispatchEvent(new Event('change'));
+      return;
+    }
+    const mode = e.target.closest('#mode-seg button');
+    if (mode && !mode.disabled) { setMode(mode.dataset.mode); return; }
+    const spec = e.target.closest('#spec-seg button');
+    if (spec && !spec.disabled) {
+      const sel = document.getElementById('set-spectatorVision');
+      sel.value = spec.dataset.value;
+      setSetting(sel);
+    }
+  });
+}
+
+// Small map preview drawn from the map document (terrain, relief, deployment zones, objectives)
+const mapDocs = {};
+const PREVIEW_COLORS = { forest: [47, 74, 42], river: [61, 111, 154], road: [179, 155, 107], bridge: [150, 112, 70], building: [150, 58, 46] };
+function drawMapPreview(mapId) {
+  const cv = document.getElementById('map-preview');
+  if (!cv || !mapId) return;
+  if (!(mapId in mapDocs)) {
+    mapDocs[mapId] = null;
+    fetch('/api/maps/' + encodeURIComponent(mapId)).then(r => (r.ok ? r.json() : false)).catch(() => false).then(d => {
+      mapDocs[mapId] = d || false;
+      if (lastLobby && lastLobby.mapId === mapId) drawMapPreview(mapId);
+    });
+  }
+  const doc = mapDocs[mapId];
+  const meta = document.getElementById('map-meta');
+  cv.hidden = doc === false;
+  if (!doc) { if (meta) meta.textContent = ''; return; }
+  const ctx = cv.getContext('2d');
+  const W = cv.width, H = cv.height;
+  ctx.clearRect(0, 0, W, H);
+  const keys = Object.keys(doc.height || {});
+  if (!keys.length) return;
+  const S3 = Math.sqrt(3);
+  const pts = keys.map(k => { const [q, r] = k.split(',').map(Number); return { k, x: 1.5 * q, y: S3 * (q / 2 + r) }; });
+  const minX = Math.min(...pts.map(p => p.x)), maxX = Math.max(...pts.map(p => p.x));
+  const minY = Math.min(...pts.map(p => p.y)), maxY = Math.max(...pts.map(p => p.y));
+  const scale = Math.min((W - 8) / (maxX - minX + 2), (H - 8) / (maxY - minY + 2));
+  const ox = (W - (maxX - minX) * scale) / 2, oy = (H - (maxY - minY) * scale) / 2;
+  const maxH = Math.max(1, ...keys.map(k => doc.height[k] || 0));
+  const rad = scale * 1.02;
+  for (const p of pts) {
+    const t = doc.terrain && doc.terrain[p.k];
+    const base = PREVIEW_COLORS[t] || [104, 116, 78];
+    const lift = ((doc.height[p.k] || 0) / maxH) * 0.45;
+    const c = base.map(v => Math.round(v + (217 - v) * lift));
+    ctx.fillStyle = `rgb(${c[0]},${c[1]},${c[2]})`;
+    const x = ox + (p.x - minX) * scale, y = oy + (p.y - minY) * scale;
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) { const a = Math.PI / 3 * i; ctx.lineTo(x + rad * Math.cos(a), y + rad * Math.sin(a)); }
+    ctx.fill();
+  }
+  const at = (k) => { const [q, r] = String(k).split(',').map(Number); return [ox + (1.5 * q - minX) * scale, oy + (S3 * (q / 2 + r) - minY) * scale]; };
+  ctx.fillStyle = 'rgba(239,232,216,.55)';
+  for (const z of doc.zones || []) for (const k of z.tiles || []) { const [x, y] = at(k); ctx.fillRect(x - scale * 0.45, y - scale * 0.45, scale * 0.9, scale * 0.9); }
+  for (const o of doc.objectives || []) {
+    const [x, y] = at(`${o.q},${o.r}`);
+    ctx.fillStyle = '#D8352A'; ctx.strokeStyle = '#0E0D0C'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(x, y - 5); ctx.lineTo(x + 5, y); ctx.lineTo(x, y + 5); ctx.lineTo(x - 5, y); ctx.closePath(); ctx.fill(); ctx.stroke();
+  }
+  if (meta) {
+    const parts = [`${keys.length.toLocaleString('fr-FR')} cases`];
+    if ((doc.zones || []).length) parts.push(`${doc.zones.length} zones de déploiement fixes`);
+    else parts.push('zones de déploiement tirées au hasard');
+    if ((doc.objectives || []).length) parts.push(`${doc.objectives.length} objectif${doc.objectives.length > 1 ? 's' : ''}`);
+    meta.textContent = parts.join(' · ');
+  }
+}
+
+function onSealClick() {
+  if (lastLobby && lastLobby.hostId === myId) startGame();
+  else toggleLobbyReady();
 }
 
 function pickColor(hex) {
@@ -386,6 +500,8 @@ function generalFacts(g) {
   if (g.vitality) facts.push(['Vitalité', g.vitality]);
   if (g.weapon) facts.push(['Arme', `${g.weapon.name}${g.weapon.damage != null ? ' · ' + g.weapon.damage : ''}`]);
   if (g.armor != null) facts.push(['Armure', g.armor]);
+  if (g.power != null) facts.push(['Puissance', g.power]);
+  if (g.intimidation != null) facts.push(['Intimidation', g.intimidation]);
   return `<div class="ld-facts">${facts.map(([l, v]) => `<div><span>${l}</span><b>${escapeHtml(String(v))}</b></div>`).join('')}</div>`;
 }
 
@@ -405,8 +521,8 @@ function renderGenerals(takenList) {
   else if (isTaken(g)) status = '<span class="ld-gen-taken">Déjà choisi par un autre joueur</span>';
   else status = `<button class="ld-btn ld-btn-red" data-pick="${escapeHtml(g.id)}">Choisir ${escapeHtml(g.name)}</button>`;
   const abil = [];
-  if (g.activeAbility) abil.push(`<p><b>${escapeHtml(g.activeAbility.name)}</b> (capacité, recharge ${g.activeAbility.cooldown} tours) — ${escapeHtml(g.activeAbility.description)}</p>`);
-  if (g.passiveAbility) abil.push(`<p><b>${escapeHtml(g.passiveAbility.name)}</b> (passif) — ${escapeHtml(g.passiveAbility.description)}</p>`);
+  if (g.activeAbility) abil.push(`<div class="ld-abil-item"><span class="ld-abil-kind">Capacité active · recharge ${g.activeAbility.cooldown} tours</span><b>${escapeHtml(g.activeAbility.name)}</b><p>${escapeHtml(g.activeAbility.description)}</p></div>`);
+  if (g.passiveAbility) abil.push(`<div class="ld-abil-item"><span class="ld-abil-kind">Passif</span><b>${escapeHtml(g.passiveAbility.name)}</b><p>${escapeHtml(g.passiveAbility.description)}</p></div>`);
   grid.innerHTML = `
     <div class="ld-tabs" role="group" aria-label="Royaume">${KINGDOMS.map(k => `<button class="ld-tab" data-tab="${k.id}" aria-pressed="${k.id === genTab}" aria-label="${k.name}" title="${k.name}">${k.k}</button>`).join('')}</div>
     <div class="ld-gen">
@@ -418,7 +534,7 @@ function renderGenerals(takenList) {
         ${statBars(g)}
         ${generalFacts(g)}
         ${abil.length ? `<div class="ld-abil">${abil.join('')}</div>` : ''}
-        <div class="ld-gen-actions">${status}<button class="ld-btn" data-sheet="${escapeHtml(g.id)}">Fiche complète</button></div>
+        ${status ? `<div class="ld-gen-actions">${status}</div>` : ''}
       </div>
       ${scrollHtml(g)}
     </div>
@@ -433,7 +549,6 @@ function renderGenerals(takenList) {
     const t = e.target.closest('button');
     if (!t) return;
     if (t.dataset.tab) { genTab = t.dataset.tab; previewGeneralId = null; renderGenerals(lastTaken); return; }
-    if (t.dataset.sheet) { const x = GENERALS_DATA.find(y => y.id === t.dataset.sheet); if (x) showGeneralCard(x); return; }
     const id = t.dataset.pick || t.dataset.gen;
     if (!id) return;
     previewGeneralId = id;
@@ -441,58 +556,6 @@ function renderGenerals(takenList) {
     if (player && x && !isTaken(x) && id !== selectedGeneral) selectGeneral(id);
     renderGenerals(lastTaken);
   };
-  grid.ondblclick = (e) => {
-    const t = e.target.closest('[data-gen]');
-    const x = t && GENERALS_DATA.find(y => y.id === t.dataset.gen);
-    if (x) showGeneralCard(x);
-  };
-}
-
-function showGeneralCard(g) {
-  const imgEntry = GENERAL_IMAGE1_MAP[g.id];
-  const imgHtml = imgEntry
-    ? `<img class="uc-pdf-img" src="/assets/unites/GENERAL IMAGE 1-1/${encodeURIComponent(imgEntry.file)}.${imgEntry.ext}" alt="${g.name}">`
-    : `<div class="uc-pdf-img-placeholder">${kingdomInfo(g).k}</div>`;
-
-  const row2 = [
-    { label: 'Force',     value: g.force },
-    { label: 'Stratégie', value: g.strategy },
-    { label: 'Charisme',  value: g.charisma },
-  ];
-  const row3 = [
-    { label: 'Armure', value: g.armor },
-    { label: 'Arme',   value: g.weapon ? `${g.weapon.name} (${g.weapon.damage})` : '—' },
-  ];
-  const vit = `<div class="uc-pdf-stat"><div class="uc-pdf-stat-label">Vitalité</div><div class="uc-pdf-stat-value">${g.vitality}</div></div>`;
-  const r2 = row2.map(s => `<div class="uc-pdf-stat"><div class="uc-pdf-stat-label">${s.label}</div><div class="uc-pdf-stat-value">${s.value}</div></div>`).join('');
-  const r3 = row3.map(s => `<div class="uc-pdf-stat"><div class="uc-pdf-stat-label">${s.label}</div><div class="uc-pdf-stat-value">${s.value}</div></div>`).join('');
-  const statsHtml = vit + r2 + r3;
-
-  const bonusLines = [];
-  if (g.activeAbility) bonusLines.push(`<strong>Capacité active :</strong> ${g.activeAbility.name} — ${g.activeAbility.description} (recharge : ${g.activeAbility.cooldown} tours)`);
-  if (g.passiveAbility) bonusLines.push(`<strong>Passif :</strong> ${g.passiveAbility.name} — ${g.passiveAbility.description}`);
-  const bonusHtml = bonusLines.length
-    ? `<div class="uc-pdf-bonus">${bonusLines.join('<br>')}</div>`
-    : '';
-
-  const descHtml = g.citation
-    ? `<div class="uc-pdf-desc"><em>${g.citation}</em></div>`
-    : '';
-
-  document.getElementById('general-card-content').innerHTML = `
-    <div class="uc-pdf">
-      <div class="uc-pdf-left">
-        ${imgHtml}
-        ${bonusHtml}
-      </div>
-      <div class="uc-pdf-right">
-        <div class="uc-pdf-title">${g.name}<br><span>${escapeHtml(kingdomLabel(g).toUpperCase())}</span></div>
-        <div class="uc-pdf-stats">${statsHtml}</div>
-      </div>
-      ${descHtml}
-    </div>
-  `;
-  document.getElementById('overlay-general-card').style.display = 'flex';
 }
 
 function closeGeneralCard() {
@@ -559,7 +622,7 @@ function renderPlayerList(data) {
       const taken = !team && takenFlags.has(f.id);
       const active = f.id === p.flag;
       return `<button class="ld-flag-btn${active ? ' active' : ''}${taken ? ' taken' : ''}" title="${f.name}${taken ? ' (pris)' : ''}"
-        aria-label="Drapeau ${f.name}${taken ? ' (pris)' : ''}" aria-pressed="${active}"${taken ? ' disabled' : ` onclick="pickFlag('${f.id}')"`}><img src="/assets/flag/${f.file}" alt=""><span class="ld-brush">${f.k}</span></button>`;
+        aria-label="Drapeau ${f.name}${taken ? ' (pris)' : ''}" aria-pressed="${active}"${taken ? ' disabled' : ` onclick="pickFlag('${f.id}')"`}><img src="/assets/flag/${f.file}" alt=""></button>`;
     }).join('')}</div>` : '';
     let statusText, ready = false;
     if (!p.connected) statusText = 'hors ligne';
@@ -593,11 +656,12 @@ function renderSettings(data) {
   const mapSel = document.getElementById('map-select');
   const known = mapsList.length ? mapsList : [{ id: data.mapId, name: data.mapName || data.mapId }];
   if (!known.some(m => m.id === data.mapId)) known.push({ id: data.mapId, name: data.mapName || data.mapId });
-  mapSel.innerHTML = known.map(m => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)}${m.hexCount ? ` (${m.hexCount} cases)` : ''}</option>`).join('');
+  mapSel.innerHTML = known.map(m => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)}</option>`).join('');
   mapSel.value = data.mapId;
   mapSel.disabled = !host;
   const cur = known.find(m => m.id === data.mapId);
   document.getElementById('map-desc').textContent = cur && cur.description ? cur.description : '';
+  drawMapPreview(data.mapId);
   const budgetInput = document.getElementById('budget-input');
   if (document.activeElement !== budgetInput) budgetInput.value = data.budget;
   budgetInput.disabled = !host;
@@ -606,13 +670,14 @@ function renderSettings(data) {
   modeSel.innerHTML = modes.map(m => `<option value="${escapeHtml(m.id)}"${m.available ? '' : ' disabled'}>${escapeHtml(m.name)}</option>`).join('');
   modeSel.value = data.mode || 'sequential';
   modeSel.disabled = !host;
+  renderModeSeg(modes, data.mode || 'sequential', host);
   renderGameSettings(data, host);
   const team = document.getElementById('set-teamMode');
   if (team) { team.checked = !!(data.settings && data.settings.teamMode); team.disabled = !host; }
   const me = data.players.find(p => p.id === myId);
   const readyBtn = document.getElementById('lobby-ready-btn');
   if (readyBtn) {
-    readyBtn.style.display = myRole === 'player' && me ? '' : 'none';
+    readyBtn.style.display = host && myRole === 'player' && me ? '' : 'none';
     readyBtn.disabled = !me || !me.generalId || !me.flag;
     readyBtn.textContent = me && me.isReady ? 'Prêt ✓ (annuler)' : 'Je suis prêt';
     readyBtn.setAttribute('aria-pressed', me && me.isReady ? 'true' : 'false');
@@ -620,15 +685,29 @@ function renderSettings(data) {
   }
   document.getElementById('settings-hint').textContent = host ? 'Vous êtes l\'hôte : les paramètres s\'appliquent à tous.' : 'Seul l\'hôte peut modifier les paramètres.';
   const startBtn = document.getElementById('start-btn');
-  startBtn.style.display = host ? '' : 'none';
   const missing = data.players.filter(p => !p.generalId).length;
   const notReady = data.players.filter(p => !p.isBot && !p.isReady).length;
-  startBtn.disabled = missing > 0;
-  startBtn.setAttribute('aria-label', missing > 0 ? `Lancer la bataille (${missing} joueur(s) sans général)` : 'Lancer la bataille');
-  document.getElementById('ld-start-label').textContent = 'Lancer';
+  const label = document.getElementById('ld-start-label');
+  if (host) {
+    startBtn.style.display = '';
+    startBtn.disabled = missing > 0;
+    startBtn.classList.remove('done');
+    startBtn.removeAttribute('aria-pressed');
+    startBtn.setAttribute('aria-label', missing > 0 ? `Lancer la bataille (${missing} joueur(s) sans général)` : 'Lancer la bataille');
+    label.textContent = 'Lancer';
+  } else if (myRole === 'player' && me) {
+    startBtn.style.display = '';
+    startBtn.disabled = !me.generalId || !me.flag;
+    startBtn.classList.toggle('done', !!me.isReady);
+    startBtn.setAttribute('aria-pressed', me.isReady ? 'true' : 'false');
+    startBtn.setAttribute('aria-label', me.isReady ? 'Prêt — cliquer pour annuler' : 'Je suis prêt');
+    label.textContent = me.isReady ? 'Prêt ✓' : 'Prêt';
+  } else {
+    startBtn.style.display = 'none';
+  }
   document.getElementById('ld-start-hint').textContent = host
     ? (missing > 0 ? `${missing} joueur(s) sans général` : (data.players.length < 2 ? 'Ajoutez un joueur ou une IA.' : (notReady > 0 ? `${notReady} joueur(s) pas encore prêt(s) — vous pouvez lancer quand même.` : 'Tout le monde est prêt.')))
-    : (myRole === 'player' ? 'La bataille commence quand tous les joueurs sont prêts (ou quand l\'hôte la lance).' : '');
+    : (myRole === 'player' && me ? (!me.generalId ? 'Choisissez un général.' : !me.flag ? 'Choisissez un drapeau.' : me.isReady ? 'En attente des autres joueurs (cliquez pour annuler).' : 'Cliquez sur Prêt : la bataille commence quand tous les joueurs sont prêts.') : '');
   const settingsBox = document.getElementById('ld-settings');
   if (!settingsBox.dataset.touched && (!host || window.matchMedia('(max-width: 640px)').matches)) settingsBox.open = false;
 }
@@ -850,6 +929,7 @@ function initLobby() {
   loadBalanceData();
   const settingsBox = document.getElementById('ld-settings');
   settingsBox.addEventListener('toggle', () => { settingsBox.dataset.touched = '1'; });
+  initSettingsControls();
   fillSoloGenerals();
   KBNet.mountIndicator();
   const params = new URLSearchParams(location.search);
