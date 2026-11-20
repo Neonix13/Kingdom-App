@@ -458,6 +458,7 @@
     }
     window.toggleView3d = () => setView3d(!(window.view3d && window.view3d.active));
     if (localStorage.getItem('kb_view3d') === '1') setView3d(true);
+    import('/js/audio/gameAudio.js').then((m) => m.attachGameAudio(window.gameBridge)).catch((e) => console.warn('[audio]', e));
   </script>
 </body>
 </html>

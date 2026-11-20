@@ -2503,6 +2503,52 @@ window.gameBridge = {
     else hideTerrainTooltip();
   },
   redraw2D() { resizeCanvas(); },
+  pathTo(unit, tq, tr) {
+    if (!unit || unit.q == null) return null;
+    const target = `${tq},${tr}`;
+    if (!movableTiles.has(target)) return null;
+    const isCavalry = unit.category === 'Chevaux' || unit.category === 'Chars';
+    const dist = new Map([[`${unit.q},${unit.r}`, 0]]);
+    const prev = new Map();
+    const queue = [{ q: unit.q, r: unit.r, cost: 0 }];
+    const dirs = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
+    while (queue.length) {
+      queue.sort((a, b) => a.cost - b.cost);
+      const { q, r, cost } = queue.shift();
+      const k = `${q},${r}`;
+      if (k === target) break;
+      if (cost > dist.get(k)) continue;
+      for (const [dq, dr] of dirs) {
+        const nq = q + dq, nr = r + dr, nk = `${nq},${nr}`;
+        if (!movableTiles.has(nk)) continue;
+        const segType = segmentData[segmentEdgeKey(q, r, nq, nr)];
+        const segDef = segType ? SEGMENT_DEFS_CLIENT[segType] : null;
+        if (segDef && (segDef.infranchissable || (segDef.infranchissable_cavalerie && isCavalry))) continue;
+        let step = terrainMoveCost(k);
+        if (segDef) step = segDef.vitesse_fixe != null ? segDef.vitesse_fixe : step + Math.max(0, -(segDef.vitesse || 0));
+        const nc = cost + step;
+        if (!dist.has(nk) || nc < dist.get(nk)) { dist.set(nk, nc); prev.set(nk, k); queue.push({ q: nq, r: nr, cost: nc }); }
+      }
+    }
+    if (!prev.has(target)) return null;
+    const path = [];
+    for (let k = target; k; k = prev.get(k)) path.unshift(k.split(',').map(Number));
+    return { path, cost: dist.get(target) };
+  },
+  segmentAt(q1, r1, q2, r2) {
+    const t = segmentData[segmentEdgeKey(q1, r1, q2, r2)];
+    return t || null;
+  },
+  segmentTooltip(segType, e) { showTerrainTooltip(buildSegmentTooltip(segType), e); },
+  deselect() {
+    if (mode === 'deploy' || !selectedUnit) return;
+    selectedUnit = null;
+    movableTiles.clear(); attackableTiles.clear();
+    rangeTiles.clear(); rangeCenter = null; motivateTiles.clear(); motivateCenter = null;
+    updateActionButtons();
+    showUnitDetail(null);
+    render();
+  },
 };
 
 // Init

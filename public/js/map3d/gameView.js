@@ -51,7 +51,7 @@ export async function mountGameView(bridge, { container }) {
   container.appendChild(loading);
 
   const world = await createWorld({
-    canvas, container, persistKey: 'game3d', intro: false, hour: 15.5,
+    canvas, container, persistKey: 'game3d', intro: false, hour: 15.5, mapId: window.KB_MAP_ID || 'default',
     onProgress: (pct) => { loading.querySelector('i').style.width = pct + '%'; },
   });
   const { THREE } = world;
