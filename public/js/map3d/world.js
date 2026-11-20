@@ -1467,7 +1467,7 @@ function updateBirds(t) {
   birds.instanceMatrix.needsUpdate = true;
 }
 
-const boardLayers = createBoardLayers({ scene, hexToWorld, groundHeight, bounds: { bx0, bx1, bz0, bz1 } });
+const boardLayers = createBoardLayers({ scene, hexToWorld, groundHeight, walkHeight, decks, bounds: { bx0, bx1, bz0, bz1 } });
 const objectiveMarkers = createObjectiveMarkers({ scene, hexToWorld, groundHeight, objectives: mapDoc.objectives || [] });
 
 await setProgress(92, 'Compiling shaders...');

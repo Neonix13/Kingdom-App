@@ -20,7 +20,8 @@ function makeCanvasTex(w, h) {
 // Board-space layers: fog-of-war visibility (soft, animated), tile overlays (move/attack/deploy
 // fills, range outlines), hover/selection rings and pings.
 export function createBoardLayers(world) {
-  const { scene, hexToWorld, groundHeight, bounds } = world;
+  const { scene, hexToWorld, groundHeight, bounds, decks = [] } = world;
+  const walkHeight = world.walkHeight || groundHeight;
   const margin = 6;
   const B = new THREE.Vector4(bounds.bx0 - margin, bounds.bz0 - margin, bounds.bx1 - bounds.bx0 + margin * 2, bounds.bz1 - bounds.bz0 + margin * 2);
   const toPx = (ppu) => (x, z) => [(x - B.x) * ppu, (z - B.y) * ppu];
@@ -117,6 +118,38 @@ export function createBoardLayers(world) {
   const ovP = toPx(OV_PPU);
   let lastOvSig = null;
 
+  // Bridge decks: the overlay is projected on the terrain (the riverbed under a bridge), so each deck gets a thin
+  // ribbon sampling the same overlay texture just above its planks.
+  if (decks.length) {
+    const pos = [], idx = [];
+    for (const d of decks) {
+      const base = pos.length / 3;
+      for (let i = 0; i < d.pts.length; i++) {
+        const a = d.pts[Math.max(0, i - 1)], b = d.pts[Math.min(d.pts.length - 1, i + 1)], p = d.pts[i];
+        let tx = b.x - a.x, tz = b.z - a.z;
+        const l = Math.hypot(tx, tz) || 1;
+        tx /= l; tz /= l;
+        const w = d.hw * 0.95;
+        pos.push(p.x - tz * w, p.y + 0.035, p.z + tx * w, p.x + tz * w, p.y + 0.035, p.z - tx * w);
+        if (i) { const k = base + (i - 1) * 2; idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3); }
+      }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setIndex(idx);
+    const mat = new THREE.ShaderMaterial({
+      uniforms: { uOverlay: G.uOverlay, uOverlayBounds: G.uOverlayBounds },
+      vertexShader: `varying vec3 vW; void main() { vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
+      fragmentShader: `uniform sampler2D uOverlay; uniform vec4 uOverlayBounds; varying vec3 vW;
+        void main() { vec4 c = texture2D(uOverlay, (vW.xz - uOverlayBounds.xy) / uOverlayBounds.zw); if (c.a < 0.01) discard; gl_FragColor = vec4(c.rgb * 0.95, c.a * 0.9); }`,
+      transparent: true, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2,
+    });
+    const deckOverlay = new THREE.Mesh(geo, mat);
+    deckOverlay.renderOrder = 5;
+    deckOverlay.frustumCulled = false;
+    scene.add(deckOverlay);
+  }
+
   function outline(ctx, keys, center) {
     const interior = new Set(keys);
     if (center) interior.add(center);
@@ -187,9 +220,13 @@ export function createBoardLayers(world) {
     const c = hexToWorld(q, r);
     const pos = mesh.geometry.attributes.position;
     const base = mesh.userData.base || (mesh.userData.base = pos.array.slice());
+    // On a bridge hex the whole ring sits at deck level, not on the riverbed
+    const deckY = walkHeight(c.x, c.z);
+    const onDeck = deckY > groundHeight(c.x, c.z) + 0.3;
     for (let i = 0; i < pos.count; i++) {
       const x = c.x + base[i * 3], z = c.z + base[i * 3 + 2];
-      pos.setXYZ(i, x, groundHeight(x, z) + 0.05, z);
+      const g = groundHeight(x, z);
+      pos.setXYZ(i, x, (onDeck ? Math.max(g, deckY) : g) + 0.05, z);
     }
     pos.needsUpdate = true;
     mesh.geometry.computeBoundingSphere();
