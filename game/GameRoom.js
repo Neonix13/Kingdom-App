@@ -758,7 +758,7 @@ class GameRoom {
       const occ = this.unitMap[k];
       return !!occ && this.canSee(playerId, occ, occ.q, occ.r, vis);
     };
-    const found = findPathCost(this.hexMap, this.unitMap, unit.q, unit.r, targetQ, targetR, unit.speedRemaining, unit, this.segmentData, blocked, this.moveTable());
+    const found = findPathCost(this.hexMap, this.unitMap, unit.q, unit.r, targetQ, targetR, unit.speedRemaining, unit, this.segmentData, blocked, this.moveTable(), rules.hasFullSpeed(unit));
     if (found === null) return { error: 'Chemin inaccessible.' };
 
     const fromQ = unit.q, fromR = unit.r;
@@ -826,12 +826,12 @@ class GameRoom {
   _initUnitSpeedForTurn(unit) {
     if (unit.q === null) return;
     if (unit.isFleeing) {
-      unit.speedRemaining = Math.floor(unit.speed / 2);
+      unit.speedRemaining = unit.turnSpeed = Math.floor(unit.speed / 2);
       return;
     }
     if (unit.stunned) { // beaten in a duel: loses the movement of its next turn
       unit.stunned = false;
-      unit.speedRemaining = 0;
+      unit.speedRemaining = unit.turnSpeed = 0;
       return;
     }
     const stance = unit.isGeneral ? {} : this._getStanceMods(unit);
@@ -839,7 +839,7 @@ class GameRoom {
     // at least 1: a slow unit resting or fighting in a forest must still be able to leave its stance
     let speed = Math.max(unit.speed > 0 ? 1 : 0, unit.speed + (stance.vitesse || 0) + terrain.vitesse);
     if (this.isNight() && speed > 0) speed = Math.max(1, speed - RULES.night.speedMalus);
-    unit.speedRemaining = speed;
+    unit.speedRemaining = unit.turnSpeed = speed;
   }
 
   _applyTurnRegen(unit) {
@@ -960,6 +960,28 @@ class GameRoom {
     return { ok: true, success, charisma, d20, range, moralGain, count: targets.length };
   }
 
+  // Attack from a distance in one action: walk to (q, r), then strike. Everything is checked before the unit moves,
+  // so either both happen or nothing does (an ambush on the way still stops the unit before the attack).
+  moveAndAttack(playerId, attackerId, targetId, q, r) {
+    const player = this.getPlayer(playerId);
+    const attacker = player?.units.find(u => u.id === attackerId);
+    if (!attacker || attacker.q === null) return { error: 'Unité attaquante introuvable.' };
+    if (attacker.hasAttacked) return { error: 'Cette unité a déjà attaqué ce tour.' };
+    if (attacker.isFleeing) return { error: 'Unité en fuite.' };
+    const target = this.findUnit(targetId);
+    if (!target || target.playerId === playerId || target.q === null || !this.canSee(playerId, target)) return { error: 'Cible introuvable.' };
+    if (!Number.isInteger(q) || !Number.isInteger(r) || !this.hexMap[hexKey(q, r)]) return { error: 'Case invalide.' };
+    if (q === attacker.q && r === attacker.r) return { move: null, attack: this.initiateCombat(playerId, attackerId, targetId) };
+    const d = hexDistance(q, r, target.q, target.r);
+    if (d === 0 || d > rules.attackRange(attacker.range, this.heightData[hexKey(q, r)], this.heightData[hexKey(target.q, target.r)])) {
+      return { error: 'La cible ne serait pas à portée depuis cette case.' };
+    }
+    const move = this.moveUnit(playerId, attackerId, q, r);
+    if (move.error) return move;
+    if (move.ambush || attacker.q !== q || attacker.r !== r) return { move, attack: null };
+    return { move, attack: this.initiateCombat(playerId, attackerId, targetId) };
+  }
+
   initiateCombat(playerId, attackerId, targetId) {
     const player = this.getPlayer(playerId);
     const attacker = player?.units.find(u => u.id === attackerId);
@@ -978,7 +1000,7 @@ class GameRoom {
     const dist = hexDistance(attacker.q, attacker.r, target.q, target.r);
     const hA = this.heightData[hexKey(attacker.q, attacker.r)] || 0;
     const hT = this.heightData[hexKey(target.q, target.r)] || 0;
-    const effectiveRange = (attacker.range || 1) + Math.max(0, hA - hT);
+    const effectiveRange = rules.attackRange(attacker.range, hA, hT);
     if (dist > effectiveRange) return { error: `Cible hors de portée (distance: ${dist}, portée: ${effectiveRange}).` };
 
     // Deduct speed (all remaining, min 1)

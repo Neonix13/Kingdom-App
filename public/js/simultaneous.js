@@ -57,6 +57,7 @@
     const enemies = new Set((gameState?.units || []).filter(u => !u.isMine).map(u => `${u.q},${u.r}`));
     return KBRules.reachable(movementTable(), {
       start: { q: unit.q, r: unit.r }, maxCost: budget, mounted: KBRules.isMounted(unit),
+      minStep: budget === unit.speedRemaining && KBRules.hasFullSpeed(unit),
       hexAt: (k) => (k in mapHeight ? { terrain: terrainData[k] || 'plain', height: mapHeight[k] || 0 } : null),
       blocked: (k) => enemies.has(k),
       segAt: (a, b, c, d) => segmentData[segmentEdgeKey(a, b, c, d)] || null,
@@ -90,13 +91,18 @@
   function patchOrder(unit, patch) {
     const o = { type: 'hold', ...(current(unit) || {}), ...patch };
     for (const k of Object.keys(o)) if (o[k] === undefined) delete o[k];
-    if (o.type !== 'move') delete o.path;
+    const rangedApproach = o.type === 'attack' && (unit.range || 1) > 1;
+    if (o.type !== 'move' && !rangedApproach) delete o.path;
     if (o.type !== 'attack' && o.type !== 'charge') delete o.targetId;
     // a stance or facing change shrinks the budget: drop a path that no longer fits
-    if (o.type === 'move' && o.path) {
+    if ((o.type === 'move' || rangedApproach) && o.path) {
       const { dist } = reach(unit, budgetFor(unit, o));
       const last = o.path[o.path.length - 1];
-      if (!dist.has(`${last[0]},${last[1]}`)) { o.type = 'hold'; delete o.path; notify('Chemin trop long avec ce changement : déplacement annulé.', 'info'); }
+      if (!dist.has(`${last[0]},${last[1]}`)) {
+        if (o.type === 'move') { o.type = 'hold'; notify('Chemin trop long avec ce changement : déplacement annulé.', 'info'); }
+        else notify('Position de tir trop loin avec ce changement : le tireur reste sur place.', 'info');
+        delete o.path;
+      }
     }
     setOrder(unit.id, o);
   }
@@ -139,7 +145,14 @@
       if (unitAt && !unitAt.isMine) {
         const type = st.tool === 'charge' ? 'charge' : 'attack';
         if (type === 'charge' && sel.range > 1) { notify('Les tireurs ne chargent pas.', 'info'); return; }
-        patchOrder(sel, { type, targetId: unitAt.id });
+        const patch = { type, targetId: unitAt.id, path: undefined };
+        if (type === 'attack' && sel.range > 1) {
+          // out of range: the shooter first walks to its firing position
+          const a = approachTo(sel, unitAt);
+          if (a && a.path.length > 1) patch.path = a.path.slice(1);
+          else if (!a) notify('Hors de portée ce tour : le tireur tirera si la cible s\'approche.', 'info');
+        }
+        patchOrder(sel, patch);
         st.tool = null;
         return;
       }
@@ -169,6 +182,13 @@
     if (!path) return null;
     path.unshift([unit.q, unit.r]);
     return { path, cost: dist.get(target) };
+  }
+
+  // Hex from which the unit can strike target this turn (path with the origin included), or null
+  function approachTo(unit, target) {
+    if (!unit || unit.q == null || !target || !canPlan()) return null;
+    const res = KBRules.bestAttackHex(reach(unit, budgetFor(unit)), { start: unit, target, range: unit.range || 1, heightAt: (k) => mapHeight[k] || 0 });
+    return res ? { ...res, path: [[unit.q, unit.r], ...res.path] } : null;
   }
 
   function contextMenu(hex, clientX, clientY) {
@@ -359,7 +379,17 @@
       const p0 = hexToPixel(u.q, u.r);
       const selected = selectedUnit && selectedUnit.id === u.id;
       ctx.globalAlpha = selected ? 1 : 0.8;
-      if (order.type === 'move' && order.path) {
+      if (order.type === 'attack' && order.path && order.target) {
+        const pts = order.path.map(([q, r]) => hexToPixel(q, r));
+        ctx.strokeStyle = color; ctx.lineWidth = selected ? 4 : 3;
+        ctx.setLineDash(st.committed ? [] : [10, 7]);
+        ctx.beginPath(); pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); ctx.stroke();
+        const pe = pts[pts.length - 1], p1 = hexToPixel(order.target.q, order.target.r);
+        ctx.strokeStyle = '#ff3020'; ctx.fillStyle = '#ff3020'; ctx.lineWidth = 3.5; ctx.setLineDash([3, 8]);
+        ctx.beginPath(); ctx.moveTo(pe.x, pe.y); ctx.lineTo(p1.x, p1.y); ctx.stroke();
+        ctx.setLineDash([]);
+        arrowHead(ctx, pe, p1, 15);
+      } else if (order.type === 'move' && order.path) {
         const pts = [p0, ...order.path.map(([q, r]) => hexToPixel(q, r))];
         ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = selected ? 5 : 3.5;
         ctx.setLineDash(st.committed ? [] : [10, 7]);
@@ -412,6 +442,17 @@
         ctx.globalAlpha = 0.6;
         ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.5; ctx.setLineDash([4, 6]);
         ctx.beginPath(); pv.path.forEach(([q, r], i) => { const p = hexToPixel(q, r); if (i) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); }); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    } else if (selectedUnit && hoveredHex && canPlan()) {
+      // hover preview of an attack: approach (melee follows the target, shooters walk to their firing position)
+      const sel = myUnit(selectedUnit.id);
+      const tgt = (gameState.units || []).find(u => !u.isMine && u.q === hoveredHex.q && u.r === hoveredHex.r);
+      const a = sel && tgt && approachTo(sel, tgt);
+      if (a && a.path.length > 1) {
+        ctx.globalAlpha = 0.6;
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.5; ctx.setLineDash([4, 6]);
+        ctx.beginPath(); a.path.forEach(([q, r], i) => { const p = hexToPixel(q, r); if (i) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); }); ctx.stroke();
         ctx.setLineDash([]);
       }
     }
@@ -689,7 +730,7 @@
   window.KBSim = {
     isSim,
     active: () => isSim() && gameState.phase === 'battle',
-    intercept, onState, click, select, contextMenu, pathTo, draw,
+    intercept, onState, click, select, contextMenu, pathTo, approachTo, draw,
     plannedOrders, planning,
     playbackInfo() {
       const pb = st.playback;

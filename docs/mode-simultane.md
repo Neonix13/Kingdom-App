@@ -21,12 +21,13 @@ Il n'y a ni initiative ni manches : un tour = une planification + une résolutio
 | Ordre | Effet |
 |---|---|
 | **Déplacer** | suit le chemin tracé (coût de terrain, pentes, segments identiques au mode classique, dans la limite de la vitesse) |
-| **Attaquer** une unité visible | mêlée : l'unité se rapproche de la cible (suivie si elle bouge) puis frappe au contact ; tireur : ne bouge pas et tire dès que la cible est à portée et en vue |
+| **Attaquer** une unité visible | mêlée : l'unité se rapproche de la cible (suivie si elle bouge) puis frappe au contact ; tireur : tire dès que la cible est à portée et en vue — si elle est hors de portée au moment de l'ordre, l'ordre porte le chemin vers la meilleure position de tir (la plus éloignée de la cible encore à portée), que le tireur suit jusqu'à ce que la cible soit à portée |
 | **Charger** une unité visible (pas les tireurs) | comme Attaquer, avec le bonus de charge si l'unité a parcouru au moins 2 cases |
 | **Tenir** | ne bouge pas |
 | **Motiver** (général) | au début de la résolution ; le général ne bouge pas |
 
 - Options combinables : **changer de posture** (−2 vitesse, appliqué au début de la résolution), **orientation finale** (−1 vitesse, appliquée à la fin si l'unité n'a pas attaqué), **capacité du général** (au début de la résolution).
+- **Pas minimum** : une unité sans changement de posture ni d'orientation peut toujours faire un pas, même trop cher pour sa vitesse (voir [regles.md](regles.md) §3).
 - Les chemins ne sont vérifiés que par leur coût : une unité invisible sur le trajet devient une embuscade à la résolution, jamais une erreur de planification. La cible d'une attaque doit être visible au moment de l'ordre.
 
 ## Résolution

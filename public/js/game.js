@@ -103,6 +103,7 @@ function clientReachable(unit) {
   return KBRules.reachable(movementTable(), {
     start: { q: unit.q, r: unit.r },
     maxCost: maxSpeed,
+    minStep: KBRules.hasFullSpeed(unit),
     mounted: KBRules.isMounted(unit),
     hexAt: (k) => (k in mapHeight ? { terrain: terrainData[k] || 'plain', height: mapHeight[k] || 0 } : null),
     blocked: (k) => occupied.has(k) || (!!gameState && !gameState.visibleHexes.has(k)),
@@ -406,6 +407,7 @@ let selectedUnit = null;
 let hoveredHex = null;
 let movableTiles = new Set();
 let attackableTiles = new Set();
+let approachAttacks = new Map(); // enemy hex -> { targetId, q, r, path }: out of range, reachable by moving first (one action)
 let rangeTiles = new Set();
 let rangeCenter = null;
 let motivateTiles = new Set();
@@ -490,7 +492,7 @@ function render() {
       let fill = isVisible ? 'rgba(0,0,0,0)' : 'rgba(0,0,0,0.72)';
       let stroke = isVisible ? `rgba(${gridColorRGB},${gridOpacity})` : 'rgba(0,0,0,0)';
       if (isVisible && movableTiles.has(key)) fill = 'rgba(40,120,20,0.35)';
-      if (isVisible && attackableTiles.has(key)) fill = 'rgba(180,30,10,0.35)';
+      if (isVisible && attackableTiles.has(key)) fill = approachAttacks.has(key) ? 'rgba(220,110,20,0.4)' : 'rgba(180,30,10,0.35)';
       if (isHovered && isVisible) stroke = '#c8960c';
       drawHex(ctx, x, y, fill, stroke, 1, gridThickness);
     }
@@ -590,6 +592,7 @@ function render() {
 
   if (gameState) drawObjectives(ctx);
   if (window.KBSim) KBSim.draw(ctx);
+  drawApproachPreview(ctx);
 
   // Overlays de terrain (si activé) — par dessus les arbres
   if (showTerrain) {
@@ -1027,11 +1030,14 @@ function handleHexClick(hex) {
       return;
     }
 
-    // Clic sur ennemi attaquable → attaquer
+    // Clic sur ennemi attaquable → attaquer (hors de portée : l'unité s'approche puis attaque, en une action)
     if (attackableTiles.has(key)) {
       const target = gameState.units.find(u => u.q === hex.q && u.r === hex.r && !u.isMine);
       if (target) {
-        wsSend('attack_unit', { roomCode, attackerId: selectedUnit.id, targetId: target.id });
+        const a = approachAt(key);
+        wsSend('attack_unit', a
+          ? { roomCode, attackerId: selectedUnit.id, targetId: target.id, approachQ: a.q, approachR: a.r }
+          : { roomCode, attackerId: selectedUnit.id, targetId: target.id });
         movableTiles.clear();
         attackableTiles.clear();
         rangeTiles.clear(); rangeCenter = null; motivateTiles.clear(); motivateCenter = null;
@@ -1040,6 +1046,13 @@ function handleHexClick(hex) {
       }
     }
 
+
+    // Ennemi visible mais hors d'atteinte ce tour : l'unité ne bouge pas
+    const foe = gameState?.units.find(u => u.q === hex.q && u.r === hex.r && !u.isMine);
+    if (foe && selectedUnit.isMine !== false && gameState.currentPlayerId === myId && !selectedUnit.hasAttacked && !selectedUnit.isFleeing) {
+      notify(`${foe.name} est hors d'atteinte ce tour : ${selectedUnit.name} ne peut pas s'en approcher assez pour attaquer.`, 'info');
+      return;
+    }
 
     // Clic sur une autre unité alliée → changer de sélection
     const ally = gameState?.units.find(u => u.q === hex.q && u.r === hex.r && u.isMine);
@@ -1138,19 +1151,54 @@ function computeMovableTiles(unit) {
 }
 
 function computeAttackableTiles(unit) {
+  approachAttacks.clear();
   if (!gameState) return;
   const hd = mapHeight;
   const hA = hd[`${unit.q},${unit.r}`] || 0;
+  const canApproach = gameState.currentPlayerId === myId && unit.speedRemaining > 0 && !unit.isFleeing && !unit.hasAttacked;
+  let reach = null;
 
   for (const u of gameState.units) {
     if (u.isMine) continue;
     const dist = hexDistance(unit.q, unit.r, u.q, u.r);
     const hT = hd[`${u.q},${u.r}`] || 0;
-    const effectiveRange = (unit.range || 1) + Math.max(0, hA - hT);
+    const effectiveRange = KBRules.attackRange(unit.range, hA, hT);
     if (dist <= effectiveRange) {
       attackableTiles.add(`${u.q},${u.r}`);
+    } else if (canApproach) {
+      reach = reach || clientReachable(unit);
+      const best = KBRules.bestAttackHex(reach, { start: unit, target: u, range: unit.range || 1, heightAt: (k) => hd[k] || 0 });
+      if (best && best.path.length) {
+        attackableTiles.add(`${u.q},${u.r}`);
+        approachAttacks.set(`${u.q},${u.r}`, { targetId: u.id, q: best.q, r: best.r, path: [[unit.q, unit.r], ...best.path] });
+      }
     }
   }
+}
+
+// Approach + strike planned against the enemy on this hex (null when it is in range already or out of reach)
+function approachAt(key) {
+  return attackableTiles.has(key) ? approachAttacks.get(key) || null : null;
+}
+
+function drawApproachPreview(ctx) {
+  if (!selectedUnit || !hoveredHex || (window.KBSim && KBSim.active())) return;
+  const a = approachAt(`${hoveredHex.q},${hoveredHex.r}`);
+  if (!a) return;
+  const pts = a.path.map(([q, r]) => hexToPixel(q, r));
+  const tgt = hexToPixel(hoveredHex.q, hoveredHex.r);
+  ctx.save();
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.globalAlpha = 0.85;
+  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3; ctx.setLineDash([6, 7]);
+  ctx.beginPath(); pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); ctx.stroke();
+  const pe = pts[pts.length - 1];
+  ctx.strokeStyle = '#ff5030'; ctx.lineWidth = 4; ctx.setLineDash((selectedUnit.range || 1) > 1 ? [3, 7] : []);
+  ctx.beginPath(); ctx.moveTo(pe.x, pe.y); ctx.lineTo(tgt.x, tgt.y); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#ff5030';
+  ctx.beginPath(); ctx.arc(pe.x, pe.y, HEX_SIZE * 0.18, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
 }
 
 function computeRangeTiles(unit) {
@@ -1374,6 +1422,7 @@ function renderDeployUnitList(units) {
     div.onclick = () => {
       selectedUnit = u;
       renderDeployUnitList(deployState.units);
+      if (u.q === null) focusDeployZone();
       render();
     };
     list.appendChild(div);
@@ -1643,9 +1692,11 @@ function toggleRules() {
   const frac = (v) => (Math.abs(v - 1 / 3) < 1e-9 ? '1/3' : String(v));
   document.getElementById('rules-content').innerHTML = `
     <h3>Déplacement</h3>
-    <p>Coût pour quitter une case : plaine ${tc.plain}, route ${frac(tc.road)}, forêt ${tc.forest}, fleuve ${tc.river}, bâtiment ${tc.building}, pont ${tc.bridge}.
+    <p>Coût pour quitter une case : plaine ${tc.plain}, route ${frac(tc.road)}, forêt ${tc.forest}, fleuve ${tc.river}, bâtiment ${tc.building}, pont ${frac(tc.bridge)}.
     Montée : +${R.movement.slopeUpPerLevel} par niveau ; descente gratuite. Falaises et murs : infranchissables.
-    Échelle : infanterie et généraux uniquement, coût ${R.movement.ladder.cost} (jamais la cavalerie ni les chars). Rivière et barrière : +1.</p>
+    Échelle : infanterie et généraux uniquement, coût ${R.movement.ladder.cost} (jamais la cavalerie ni les chars). Rivière et barrière : +1.
+    Une unité qui n'a encore rien dépensé de sa vitesse peut toujours avancer d'une case, même trop chère.</p>
+    <p>Cliquer un ennemi hors de portée (case orange) : l'unité s'approche puis attaque, en une seule action ; s'il est hors d'atteinte ce tour, elle ne bouge pas.</p>
     <h3>Jour et nuit</h3>
     <p>La bataille commence à ${KBRules.formatHour(R.time.startHour)} ; ${st.turnsPerHalfDay} tours par demi-journée. Nuit de ${R.time.nightStartHour}h à ${R.time.dayStartHour}h :
     vision ×${R.night.visionFactor} (min ${R.night.visionMin}), vitesse −${R.night.speedMalus}, attaque ${R.night.attackMod.cac} au corps à corps et ${R.night.attackMod.tir} au tir,
@@ -2411,8 +2462,27 @@ function enterDeployMode() {
     const { x, y } = hexToPixel(deployState.startingZone.q, deployState.startingZone.r);
     if (cameraPlaced) smoothPanTo(x, y, 600);
     else { camX = -x * zoom; camY = -y * zoom; }
+    if (window.view3d && window.view3d.active) focusDeployZone(true);
     cameraPlaced = true;
   }
+}
+
+// Brings the deployment zone into view (2D and 3D) when it is off screen, or always with force
+function focusDeployZone(force = false) {
+  const z = deployState?.startingZone;
+  if (!z || z.q == null) return;
+  const v3 = window.view3d && window.view3d.active ? window.view3d : null;
+  if (v3) {
+    if (!force && v3.hexOnScreen(z.q, z.r)) return;
+    v3.focusHex(z.q, z.r);
+    if (v3.pingHex) v3.pingHex(z.q, z.r, '#8cff5a');
+    return;
+  }
+  const { x, y } = hexToPixel(z.q, z.r);
+  const sx = x * zoom + camX + canvas.width / 2, sy = y * zoom + camY + canvas.height / 2;
+  const mx = canvas.width * 0.12, my = canvas.height * 0.12;
+  if (!force && sx > mx && sx < canvas.width - mx && sy > my && sy < canvas.height - my) return;
+  smoothPanTo(x, y, 600);
 }
 
 function initGame() {
@@ -2704,6 +2774,13 @@ window.gameBridge = {
   get selectedUnit() { return selectedUnit; },
   get movableTiles() { return movableTiles; },
   get attackableTiles() { return attackableTiles; },
+  approachAt,
+  // Approach + strike preview against target: { q, r, path: [[q, r]...] (origin included) } or null
+  approachTo(unit, target) {
+    if (!unit || !target) return null;
+    if (window.KBSim && KBSim.active()) return KBSim.approachTo(unit, target);
+    return approachAt(`${target.q},${target.r}`);
+  },
   get rangeTiles() { return rangeTiles; },
   get rangeCenter() { return rangeCenter; },
   get motivateTiles() { return motivateTiles; },

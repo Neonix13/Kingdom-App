@@ -98,7 +98,9 @@ function validateOrder(room, playerId, unit, raw) {
       order.ability = { targetId };
     } else order.ability = {};
   }
-  if (order.type === 'move') {
+  // a shooter's attack order may carry the path to its firing position (it fires as soon as the target is in range)
+  const rangedApproach = order.type === 'attack' && (unit.range || 1) > 1 && Array.isArray(raw.path) && raw.path.length > 0;
+  if (order.type === 'move' || rangedApproach) {
     const path = raw.path;
     if (!Array.isArray(path) || path.length < 1 || path.length > 60) return { error: 'Chemin invalide.' };
     let q = unit.q, r = unit.r, cost = 0;
@@ -113,9 +115,11 @@ function validateOrder(room, playerId, unit, raw) {
       out.push([nq, nr]);
       q = nq; r = nr;
     }
-    if (cost > budget + 1e-9) return { error: `Chemin trop long (coût ${cost}, vitesse ${budget}).` };
+    const minStep = out.length === 1 && budget > 0 && budget === unit.speedRemaining && rules.hasFullSpeed(unit);
+    if (cost > budget + 1e-9 && !minStep) return { error: `Chemin trop long (coût ${cost}, vitesse ${budget}).` };
     order.path = out;
-  } else if (order.type === 'attack' || order.type === 'charge') {
+  }
+  if (order.type === 'attack' || order.type === 'charge') {
     const target = typeof raw.targetId === 'string' ? room.findUnit(raw.targetId) : null;
     if (!target || target.playerId === playerId || target.q === null || !room.canSee(playerId, target)) return { error: 'Cible introuvable.' };
     if (order.type === 'charge' && (unit.range || 1) > 1) return { error: 'Les tireurs ne chargent pas.' };

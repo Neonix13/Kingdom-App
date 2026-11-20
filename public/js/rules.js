@@ -8,7 +8,7 @@
   const RULES = {
     movement: {
       // Cost paid when leaving a hex of this terrain
-      terrainCost: { plain: 1, road: 1 / 3, forest: 2, river: 2, building: 1, bridge: 1 },
+      terrainCost: { plain: 1, road: 1 / 3, forest: 2, river: 2, building: 1, bridge: 1 / 3 }, // a bridge is a road over the water
       slopeUpPerLevel: 1,     // +1 per height level climbed (edge without cliff)
       slopeDownPerLevel: 0,   // free downhill
       blockedSegments: ['cliff', 'mur'],          // impassable for everyone (line of sight is not affected)
@@ -141,7 +141,9 @@
 
   // Dijkstra from opts.start within opts.maxCost.
   //   hexAt(key) -> { terrain, height } | null (off map), blocked(key) -> true when the hex cannot be entered,
-  //   segAt(q1, r1, q2, r2) -> segment type | null, mounted: bool
+  //   segAt(q1, r1, q2, r2) -> segment type | null, mounted: bool,
+  //   minStep: the unit has not spent any speed this turn, so one step to a neighbour is always allowed
+  //            (if passable), even when it costs more than maxCost: nobody stays stuck in a river or below a slope
   // Returns { dist: Map(key -> cost), prev: Map(key -> previous key) } (start included with cost 0).
   function reachable(table, opts) {
     const startKey = hexKey(opts.start.q, opts.start.r);
@@ -165,8 +167,11 @@
         if (opts.blocked && opts.blocked(nk)) continue;
         const c = stepCost(table, here, there, opts.segAt(cur.q, cur.r, nq, nr), !!opts.mounted);
         if (!isFinite(c)) continue;
-        const nc = snap(cur.cost + c);
-        if (nc > maxCost) continue;
+        let nc = snap(cur.cost + c);
+        if (nc > maxCost) {
+          if (!(opts.minStep && k === startKey && maxCost > 0)) continue;
+          nc = maxCost;
+        }
         if (!dist.has(nk) || nc < dist.get(nk)) {
           dist.set(nk, nc);
           prev.set(nk, k);
@@ -175,6 +180,49 @@
       }
     }
     return { dist, prev };
+  }
+
+  function hexDistance(q1, r1, q2, r2) {
+    return (Math.abs(q1 - q2) + Math.abs(q1 + r1 - q2 - r2) + Math.abs(r1 - r2)) / 2;
+  }
+
+  // Attack range from a hex at height hFrom on a target at height hTo: +1 per level above the target
+  function attackRange(range, hFrom, hTo) {
+    return (range || 1) + Math.max(0, (hFrom || 0) - (hTo || 0));
+  }
+
+  // A unit that has not spent any speed this turn (no move, stance change or pivot) may always take one step
+  function hasFullSpeed(unit) {
+    return !!unit && !unit.isFleeing && unit.speedRemaining > 0 && unit.turnSpeed != null && unit.speedRemaining >= unit.turnSpeed;
+  }
+
+  // Best hex from which a unit can strike target this turn, among the hexes of a reachable() result.
+  //   opts: { start: {q, r}, target: {q, r}, range, heightAt(key) -> level, canStand(key) -> bool (optional) }
+  // Melee: cheapest hex, then the highest. Shooters: farthest from the target, then cheapest, then the highest.
+  // Returns { key, q, r, cost, path: [[q, r], ...] (start excluded, [] when no move is needed) } or null.
+  function bestAttackHex(reach, opts) {
+    const startKey = hexKey(opts.start.q, opts.start.r);
+    const tq = opts.target.q, tr = opts.target.r;
+    const hT = opts.heightAt(hexKey(tq, tr)) || 0;
+    const ranged = (opts.range || 1) > 1;
+    let best = null;
+    for (const [k, cost] of reach.dist) {
+      if (k !== startKey && opts.canStand && !opts.canStand(k)) continue;
+      const [q, r] = k.split(',').map(Number);
+      const d = hexDistance(q, r, tq, tr);
+      const h = opts.heightAt(k) || 0;
+      if (d === 0 || d > attackRange(opts.range, h, hT)) continue;
+      const cand = { key: k, q, r, cost, d, h };
+      if (!best) { best = cand; continue; }
+      const cmp = ranged
+        ? (best.d - d) || (cost - best.cost) || (best.h - h)
+        : (cost - best.cost) || (best.h - h);
+      if (cmp < 0 || (cmp === 0 && k < best.key)) best = cand;
+    }
+    if (!best) return null;
+    const path = pathFromPrev(reach.prev, startKey, best.key);
+    if (!path) return null;
+    return { key: best.key, q: best.q, r: best.r, cost: best.cost, path };
   }
 
   // Path [[q, r], ...] from the start (excluded) to key, or null
@@ -260,6 +308,7 @@
   return {
     RULES, snap, hexKey, edgeKey, DIRS, isMounted,
     movementTable, stepCost, reachable, pathFromPrev,
+    hexDistance, attackRange, hasFullSpeed, bestAttackHex,
     hoursPerTurn, timeOfDay, dayNumber, isNightHour, formatHour,
     defaultSettings, mergeSettings,
   };

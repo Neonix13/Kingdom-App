@@ -132,7 +132,7 @@ function run(room, ordersByPlayer, seed) {
     ctl.set(u.id, {
       u, o, owner: p.id,
       budget: u.speedRemaining || 0, speed0: u.speedRemaining || 0,
-      path: o.type === 'move' && Array.isArray(o.path) ? o.path.map(([q, r]) => [q, r]) : [],
+      path: (o.type === 'move' || (o.type === 'attack' && (u.range || 1) > 1)) && Array.isArray(o.path) ? o.path.map(([q, r]) => [q, r]) : [],
       target: (o.type === 'attack' || o.type === 'charge') ? o.targetId : null,
       lastSeen: null,
       ranged: o.type === 'attack' && (u.range || 1) > 1,
@@ -314,7 +314,7 @@ function run(room, ordersByPlayer, seed) {
   function approachStep(c, tq, tr) {
     const u = c.u;
     const { dist, prev } = rules.reachable(room.moveTable(), {
-      start: { q: u.q, r: u.r }, maxCost: c.budget, mounted: rules.isMounted(u),
+      start: { q: u.q, r: u.r }, maxCost: c.budget, minStep: c.moved === 0 && c.budget === c.speed0, mounted: rules.isMounted(u),
       hexAt: (k) => room.hexMap[k] || null, blocked: blockedFor(c),
       segAt: (a, b, cc, d) => room.segmentData[segmentEdgeKey(a, b, cc, d)] || null,
     });
@@ -342,7 +342,15 @@ function run(room, ordersByPlayer, seed) {
 
   function wantedStep(c) {
     const u = c.u;
-    if (c.done || u.isFleeing || c.ranged) return null;
+    if (c.done || u.isFleeing) return null;
+    if (c.ranged) {
+      // walks its approach path until the target is in range and in sight, then stops to shoot
+      if (c.fired || !c.path.length) return null;
+      const t = targetUnit(c);
+      if (!t) { c.done = true; return null; }
+      if (seen[c.owner].has(t.id) && hexDistance(u.q, u.r, t.q, t.r) <= effectiveRange(room, u, t)) return null;
+      return c.path[0];
+    }
     if (c.o.type === 'move') return c.path.length ? c.path[0] : null;
     if (c.o.type === 'attack' || c.o.type === 'charge') {
       const t = targetUnit(c);
@@ -404,7 +412,8 @@ function run(room, ordersByPlayer, seed) {
       const step = wantedStep(c);
       if (!step) continue;
       const cost = stepCost(room, c.u, c.u.q, c.u.r, step[0], step[1]);
-      if (!isFinite(cost) || cost > c.budget + 1e-9) { c.done = true; if (c.o.type === 'move') c.path = []; continue; }
+      const minStep = c.moved === 0 && c.budget > 0 && c.budget === c.speed0; // nothing spent yet: one step is always allowed
+      if (!isFinite(cost) || (cost > c.budget + 1e-9 && !minStep)) { c.done = true; if (c.o.type === 'move') c.path = []; continue; }
       props.set(c.u.id, { c, from: [c.u.q, c.u.r], to: step, key: hexKey(step[0], step[1]), cost, ok: true });
     }
     const encounters = [];
@@ -470,7 +479,7 @@ function run(room, ordersByPlayer, seed) {
       u.hasMoved = true;
       c.budget = Math.max(0, rules.snap(c.budget - p.cost));
       c.moved++;
-      if (c.o.type === 'move') c.path.shift();
+      if (c.path.length) c.path.shift();
       room.unitMap[hexKey(u.q, u.r)] = u;
       moved.set(u.id, { u, from: p.from, to: [u.q, u.r], kind: 'move' });
       if (!pathTrail.has(u.id)) pathTrail.set(u.id, [p.from]);

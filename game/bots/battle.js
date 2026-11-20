@@ -26,6 +26,7 @@ function reachFrom(world, unit, withPrev = false) {
   const { dist, prev } = rules.reachable(room.moveTable(), {
     start: { q: unit.q, r: unit.r },
     maxCost: unit.speedRemaining,
+    minStep: rules.hasFullSpeed(unit),
     mounted: isMountedUnit(unit),
     hexAt: (k) => room.hexMap[k] || null,
     blocked: world.blocked,

@@ -912,11 +912,9 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     checkPhaseTransitions(tx);
   });
 
-  H.move_unit = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
-    const p = requireTurn(tx, connId);
+  // Move animation: full path for the mover (and live spectators), the part each opponent sees otherwise
+  function emitMoveAnim(tx, p, result) {
     const room = tx.room;
-    const result = engine(room.moveUnit(p.id, v.id(data.unitId), v.int(data.targetQ, -10000, 10000), v.int(data.targetR, -10000, 10000)));
-    tx.dirty = true;
     const full = [[result.fromQ, result.fromR], ...result.path];
     const anim = { event: 'unit_move_anim', unitId: result.unitId, fromQ: result.fromQ, fromR: result.fromR, path: result.path, ambush: !!result.ambush };
     const unit = room.findUnit(result.unitId);
@@ -929,14 +927,37 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
       const i = seen.indexOf(true);
       return { ...anim, ambush: undefined, fromQ: full[i][0], fromR: full[i][1], path: full.slice(i + 1).filter((_, j) => seen[i + 1 + j]) };
     });
+  }
+
+  H.move_unit = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    const p = requireTurn(tx, connId);
+    const result = engine(tx.room.moveUnit(p.id, v.id(data.unitId), v.int(data.targetQ, -10000, 10000), v.int(data.targetR, -10000, 10000)));
+    tx.dirty = true;
+    emitMoveAnim(tx, p, result);
     autoEndFlow(tx);
     emitState(tx);
   });
 
+  // attack_unit { attackerId, targetId, approachQ?, approachR? }: with an approach hex, the unit walks there and
+  // strikes in the same action (nothing happens if the target would not be in range from it)
   H.attack_unit = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
     const p = requireTurn(tx, connId);
     const room = tx.room;
-    const result = engine(room.initiateCombat(p.id, v.id(data.attackerId), v.id(data.targetId)));
+    let result;
+    if (data.approachQ != null || data.approachR != null) {
+      const both = engine(room.moveAndAttack(p.id, v.id(data.attackerId), v.id(data.targetId), v.int(data.approachQ, -10000, 10000), v.int(data.approachR, -10000, 10000)));
+      tx.dirty = true;
+      if (both.move) emitMoveAnim(tx, p, both.move);
+      if (!both.attack || both.attack.error) {
+        if (both.attack && both.attack.error) reply(tx, connId, { event: 'error', code: 'attack_failed', message: both.attack.error });
+        autoEndFlow(tx);
+        emitState(tx);
+        return;
+      }
+      result = both.attack;
+    } else {
+      result = engine(room.initiateCombat(p.id, v.id(data.attackerId), v.id(data.targetId)));
+    }
     tx.dirty = true;
     const pending = room.pendingAttacks[result.attackId];
     if (pending.duel) {

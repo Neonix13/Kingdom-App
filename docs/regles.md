@@ -23,6 +23,7 @@ Deux modes de tour (réglage de l'hôte) : **séquentiel** (initiative, §2, dé
 | Pivoter (clic droit) | 1 vitesse |
 | Changer de posture | 2 vitesse |
 | Attaquer | toute la vitesse restante (au moins 1), une attaque par manche |
+| Attaquer à distance (clic sur un ennemi hors de portée) | l'unité se rend sur la meilleure case d'où elle peut frapper (§5), puis attaque : une seule action |
 | Motiver (général) | toute la vitesse restante (au moins 1), remplace l'attaque du général |
 | Capacité active (général) | une fois par manche, puis temps de recharge |
 
@@ -39,8 +40,8 @@ Chaque pas coûte le **coût du terrain que l'on quitte** :
 
 | Terrain quitté | Coût |
 |---|---|
-| Route | 1/3 |
-| Plaine, bâtiment, pont | 1 |
+| Route, pont | 1/3 |
+| Plaine, bâtiment | 1 |
 | Forêt, fleuve | 2 |
 
 Puis on ajoute :
@@ -56,6 +57,7 @@ Puis on ajoute :
 | **Échelle** | coût fixe de **3** (pente ignorée) — infanterie et généraux seulement |
 | Cavalerie et chars | ne franchissent jamais falaises, murs ni échelles |
 
+- **Pas minimum** : une unité qui n'a encore rien dépensé de sa vitesse ce tour (ni déplacement, ni posture, ni pivot) peut toujours avancer d'**une case**, même si ce pas coûte plus que sa vitesse (sauf falaise, mur, ou échelle pour la cavalerie) ; ce pas consomme toute sa vitesse. Personne ne reste ainsi bloqué dans un fleuve (−1 vitesse) ou au pied d'une pente, même de nuit.
 - On ne traverse pas une case occupée par une unité visible.
 - **Embuscade** : si le chemin rencontre une unité ennemie cachée (§7), l'unité s'arrête net devant elle et perd le reste de sa vitesse pour la manche ; l'embusqué est révélé.
 - Les falaises bloquent le passage mais pas la vue.
@@ -77,6 +79,8 @@ Changer de posture coûte 2 de vitesse (les généraux n'ont pas de posture). Ch
 ## 5. Combat
 
 **Portée** : 1 case (mêlée) ou la portée de l'unité (archers 3, archers d'élite 4), +1 par niveau de hauteur au-dessus de la cible. La cible doit être visible (§7).
+
+**Attaque à distance** : cliquer un ennemi visible hors de portée (case orange) déplace d'abord l'unité sur la case d'approche choisie — mêlée : la moins chère à atteindre (puis la plus haute) ; tireur : la plus éloignée de la cible encore à portée (puis la moins chère) — puis lance l'attaque, en une seule action vérifiée d'un bloc par le serveur. Si aucune case accessible ce tour ne permet de frapper, l'unité ne bouge pas. Une embuscade sur le chemin arrête l'unité et annule l'attaque.
 
 1. **Jet d'attaque** : D20 ≤ attaque + posture + terrain + segment − esquive de la cible + différence de hauteur (+ malus de nuit). Les généraux utilisent leur Force.
 2. **Dégâts** : (vitalité de l'attaquant) dés de (puissance effective), multipliés par 1 + hauteur/10, moins l'absorption de l'armure (vitalité × armure de la cible, **au plus 75 % des dégâts** : un coup qui touche blesse toujours), divisés par 10.
