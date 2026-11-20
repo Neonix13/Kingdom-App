@@ -85,7 +85,7 @@ const HEX_SIZE = 1.0;
 const HEX_HEIGHT_STEP = 1.0;
 const WATER_LEVEL = 0.35;
 const RIVERBED_HEIGHT = -0.15;
-const STREAM_DEPTH = 0.5;
+const STREAM_DEPTH = 0.3;
 const sqrt3 = Math.sqrt(3);
 
 // Map image calibration (must match hexGrid.js / game.js)
@@ -272,7 +272,7 @@ function visualType(h) {
 const VT_STYLE = {
   plain:    { color: 0x83a24c, tex: 0, variation: 0.03 },
   forest:   { color: 0x5d7038, tex: 1, variation: 0.03 },
-  road:     { color: 0xa8916f, tex: 2, variation: 0.02 },
+  road:     { color: 0x8ea152, tex: 0, variation: 0.03 },
   building: { color: 0x9a8b78, tex: 3, variation: 0.02 },
   field:    { color: 0xe0bd62, tex: 5, variation: 0.025 },
   highland: { color: 0xb8a070, tex: 5, variation: 0.03 },
@@ -332,15 +332,76 @@ for (const [segKey, type] of Object.entries(segmentData)) {
   if (type === 'passerelle') footbridges.push({ ...s, a: ec[0], b: ec[1] });
 }
 
+// --- Road network mask: smooth dirt paths through road hexes instead of hex-shaped tiles ---
+const ROAD_PX = 16;
+const roadBounds = new THREE.Vector4(bx0 - 8, bz0 - 8, bx1 - bx0 + 16, bz1 - bz0 + 16);
+const roadCanvas = document.createElement('canvas');
+roadCanvas.width = Math.ceil(roadBounds.z * ROAD_PX);
+roadCanvas.height = Math.ceil(roadBounds.w * ROAD_PX);
+let roadPixels;
+{
+  const ctx = roadCanvas.getContext('2d', { willReadFrequently: true });
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, roadCanvas.width, roadCanvas.height);
+  const P = (p) => [(p.x - roadBounds.x) * ROAD_PX, (p.z - roadBounds.y) * ROAD_PX];
+  const isRoadLike = (h) => h && (h.terrain === 'road' || h.terrain === 'bridge');
+  ctx.strokeStyle = '#fff';
+  ctx.fillStyle = '#fff';
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 0.68 * ROAD_PX;
+  ctx.filter = `blur(${(0.09 * ROAD_PX).toFixed(1)}px)`;
+  for (const h of allHexes.values()) {
+    if (!isRoadLike(h)) continue;
+    const c = hexToWorld(h.q, h.r);
+    const nb = [];
+    let open = null;
+    for (const [dq, dr] of HEX_DIRS) {
+      const n = allHexes.get(`${h.q + dq},${h.r + dr}`);
+      const np = hexToWorld(h.q + dq, h.r + dr);
+      if (isRoadLike(n)) nb.push({ x: (c.x + np.x) / 2, z: (c.z + np.z) / 2 });
+      else if (!n) open = np;
+    }
+    ctx.beginPath();
+    if (nb.length === 2) {
+      ctx.moveTo(...P(nb[0]));
+      ctx.quadraticCurveTo(...P(c), ...P(nb[1]));
+    } else {
+      for (const m of nb) { ctx.moveTo(...P(c)); ctx.lineTo(...P(m)); }
+      if (nb.length === 0) { ctx.moveTo(...P(c)); ctx.lineTo(...P({ x: c.x + 0.01, z: c.z })); }
+    }
+    if (open && nb.length <= 1) {
+      const dir = nb.length ? { x: c.x - nb[0].x, z: c.z - nb[0].z } : { x: open.x - c.x, z: open.z - c.z };
+      const l = Math.hypot(dir.x, dir.z) || 1;
+      ctx.moveTo(...P(c));
+      ctx.lineTo(...P({ x: c.x + dir.x / l * 7, z: c.z + dir.z / l * 7 }));
+    }
+    ctx.stroke();
+  }
+  roadPixels = ctx.getImageData(0, 0, roadCanvas.width, roadCanvas.height).data;
+}
+const roadTex = new THREE.CanvasTexture(roadCanvas);
+roadTex.colorSpace = THREE.NoColorSpace;
+roadTex.flipY = false;
+roadTex.wrapS = roadTex.wrapT = THREE.ClampToEdgeWrapping;
+roadTex.anisotropy = 4;
+function roadAt(x, z) {
+  const i = Math.floor((x - roadBounds.x) * ROAD_PX), j = Math.floor((z - roadBounds.y) * ROAD_PX);
+  if (i < 0 || j < 0 || i >= roadCanvas.width || j >= roadCanvas.height) return 0;
+  return roadPixels[(j * roadCanvas.width + i) * 4] / 255;
+}
+
 await setProgress(25, 'Building terrain...');
 
 // --- Terrain material (shared by board and surroundings) ---
-const terrainUniforms = { uGrid: { value: 0.14 } };
+const terrainUniforms = { uGrid: { value: 0.11 } };
 function makeTerrainMaterial({ grid = false, snow = false } = {}) {
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.93, metalness: 0.0, envMapIntensity: 0.6 });
   patchLit(mat, {}, (shader) => {
     for (let i = 0; i < terrainTextures.length; i++) shader.uniforms['uTex' + i] = { value: terrainTextures[i] };
     shader.uniforms.uGrid = terrainUniforms.uGrid;
+    shader.uniforms.uRoadMask = { value: roadTex };
+    shader.uniforms.uRoadBounds = { value: roadBounds };
     const defs = (grid ? '#define GRID\n' : '') + (snow ? '#define SNOW\n' : '');
     shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>
       attribute vec3 terrainBlendIds;
@@ -355,6 +416,8 @@ function makeTerrainMaterial({ grid = false, snow = false } = {}) {
     shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `${defs}#include <common>
       uniform sampler2D uTex0, uTex1, uTex2, uTex3, uTex4, uTex5;
       uniform float uGrid;
+      uniform sampler2D uRoadMask;
+      uniform vec4 uRoadBounds;
       varying vec3 vBlendIds;
       varying vec3 vBlendWeights;
       varying vec3 vWN;
@@ -391,6 +454,15 @@ function makeTerrainMaterial({ grid = false, snow = false } = {}) {
         float micro = texture2D( uNoise, vPWorld.xz * 0.083 ).b;
         vec3 albedo = diffuseColor.rgb * tex * 2.0;
         albedo *= ( 0.8 + 0.4 * macro ) * ( 0.92 + 0.16 * micro );
+        {
+          float road = texture2D( uRoadMask, ( vPWorld.xz - uRoadBounds.xy ) / uRoadBounds.zw ).r;
+          float rm = smoothstep( 0.32, 0.62, road + ( micro - 0.5 ) * 0.35 + ( macro - 0.5 ) * 0.1 );
+          if ( rm > 0.001 ) {
+            vec3 dirt = tLayer( 2, uvA, uvB, m ) * vec3( 0.4, 0.335, 0.255 ) * 2.0 * ( 0.85 + 0.3 * macro );
+            dirt *= 1.0 - 0.18 * smoothstep( 0.55, 0.7, road ) * ( 1.0 - smoothstep( 0.8, 0.95, road ) );
+            albedo = mix( albedo, dirt, rm );
+          }
+        }
         float steep = smoothstep( 0.4, 0.68, 1.0 - wN.y );
         if ( steep > 0.001 ) {
           vec3 rock = rockTriplanar( vPWorld, wN ) * vec3( 0.95, 0.9, 0.84 ) * 1.6;
@@ -477,8 +549,8 @@ const cornerHeights = new Map();
       const cc = hexCorner(wp.x, wp.z, c);
       if (!streamCornerKeys.has(getCornerKey(cc.x, cc.z))) continue;
       needsRing = true;
-      edgeTransitions[(c + 5) % 6] = Math.max(edgeTransitions[(c + 5) % 6], 0.3);
-      edgeTransitions[c] = Math.max(edgeTransitions[c], 0.3);
+      edgeTransitions[(c + 5) % 6] = Math.max(edgeTransitions[(c + 5) % 6], 0.36);
+      edgeTransitions[c] = Math.max(edgeTransitions[c], 0.36);
     }
     hexInfo.set(key, { needsRing, edgeTransitions });
   }
@@ -993,7 +1065,7 @@ waterMats.push(waterMat);
 // Stream ribbons along hex edges
 {
   const pos = [], edge = [], idx = [];
-  const W = 0.21, RISE = 0.31;
+  const W = 0.3, RISE = 0.22;
   const joints = new Map();
   for (const se of streamEdges) {
     const ka = getCornerKey(se.a.x, se.a.z), kb = getCornerKey(se.b.x, se.b.z);
@@ -1044,10 +1116,10 @@ const grassMat = vegMat({ wind: true, windBend: 9.0, windFreq: 2.1, fadeNear: 38
 grassMat.side = THREE.DoubleSide;
 const wheatMat = vegMat({ wind: true, windBend: 5.0, windFreq: 1.8, fadeNear: 55, fadeFar: 85, noFlip: true }, 'wheat');
 wheatMat.side = THREE.DoubleSide;
-const rockMat = patchLit(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0, flatShading: true, envMapIntensity: 0.5 }), {}, null, 'rock');
+const rockMat = patchLit(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, flatShading: true, envMapIntensity: 0.3 }), {}, null, 'rock');
 
 const conifers = [[], []], broads = [[], []], farConifers = [], farBroads = [];
-const bushes = [], grass = [], wheat = [], rocks = [];
+const bushes = [], grass = [], wheat = [], rocks = [], slabs = [];
 const mul = (rng, r, g, b, amt = 0.25) => { const k = 1 + (rng() - 0.5) * amt; return new THREE.Color(r * k * (1 + (rng() - 0.5) * amt * 0.4), g * k, b * k * (1 + (rng() - 0.5) * amt * 0.6)); };
 const nPatch = makeNoise2D(606);
 
@@ -1092,16 +1164,17 @@ for (const [key, hex] of allHexes) {
   const vt = vtypeOf.get(key);
   const rng = makeRng(hex.q * 92821 + hex.r * 68917 + 7);
   const wp = hexToWorld(hex.q, hex.r);
-  if (vt === 'plain' || vt === 'highland') {
-    const n = vt === 'plain' ? 22 : 12;
+  if (vt === 'plain' || vt === 'highland' || vt === 'road') {
+    const n = vt === 'highland' ? 12 : 22;
     for (let i = 0; i < n; i++) {
       const [x, z] = randomInHex(wp.x, wp.z, rng, 1.0);
       const y = groundHeight(x, z);
-      if (y < WATER_LEVEL + 0.12) continue;
+      if (y < WATER_LEVEL + 0.12 || y < hex.height - 0.1 || roadAt(x, z) > 0.12) continue;
       grass.push({ x, y: y - 0.01, z, s: 0.8 + rng() * 0.8, sy: 0.8 + rng() * 0.6, ry: rng() * 6.28, color: vt === 'plain' ? mul(rng, 1.0, 1.0, 0.9, 0.3) : mul(rng, 1.25, 1.05, 0.7, 0.2) });
     }
     if (rng() < 0.06) {
-      const [x, z] = randomInHex(wp.x, wp.z, rng, 0.7);
+      const [x, z] = randomInHex(wp.x, wp.z, rng, 0.6);
+      if (groundHeight(x, z) < hex.height - 0.05 || roadAt(x, z) > 0.05) continue;
       bushes.push({ x, y: groundHeight(x, z) - 0.02, z, s: 0.6 + rng() * 0.6, ry: rng() * 6.28, color: mul(rng, 1.0, 1.0, 0.85, 0.3) });
     }
   } else if (vt === 'field') {
@@ -1139,14 +1212,18 @@ for (const [segKey, type] of Object.entries(segmentData)) {
   const [hi, lo] = effH(ha) >= effH(hb) ? [ha, hb] : [hb, ha];
   const ph = hexToWorld(hi.q, hi.r), pl = hexToWorld(lo.q, lo.r);
   const ox = (pl.x - ph.x) / sqrt3, oz = (pl.z - ph.z) / sqrt3;
-  const n = 3 + Math.floor(rng() * 2);
+  const n = rng() < 0.45 ? 1 : 2;
+  const drop = effH(hi) - effH(lo);
   for (let i = 0; i < n; i++) {
-    const t = (i + 0.3 + rng() * 0.4) / n;
+    const t = n === 1 ? 0.25 + rng() * 0.5 : (i === 0 ? 0.1 + rng() * 0.3 : 0.6 + rng() * 0.3);
     const ex = ec[0].x + (ec[1].x - ec[0].x) * t, ez = ec[0].z + (ec[1].z - ec[0].z) * t;
-    const off = (rng() - 0.3) * 0.12;
+    const off = -0.05 + rng() * 0.12;
     const x = ex + ox * off, z = ez + oz * off;
-    rocks.push({ x, y: lerp(effH(lo), effH(hi), 0.35 + rng() * 0.3), z, s: 0.32 + rng() * 0.25, sy: 1.1 + rng() * 0.8, ry: rng() * 6.28, rx: (rng() - 0.5) * 0.5, rz: (rng() - 0.5) * 0.5, color: mul(rng, 0.95, 0.92, 0.88, 0.35) });
-    if (rng() < 0.55) {
+    const big = rng() < 0.35;
+    const eda = Math.atan2(-(ec[1].z - ec[0].z), ec[1].x - ec[0].x);
+    if (big) slabs.push({ x, y: lerp(effH(lo), effH(hi), 0.15 + rng() * 0.2), z, s: 0.45 + rng() * 0.25, sy: 0.6 + drop * (0.4 + rng() * 0.3), ry: eda + (rng() - 0.5) * 1.2, rx: (rng() - 0.5) * 0.5, rz: (rng() - 0.5) * 0.5, color: mul(rng, 1.0, 0.96, 0.9, 0.3) });
+    else rocks.push({ x, y: lerp(effH(lo), effH(hi), 0.1 + rng() * 0.35), z, s: 0.28 + rng() * 0.32, sy: 0.7 + rng() * 0.6, ry: rng() * 6.28, rx: (rng() - 0.5) * 1.2, rz: (rng() - 0.5) * 1.2, color: mul(rng, 1.0, 0.96, 0.9, 0.35) });
+    if (rng() < 0.5) {
       const d = 0.15 + rng() * 0.25;
       const sx = ex + ox * d * 1.5, sz = ez + oz * d * 1.5;
       rocks.push({ x: sx, y: groundHeight(sx, sz) - 0.04, z: sz, s: 0.1 + rng() * 0.12, sy: 0.7 + rng() * 0.4, ry: rng() * 6.28, color: mul(rng, 1.0, 0.97, 0.92, 0.3) });
@@ -1164,7 +1241,7 @@ for (const [segKey, type] of Object.entries(segmentData)) {
       const d = Math.hypot(Math.max(0, bx0 - jx, jx - bx1), Math.max(0, bz0 - jz, jz - bz1));
       if (d < 1.2) continue;
       const y = groundHeight(jx, jz);
-      if (y < WATER_LEVEL + 0.45 || y > 24) continue;
+      if (y < WATER_LEVEL + 0.45 || y > 24 || roadAt(jx, jz) > 0.08) continue;
       const fm = forestMask(jx, jz);
       const e = 0.6;
       const gx = groundHeight(jx + e, jz) - groundHeight(jx - e, jz), gz = groundHeight(jx, jz + e) - groundHeight(jx, jz - e);
@@ -1199,6 +1276,7 @@ farTrees.add(VEG.instanced(VEG.makeBroadleafGeometry(0, 1), treeMatBroad, farBro
 vegGroup.add(farTrees);
 vegGroup.add(VEG.instanced(VEG.makeBushGeometry(), bushMat, bushes, { castShadow: true }));
 vegGroup.add(VEG.instanced(VEG.makeRockGeometry(3), rockMat, rocks, { castShadow: true }));
+vegGroup.add(VEG.instanced(VEG.makeRockGeometry(8, 'slab'), rockMat, slabs, { castShadow: true }));
 const grassMesh = VEG.instanced(VEG.makeGrassTuftGeometry(5), grassMat, grass);
 const wheatMesh = VEG.instanced(VEG.makeWheatGeometry(9), wheatMat, wheat);
 vegGroup.add(grassMesh, wheatMesh);
@@ -1756,7 +1834,7 @@ window.addEventListener('keydown', (e) => {
   if (e.target && e.target.tagName === 'INPUT') return;
   const k = e.key.toLowerCase();
   if (k === 'r') { intro.active = false; applyView(DEFAULT_VIEW); }
-  else if (k === 'g') terrainUniforms.uGrid.value = terrainUniforms.uGrid.value > 0 ? 0 : 0.14;
+  else if (k === 'g') terrainUniforms.uGrid.value = terrainUniforms.uGrid.value > 0 ? 0 : 0.11;
   else if (k === 'c') controls.autoRotate = !controls.autoRotate;
   else if (k === 'h') document.body.classList.toggle('clean');
   else if (k === 'q') { governor.locked = true; governor.set((governor.level + 1) % LEVELS.length); applyQuality(LEVELS[governor.level]); updateHud(); }

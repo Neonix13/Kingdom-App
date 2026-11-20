@@ -202,24 +202,45 @@ export function makeWheatGeometry(seed = 9) {
   return g;
 }
 
-export function makeRockGeometry(seed = 3) {
+export function makeRockGeometry(seed = 3, kind = 'boulder') {
   const g = strip(new THREE.IcosahedronGeometry(0.5, 1));
   const noise = makeNoise2D(seed);
+  const rng = makeRng(seed * 13 + 1);
+  const planes = [];
+  for (let i = 0; i < 7; i++) {
+    const n = new THREE.Vector3(rng() * 2 - 1, rng() * 1.6 - 0.4, rng() * 2 - 1).normalize();
+    planes.push([n, 0.3 + rng() * 0.16]);
+  }
+  planes.push([new THREE.Vector3(0, 1, 0), kind === 'slab' ? 0.42 : 0.3]);
   const pos = g.attributes.position;
-  const map = new Map();
+  const v = new THREE.Vector3();
+  const cache = new Map();
   for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
-    const key = `${x.toFixed(3)},${y.toFixed(3)},${z.toFixed(3)}`;
-    let k = map.get(key);
-    if (k === undefined) {
-      k = 1 + noise(x * 2.3 + y * 1.1, z * 2.1 - y * 1.7) * 0.28;
-      map.set(key, k);
+    v.set(pos.getX(i), pos.getY(i), pos.getZ(i));
+    const key = `${v.x.toFixed(3)},${v.y.toFixed(3)},${v.z.toFixed(3)}`;
+    let out = cache.get(key);
+    if (!out) {
+      const k = 1 + noise(v.x * 2.3 + v.y * 1.1, v.z * 2.1 - v.y * 1.7) * 0.18;
+      v.multiplyScalar(k);
+      for (const [n, d] of planes) {
+        const over = v.dot(n) - d;
+        if (over > 0) v.addScaledVector(n, -over);
+      }
+      if (kind === 'slab') v.set(v.x * 0.75, v.y * 1.25, v.z * 0.45);
+      else v.set(v.x * 1.15, v.y * 0.8, v.z);
+      v.y = Math.max(v.y, -0.2);
+      out = v.clone();
+      cache.set(key, out);
     }
-    pos.setXYZ(i, x * k * 1.15, Math.max(y * k * 0.75, -0.18), z * k);
+    pos.setXYZ(i, out.x, out.y, out.z);
   }
   g.computeVertexNormals();
-  const light = lin(0x8d877d), dark = lin(0x4f4a44);
-  paint(g, (x, y, z, c) => c.copy(dark).lerp(light, Math.min(1, Math.max(0, (y + 0.2) / 0.55))));
+  const light = lin(0xb2a692), dark = lin(0x6b6152), moss = lin(0x6f7a45);
+  paint(g, (x, y, z, c) => {
+    const t = Math.min(1, Math.max(0, (y + 0.2) / 0.6));
+    c.copy(dark).lerp(light, t);
+    if (y > 0.18 && kind !== 'slab') c.lerp(moss, 0.35);
+  });
   g.computeBoundingSphere();
   return g;
 }
