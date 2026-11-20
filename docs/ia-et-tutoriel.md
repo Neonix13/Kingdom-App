@@ -18,7 +18,7 @@ Une IA est un joueur ordinaire de la salle (`isBot: true`, nom « Ren Pa (IA) »
 | `tutorial.js` | Scénario du tutoriel |
 
 ### Brouillard de guerre
-L'IA ne lit jamais les positions qu'elle ne voit pas : ennemis = unités visibles par son joueur, chemins bloqués seulement par les unités visibles (une embuscade l'arrête comme un humain). Sans ennemi en vue, elle marche vers la position probable de l'ennemi (à l'opposé de sa propre zone par rapport au centre de la carte), puis balaie la carte si elle n'y trouve personne.
+L'IA ne lit jamais les positions qu'elle ne voit pas : ennemis = unités visibles par son joueur, chemins bloqués seulement par les unités visibles (une embuscade l'arrête comme un humain). Sans ennemi en vue, elle suit un **itinéraire de recherche** tiré d'informations publiques : les zones fixes de la carte s'il y en a ; sinon l'arc des cases situées à environ un diamètre du cercle des zones aléatoires (`10 + 4 × joueurs`) de sa propre zone, en commençant par le secteur tourné vers le centre de la carte. Les points sont visités selon un calendrier (≈ 2,5 cases par tour + 2 tours sur place), sans mémoire. Les buts inaccessibles (de l'autre côté de falaises ou de murs) sont remplacés par la case accessible la plus proche.
 
 ### Niveaux
 
@@ -81,8 +81,14 @@ Vue 3D : rien ne dépend du canevas 2D. Le panneau (z-index 9500) est au-dessus 
 
 `tests/bots.test.js` (`npm test`) : ajout/retrait d'IA, salle supprimée sans humain, partie solo complète, parties IA contre IA (toutes les paires de niveaux, petite carte et carte par défaut, avec et sans sérialisation à chaque action) sans erreur ni blocage, version avec minuteries réelles, IA en attente sans humain, tutoriel, mode simultané.
 
-## 5. Limites connues
+## 5. Mesures (carte par défaut, zones aléatoires)
+
+- **Niveaux** (30 parties IA contre IA par paire, budget 4000, 30 tours max) : Vétéran bat Recrue 20–10 ; Stratège bat Vétéran 19–8 (2 nuls) ; Stratège bat Recrue 23–6. 2 parties sur 90 bloquées au déploiement (zone vide, voir ci-dessous).
+- **Contre un joueur immobile** (15 parties par niveau, 30 tours) : contact établi dans environ 2 parties sur 3 (Recrue 14/15, Vétéran 10/15, Stratège 11/15 lors d'une mesure ; les zones étant tirées au hasard, les chiffres varient d'une série à l'autre). Un joueur qui avance rencontre l'IA bien plus tôt.
+
+## 6. Limites connues
 - `HexUtils.getStartingZones` (zones aléatoires) produit parfois une zone vide (~2 % des salles sur la carte par défaut) : personne ne peut s'y déployer, IA comme humain. Le test le contourne en recommençant.
 - Lambda : l'IA joue toute sa manche d'un coup à la réception d'un message (pas de pause possible sans minuterie).
-- La mémoire des ennemis aperçus n'est pas conservée d'un tour à l'autre (l'IA ne connaît que ce qu'elle voit maintenant).
+- La mémoire des ennemis aperçus n'est pas conservée d'un tour à l'autre (l'IA ne connaît que ce qu'elle voit maintenant) : contre un joueur qui reste caché ou immobile loin de l'itinéraire de recherche, l'IA peut ne jamais le trouver (la limite de tours ou les objectifs départagent alors).
+- Le Stratège avance groupé, donc lentement : il arrive au contact plus tard que la Recrue.
 - Les capacités des généraux autres qu'Ou Ki, Mou Bu et Ri Boku n'ont pas d'effet côté serveur : l'IA ne les utilise pas.

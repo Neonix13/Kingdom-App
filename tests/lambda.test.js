@@ -163,3 +163,31 @@ test('lambda : connexion disparue (410) traitée comme une déconnexion, items l
   assert.equal(lu.budget, 3000);
   assert.equal(lu.players.find(p => p.name === 'Bob').connected, false);
 });
+
+test('lambda : partie solo contre l\'IA (create_solo, IA jouée à chaque message reçu)', async () => {
+  const { ev, last, msgs } = setup();
+  await ev('S', '$connect');
+  await ev('S', '$default', { action: 'create_solo', playerName: 'Shin', difficulty: 'veteran', mapId: 'test-small', generalId: 'ou_ki' });
+  const s = last('S', 'session');
+  const code = s.roomCode;
+  assert.equal(last('S', 'phase_change').phase, 'army_building');
+  assert.equal(last('S', 'room_update').bots.length, 1);
+  assert.ok(last('S', 'room_update').players.find(p => p.id !== s.playerId).isReady, 'armée de l\'IA envoyée dans la même requête');
+  await ev('S', '$default', { action: 'submit_army', roomCode: code, units: [{ typeId: 'soldats', count: 1 }] });
+  const ds = last('S', 'deployment_state');
+  for (const [u, t] of ds.units.map((u, i) => [u, ds.startingZone.tiles[i]])) await ev('S', '$default', { action: 'place_unit', roomCode: code, unitId: u.id, q: t.q, r: t.r });
+  await ev('S', '$default', { action: 'deployment_ready', roomCode: code });
+  assert.equal(last('S', 'game_state').phase, 'battle');
+  const answered = new Set();
+  for (let i = 0; i < 40; i++) {
+    const gs = last('S', 'game_state');
+    if (gs.phase === 'ended' || gs.turn >= 4) break;
+    const req = msgs('S', 'defense_request').find(r => !answered.has(r.attackId));
+    if (req) { answered.add(req.attackId); await ev('S', '$default', { action: 'defend_choice', roomCode: code, attackId: req.attackId, choice: 'rien' }); }
+    else if (gs.currentPlayerId === s.playerId) await ev('S', '$default', { action: 'end_turn', roomCode: code });
+    else await ev('S', '$default', { action: 'tick', roomCode: code });
+  }
+  const gs = last('S', 'game_state');
+  assert.ok(gs.phase === 'ended' || gs.turn >= 3, `la partie avance (tour ${gs.turn}, ${JSON.stringify(msgs('S', 'error'))})`);
+  assert.equal(msgs('S', 'error').filter(e => e.code === 'server_error').length, 0);
+});

@@ -665,6 +665,7 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
       const at = nextDeadline(room);
       if (at != null) scheduler.schedule(room.roomCode, at);
     }
+    return room.roomCode;
   };
 
   H.join_room = async (connId, data) => {
@@ -848,9 +849,8 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     v.name(data.playerName);
     const difficulty = data.difficulty == null ? 'veteran' : v.oneOf(data.difficulty, bots.DIFFICULTIES, 'invalid_difficulty', 'Difficulté inconnue.');
     const generalId = data.generalId == null || data.generalId === '' ? null : v.oneOf(data.generalId, GENERALS.map(g => g.id), 'invalid_general', 'Général inconnu.');
-    await H.create_room(connId, { playerName: data.playerName, mapId: data.mapId });
-    const rec = await store.getConn(connId);
-    await withRoom(rec.roomCode, (tx) => {
+    const code = await H.create_room(connId, { playerName: data.playerName, mapId: data.mapId });
+    await withRoom(code, (tx) => {
       const room = tx.room;
       const host = room.getPlayer(room.hostId);
       host.generalId = generalId || GENERALS[crypto.randomInt(GENERALS.length)].id;
@@ -866,9 +866,8 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
   H.start_tutorial = async (connId, data) => {
     const playerName = data.playerName == null || data.playerName === '' ? 'Recrue' : data.playerName;
     v.name(playerName);
-    await H.create_room(connId, { playerName, mapId: bots.TUTORIAL.mapId });
-    const rec = await store.getConn(connId);
-    await withRoom(rec.roomCode, (tx) => {
+    const code = await H.create_room(connId, { playerName, mapId: bots.TUTORIAL.mapId });
+    await withRoom(code, (tx) => {
       const room = tx.room;
       engine(bots.setupTutorial(room, { botId: randomId('b_'), botColor: freeColor(room) }));
       tx.dirty = true;

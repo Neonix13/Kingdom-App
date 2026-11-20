@@ -5,7 +5,7 @@ const GENERALS = require('../data/generals');
 const rules = require('../rules');
 const AIAgent = require('../../simulation/AIAgent');
 const { hexDistance, hexKey, segmentEdgeKey } = require('../HexUtils');
-const { distanceField } = require('./pathing');
+const { distanceField, reachableGoal } = require('./pathing');
 const { buildWorld, inRange, unitValue, centroid, nearestHex } = require('./world');
 const { rngFor, pick } = require('./rng');
 
@@ -169,11 +169,12 @@ function planGeneral(world, profile, g, rng, blunder) {
   // Walking cost to the army (cliffs and walls), straight distance if the army is out of reach
   const field = distanceField(room, center.q, center.r, false);
   const toArmy = (q, r) => { const f = field.get(keyOf(q, r)); return f == null ? hexDistance(q, r, center.q, center.r) * 2 : f; };
+  const withArmy = toArmy(g.q, g.r) <= 4; // terrain only matters once the general has joined his troops
   const score = (q, r) => {
     let s = -toArmy(q, r) * 1.5;
     const d = world.enemies.length ? Math.min(...world.enemies.map(e => hexDistance(q, r, e.q, e.r))) : Infinity;
     if (d < keep) s -= (keep - d) * 6;
-    s += terrainScore(world, q, r) * profile.terrain * 0.5;
+    if (withArmy) s += terrainScore(world, q, r) * profile.terrain * 0.5;
     return s;
   };
   let best = null, bs = score(g.q, g.r) + 0.5; // small bias for staying put
@@ -211,7 +212,7 @@ function approach(world, profile, u, reach, goal, limit) {
 
 function approachDest(world, profile, u, reach, goal, limit) {
   if (!goal || !reach.size) return null;
-  const field = distanceField(world.room, goal.q, goal.r, isMountedUnit(u));
+  const { field } = reachableGoal(world.room, goal, u, isMountedUnit(u));
   const here = field.get(keyOf(u.q, u.r));
   if (here == null) return null;
   const keepAway = isRanged(u) ? 2 : 0;

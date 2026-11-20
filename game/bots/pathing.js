@@ -77,4 +77,27 @@ function distanceField(room, goalQ, goalR, mounted) {
   return dist;
 }
 
-module.exports = { distanceField };
+// Goal actually reachable from `from`: the goal itself, or the hex of from's area closest to it
+// (a goal on the other side of cliffs or walls would otherwise freeze the unit)
+const substitutes = new Map();
+function reachableGoal(room, goal, from, mounted) {
+  const field = distanceField(room, goal.q, goal.r, mounted);
+  if (field.has(hexKey(from.q, from.r))) return { goal, field };
+  const key = `${room.roomCode}|${goal.q},${goal.r}|${from.q},${from.r}|${mounted ? 1 : 0}`;
+  let sub = substitutes.get(key);
+  if (!sub) {
+    const area = distanceField(room, from.q, from.r, mounted);
+    let best = null, bd = Infinity;
+    for (const k of area.keys()) {
+      const [q, r] = k.split(',').map(Number);
+      const d = Math.max(Math.abs(q - goal.q), Math.abs(r - goal.r), Math.abs(q + r - goal.q - goal.r));
+      if (d < bd) { bd = d; best = { q, r }; }
+    }
+    sub = best || from;
+    substitutes.set(key, sub);
+    if (substitutes.size > CACHE_MAX * 4) substitutes.delete(substitutes.keys().next().value);
+  }
+  return { goal: sub, field: distanceField(room, sub.q, sub.r, mounted) };
+}
+
+module.exports = { distanceField, reachableGoal };
