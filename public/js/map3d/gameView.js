@@ -50,7 +50,11 @@ export async function mountGameView(bridge, { container }) {
   container.insertBefore(plates, canvas.nextSibling);
   container.appendChild(loading);
 
+  for (let i = 0; i < 100 && !bridge.mapLoading; i++) await new Promise((r) => setTimeout(r, 100));
+  if (bridge.mapLoading) { try { await bridge.mapLoading; } catch (e) { /* default map below */ } }
+  const mapDoc = bridge.mapDoc && bridge.mapDoc.height ? bridge.mapDoc : null;
   const world = await createWorld({
+    map: mapDoc,
     canvas, container, persistKey: 'game3d', intro: false, hour: 15.5, mapId: window.KB_MAP_ID || 'default',
     onProgress: (pct) => { loading.querySelector('i').style.width = pct + '%'; },
   });

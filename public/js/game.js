@@ -2458,6 +2458,8 @@ function wsDispatch(event, data) {
 // ---- 3D VIEW BRIDGE ----
 window.gameBridge = {
   get state() { return gameState; },
+  get mapDoc() { return mapDoc; },
+  get mapLoading() { return mapLoading; },
   get deployState() { return deployState; },
   get myId() { return myId; },
   get mode() { return mode; },
