@@ -1,6 +1,7 @@
 import { sharedBank } from './bank.js';
 import { Engine } from './engine.js';
 import { Music, MUSIC_STATES } from './music.js';
+import { loadStemLibrary } from './stemMusic.js';
 import { Ambience } from './ambience.js';
 import { SFX } from './recipes.js';
 import { clamp } from './dsp.js';
@@ -65,6 +66,13 @@ export function createAudio(opts = {}) {
         amb.set(ambParams);
         music.setIntensity(intensity);
         if (musicState !== 'off') music.set(musicState);
+        if (opts.renderedMusic !== false) {
+          loadStemLibrary(ctx, opts.musicBase).then((lib) => {
+            if (!lib || !music) return;
+            music.stems = lib;
+            music.refresh();
+          });
+        }
         timer = setInterval(tick, 100);
         bank.warm();
       }

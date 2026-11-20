@@ -72,6 +72,14 @@ audio.setAmbience({
 
 `npm run export-midi` (options : `-- --out DOSSIER --bars 32 --seed 1234 --minutes 20`) écrit dans `~/Downloads/Kingdom-MIDI/` un fichier MIDI par état de la musique générative (menu, calme, déploiement, bataille à intensité 0,2 / 0,5 / 0,9, bataille en montée 0 → 1, victoire, défaite), avec `--minutes N` une prise longue par état dans `~/Downloads/Kingdom-MIDI-Nmin/` (plus une bataille à intensité variable par paliers de 16 mesures ; victoire et défaite restent des motifs courts), avec les mêmes tirages que le jeu pour une graine donnée. Une piste par instrument (programmes General MIDI : koto pour le guzheng, shamisen pour le pipa, guitare nylon pour le guqin, harpe pour ses harmoniques, shakuhachi pour le dizi ; percussions sur le canal 10 : 35 taiko grave, 47 taiko médium, 50 tambour aigu, 76 bloc de bois), carte de tempo incluse (la bataille accélère avec l'intensité). Les glissés courts du guzheng deviennent une appogiature, les petits glissés des pitch bends (amplitude ±2 demi-tons).
 
+## Musique rendue dans un DAW (phrases aléatoires)
+
+1. `npm run music-phrases` (options `-- --phrases 24 --seed 1234 --states battle,menu`) écrit dans `~/Downloads/Kingdom-Phrases/` un MIDI par état (menu, calme, deploiement, bataille, victoire, defaite), `layout.json` et `LISEZMOI.md` (marche à suivre dans Ableton). Chaque phrase de 8 mesures est indépendante, à tempo fixe, dans un emplacement « 1 mesure d'amorce + 8 mesures + 2 mesures de queue ». La bataille est en 4 familles (`melodie`, `pipa`, `leger`, `lourd`) ; victoire et défaite ont en plus une intro (le motif d'ouverture).
+2. Rendu dans le DAW, un dossier par état (`Rendus/bataille/…`).
+3. `npm run music-import -- --dir "/chemin/vers/Rendus"` découpe les rendus, règle le volume par état (-20 dB RMS), encode en AAC (ffmpeg requis) dans `public/audio/music/<état>/` et écrit `public/audio/music/manifest.json`.
+
+En jeu (`stemMusic.js`), un état présent dans le manifeste remplace la musique synthétisée : une phrase tirée au hasard (sans répéter les dernières) démarre sur la grille des mesures pendant que la queue de la précédente s'éteint ; la suivante est chargée pendant la lecture. En bataille, l'intensité règle le volume de chaque famille (`layerGains` dans `stemLayout.js`). Les états absents gardent la musique synthétisée. `gain` dans le manifeste ajuste le volume d'un état. Ce bus n'a pas de réverbération ajoutée.
+
 ## Architecture
 
 | Fichier | Rôle |
@@ -81,5 +89,6 @@ audio.setAmbience({
 | `bank.js` | pré-rendu des recettes via `OfflineAudioContext` (hors thread principal), normalisation, raccord des boucles |
 | `recipes.js`, `kit.js` | recettes de synthèse (bruit filtré, modal, Karplus-Strong, cuivres, tambours…) |
 | `music.js` | séquenceur génératif par mesure |
+| `stemMusic.js`, `stemLayout.js` | lecture de la musique rendue (phrases aléatoires, familles par intensité) |
 | `ambience.js` | lits sonores en boucle + événements poissoniens |
 | `dsp.js`, `analyze.js` | utilitaires DSP et mesures |

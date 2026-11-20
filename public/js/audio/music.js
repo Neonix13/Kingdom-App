@@ -1,5 +1,6 @@
 import { MUSIC_BASES } from './recipes.js';
 import { rng, mtof, clamp, smoothstep } from './dsp.js';
+import { StemTrack } from './stemMusic.js';
 
 const MODES = { gong: [0, 2, 4, 7, 9], shang: [0, 2, 5, 7, 10], jue: [0, 3, 5, 8, 10], zhi: [0, 2, 5, 7, 9], yu: [0, 3, 5, 7, 10] };
 
@@ -21,6 +22,7 @@ export class Music {
     this.rnd = rng(seed);
     this.gens = [];
     this.state = 'off';
+    this.stems = null;
     this.intensity = 0;
     this.targetIntensity = 0;
     const n = 8, re = new Float32Array(n), im = new Float32Array(n);
@@ -46,8 +48,19 @@ export class Music {
     const bus = this.ctx.createGain();
     bus.gain.setValueAtTime(0, now);
     bus.gain.setTargetAtTime(1, now, cfg.fadeIn / 3);
-    bus.connect(this.e.buses.music);
-    this.gens.push({ cfg, bus, next: now + 0.15, bar: 0, deg: 5, fluteUntil: 0, stinger: !!cfg.stinger, dying: false });
+    const gen = { cfg, bus, next: now + 0.15, bar: 0, deg: 5, fluteUntil: 0, stinger: !!cfg.stinger, dying: false };
+    if (this.stems && this.stems.has(state)) {
+      bus.connect(this.e.buses.musicDry || this.e.buses.music);
+      gen.stem = new StemTrack(this, this.stems, state, bus);
+    } else bus.connect(this.e.buses.music);
+    this.gens.push(gen);
+  }
+
+  refresh() {
+    const s = this.state;
+    if (s === 'off') return;
+    this.set('off');
+    this.set(s);
   }
 
   setIntensity(x) { this.targetIntensity = clamp(+x || 0, 0, 1); }
@@ -56,9 +69,10 @@ export class Music {
     for (let i = this.gens.length - 1; i >= 0; i--) {
       const g = this.gens[i];
       if (g.dying) {
-        if (t0 > g.dieAt) { try { g.bus.disconnect(); } catch (e) { } this.gens.splice(i, 1); }
+        if (t0 > g.dieAt) { if (g.stem) g.stem.stop(); try { g.bus.disconnect(); } catch (e) { } this.gens.splice(i, 1); }
         continue;
       }
+      if (g.stem) { g.stem.schedule(t0, t1); continue; }
       if (g.next < t0 - 0.05) g.next = t0 + 0.05;
       while (g.next < t1) {
         this.intensity += (this.targetIntensity - this.intensity) * 0.6;

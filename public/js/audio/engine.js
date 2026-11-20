@@ -27,11 +27,10 @@ export class Engine {
     this.reverb.connect(rvOut); rvOut.connect(this.master);
 
     this.buses = {};
-    for (const [name, send] of [['music', 0.32], ['sfx', 0.12], ['amb', 0.1]]) {
+    for (const [name, send] of [['music', 0.32], ['musicDry', 0], ['sfx', 0.12], ['amb', 0.1]]) {
       const bus = g(1);
       bus.connect(this.master);
-      const s = g(send);
-      bus.connect(s); s.connect(this.reverb);
+      if (send) { const s = g(send); bus.connect(s); s.connect(this.reverb); }
       this.buses[name] = bus;
     }
     this.sfxVoices = [];
@@ -60,6 +59,7 @@ export class Engine {
     const sq = (v) => clamp(v, 0, 1) ** 2;
     this.ramp(this.master.gain, muted ? 0 : sq(master) * 2, tc);
     this.ramp(this.buses.music.gain, sq(music), tc);
+    this.ramp(this.buses.musicDry.gain, sq(music), tc);
     this.ramp(this.buses.sfx.gain, sq(sfx), tc);
     this.ramp(this.buses.amb.gain, sq(ambience), tc);
   }
