@@ -35,6 +35,8 @@ function advance(room) {
       .map(e => ({ ...e, turnsLeft: e.turnsLeft - 1 }))
       .filter(e => e.turnsLeft > 0);
     room._applyPassives();
+    room.onRoundStart();
+    if (room.phase !== 'battle') return { newRound, fled: [] };
     room._rollInitiative();
     skipEliminated(room);
   }
@@ -70,6 +72,7 @@ const sequential = {
 
   endTurn(room) {
     const current = room.getPlayer(room.turnOrder[room.currentTurnIndex]);
+    if (current) room.onPlayerTurnEnd(current.id);
     if (current) {
       for (const u of current.units) {
         u.hasMoved = false;

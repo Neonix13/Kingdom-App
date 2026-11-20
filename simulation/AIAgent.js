@@ -4,7 +4,7 @@ const STANCES = require('../game/data/stances');
 const SEGMENTS = require('../game/data/segments');
 const { hexDistance, hexKey, hexNeighbors, findPath, segmentEdgeKey } = require('../game/HexUtils');
 
-const TERRAIN_COSTS = { plain: 1, road: 1, forest: 2, river: 2, building: 1, bridge: 1 };
+const rules = require('../game/rules');
 
 class AIAgent {
   constructor(playerId, rewardFn) {
@@ -183,7 +183,7 @@ class AIAgent {
       if (p.id === this.playerId || p.isEliminated) continue;
       for (const u of p.units) {
         if (u.q === null) continue;
-        if (visible.has(hexKey(u.q, u.r))) enemies.push(u);
+        if (room.canSee(this.playerId, u, u.q, u.r, visible)) enemies.push(u);
       }
     }
     return enemies;
@@ -263,64 +263,23 @@ class AIAgent {
     }
   }
 
-  // Dijkstra flood-fill to find all reachable hexes within speed budget
+  // Reachable hexes within the speed budget, same rules as the server (shared movement table)
   _getReachableHexes(room, unit) {
-    const speed = unit.speedRemaining;
     const reachable = new Map(); // hexKey -> { q, r, cost }
-    const isCavalry = unit.category === 'Chevaux' || unit.category === 'Chars';
-
-    const queue = [{ q: unit.q, r: unit.r, cost: 0 }];
-    const dist = new Map();
-    dist.set(hexKey(unit.q, unit.r), 0);
-
-    while (queue.length > 0) {
-      queue.sort((a, b) => a.cost - b.cost);
-      const { q, r, cost } = queue.shift();
-
-      if (cost > speed) continue;
-      const key = hexKey(q, r);
-
-      // Skip occupied hexes (except starting position)
-      if (room.unitMap[key] && !(q === unit.q && r === unit.r)) continue;
-
-      if (!(q === unit.q && r === unit.r)) {
-        reachable.set(key, { q, r, cost });
-      }
-
-      for (const [nq, nr] of hexNeighbors(q, r)) {
-        const nk = hexKey(nq, nr);
-        if (!room.hexMap[nk]) continue;
-        if (room.unitMap[nk]) continue;
-
-        // Segment check
-        const edgeK = segmentEdgeKey(q, r, nq, nr);
-        const segType = room.segmentData?.[edgeK];
-        const segDef = segType ? SEGMENTS[segType] : null;
-        if (segDef) {
-          if (segDef.infranchissable) continue;
-          if (segDef.infranchissable_cavalerie && isCavalry) continue;
-        }
-
-        const srcTerrain = room.hexMap[hexKey(q, r)]?.terrain || 'plain';
-        let stepCost = TERRAIN_COSTS[srcTerrain] ?? 1;
-        if (segDef) {
-          if (segDef.vitesse_fixe != null) {
-            stepCost = segDef.vitesse_fixe;
-          } else {
-            stepCost += Math.max(0, -(segDef.vitesse || 0));
-          }
-        }
-
-        const newCost = cost + stepCost;
-        if (newCost > speed) continue;
-
-        if (!dist.has(nk) || newCost < dist.get(nk)) {
-          dist.set(nk, newCost);
-          queue.push({ q: nq, r: nr, cost: newCost });
-        }
-      }
+    const vis = this._visibleCache || room.getVisibleHexes(this.playerId);
+    const { dist } = rules.reachable(rules.MOVE_TABLE, {
+      start: { q: unit.q, r: unit.r },
+      maxCost: unit.speedRemaining,
+      mounted: rules.isMounted(unit),
+      hexAt: (k) => room.hexMap[k] || null,
+      blocked: (k) => { const o = room.unitMap[k]; return !!o && room.canSee(this.playerId, o, o.q, o.r, vis); },
+      segAt: (a, b, c, d) => room.segmentData?.[segmentEdgeKey(a, b, c, d)] || null,
+    });
+    for (const [key, cost] of dist) {
+      if (cost === 0) continue;
+      const [q, r] = key.split(',').map(Number);
+      reachable.set(key, { q, r, cost });
     }
-
     return reachable;
   }
 

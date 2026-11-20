@@ -168,6 +168,7 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
         if (!(e instanceof ProtocolError)) throw e;
         tx.error = e;
       }
+      roomEventsFlow(tx);
       if (tx.dirty) r.lastActivity = tx.t;
       return { save: tx.dirty || tx.deleted, remove: tx.deleted };
     });
@@ -232,6 +233,71 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
 
   // ---------- game flows ----------
 
+  function spectatorsLive(room) {
+    return room.phase === 'ended' || room.settings.spectatorVision === 'full';
+  }
+
+  // Rule events queued by GameRoom (captures, nightfall, ambushes)
+  function roomEventsFlow(tx) {
+    const room = tx.room;
+    for (const e of room.drainEvents()) {
+      tx.dirty = true;
+      if (e.event === 'ambush') {
+        emit(tx, r => (r.role === 'spectator' ? spectatorsLive(room) : (r.member.id === e.playerId || r.member.id === e.byPlayerId)), e);
+      } else {
+        emit(tx, 'all', e);
+      }
+    }
+  }
+
+  const UNKNOWN = 'Unité inconnue';
+
+  // What a recipient may know about a combat: sides it cannot see are anonymised, details only for the two camps
+  function combatView(log, { seeAttacker, seeTarget, details }) {
+    const out = { ...log };
+    if (!details) delete out.breakdown;
+    if (!seeAttacker) Object.assign(out, { attackerId: null, attackerName: UNKNOWN, attackerVitalityLeft: null, attackerHidden: true });
+    if (!seeTarget) Object.assign(out, { targetId: null, targetName: UNKNOWN, targetVitalityLeft: null, targetMoraleLeft: null, targetHidden: true });
+    if (log.duel) {
+      const hide = (id) => ((id === log.attackerId && !seeAttacker) || (id === log.targetId && !seeTarget) ? null : id);
+      out.duel = { ...log.duel, attackerId: hide(log.duel.attackerId), defenderId: hide(log.duel.defenderId), winnerId: hide(log.duel.winnerId), loserId: hide(log.duel.loserId), rounds: log.duel.rounds.map(rd => ({ ...rd, attacker: hide(rd.attacker) })) };
+    }
+    return out;
+  }
+
+  // Who saw each side of a pending attack (computed before resolution: dead units leave the board)
+  function combatWitnesses(room, pending) {
+    const att = room.findUnit(pending.attackerId);
+    const tgt = room.findUnit(pending.targetId);
+    const seen = {};
+    for (const p of room.players) {
+      const vis = room.getVisibleHexes(p.id);
+      seen[p.id] = {
+        seeAttacker: p.id === pending.attackerPlayerId || (!!att && room.canSee(p.id, att, att.q, att.r, vis)),
+        seeTarget: p.id === pending.targetPlayerId || (!!tgt && room.canSee(p.id, tgt, tgt.q, tgt.r, vis)),
+      };
+    }
+    return seen;
+  }
+
+  function autoEndFlow(tx) {
+    const room = tx.room;
+    for (let i = 0; i <= room.players.length; i++) {
+      if (room.phase !== 'battle' || Object.keys(room.pendingAttacks).length) return;
+      const cur = room.getCurrentPlayerId();
+      if (!cur || room.canPlayerAct(cur)) return;
+      tx.dirty = true;
+      emit(tx, 'all', { event: 'turn_auto_ended', playerId: cur, name: room.getPlayer(cur).name, reason: 'no_actions' });
+      turnChangeFlow(tx, room.endTurn(), false);
+    }
+  }
+
+  function startTurnTimer(tx) {
+    const room = tx.room;
+    const sec = room.settings.turnTimer;
+    room.turnEndsAt = room.phase === 'battle' && sec > 0 ? tx.t + sec * 1000 : null;
+  }
+
   function refreshTurnDeadline(tx, ms = cfg.absentTurnMs) {
     const room = tx.room;
     const cur = room.phase === 'battle' ? room.getCurrentPlayerId() : null;
@@ -239,24 +305,34 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     room.turnDeadline = p && p.connected === false ? tx.t + ms : null;
   }
 
+  function gameOverMessage(room) {
+    return { event: 'game_over', winnerId: room.winner, winnerName: room.getPlayer(room.winner)?.name || null, reason: room.endReason || null, recap: room.getRecap() };
+  }
+
   function gameOverFlow(tx) {
     const room = tx.room;
     if (room.phase !== 'ended' || room.endedAt) return;
     room.endedAt = tx.t;
     room.turnDeadline = null;
-    emit(tx, 'all', { event: 'game_over', winnerId: room.winner, winnerName: room.getPlayer(room.winner)?.name || null });
+    room.turnEndsAt = null;
+    emit(tx, 'all', gameOverMessage(room));
   }
 
-  function turnChangeFlow(tx, res) {
+  function turnChangeFlow(tx, res, autoEnd = true) {
     const room = tx.room;
-    if (res && res.newRound) emit(tx, 'all', { event: 'initiative_rolled', rolls: room.initiativeRolls, turnOrder: room.turnOrder, turn: room.turn });
-    emit(tx, 'all', { event: 'turn_change', currentPlayerId: room.getCurrentPlayerId(), turn: room.turn, manche: room.manche });
+    if (room.phase === 'battle') {
+      if (res && res.newRound) emit(tx, 'all', { event: 'initiative_rolled', rolls: room.initiativeRolls, turnOrder: room.turnOrder, turn: room.turn });
+      startTurnTimer(tx);
+      emit(tx, 'all', { event: 'turn_change', currentPlayerId: room.getCurrentPlayerId(), turn: room.turn, manche: room.manche, ...room.timeState(), turnEndsAt: room.turnEndsAt || null });
+      room._recordKeyframe();
+    }
     if (res && res.fled && res.fled.length) {
       const owner = room.getCurrentPlayerId();
-      emit(tx, r => r.role === 'spectator' || r.member.id === owner, { event: 'units_fled', fled: res.fled });
+      emit(tx, r => (r.role === 'spectator' ? spectatorsLive(room) : r.member.id === owner), { event: 'units_fled', fled: res.fled });
     }
     refreshTurnDeadline(tx);
     gameOverFlow(tx);
+    if (autoEnd) autoEndFlow(tx);
   }
 
   function settleFlow(tx) {
@@ -265,26 +341,29 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     gameOverFlow(tx);
   }
 
-  function combatFlow(tx, pending, resolved) {
+  function combatFlow(tx, pending, resolved, witnesses) {
     const room = tx.room;
-    const hexes = [hexKey(pending.attackerQ, pending.attackerR), hexKey(pending.targetQ, pending.targetR)];
-    const msg = { event: 'combat_result', combatLog: resolved.combatLog };
+    const log = resolved.combatLog;
     emitBuild(tx, 'all', (r) => {
-      if (r.role === 'spectator') return msg;
+      if (r.role === 'spectator') return spectatorsLive(room) ? { event: 'combat_result', combatLog: log } : null;
       const id = r.member.id;
-      if (id === pending.attackerPlayerId || id === pending.targetPlayerId) return msg;
-      const vis = room.getVisibleHexes(id);
-      return hexes.some(h => vis.has(h)) ? msg : null;
+      const w = witnesses[id] || { seeAttacker: false, seeTarget: false };
+      if (id === pending.attackerPlayerId) return { event: 'combat_result', combatLog: log };
+      if (id === pending.targetPlayerId) return { event: 'combat_result', combatLog: combatView(log, { ...w, seeTarget: true, details: w.seeAttacker }) };
+      if (!w.seeAttacker && !w.seeTarget) return null;
+      return { event: 'combat_result', combatLog: combatView(log, { ...w, details: false }) };
     });
     settleFlow(tx);
+    autoEndFlow(tx);
     emitState(tx);
   }
 
   function resolvePending(tx, attackId, choice) {
     const pending = tx.room.pendingAttacks[attackId];
+    const witnesses = pending ? combatWitnesses(tx.room, pending) : {};
     const resolved = tx.room.resolveAttack(attackId, choice);
     tx.dirty = true;
-    if (resolved.ok) combatFlow(tx, pending, resolved);
+    if (resolved.ok) combatFlow(tx, pending, resolved, witnesses);
     else emitState(tx);
     return resolved;
   }
@@ -301,6 +380,7 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     room.startBattle();
     emit(tx, 'all', { event: 'phase_change', phase: 'battle', mapId: room.mapId });
     emit(tx, 'all', { event: 'initiative_rolled', rolls: room.initiativeRolls, turnOrder: room.turnOrder, turn: room.turn });
+    startTurnTimer(tx);
     refreshTurnDeadline(tx);
     emitState(tx);
   }
@@ -355,12 +435,19 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
       tx.dirty = true;
       const cur = room.getPlayer(room.getCurrentPlayerId());
       if (cur && cur.connected === false && !Object.keys(room.pendingAttacks).length) {
-        emit(tx, 'all', { event: 'turn_auto_ended', playerId: cur.id, name: cur.name });
+        emit(tx, 'all', { event: 'turn_auto_ended', playerId: cur.id, name: cur.name, reason: 'absent' });
         turnChangeFlow(tx, room.endTurn());
         emitState(tx);
       } else {
         refreshTurnDeadline(tx);
       }
+    }
+    if (room.phase === 'battle' && room.turnEndsAt && room.turnEndsAt <= t && !Object.keys(room.pendingAttacks).length) {
+      tx.dirty = true;
+      const cur = room.getPlayer(room.getCurrentPlayerId());
+      if (cur) emit(tx, 'all', { event: 'turn_auto_ended', playerId: cur.id, name: cur.name, reason: 'timer' });
+      turnChangeFlow(tx, room.endTurn());
+      emitState(tx);
     }
     const anyConnected = room.players.some(p => p.connected !== false) || (room.spectators || []).some(s => s.connected !== false);
     if (room.phase === 'ended' && room.endedAt && t - room.endedAt >= cfg.endedRoomMs) tx.deleted = true;
@@ -371,6 +458,7 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     const times = [];
     for (const a of Object.values(room.pendingAttacks || {})) if (a.expiresAt) times.push(a.expiresAt);
     if (room.phase === 'battle' && room.turnDeadline) times.push(room.turnDeadline);
+    if (room.phase === 'battle' && room.turnEndsAt) times.push(room.turnEndsAt);
     const dropMs = room.phase === 'lobby' ? cfg.lobbyDropMs
       : (room.phase === 'army_building' || room.phase === 'deployment') ? cfg.preBattleDropMs
         : room.phase === 'battle' ? cfg.abandonMs : null;
@@ -409,15 +497,15 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
         if (a.attackerPlayerId === member.id) reply(tx, connId, { event: 'waiting_defense', attackId, seconds });
       }
     }
-    if (room.phase === 'ended') {
-      reply(tx, connId, { event: 'game_over', winnerId: room.winner, winnerName: room.getPlayer(room.winner)?.name || null });
-    }
+    if (room.phase === 'ended') reply(tx, connId, gameOverMessage(room));
   }
 
   function defenseRequest(room, attackId, a, seconds) {
+    const att = room.findUnit(a.attackerId);
+    const seen = !!att && room.canSee(a.targetPlayerId, att);
     return {
       event: 'defense_request', attackId, roomCode: room.roomCode,
-      attackerName: a.attackerName, targetName: a.targetName, targetId: a.targetId,
+      attackerName: seen ? a.attackerName : UNKNOWN, attackerId: seen ? a.attackerId : null, targetName: a.targetName, targetId: a.targetId,
       targetQ: a.targetQ, targetR: a.targetR, isRanged: a.isRanged, targetTypeId: a.targetTypeId,
       seconds, expiresAt: a.expiresAt,
     };
@@ -470,7 +558,7 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     const token = randomToken();
     let room = null;
     for (let i = 0; i < 20 && !room; i++) {
-      const candidate = new GameRoom(randomRoomCode(), playerId, { mapId });
+      const candidate = new GameRoom(randomRoomCode(), playerId, { mapId, record: true });
       candidate.addPlayer(playerId, name, { token, connId, connected: true, color: PALETTE[0] });
       candidate.createdAt = candidate.lastActivity = now();
       if (await store.create(candidate)) room = candidate;
@@ -597,6 +685,15 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     emit(tx, 'all', lobbyMessage(tx.room));
   });
 
+  H.set_settings = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    requireHost(tx, connId);
+    requirePhase(tx, 'lobby');
+    if (!data.settings || typeof data.settings !== 'object' || Array.isArray(data.settings)) fail('invalid_settings', 'Paramètres invalides.');
+    engine(tx.room.setSettings(data.settings));
+    tx.dirty = true;
+    emit(tx, 'all', lobbyMessage(tx.room));
+  });
+
   H.set_player_color = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
     const p = requirePlayer(tx, connId);
     requirePhase(tx, 'lobby');
@@ -669,14 +766,18 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     const result = engine(room.moveUnit(p.id, v.id(data.unitId), v.int(data.targetQ, -10000, 10000), v.int(data.targetR, -10000, 10000)));
     tx.dirty = true;
     const full = [[result.fromQ, result.fromR], ...result.path];
-    const anim = { event: 'unit_move_anim', unitId: result.unitId, fromQ: result.fromQ, fromR: result.fromR, path: result.path };
+    const anim = { event: 'unit_move_anim', unitId: result.unitId, fromQ: result.fromQ, fromR: result.fromR, path: result.path, ambush: !!result.ambush };
+    const unit = room.findUnit(result.unitId);
     emitBuild(tx, 'all', (r) => {
-      if (r.role === 'spectator' || r.member.id === p.id) return anim;
+      if (r.member.id === p.id) return anim;
+      if (r.role === 'spectator') return spectatorsLive(room) ? anim : null;
       const vis = room.getVisibleHexes(r.member.id);
-      if (!vis.has(hexKey(result.path.length ? full[full.length - 1][0] : result.fromQ, result.path.length ? full[full.length - 1][1] : result.fromR))) return null;
-      const i = full.findIndex(([q, rr]) => vis.has(hexKey(q, rr)));
-      return { ...anim, fromQ: full[i][0], fromR: full[i][1], path: full.slice(i + 1).filter(([q, rr]) => vis.has(hexKey(q, rr))) };
+      const seen = full.map(([q, rr]) => room.canSee(r.member.id, unit, q, rr, vis));
+      if (!seen[seen.length - 1]) return null;
+      const i = seen.indexOf(true);
+      return { ...anim, ambush: undefined, fromQ: full[i][0], fromR: full[i][1], path: full.slice(i + 1).filter((_, j) => seen[i + 1 + j]) };
     });
+    autoEndFlow(tx);
     emitState(tx);
   });
 
@@ -686,6 +787,11 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     const result = engine(room.initiateCombat(p.id, v.id(data.attackerId), v.id(data.targetId)));
     tx.dirty = true;
     const pending = room.pendingAttacks[result.attackId];
+    if (pending.duel) {
+      emit(tx, [result.targetPlayerId], { event: 'duel_challenge', attackId: result.attackId, attackerName: result.attackerName, targetName: result.targetName });
+      resolvePending(tx, result.attackId, 'duel');
+      return;
+    }
     pending.expiresAt = tx.t + cfg.defenseMs;
     const seconds = Math.round(cfg.defenseMs / 1000);
     emit(tx, [result.targetPlayerId], defenseRequest(room, result.attackId, pending, seconds));
@@ -708,6 +814,7 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     const p = requireTurn(tx, connId);
     engine(tx.room.rotateFacing(p.id, v.id(data.unitId), v.int(data.facing, 0, 5, 'invalid_facing', 'Orientation invalide.')));
     tx.dirty = true;
+    autoEndFlow(tx);
     emitState(tx);
   });
 
@@ -715,6 +822,7 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     const p = requireTurn(tx, connId);
     engine(tx.room.changeStance(p.id, v.id(data.unitId), v.id(data.stanceId)));
     tx.dirty = true;
+    autoEndFlow(tx);
     emitState(tx);
   });
 
@@ -723,6 +831,7 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     const result = engine(tx.room.motivateUnit(p.id, v.id(data.generalId)));
     tx.dirty = true;
     reply(tx, connId, { event: 'motivate_result', ...result });
+    autoEndFlow(tx);
     emitState(tx);
   });
 
@@ -731,7 +840,14 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     const targetId = data.targetId == null ? null : v.id(data.targetId);
     const result = engine(tx.room.useGeneralAbility(p.id, null, targetId));
     tx.dirty = true;
-    emit(tx, 'all', { event: 'combat_result', combatLog: result.combatLog });
+    const log = result.combatLog;
+    const publicLog = { abilityUsed: log.abilityUsed, generalId: log.generalId, playerId: log.playerId, targetPlayerId: log.targetPlayerId, effects: log.effects };
+    emitBuild(tx, 'all', (r) => {
+      if (r.member.id === p.id) return { event: 'combat_result', combatLog: log };
+      if (r.role === 'spectator' && !spectatorsLive(tx.room)) return null;
+      return { event: 'combat_result', combatLog: publicLog };
+    });
+    autoEndFlow(tx);
     emitState(tx);
   });
 
@@ -740,6 +856,18 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     tx.dirty = true;
     turnChangeFlow(tx, tx.room.endTurn());
     emitState(tx);
+  });
+
+  // Replay of a finished battle, in chunks (API Gateway frames are limited to 128 KB)
+  H.get_replay = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    requireMember(tx, connId);
+    requirePhase(tx, 'ended');
+    const rep = tx.room.getReplay();
+    if (!rep) fail('no_replay', 'Aucun replay enregistré pour cette partie.');
+    const text = JSON.stringify(rep);
+    const size = 60000;
+    const total = Math.max(1, Math.ceil(text.length / size));
+    for (let i = 0; i < total; i++) reply(tx, connId, { event: 'replay_chunk', index: i, total, data: text.slice(i * size, (i + 1) * size) });
   });
 
   H.chat_message = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {

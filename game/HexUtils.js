@@ -3,6 +3,7 @@
 
 const maps = require('./maps');
 const SEGMENT_DEFS = require('./data/segments');
+const rules = require('./rules');
 
 function getTerrainData(map = maps.getMap('default')) {
   return maps.terrainLookup(map);
@@ -52,7 +53,7 @@ function buildHexMap(map) {
   const hexes = {};
   for (const key of Object.keys(map.height)) {
     const [q, r] = key.split(',').map(Number);
-    hexes[key] = { q, r, terrain: map.terrain[key] || 'plain' };
+    hexes[key] = { q, r, terrain: map.terrain[key] || 'plain', height: map.height[key] || 0 };
   }
   return hexes;
 }
@@ -61,64 +62,27 @@ function generateHexMap() {
   return buildHexMap(maps.getMap('default'));
 }
 
-// Terrain movement cost: entering a tile costs max(1, 1 - vitesse_modifier)
-function terrainMoveCost(terrain) {
-  const costs = { plain: 1, road: 1, forest: 2, river: 2, building: 1, bridge: 1 };
-  return costs[terrain] ?? 1;
+// Shortest path within maxSpeed using the shared movement rules (public/js/rules.js).
+// blocked(key) decides which hexes cannot be entered (default: any unit in unitMap).
+// Returns { path: [[q, r], ...], cost } or null.
+function findPathCost(hexMap, unitMap, q1, r1, q2, r2, maxSpeed, unit, segMap = getSegmentData(), blocked = null) {
+  if (q1 === q2 && r1 === r2) return { path: [], cost: 0 };
+  const { dist, prev } = rules.reachable(rules.MOVE_TABLE, {
+    start: { q: q1, r: r1 },
+    maxCost: maxSpeed,
+    mounted: rules.isMounted(unit),
+    hexAt: (k) => hexMap[k] || null,
+    blocked: blocked || ((k) => !!unitMap[k]),
+    segAt: (a, b, c, d) => segMap[segmentEdgeKey(a, b, c, d)] || null,
+  });
+  const key = hexKey(q2, r2);
+  const path = rules.pathFromPrev(prev, hexKey(q1, r1), key);
+  return path ? { path, cost: dist.get(key) } : null;
 }
 
-// Dijkstra pathfinding with terrain + segment movement costs (returns path array or null)
-function findPath(hexMap, unitMap, q1, r1, q2, r2, maxSpeed, playerId, unit, segMap = getSegmentData()) {
-  if (q1 === q2 && r1 === r2) return [];
-
-  const isCavalry = unit && (unit.category === 'Chevaux' || unit.category === 'Chars');
-
-  const dist = new Map();
-  const queue = [{ q: q1, r: r1, cost: 0, path: [] }];
-  dist.set(hexKey(q1, r1), 0);
-
-  while (queue.length > 0) {
-    queue.sort((a, b) => a.cost - b.cost);
-    const { q, r, cost, path } = queue.shift();
-
-    if (q === q2 && r === r2) return path;
-    if (cost >= maxSpeed) continue;
-
-    for (const [nq, nr] of hexNeighbors(q, r)) {
-      const key = hexKey(nq, nr);
-      if (!hexMap[key]) continue;
-      if (unitMap[key]) continue;
-
-      // Segment check
-      const edgeK = segmentEdgeKey(q, r, nq, nr);
-      const segType = segMap[edgeK];
-      const segDef = segType ? SEGMENT_DEFS[segType] : null;
-      if (segDef) {
-        if (segDef.infranchissable) continue;
-        if (segDef.infranchissable_cavalerie && isCavalry) continue;
-      }
-
-      const srcTerrain = hexMap[hexKey(q, r)]?.terrain || 'plain';
-      let stepCost = terrainMoveCost(srcTerrain);
-
-      if (segDef) {
-        if (segDef.vitesse_fixe != null) {
-          stepCost = segDef.vitesse_fixe;
-        } else {
-          stepCost += Math.max(0, -(segDef.vitesse || 0));
-        }
-      }
-
-      const newCost = cost + stepCost;
-      if (newCost > maxSpeed) continue;
-
-      if (!dist.has(key) || newCost < dist.get(key)) {
-        dist.set(key, newCost);
-        queue.push({ q: nq, r: nr, cost: newCost, path: [...path, [nq, nr]] });
-      }
-    }
-  }
-  return null;
+function findPath(hexMap, unitMap, q1, r1, q2, r2, maxSpeed, playerId, unit, segMap = getSegmentData(), blocked = null) {
+  const res = findPathCost(hexMap, unitMap, q1, r1, q2, r2, maxSpeed, unit, segMap, blocked);
+  return res ? res.path : null;
 }
 
 // Coût terrain pour le déploiement : base radiale + léger modificateur terrain
@@ -157,8 +121,7 @@ function _deployZoneDijkstra(centerQ, centerR, maxTiles, forbiddenKeys, td, sd) 
       if (!td[nk] || visited.has(nk)) continue;
       const edgeK = segmentEdgeKey(q, r, nq, nr);
       const segType = sd[edgeK];
-      const segDef = segType ? SEGMENT_DEFS[segType] : null;
-      if (segDef?.infranchissable) continue;
+      if (segType && rules.MOVE_TABLE.seg[segType]?.blocked) continue;
       const nTerrain = td[nk] || 'plain';
       if (nTerrain === 'river') continue;
       const radialDist = hexDistance(nq, nr, centerQ, centerR);
@@ -294,4 +257,4 @@ function hexFacingRanged(q, r, targetQ, targetR) {
   return best;
 }
 
-module.exports = { hexDistance, hexKey, hexNeighbors, hexesInRange, buildHexMap, generateHexMap, findPath, getStartingZones, segmentEdgeKey, getTerrainData, getSegmentData, SEGMENT_DEFS, hexFacing, hexFacingRanged };
+module.exports = { hexDistance, hexKey, hexNeighbors, hexesInRange, buildHexMap, generateHexMap, findPath, findPathCost, getStartingZones, segmentEdgeKey, getTerrainData, getSegmentData, SEGMENT_DEFS, hexFacing, hexFacingRanged };
