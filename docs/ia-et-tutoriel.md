@@ -100,11 +100,10 @@ Causes des nuls : armées qui se perdaient de vue sans mémoire ; tireurs en mod
 
 Mesures précédentes :
 
-- **Niveaux** (30 parties IA contre IA par paire, budget 4000, 30 tours max) : Vétéran bat Recrue 20–10 ; Stratège bat Vétéran 19–8 (2 nuls) ; Stratège bat Recrue 23–6. 2 parties sur 90 bloquées au déploiement (zone vide, voir ci-dessous).
+- **Niveaux** (30 parties IA contre IA par paire, budget 4000, 30 tours max) : Vétéran bat Recrue 20–10 ; Stratège bat Vétéran 19–8 (2 nuls) ; Stratège bat Recrue 23–6. 2 parties sur 90 bloquées au déploiement (zone vide, corrigé depuis : `getStartingZones` refait le tirage).
 - **Contre un joueur immobile** (15 parties par niveau, 30 tours) : contact établi dans environ 2 parties sur 3 (Recrue 14/15, Vétéran 10/15, Stratège 11/15 lors d'une mesure ; les zones étant tirées au hasard, les chiffres varient d'une série à l'autre). Un joueur qui avance rencontre l'IA bien plus tôt.
 
 ## 6. Limites connues
-- `HexUtils.getStartingZones` (zones aléatoires) produit parfois une zone vide (~2 % des salles sur la carte par défaut) : personne ne peut s'y déployer, IA comme humain. Le test le contourne en recommençant.
 - Lambda : l'IA joue toute sa manche d'un coup à la réception d'un message (pas de pause possible sans minuterie).
 - La mémoire de l'IA est un cache du processus : sur la lambda, une nouvelle instance repart sans mémoire (elle retrouve l'ennemi par l'exploration).
 - Un joueur qui cache son général seul dans une forêt loin de l'armée de l'IA peut encore tenir longtemps (l'exploration finit par passer, la limite de tours ou les objectifs départagent sinon).
