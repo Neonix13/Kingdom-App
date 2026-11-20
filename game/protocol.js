@@ -14,6 +14,7 @@ const maps = require('./maps');
 const { MODES, isModeAvailable } = require('./turns');
 const { hexKey } = require('./HexUtils');
 const v = require('./validate');
+const bots = require('./bots');
 const { UNKNOWN, combatView } = require('./views');
 
 const { ProtocolError, fail } = v;
@@ -30,6 +31,9 @@ const DEFAULTS = {
   maxPlayers: 8,
   maxSpectators: 16,
   chatHistory: 50,
+  botPace: 1,         // multiplier of the bots' pauses between actions (0 = no pause)
+  botBurst: 400,      // max bot actions per wake-up (lambda: per incoming message)
+  botMaxSteps: 150,   // max actions of a bot in one manche before it ends its turn
 };
 
 const PALETTE = ['#4a90d9', '#e05050', '#50c050', '#e0a030', '#a050d0', '#e07840', '#40c0c0', '#e050a0', '#ffffff'];
@@ -76,6 +80,14 @@ function memberByConn(room, connId) {
 
 function createProtocol({ store, transport, scheduler = null, now = Date.now, config = {}, log = console } = {}) {
   const cfg = { ...DEFAULTS, ...config };
+  // Bots (game/bots) act through the handlers below with a synthetic connection that receives nothing
+  const net = transport;
+  transport = { send: (connId, msg) => (bots.isBotConn(connId) ? Promise.resolve(true) : net.send(connId, msg)) };
+  const botRunner = bots.createBotRunner({
+    store, scheduler, now, cfg, log,
+    call: (connId, action, data) => H[action](connId, data),
+    reschedule: (code, room) => { const at = nextDeadline(room); if (at != null && scheduler) scheduler.schedule(code, at); },
+  });
 
   // ---------- outbox ----------
 
@@ -105,7 +117,7 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
   }
 
   function lobbyMessage(room) {
-    return { event: 'room_update', ...room.getLobbyState() };
+    return { event: 'room_update', ...room.getLobbyState(), bots: bots.lobbyInfo(room), tutorial: !!room.tutorial };
   }
 
   // withTables: include the terrain / segment / stance tables frozen for this battle (start of battle, resync)
@@ -183,6 +195,8 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
       if (at != null) scheduler.schedule(code, at);
     }
     for (const connId of gone) await disconnect(connId);
+    if (tx.deleted) botRunner.forget(code);
+    else await botRunner.kick(code);
     if (tx.error) throw tx.error;
     return tx;
   }
@@ -225,7 +239,7 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
 
   function ensureHost(room) {
     if (room.players.some(p => p.id === room.hostId)) return;
-    const next = room.players.find(p => p.connected !== false) || room.players[0];
+    const next = room.players.find(p => !p.isBot && p.connected !== false) || room.players.find(p => !p.isBot) || room.players[0];
     room.hostId = next ? next.id : null;
   }
 
@@ -453,7 +467,7 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     if (p.connId) tx.after.push(() => store.deleteConn(p.connId));
     emit(tx, 'all', { event: 'player_left', playerId: p.id, name: p.name, reason });
     ensureHost(room);
-    if (!room.players.length) { tx.deleted = true; return; }
+    if (!room.players.some(p => !p.isBot)) { tx.deleted = true; return; }
     emitPresence(tx);
     checkPhaseTransitions(tx);
   }
@@ -511,7 +525,7 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
         resolveFlow(tx);
       } else maybeResolveFlow(tx);
     }
-    const anyConnected = room.players.some(p => p.connected !== false) || (room.spectators || []).some(s => s.connected !== false);
+    const anyConnected = room.players.some(p => !p.isBot && p.connected !== false) || (room.spectators || []).some(s => s.connected !== false);
     if (room.phase === 'ended' && room.endedAt && t - room.endedAt >= cfg.endedRoomMs) tx.deleted = true;
     if (!anyConnected && t - (room.lastActivity || t) >= cfg.idleRoomMs) tx.deleted = true;
   }
@@ -535,8 +549,10 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     }
     for (const s of room.spectators || []) if (s.connected === false && s.disconnectedAt) times.push(s.disconnectedAt + cfg.lobbyDropMs);
     if (room.phase === 'ended' && room.endedAt) times.push(room.endedAt + cfg.endedRoomMs);
-    const anyConnected = room.players.some(p => p.connected !== false) || (room.spectators || []).some(s => s.connected !== false);
+    const anyConnected = room.players.some(p => !p.isBot && p.connected !== false) || (room.spectators || []).some(s => s.connected !== false);
     if (!anyConnected) times.push((room.lastActivity || now()) + cfg.idleRoomMs);
+    const botAt = botRunner.wakeAt(room.roomCode);
+    if (botAt != null) times.push(botAt);
     return times.length ? Math.min(...times) : null;
   }
 
@@ -798,6 +814,67 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     emit(tx, 'all', lobbyMessage(room));
   });
 
+  // ---------- bots (game/bots) ----------
+
+  H.add_bot = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    requireHost(tx, connId);
+    requirePhase(tx, 'lobby');
+    const room = tx.room;
+    if (room.players.length >= cfg.maxPlayers) fail('room_full', `La salle est pleine (${cfg.maxPlayers} joueurs max).`);
+    const difficulty = data.difficulty == null ? 'veteran' : v.oneOf(data.difficulty, bots.DIFFICULTIES, 'invalid_difficulty', 'Difficulté inconnue.');
+    const generalId = data.generalId == null || data.generalId === '' ? null : v.id(data.generalId, 'invalid_general', 'Général inconnu.');
+    const { bot } = engine(bots.addBot(room, { id: randomId('b_'), difficulty, generalId, color: freeColor(room) }));
+    tx.dirty = true;
+    emit(tx, 'all', { event: 'player_joined', playerId: bot.id, name: bot.name, isBot: true });
+    emit(tx, 'all', lobbyMessage(room));
+  });
+
+  H.remove_bot = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    requireHost(tx, connId);
+    requirePhase(tx, 'lobby');
+    const bot = tx.room.getPlayer(v.id(data.playerId));
+    if (!bot || !bot.isBot) fail('bot_not_found', 'IA introuvable.');
+    tx.dirty = true;
+    removePlayerFlow(tx, bot, 'left');
+  });
+
+  // "Jouer en solo": a room with one bot, straight to army building
+  H.create_solo = async (connId, data) => {
+    v.name(data.playerName);
+    const difficulty = data.difficulty == null ? 'veteran' : v.oneOf(data.difficulty, bots.DIFFICULTIES, 'invalid_difficulty', 'Difficulté inconnue.');
+    const generalId = data.generalId == null || data.generalId === '' ? null : v.oneOf(data.generalId, GENERALS.map(g => g.id), 'invalid_general', 'Général inconnu.');
+    await H.create_room(connId, { playerName: data.playerName, mapId: data.mapId });
+    const rec = await store.getConn(connId);
+    await withRoom(rec.roomCode, (tx) => {
+      const room = tx.room;
+      const host = room.getPlayer(room.hostId);
+      host.generalId = generalId || GENERALS[crypto.randomInt(GENERALS.length)].id;
+      engine(bots.addBot(room, { id: randomId('b_'), difficulty, color: freeColor(room) }));
+      room.startGame();
+      tx.dirty = true;
+      emit(tx, 'all', { event: 'phase_change', phase: 'army_building', budget: room.budget, mapId: room.mapId });
+      emit(tx, 'all', lobbyMessage(room));
+    });
+  };
+
+  // Tutorial: scripted solo battle (game/bots/tutorial.js), straight to the battle
+  H.start_tutorial = async (connId, data) => {
+    const playerName = data.playerName == null || data.playerName === '' ? 'Recrue' : data.playerName;
+    v.name(playerName);
+    await H.create_room(connId, { playerName, mapId: bots.TUTORIAL.mapId });
+    const rec = await store.getConn(connId);
+    await withRoom(rec.roomCode, (tx) => {
+      const room = tx.room;
+      engine(bots.setupTutorial(room, { botId: randomId('b_'), botColor: freeColor(room) }));
+      tx.dirty = true;
+      emit(tx, 'all', lobbyMessage(room));
+      emit(tx, 'all', { event: 'phase_change', phase: 'battle', mapId: room.mapId });
+      startTurnTimer(tx);
+      refreshTurnDeadline(tx);
+      emitState(tx, 'all', true);
+    });
+  };
+
   H.submit_army = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
     const p = requirePlayer(tx, connId);
     requirePhase(tx, 'army_building');
@@ -1039,7 +1116,7 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     }
   }
 
-  return { handle, disconnect, tick, config: cfg, actions: Object.keys(H) };
+  return { handle, disconnect, tick, config: cfg, actions: Object.keys(H), bots: botRunner };
 }
 
 module.exports = { createProtocol, ProtocolError, PALETTE, DEFAULTS };
