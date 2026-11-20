@@ -89,7 +89,7 @@ Changer de posture coûte 2 de vitesse (les généraux n'ont pas de posture). Ch
    - **Rien** : aucun jet.
    - **Contre-attaquer** (mêlée) : jet de défense ; s'il réussit, le défenseur rend les coups.
    - **Encaisser** : jet de défense ; s'il réussit, dégâts et perte de moral divisés par deux, et demi-riposte en mêlée.
-   - Contre un tir : seule la **phalange** peut encaisser ; personne ne contre-attaque.
+   - Contre un tir : personne ne fait de jet de défense ni ne contre-attaque, sauf la **phalange** qui peut lever les boucliers (§10 bis).
 5. L'attaquant et le défenseur qui riposte se tournent l'un vers l'autre.
 
 **Motivation** (général) : D20 ≤ Charisme → toutes les unités alliées à moins de Charisme/5 cases regagnent du moral (et cessent de fuir).
@@ -141,6 +141,26 @@ Quand un général attaque un général ennemi au corps à corps, c'est un **due
 | Ou Ki | Sourire du Monstre | 3 | Puissance de l'armée +2 pendant 2 tours ; moral −1 pour les armées en infériorité numérique |
 | Mou Bu | Poing du Titan | 3 | Choisir une armée ennemie : son armure −1 pendant 2 tours |
 | Ri Boku | Vision du Sage | 2 | Révèle les unités ennemies cachées dans votre vision jusqu'au tour suivant |
+
+## 10 bis. Capacités des unités
+
+Chaque type d'unité a une capacité (champ `bonusType` de `data/balance/units.json`). Les valeurs sont réglables dans l'éditeur d'équilibrage (`bonusValue`, `bonusRange`, `bonusCost` ; à défaut, les valeurs ci-dessous, `RULES.abilities` dans `public/js/rules.js`). Les capacités actives (Saboter, Construire, Disparaître) se lancent avec le bouton **Capacité** (touche C dans la vue 3D) ; en mode simultané, elles font partie de l'ordre de l'unité et s'appliquent au début de la résolution.
+
+| Unité | Capacité | Règle appliquée |
+|---|---|---|
+| Piétaille | Fidèle au général | **+15 moral** au début de chacun de ses tours si son général est à **2 cases** ou moins. |
+| Soldats | Achever | Après un combat où ils frappent (attaque ou riposte), une unité ennemie laissée à **15 % de sa vitalité max** ou moins est détruite. Jamais un général. |
+| Phalange | Mur de boucliers | Contre un tir, la phalange peut répondre Encaisser (ou Contre-attaquer, équivalent) : jet de défense ; s'il réussit, elle ne perd **aucune vitalité** (la perte de moral reste). |
+| Lancier | Anti-cavalerie | **+3 attaque** quand il attaque une unité à cheval ou un char, **+3 défense** quand l'un d'eux l'attaque (au corps à corps). |
+| Espion | Sabotage | Pour **2 vitesse**, détruit l'infrastructure entre sa case et une case voisine : pont ou passerelle (redevient rivière), barrière, chevaux de frise, échelle (redevient falaise) ; ou un pont-case voisin et vide (redevient fleuve). Les espions révèlent aussi les unités cachées à 2 cases (§7). |
+| Assassin | Embuscade | **Avantage** (meilleur de deux d20) sur son premier jet d'attaque de la journée. Pour **2 vitesse**, s'il ne voit aucun ennemi à **6 cases** ou moins, il **disparaît** jusqu'à la fin de la journée (caché comme en forêt, où qu'il soit : une unité adjacente ou un espion à 2 cases le révèle) ; attaquer ou être découvert met fin à la disparition. |
+| Cavalier léger | Éclaireur | **+1 vitesse** au début de son tour s'il n'a aucun ennemi adjacent. |
+| Cavalier lourd | Charge lourde | **+1 puissance et +1 intimidation** quand il attaque en posture Charge (ou avec le bonus de charge du mode simultané). |
+| Archer, Archer d'élite | Tir | La cible ne fait aucun jet de défense (sauf la phalange). Portée 3 et 4 cases. |
+| Bâtisseurs | Génie | Pour **2 vitesse**, sur l'arête entre sa case et une case voisine : **barrière** ou **chevaux de frise** (arête libre), **échelle** (sur une falaise), **pont** (sur une rivière) ; ou sur la case voisine : **pont** sur un fleuve (case vide), **brûler** une forêt (elle devient plaine : les unités cachées dedans perdent leur couverture). |
+| Char | Piétinement | Quand il attaque au corps à corps, l'ennemi **aligné juste derrière** sa cible (visible) est frappé aussi, sans pouvoir répondre. Il **traverse** les unités qu'il voit (alliées ou ennemies) sans pouvoir s'arrêter sur elles ; une unité cachée l'arrête (embuscade). En mode simultané, le piétinement s'applique mais pas la traversée. |
+
+Les modifications de carte (sabotages, constructions, forêts brûlées) sont gardées avec la partie et visibles de tous ; en 3D, les constructions apparaissent en bois, les destructions en débris, les forêts brûlées en cendres (le pont d'origine reste dessiné).
 
 ## 11. Information
 

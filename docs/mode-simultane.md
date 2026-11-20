@@ -26,7 +26,7 @@ Il n'y a ni initiative ni manches : un tour = une planification + une résolutio
 | **Tenir** | ne bouge pas |
 | **Motiver** (général) | au début de la résolution ; le général ne bouge pas |
 
-- Options combinables : **changer de posture** (−2 vitesse, appliqué au début de la résolution), **orientation finale** (−1 vitesse, appliquée à la fin si l'unité n'a pas attaqué), **capacité du général** (au début de la résolution).
+- Options combinables : **changer de posture** (−2 vitesse, appliqué au début de la résolution), **orientation finale** (−1 vitesse, appliquée à la fin si l'unité n'a pas attaqué), **capacité du général** (au début de la résolution), **capacité d'unité** : sabotage de l'espion, construction des bâtisseurs, disparition de l'assassin (coût en vitesse, au début de la résolution, avant les déplacements ; voir `docs/regles.md` §10 bis).
 - **Pas minimum** : une unité sans changement de posture ni d'orientation peut toujours faire un pas, même trop cher pour sa vitesse (voir [regles.md](regles.md) §3).
 - Les chemins ne sont vérifiés que par leur coût : une unité invisible sur le trajet devient une embuscade à la résolution, jamais une erreur de planification. La cible d'une attaque doit être visible au moment de l'ordre.
 

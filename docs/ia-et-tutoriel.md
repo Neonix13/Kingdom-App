@@ -103,6 +103,8 @@ Mesures précédentes :
 - **Niveaux** (30 parties IA contre IA par paire, budget 4000, 30 tours max) : Vétéran bat Recrue 20–10 ; Stratège bat Vétéran 19–8 (2 nuls) ; Stratège bat Recrue 23–6. 2 parties sur 90 bloquées au déploiement (zone vide, corrigé depuis : `getStartingZones` refait le tirage).
 - **Contre un joueur immobile** (15 parties par niveau, 30 tours) : contact établi dans environ 2 parties sur 3 (Recrue 14/15, Vétéran 10/15, Stratège 11/15 lors d'une mesure ; les zones étant tirées au hasard, les chiffres varient d'une série à l'autre). Un joueur qui avance rencontre l'IA bien plus tôt.
 
+**Capacités d'unités** (`unitAbilityPlan` dans `battle.js`, utilisé aussi en mode simultané) : un assassin disparaît dès qu'il ne voit aucun ennemi à 6 cases ; des bâtisseurs posent des chevaux de frise sur l'arête tournée vers l'ennemi le plus proche quand il arrive à 4 cases ou moins. Les espions ne sabotent pas (ils servent d'éclaireurs : leur présence révèle les embuscades à 2 cases) ; l'IA ne construit ni pont ni échelle et ne brûle pas de forêt.
+
 ## 6. Limites connues
 - Lambda : l'IA joue toute sa manche d'un coup à la réception d'un message (pas de pause possible sans minuterie).
 - La mémoire de l'IA est un cache du processus : sur la lambda, une nouvelle instance repart sans mémoire (elle retrouve l'ennemi par l'exploration).

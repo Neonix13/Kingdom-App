@@ -6,7 +6,7 @@ Les tables d'équilibrage sont des fichiers JSON dans `data/balance/` :
 
 | Fichier | Forme | Contenu |
 |---|---|---|
-| `units.json` | objet `{ id: unité }` | statistiques des unités (vitalité, moral, attaque, puissance, défense, armure, intimidation, vitesse, portée, coût, catégorie, texte du bonus) |
+| `units.json` | objet `{ id: unité }` | statistiques des unités (vitalité, moral, attaque, puissance, défense, armure, intimidation, vitesse, portée, coût, catégorie, texte du bonus), capacité (`bonusType`) et ses réglages facultatifs `bonusValue` / `bonusRange` / `bonusCost` (voir `docs/regles.md` §10 bis) |
 | `generals.json` | tableau `[général]` | généraux (royaume, armée, vitalité, armure, intimidation, arme `{ name, damage }`, force, stratégie, charisme, citation, capacités facultatives) |
 | `terrains.json` | objet | modificateurs par type de terrain |
 | `segments.json` | objet | modificateurs des bords entre deux cases (rivière, falaise, pont, mur…) |
@@ -152,6 +152,29 @@ Combats à coût égal après : les infanteries s'équilibrent (victoires moyenn
 
 ### Limites
 
-- Les capacités d'unités (`bonus`) et la plupart des capacités de généraux ne sont pas implémentées : Bâtisseurs, Espion et Char n'ont aucun rôle propre en partie.
+- La plupart des capacités de généraux ne sont pas implémentées (les capacités d'unités le sont depuis, voir ci-dessous).
 - Le simulateur séquentiel ne recrute jamais de Char (le budget de sa catégorie est inférieur à son coût).
 - La Force reste la statistique la plus forte (attaque, défense et duel des généraux) ; la Stratégie ne compte que pour l'initiative, la vision et les points de commandement.
+
+## Capacités des unités (novembre 2026)
+
+Les capacités décrites dans `bonus` sont maintenant appliquées par le moteur (règles dans `docs/regles.md` §10 bis, réglages `bonusValue` / `bonusRange` / `bonusCost` dans `units.json`). Mesures avec le même protocole que ci-dessus (2 904 parties par mode, 24 par affrontement, budget 4 000), avant / après :
+
+| | Séquentiel avant | Séquentiel après | Simultané avant | Simultané après |
+|---|---|---|---|---|
+| Parties nulles | 1,9 % | 2,5 % | 0,3 % | 0 % |
+| Taux de victoire des généraux (min – max) | 38 – 59 % | 40 – 60 % | 42 – 58 % | 40 – 59 % |
+
+| Unité | Survie séq. | Survie simul. | Rapport gagnant / perdant simul. |
+|---|---|---|---|
+| Bâtisseurs | 33 → 33 % | 12 → 16 % | 0,86 → 1,00 |
+| Assassin | 30 → 30 % | 10 → 13 % | 0,84 → 0,90 |
+| Lancier | 47 → 48 % | 19 → 17 % | 0,97 → 0,95 |
+| Phalange | 65 → 66 % | 29 → 29 % | 1,08 → 1,11 |
+| Cavalier léger | 22 → 20 % | 11 → 10 % | 1,16 → 1,09 |
+| Cavalier lourd | 27 → 26 % | 10 → 11 % | 1,00 → 0,94 |
+| autres | ± 1 point | ± 2 points | |
+
+Combats à coût égal (mêlée, 4 800 or par camp) : les lanciers battent maintenant la cavalerie à 92 – 97 % (82 – 88 % avant) ; le reste ne bouge pas au-delà du bruit.
+
+Aucun coût n'a été modifié : les écarts restent dans l'intervalle de confiance (± 4 à 6 points), sauf les Bâtisseurs et l'Assassin du mode simultané qui remontent (l'IA du mode simultané pose des chevaux de frise et fait disparaître ses assassins ; le simulateur séquentiel, `simulation/AIAgent.js`, n'utilise pas les capacités actives). Le Char n'est toujours jamais recruté par le simulateur : son piétinement et sa traversée ne sont mesurés que par les tests (`tests/abilities.test.js`).
