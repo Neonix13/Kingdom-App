@@ -1,42 +1,15 @@
-// WebSocket natif (remplace socket.io)
-let ws = null;
-let wsQueue = [];
-let tryingRejoin = false;
-
-function wsConnect() {
-  ws = new WebSocket(window.WS_URL || ('ws' + (location.protocol === 'https:' ? 's' : '') + '://' + location.host));
-  ws.onopen = () => {
-    wsQueue.forEach(msg => ws.send(msg));
-    wsQueue = [];
-    const savedId = sessionStorage.getItem('lobbyPlayerId');
-    const savedCode = sessionStorage.getItem('lobbyRoomCode');
-    if (savedId && savedCode) {
-      tryingRejoin = true;
-      ws.send(JSON.stringify({ action: 'rejoin_game', roomCode: savedCode, oldPlayerId: savedId }));
-    }
-  };
-  ws.onmessage = (e) => {
-    let msg;
-    try { msg = JSON.parse(e.data); } catch { return; }
-    const { event, ...data } = msg;
-    wsDispatch(event, data);
-  };
-  ws.onclose = () => { ws = null; setTimeout(wsConnect, 2000); };
-  ws.onerror = () => ws.close();
-}
-
-function wsSend(action, data) {
-  const msg = JSON.stringify({ action, ...data });
-  if (ws && ws.readyState === WebSocket.OPEN) ws.send(msg);
-  else wsQueue.push(msg);
-}
-
-wsConnect();
 let myId = null;
 let roomCode = null;
+let myRole = 'player';
 let isHost = false;
 let selectedGeneral = null;
-let selectedColor = '#4a90d9';
+let selectedColor = null;
+let armyQuantities = {};
+let budget = 2500;
+let lastLobby = null;
+let mapsList = [];
+let modesList = [];
+let armySubmitted = false;
 
 const PLAYER_COLORS = [
   { hex: '#4a90d9', name: 'Bleu' },
@@ -49,24 +22,6 @@ const PLAYER_COLORS = [
   { hex: '#e050a0', name: 'Rose' },
   { hex: '#ffffff', name: 'Blanc' },
 ];
-
-function initColorPicker() {
-  const container = document.getElementById('player-color-picker');
-  if (!container) return;
-  container.innerHTML = PLAYER_COLORS.map(c => `
-    <div class="color-swatch${c.hex === selectedColor ? ' active' : ''}"
-      title="${c.name}"
-      style="width:24px;height:24px;border-radius:50%;background:${c.hex};cursor:pointer;border:2px solid ${c.hex === selectedColor ? '#fff' : 'transparent'};transition:border 0.15s"
-      onclick="pickColor('${c.hex}')"></div>
-  `).join('');
-}
-
-function pickColor(hex) {
-  selectedColor = hex;
-  wsSend('set_player_color', { roomCode, color: hex });
-}
-let armyQuantities = {};
-let budget = 15000;
 
 const GENERAL_IMAGE1_MAP = {
   'ou_ki':       { file: 'OU KI 1-1',       ext: 'jpg' },
@@ -127,7 +82,7 @@ const UNITS_DATA = [
 ];
 
 function show(id) {
-  ['screen-home', 'screen-lobby', 'screen-army'].forEach(s => {
+  ['screen-home', 'screen-lobby', 'screen-army', 'screen-wait'].forEach(s => {
     document.getElementById(s).style.display = s === id ? 'block' : 'none';
   });
 }
@@ -137,36 +92,116 @@ function notify(msg, type = 'error') {
   n.textContent = msg;
   n.className = type;
   n.style.display = 'block';
-  setTimeout(() => n.style.display = 'none', 3500);
+  clearTimeout(notify._t);
+  notify._t = setTimeout(() => n.style.display = 'none', 3500);
+}
+
+function showLobbyError(msg) {
+  const el = document.getElementById('lobby-error');
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
+  clearTimeout(showLobbyError._t);
+  if (msg) showLobbyError._t = setTimeout(() => { el.style.display = 'none'; }, 6000);
+}
+
+function savedName() {
+  return localStorage.getItem('kb_player_name') || '';
+}
+
+function readName(inputId) {
+  const name = document.getElementById(inputId).value.trim();
+  if (name) localStorage.setItem('kb_player_name', name);
+  return name;
 }
 
 function createRoom() {
-  const name = document.getElementById('create-name').value.trim();
+  const name = readName('create-name');
   if (!name) return notify('Entrez votre nom.');
-  wsSend('create_room', { playerName: name });
+  KBNet.clearSession();
+  KBNet.send('create_room', { playerName: name, roomCode: undefined });
 }
 
-function joinRoom() {
-  const name = document.getElementById('join-name').value.trim();
+function joinRoom(asSpectator) {
+  const name = readName('join-name');
   const code = document.getElementById('join-code').value.trim().toUpperCase();
   if (!name) return notify('Entrez votre nom.');
   if (code.length < 4) return notify('Entrez le code de la salle.');
-  wsSend('join_room', { roomCode: code, playerName: name });
+  KBNet.clearSession();
+  KBNet.send('join_room', { roomCode: code, playerName: name, spectator: !!asSpectator });
+}
+
+let resumeList = [];
+
+function resumeSession(i = 0) {
+  const s = resumeList[i];
+  if (!s) return;
+  KBNet.setSession(s);
+  KBNet.rejoin();
+}
+
+function dismissResume() {
+  for (const s of KBNet.recentSessions()) KBNet.forget(s.roomCode, s.playerId);
+  renderResume();
+}
+
+function renderResume() {
+  const card = document.getElementById('resume-card');
+  const list = KBNet.getSession() ? [] : KBNet.recentSessions().slice(0, 3);
+  resumeList = list;
+  if (!list.length) { card.style.display = 'none'; return; }
+  document.getElementById('resume-text').textContent = list.length > 1 ? 'Vous avez des parties en cours :' : '';
+  card.querySelector('.btn-row').innerHTML = list.map((s, i) =>
+    `<button class="btn btn-primary btn-sm" onclick="resumeSession(${i})">Reprendre : salle ${escapeHtml(s.roomCode)} — ${escapeHtml(s.name || '')}${s.role === 'spectator' ? ' (spectateur)' : ''}</button>`
+  ).join('') + '<button class="btn btn-ghost btn-sm" onclick="dismissResume()">Ignorer</button>';
+  card.style.display = 'block';
+}
+
+function inviteUrl(spectate) {
+  return `${location.origin}/?join=${encodeURIComponent(roomCode)}${spectate ? '&spectate=1' : ''}`;
+}
+
+async function copyInvite(spectate) {
+  const url = inviteUrl(spectate);
+  try {
+    await navigator.clipboard.writeText(url);
+    notify('Lien copié : ' + url, 'success');
+  } catch (e) {
+    window.prompt('Copiez ce lien :', url);
+  }
+}
+
+function leaveRoom() {
+  KBNet.send('leave_room');
+  KBNet.clearSession();
+  myId = null; roomCode = null; lastLobby = null;
+  show('screen-home');
+  renderResume();
 }
 
 function setBudget() {
-  const val = parseInt(document.getElementById('budget-input').value);
-  if (isNaN(val) || val < 1000) return notify('Budget minimum : 1000 or');
-  wsSend('set_budget', { roomCode, budget: val });
+  const val = parseInt(document.getElementById('budget-input').value, 10);
+  if (isNaN(val) || val < 1000 || val > 100000) return notify('Budget entre 1000 et 100000 or.');
+  KBNet.send('set_budget', { budget: val });
+}
+
+function setMap(mapId) {
+  KBNet.send('set_map', { mapId });
+}
+
+function setMode(mode) {
+  KBNet.send('set_mode', { mode });
+}
+
+function pickColor(hex) {
+  KBNet.send('set_player_color', { color: hex });
 }
 
 function selectGeneral(id) {
-  selectedGeneral = id;
-  wsSend('select_general', { roomCode, generalId: id });
+  KBNet.send('select_general', { generalId: id });
 }
 
 function startGame() {
-  wsSend('start_game', { roomCode });
+  KBNet.send('start_game');
 }
 
 function renderGenerals(takenList) {
@@ -188,7 +223,7 @@ function renderGenerals(takenList) {
       <div class="gen-stats">Force ${g.force} · Strat ${g.strategy} · Char ${g.charisma}</div>
       ${sel ? '<div style="color:#c8960c;font-size:0.8em;margin-top:4px">✓ Sélectionné</div>' : ''}
     `;
-    if (!taken) div.onclick = () => selectGeneral(g.id);
+    if (!taken && myRole === 'player') div.onclick = () => selectGeneral(g.id);
     div.ondblclick = (e) => { e.stopPropagation(); showGeneralCard(g); };
     grid.appendChild(div);
   }
@@ -285,40 +320,73 @@ function showUnitCardLobby(u) {
   document.getElementById('overlay-general-card').style.display = 'flex';
 }
 
-function renderPlayerList(players, hostId) {
+function renderPlayerList(data) {
+  const { players, hostId, phase } = data;
   const list = document.getElementById('player-list');
   list.innerHTML = '';
+  const usedColors = new Set(players.filter(p => p.id !== myId).map(p => (p.color || '').toLowerCase()));
   for (const p of players) {
     const li = document.createElement('li');
+    if (!p.connected) li.classList.add('offline');
     const genName = p.generalId ? GENERALS_DATA.find(g => g.id === p.generalId)?.name || p.generalId : '—';
     const color = p.color || '#4a90d9';
-    if (p.id === myId) {
-      // Color picker inline for current player
-      const pickerHtml = PLAYER_COLORS.map(c => `
-        <div class="color-swatch${c.hex === selectedColor ? ' active' : ''}"
-          title="${c.name}"
-          style="width:18px;height:18px;border-radius:50%;background:${c.hex};cursor:pointer;border:2px solid ${c.hex === selectedColor ? '#fff' : 'transparent'};flex-shrink:0"
-          onclick="pickColor('${c.hex}')"></div>
-      `).join('');
-      li.innerHTML = `
-        <span class="player-badge${p.id === hostId ? ' host' : ''}">${p.id === hostId ? 'Host' : 'Joueur'}</span>
-        <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;flex:1">${pickerHtml}</div>
-        <span>${p.name}</span>
-        <span class="text-muted" style="font-size:0.85em">${genName}</span>
-        <span class="ready-icon">${p.generalId ? '⚔️' : ''}</span>
-      `;
+    const badge = `<span class="player-badge${p.id === hostId ? ' host' : ''}">${p.id === hostId ? 'Hôte' : 'Joueur'}</span>`;
+    let colorHtml;
+    if (p.id === myId && phase === 'lobby') {
+      colorHtml = `<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">${PLAYER_COLORS.map(c => {
+        const taken = usedColors.has(c.hex);
+        const active = c.hex === (selectedColor || '').toLowerCase();
+        return `<div class="color-swatch${active ? ' active' : ''}${taken ? ' taken' : ''}" title="${c.name}${taken ? ' (prise)' : ''}"
+          style="width:18px;height:18px;border-radius:50%;background:${c.hex};cursor:pointer;border:2px solid ${active ? '#fff' : 'transparent'};flex-shrink:0"
+          ${taken ? '' : `onclick="pickColor('${c.hex}')"`}></div>`;
+      }).join('')}</div>`;
     } else {
-      li.innerHTML = `
-        <span class="player-badge${p.id === hostId ? ' host' : ''}">${p.id === hostId ? 'Host' : 'Joueur'}</span>
-        <div style="width:16px;height:16px;border-radius:50%;background:${color};flex-shrink:0;border:1px solid rgba(255,255,255,0.3)"></div>
-        <span>${p.name}</span>
-        <span class="text-muted" style="font-size:0.85em">${genName}</span>
-        <span class="ready-icon">${p.generalId ? '⚔️' : ''}</span>
-      `;
+      colorHtml = `<div style="width:16px;height:16px;border-radius:50%;background:${escapeHtml(color)};flex-shrink:0;border:1px solid rgba(255,255,255,0.3)"></div>`;
     }
+    let statusText, ready = false;
+    if (!p.connected) statusText = 'hors ligne';
+    else if (phase === 'army_building') { ready = p.isReady; statusText = p.isReady ? 'armée prête' : 'recrute…'; }
+    else { ready = !!p.generalId; statusText = p.generalId ? 'prêt' : 'choisit un général'; }
+    li.innerHTML = `
+      ${badge}
+      ${colorHtml}
+      <span>${escapeHtml(p.name)}${p.id === myId ? ' <span class="text-muted">(vous)</span>' : ''}</span>
+      <span class="text-muted" style="font-size:0.85em">${escapeHtml(genName)}</span>
+      <span class="player-status${ready ? ' ready' : ''}">${statusText}</span>
+    `;
     list.appendChild(li);
   }
   document.getElementById('player-count').textContent = players.length;
+  const specs = data.spectators || [];
+  document.getElementById('spectator-list').innerHTML = specs.length
+    ? `Spectateurs : ${specs.map(s => `<span class="tag${s.connected ? '' : ' offline'}">${escapeHtml(s.name)}${s.id === myId ? ' (vous)' : ''}</span>`).join('')}`
+    : '';
+}
+
+function renderSettings(data) {
+  const host = data.hostId === myId;
+  const mapSel = document.getElementById('map-select');
+  const known = mapsList.length ? mapsList : [{ id: data.mapId, name: data.mapName || data.mapId }];
+  if (!known.some(m => m.id === data.mapId)) known.push({ id: data.mapId, name: data.mapName || data.mapId });
+  mapSel.innerHTML = known.map(m => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)}${m.hexCount ? ` (${m.hexCount} cases)` : ''}</option>`).join('');
+  mapSel.value = data.mapId;
+  mapSel.disabled = !host;
+  const cur = known.find(m => m.id === data.mapId);
+  document.getElementById('map-desc').textContent = cur && cur.description ? cur.description : '';
+  const budgetInput = document.getElementById('budget-input');
+  if (document.activeElement !== budgetInput) budgetInput.value = data.budget;
+  budgetInput.disabled = !host;
+  const modeSel = document.getElementById('mode-select');
+  const modes = modesList.length ? modesList : [{ id: 'sequential', name: 'Séquentiel (initiative)', available: true }];
+  modeSel.innerHTML = modes.map(m => `<option value="${escapeHtml(m.id)}"${m.available ? '' : ' disabled'}>${escapeHtml(m.name)}</option>`).join('');
+  modeSel.value = data.mode || 'sequential';
+  modeSel.disabled = !host;
+  document.getElementById('settings-hint').textContent = host ? 'Vous êtes l\'hôte : les paramètres s\'appliquent à tous.' : 'Seul l\'hôte peut modifier les paramètres.';
+  const startBtn = document.getElementById('start-btn');
+  startBtn.style.display = host ? 'block' : 'none';
+  const missing = data.players.filter(p => !p.generalId).length;
+  startBtn.disabled = missing > 0;
+  startBtn.textContent = missing > 0 ? `Lancer la bataille (${missing} joueur(s) sans général)` : 'Lancer la bataille';
 }
 
 // Army builder
@@ -390,80 +458,135 @@ function submitArmy() {
   const units = Object.entries(armyQuantities)
     .filter(([, qty]) => qty > 0)
     .map(([typeId, count]) => ({ typeId, count }));
-
   if (units.length === 0) return notify('Ajoutez au moins une unité.');
-  wsSend('submit_army', { roomCode, units });
+  KBNet.send('submit_army', { units });
 }
 
-// WebSocket event dispatch
-function wsDispatch(event, data) {
+function enterArmyBuilding(data) {
+  if (myRole !== 'player') { show('screen-wait'); return; }
+  const wasVisible = document.getElementById('screen-army').style.display === 'block';
+  show('screen-army');
+  if (!wasVisible) renderArmyBuilder();
+  updateBudgetDisplay();
+  if (data && data.armySubmitted) markArmySubmitted();
+}
+
+function markArmySubmitted() {
+  armySubmitted = true;
+  const btn = document.getElementById('army-submit-btn');
+  btn.textContent = 'Modifier et reconfirmer';
+}
+
+function updateArmyWait(data) {
+  const ready = data.players.filter(p => p.isReady).length;
+  const txt = `${ready}/${data.players.length} armée(s) prête(s)`;
+  document.getElementById('army-wait').textContent = armySubmitted ? `Armée confirmée — ${txt}` : txt;
+  document.getElementById('wait-text').textContent = `Les généraux recrutent leurs troupes… ${txt}`;
+}
+
+function goToGame() {
+  window.location.href = '/game.html';
+}
+
+function onRoomUpdate(data) {
+  lastLobby = data;
+  roomCode = data.roomCode;
+  budget = data.budget;
+  isHost = data.hostId === myId;
+  document.getElementById('room-code-display').textContent = data.roomCode;
+  const me = data.players.find(p => p.id === myId);
+  if (me) { selectedGeneral = me.generalId; selectedColor = me.color; }
+  document.getElementById('role-hint').textContent = myRole === 'spectator' ? 'Vous regardez cette partie en spectateur.' : 'Partagez le code ou le lien avec vos amis.';
+  document.getElementById('generals-card').style.display = myRole === 'player' ? 'block' : 'none';
+  renderPlayerList(data);
+  renderSettings(data);
+  renderGenerals(data.takenGenerals || []);
+  if (data.phase === 'lobby') {
+    show('screen-lobby');
+  } else if (data.phase === 'army_building') {
+    if (document.getElementById('screen-army').style.display !== 'block' && document.getElementById('screen-wait').style.display !== 'block') enterArmyBuilding(me && me.isReady ? { armySubmitted: true } : null);
+    updateArmyWait(data);
+  } else {
+    goToGame();
+  }
+}
+
+function lobbyDispatch(event, data) {
   switch (event) {
-    case 'room_created': {
+    case 'session':
       myId = data.playerId;
       roomCode = data.roomCode;
-      isHost = true;
-      sessionStorage.setItem('lobbyPlayerId', myId);
-      sessionStorage.setItem('lobbyRoomCode', roomCode);
-      document.getElementById('room-code-display').textContent = data.roomCode;
-      document.getElementById('budget-card').style.display = 'block';
-      document.getElementById('start-btn').style.display = 'block';
-      show('screen-lobby');
+      myRole = data.role;
+      showLobbyError('');
+      KBNet.send('list_maps');
       break;
-    }
-    case 'room_joined': {
-      myId = data.playerId;
-      roomCode = data.roomCode;
-      tryingRejoin = false;
-      sessionStorage.setItem('lobbyPlayerId', myId);
-      sessionStorage.setItem('lobbyRoomCode', roomCode);
-      document.getElementById('room-code-display').textContent = data.roomCode;
-      show('screen-lobby');
+    case 'room_update':
+      onRoomUpdate(data);
       break;
-    }
-    case 'room_update': {
-      budget = data.budget;
-      document.getElementById('current-budget').textContent = data.budget.toLocaleString();
-      renderPlayerList(data.players, data.hostId);
-      renderGenerals(data.takenGenerals);
-      if (data.hostId === myId) {
-        document.getElementById('budget-card').style.display = 'block';
-        document.getElementById('start-btn').style.display = 'block';
-      }
-      const me = data.players.find(p => p.id === myId);
-      if (me && me.generalId) selectedGeneral = me.generalId;
+    case 'maps_list':
+      mapsList = data.maps || [];
+      modesList = data.modes || [];
+      if (lastLobby) renderSettings(lastLobby);
       break;
-    }
-    case 'phase_change': {
+    case 'phase_change':
       if (data.budget !== undefined) budget = data.budget;
-      if (data.phase === 'army_building') {
-        show('screen-army');
-        document.getElementById('army-budget').textContent = budget.toLocaleString();
-        renderArmyBuilder();
-      }
+      if (data.phase === 'army_building') enterArmyBuilding(data);
+      else if (data.phase === 'deployment' || data.phase === 'battle') goToGame();
       break;
-    }
     case 'army_accepted':
-      notify('Armée confirmée ! En attente des autres joueurs...', 'success');
+      markArmySubmitted();
+      notify('Armée confirmée ! En attente des autres joueurs…', 'success');
+      if (lastLobby) updateArmyWait(lastLobby);
       break;
     case 'deployment_state':
-      sessionStorage.setItem('deploymentState', JSON.stringify(data));
-      sessionStorage.setItem('roomCode', roomCode);
-      sessionStorage.setItem('myId', myId);
-      sessionStorage.removeItem('lobbyPlayerId');
-      sessionStorage.removeItem('lobbyRoomCode');
-      window.location.href = '/game.html';
+    case 'game_state':
+      goToGame();
+      break;
+    case 'player_left':
+      notify(`${data.name} a quitté la salle.`, 'info');
       break;
     case 'error':
-      if (tryingRejoin) {
-        tryingRejoin = false;
-        sessionStorage.removeItem('lobbyPlayerId');
-        sessionStorage.removeItem('lobbyRoomCode');
+      if (data.sessionLost) {
+        myId = null; roomCode = null;
+        show('screen-home');
+        renderResume();
+        showLobbyError('Impossible de reprendre la partie : ' + (data.message || 'session expirée.'));
       } else {
-        notify(data.message || data);
+        showLobbyError(data.message || 'Erreur.');
+        notify(data.message || 'Erreur.');
       }
-      break;
-    case 'player_disconnected':
-      notify('Un joueur s\'est déconnecté.', 'info');
       break;
   }
 }
+
+function initLobby() {
+  KBNet.mountIndicator();
+  const params = new URLSearchParams(location.search);
+  const joinCode = (params.get('join') || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const name = savedName();
+  document.getElementById('create-name').value = name;
+  document.getElementById('join-name').value = name;
+  if (joinCode) {
+    document.getElementById('join-code').value = joinCode;
+    const card = document.getElementById('join-card');
+    card.querySelector('h2').textContent = params.get('spectate') ? `Regarder la partie ${joinCode}` : `Rejoindre la partie ${joinCode}`;
+    card.scrollIntoView({ block: 'center' });
+    document.getElementById('join-name').focus();
+    const s = KBNet.getSession();
+    if (s && s.roomCode !== joinCode) KBNet.clearSession();
+  }
+  document.getElementById('join-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') joinRoom(!!params.get('spectate')); });
+  document.getElementById('create-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') createRoom(); });
+  if (!joinCode) renderResume();
+  let wasDown = false;
+  KBNet.connect({
+    onEvent: lobbyDispatch,
+    onStatus: (st) => {
+      if (st === 'reconnecting' && !wasDown) { wasDown = true; notify('Connexion perdue, reconnexion…', 'info'); }
+      if (st === 'connected' && wasDown) { wasDown = false; notify('Connexion rétablie.', 'success'); }
+      if (st === 'replaced') showLobbyError('Cette session est ouverte dans un autre onglet.');
+    },
+  });
+}
+
+initLobby();

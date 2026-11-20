@@ -59,3 +59,48 @@ Format : problème → correction. Sévérité : **[C]** critique (crash, partie
 | 30 | **[m]** Menu contextuel : appel à `showToast` inexistant. | Remplacé par `notify`. |
 | 31 | **[M]** Couleurs : couleur par défaut identique pour tous (`#4a90d9`), rejet silencieux d'une couleur hors palette → toutes les armées en bleu. | Couleur attribuée par le serveur (distincte à l'arrivée), unique, erreur explicite en cas de refus ; le client affiche la couleur reçue dans `room_update`. |
 | 32 | **[m]** `use_ability` n'envoie jamais `targetId` (Mou Bu échoue toujours). | Non corrigé (gameplay) — signalé. |
+
+## 6. Nouvelle architecture
+
+```
+game/protocol.js     dispatcher unique (validation, sessions, échéances, vues par destinataire)
+game/validate.js     validation des entrées (ProtocolError {code, message})
+game/GameRoom.js     règles + état (carte de la salle, sérialisation complète)
+game/turns/          contrôleurs de tour (sequential ; seam pour un futur mode "simultaneous")
+game/maps.js         registre des cartes (data/maps/<id>.json)
+server/createServer.js  Express + ws local (store mémoire, minuteries), server.js = point d'entrée
+server/memoryStore.js   store local (file d'attente par salle)
+lambda/handler.js       adaptateur API Gateway ; lambda/dynamoStore.js (verrou optimiste)
+public/js/net.js        client WS partagé (session, reconnexion, battement de cœur, indicateur)
+tests/*.test.js         npm test (node:test)
+```
+
+## 7. Protocole (résumé)
+
+Entrant `{action, roomCode?, ...}` — sortant `{event, ...}` ; erreurs `{event:'error', code, message, action}`.
+
+- Session : `create_room {playerName, mapId?}`, `join_room {roomCode, playerName, spectator?}`, `rejoin_game {roomCode, playerId, token}`, `leave_room`, `get_state`, `tick` (toutes les 15 s), `list_maps`.
+  Réponses : `session {roomCode, playerId, token, role}` (seul message contenant le jeton, envoyé à son seul propriétaire), `room_created`, `room_joined`, `session_replaced`, `maps_list {maps, modes}`, `pong`.
+- Lobby (hôte) : `set_map {mapId}`, `set_budget`, `set_mode` (seul `sequential` disponible), `start_game` ; tous : `set_player_color {color:#rrggbb}` (unique), `select_general`.
+  `room_update` contient `mapId`, `mapName`, `mode`, `players[{id,name,color,generalId,isReady,connected}]`, `spectators`.
+- Jeu : actions inchangées (`submit_army`, `place_unit`, `deployment_ready`, `move_unit`, `attack_unit`, `defend_choice {choice: rien|counter|absorb}`, `rotate_facing`, `change_stance`, `motivate_unit`, `use_ability {targetId?}`, `end_turn`, `chat_message`, `ping`).
+- Nouveaux événements : `presence {players, spectators}`, `player_disconnected`, `player_reconnected`, `player_left {reason: left|timeout|abandon}`, `player_joined`, `spectator_joined`, `turn_auto_ended`, `chat_history`, `deployment_ready_update.readyIds`, `defense_request.seconds/expiresAt`.
+- `game_state` : `mapId`, `mode`, `turnDeadline`, `players[].connected`, `spectators` ; **plus de `heightData`** (lire la carte). Spectateurs : `isSpectator: true`, toutes les unités, `visibleHexes` = toute la carte, `myUnits: []`.
+- `myId` / `playerId` = identifiant stable du joueur (`p_…`, `s_…` pour un spectateur), plus l'id de connexion.
+
+## 8. Règles de présence
+
+| Phase | Déconnexion |
+|-------|-------------|
+| lobby | retiré après 30 s (hôte transféré) |
+| armée / déploiement | retiré après 2 min, la partie continue sans lui |
+| bataille | son tour passe après 60 s (30 s pour les tours suivants s'il est toujours absent) ; abandon (éliminé) après 10 min |
+| défense en attente | « rien » après 20 s, que le défenseur soit là ou non |
+| salle | supprimée 30 min après la fin, ou 30 min sans aucun membre connecté |
+
+## 9. Reste à faire / limites
+
+- Production (S3 statique) : `/api/maps` n'existe pas ; le client 2D se rabat sur `/data/*.json` pour la carte `default` uniquement. Pour d'autres cartes en production il faut publier `data/maps` sur S3 (ou exposer une route HTTP).
+- Vue 3D : `gameView.js` appelle `createWorld` sans `mapId` → affiche toujours la carte par défaut ; `window.KB_MAP_ID` est disponible.
+- Serveur local : l'état est en mémoire, un redémarrage (`--watch`) efface les parties ; le client renvoie alors au menu.
+- `use_ability` : le client n'envoie pas de cible (Mou Bu).

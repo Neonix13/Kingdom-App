@@ -24,6 +24,7 @@ function createServer({ livereload = false, config = {}, log = console } = {}) {
   app.use(express.json({ limit: '5mb' }));
   require('./admin').mountAdmin(app);
   require('./mapRoutes').mountMapRoutes(app);
+  require('./editorRoutes').mountEditorRoutes(app);
   app.get('/join/:code', (req, res) => res.redirect(`/?join=${encodeURIComponent(String(req.params.code).toUpperCase().replace(/[^A-Z0-9]/g, ''))}`));
   app.use(express.static(path.join(ROOT, 'public')));
   app.use('/simulation/results', express.static(path.join(ROOT, 'simulation/results')));

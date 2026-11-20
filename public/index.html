@@ -30,28 +30,41 @@
       <p>Battleground — Stratégie au Tour par Tour</p>
     </div>
 
+    <div class="lobby-error" id="lobby-error"></div>
+
     <!-- Écran d'accueil -->
     <div id="screen-home">
+      <div class="card resume-card" id="resume-card" style="display:none">
+        <h2>Partie en cours</h2>
+        <p class="text-muted" id="resume-text" style="margin-bottom:12px"></p>
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="resumeSession()">Reprendre ma place</button>
+          <button class="btn btn-ghost" onclick="dismissResume()">Ignorer</button>
+        </div>
+      </div>
       <div class="card">
         <h2>Créer une partie</h2>
         <div class="input-group">
-          <label>Votre nom</label>
+          <label for="create-name">Votre nom</label>
           <input type="text" id="create-name" placeholder="Ex: Shin" maxlength="20">
         </div>
         <button class="btn btn-primary" onclick="createRoom()">Créer la salle</button>
       </div>
       <div class="divider">— ou —</div>
-      <div class="card">
+      <div class="card" id="join-card">
         <h2>Rejoindre une partie</h2>
         <div class="input-group">
-          <label>Votre nom</label>
+          <label for="join-name">Votre nom</label>
           <input type="text" id="join-name" placeholder="Ex: Kyoukai" maxlength="20">
         </div>
         <div class="input-group">
-          <label>Code de la salle</label>
-          <input type="text" id="join-code" placeholder="Ex: AB3XYZ" maxlength="6" style="text-transform:uppercase">
+          <label for="join-code">Code de la salle</label>
+          <input type="text" id="join-code" placeholder="Ex: AB3XYZ" maxlength="8" style="text-transform:uppercase">
         </div>
-        <button class="btn btn-primary" onclick="joinRoom()">Rejoindre</button>
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="joinRoom(false)">Rejoindre</button>
+          <button class="btn btn-ghost" onclick="joinRoom(true)" title="Suivre la partie sans jouer (vision complète)">Regarder en spectateur</button>
+        </div>
       </div>
     </div>
 
@@ -60,25 +73,41 @@
       <div class="card">
         <h2>Code de la salle</h2>
         <div class="room-code" id="room-code-display">------</div>
-        <p class="text-muted" style="text-align:center;font-size:0.85em">Partagez ce code avec vos amis</p>
+        <div class="invite-row">
+          <button class="btn btn-ghost btn-sm" onclick="copyInvite(false)">Copier le lien d'invitation</button>
+          <button class="btn btn-ghost btn-sm" onclick="copyInvite(true)">Copier le lien spectateur</button>
+          <button class="btn btn-ghost btn-sm" onclick="leaveRoom()">Quitter la salle</button>
+        </div>
+        <p class="text-muted" id="role-hint" style="text-align:center;font-size:0.85em;margin-top:8px"></p>
       </div>
 
-      <div class="card" id="budget-card" style="display:none">
-        <h2>Budget par joueur</h2>
-        <div class="input-group">
-          <label>Montant (or)</label>
-          <input type="number" id="budget-input" value="2500" min="1000" max="100000" step="1000">
+      <div class="card">
+        <h2>Paramètres de la partie</h2>
+        <div class="host-grid">
+          <div class="input-group">
+            <label for="map-select">Carte</label>
+            <select id="map-select" onchange="setMap(this.value)"></select>
+            <div class="hint" id="map-desc"></div>
+          </div>
+          <div class="input-group">
+            <label for="budget-input">Budget par joueur (or)</label>
+            <input type="number" id="budget-input" value="2500" min="1000" max="100000" step="500" onchange="setBudget()">
+          </div>
+          <div class="input-group">
+            <label for="mode-select">Mode de tour</label>
+            <select id="mode-select" onchange="setMode(this.value)"></select>
+          </div>
         </div>
-        <button class="btn btn-primary" onclick="setBudget()">Définir le budget</button>
-        <p class="text-muted mt-8" style="font-size:0.8em">Budget actuel : <span id="current-budget" class="text-gold">2 500</span> or</p>
+        <p class="text-muted mt-8" style="font-size:0.8em" id="settings-hint">Seul l'hôte peut modifier les paramètres.</p>
       </div>
 
       <div class="card">
         <h2>Joueurs (<span id="player-count">0</span>/8)</h2>
         <ul class="player-list" id="player-list"></ul>
+        <div class="spectator-list" id="spectator-list"></div>
       </div>
 
-      <div class="card">
+      <div class="card" id="generals-card">
         <h2>Choisir votre Général</h2>
         <div class="generals-grid" id="generals-grid"></div>
       </div>
@@ -102,8 +131,17 @@
         <span class="budget-value" id="army-remaining">2 500</span>
       </div>
       <div class="unit-shop" id="unit-shop"></div>
-      <div class="mt-16">
-        <button class="btn btn-success" onclick="submitArmy()">Confirmer l'armée</button>
+      <div class="mt-16 btn-row" style="align-items:center">
+        <button class="btn btn-success" id="army-submit-btn" onclick="submitArmy()">Confirmer l'armée</button>
+        <span class="text-muted" id="army-wait"></span>
+      </div>
+    </div>
+
+    <!-- Attente (spectateur pendant la construction des armées) -->
+    <div id="screen-wait" style="display:none">
+      <div class="card waiting-box">
+        <h2>Construction des armées</h2>
+        <p id="wait-text">Les généraux recrutent leurs troupes…</p>
       </div>
     </div>
   </div>
@@ -127,6 +165,7 @@
     }
   </script>
   <script src="/js/version.js"></script>
+  <script src="/js/net.js"></script>
   <script src="/js/lobby.js"></script>
   <script>document.getElementById('app-version').textContent = APP_VERSION;</script>
 </body>

@@ -123,10 +123,6 @@ function registerMap(raw) {
   return map;
 }
 
-function publicSummary(m) {
-  return { id: m.id, name: m.name, description: m.description, hexCount: Object.keys(m.height).length, hasBackground: !!m.background };
-}
-
 // Terrain lookup with plain as default for every hex of the map
 function terrainLookup(map) {
   const out = {};
@@ -134,4 +130,4 @@ function terrainLookup(map) {
   return out;
 }
 
-module.exports = { listMaps, getMap, mapExists, saveMap, deleteMap, registerMap, publicSummary, validateMap, normalizeMap, terrainLookup, MAPS_DIR };
+module.exports = { listMaps, getMap, mapExists, saveMap, deleteMap, registerMap, validateMap, normalizeMap, terrainLookup, MAPS_DIR };

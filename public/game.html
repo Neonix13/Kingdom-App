@@ -418,7 +418,7 @@
     <div class="overlay-box" style="text-align:center">
       <h2>Fin de Bataille</h2>
       <div id="gameover-msg" style="font-size:1.3em;margin:20px 0;color:#c8960c"></div>
-      <button class="btn btn-primary" onclick="window.location.href='/'">Retour au menu</button>
+      <button class="btn btn-primary" onclick="leaveGame()">Retour au menu</button>
     </div>
   </div>
 
@@ -433,6 +433,7 @@
   <div id="stance-tooltip"></div>
   <div id="terrain-tooltip"></div>
   <script src="/js/hexGrid.js"></script>
+  <script src="/js/net.js"></script>
   <script src="/js/game.js"></script>
   <script>document.getElementById('app-version').textContent = APP_VERSION;</script>
   <script type="module">

@@ -318,3 +318,41 @@ body {
 .flex { display: flex; }
 .gap-8 { gap: 8px; }
 .flex-1 { flex: 1; }
+
+/* ---- Connexion / salle ---- */
+#net-status {
+  position: fixed; left: 10px; bottom: 8px; z-index: 2000;
+  display: flex; align-items: center; gap: 6px;
+  background: rgba(15, 8, 4, 0.85); border: 1px solid #3a2408; border-radius: 12px;
+  padding: 3px 10px 3px 8px; font-size: 0.72em; color: #a89060; pointer-events: none;
+}
+#net-status .net-dot { width: 8px; height: 8px; border-radius: 50%; background: #777; }
+#net-status.net-connected .net-dot { background: #4caf50; box-shadow: 0 0 6px #4caf50; }
+#net-status.net-connected .net-label { display: none; }
+#net-status.net-connecting .net-dot, #net-status.net-reconnecting .net-dot { background: #e0a030; animation: net-blink 1s infinite; }
+#net-status.net-reconnecting { color: #e0a030; border-color: #7a5820; }
+#net-status.net-replaced .net-dot, #net-status.net-idle .net-dot { background: #d04040; }
+#net-status.net-replaced { color: #ff8080; border-color: #6b1a1a; }
+@keyframes net-blink { 50% { opacity: 0.3; } }
+
+.input-group select {
+  width: 100%; padding: 9px 12px; background: #0f0804; border: 1px solid #5a3c10;
+  border-radius: 4px; color: #e8d5a0; font-size: 1em;
+}
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn-ghost { background: transparent; border: 1px solid #5a3c10; color: #c8a060; }
+.btn-ghost:hover { border-color: #c8960c; color: #ffd700; }
+.btn-sm { padding: 6px 12px; font-size: 0.85em; }
+.invite-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 8px; }
+.host-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.host-grid .hint { font-size: 0.78em; color: #7a6040; margin-top: 4px; }
+.player-list li.offline { opacity: 0.45; }
+.player-status { font-size: 0.8em; color: #7a6040; margin-left: auto; white-space: nowrap; }
+.player-status.ready { color: #6ccf6c; }
+.color-swatch.taken { opacity: 0.2; cursor: not-allowed !important; }
+.spectator-list { font-size: 0.85em; color: #a89060; margin-top: 10px; }
+.spectator-list .tag { display: inline-block; background: #2a1a06; border: 1px solid #3a2408; border-radius: 10px; padding: 1px 8px; margin: 2px 4px 2px 0; }
+.spectator-list .tag.offline { opacity: 0.45; }
+.lobby-error { background: #3a0c0c; border: 1px solid #a02020; color: #ffb0b0; border-radius: 6px; padding: 10px 14px; margin-bottom: 16px; display: none; }
+.resume-card { border-color: #8b5e0a; }
+.waiting-box { text-align: center; color: #a89060; padding: 20px; }

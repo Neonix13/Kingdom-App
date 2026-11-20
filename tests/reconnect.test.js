@@ -107,9 +107,13 @@ test('joueur actif déconnecté : son tour passe automatiquement après le déla
   const gs = second.last('game_state');
   assert.equal(gs.currentPlayerId, first.session.playerId);
   assert.ok(gs.turnDeadline, 'échéance visible pour le tour d\'un absent');
-  h.clock.advance(31000);
+  const autoEnded = second.all('turn_auto_ended').length;
+  h.clock.advance(29000);
   await h.protocol.tick(second.session.roomCode);
-  assert.equal(second.last('game_state').currentPlayerId, second.session.playerId, 'tour d\'un absent passé après 30 s');
+  assert.equal(second.all('turn_auto_ended').length, autoEnded);
+  h.clock.advance(2000);
+  await h.protocol.tick(second.session.roomCode);
+  assert.equal(second.all('turn_auto_ended').length, autoEnded + 1, 'tour d\'un absent passé après 30 s');
 });
 
 test('absence prolongée en bataille : abandon et victoire de l\'adversaire', async () => {
