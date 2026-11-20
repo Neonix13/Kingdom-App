@@ -182,6 +182,10 @@ const TEX_UV_SCALE = 0.5;
 const fieldSet = new Set(decor.fields || []);
 const rampartSet = new Set(decor.ramparts || []);
 function isWaterHex(h) { return h.terrain === 'river' || h.terrain === 'bridge'; }
+// high open ground drawn as continuous mountain slopes rather than stepped hex plateaus
+function isMountain(h) {
+  return h.height >= 4 && (h.terrain === 'plain' || h.terrain === 'forest') && !rampartSet.has(`${h.q},${h.r}`) && !fieldSet.has(`${h.q},${h.r}`);
+}
 function visualType(h) {
   if (isWaterHex(h)) return 'water';
   if (rampartSet.has(`${h.q},${h.r}`)) return 'rampart';
@@ -197,8 +201,8 @@ const VT_STYLE = {
   road:     { color: 0x8ea152, tex: 0, variation: 0.03 },
   building: { color: 0x9a8b78, tex: 3, variation: 0.02 },
   field:    { color: 0xe0bd62, tex: 5, variation: 0.025 },
-  highland: { color: 0xb8a070, tex: 5, variation: 0.03 },
-  rocky:    { color: 0x9f9483, tex: 3, variation: 0.03 },
+  highland: { color: 0xa9a468, tex: 5, variation: 0.03 },
+  rocky:    { color: 0x8f9a64, tex: 0, variation: 0.035 },
   water:    { color: 0x7a6a55, tex: 3, variation: 0.0 },
   rampart:  { color: 0x8c8374, tex: 3, variation: 0.015 },
 };
@@ -433,6 +437,20 @@ function makeTerrainMaterial({ grid = false, snow = false } = {}) {
           albedo = mix( albedo, vec3( 0.86, 0.9, 0.96 ), snow );
         #endif
         #ifdef GRID
+          float alpG = 0.0;
+          {
+            // board mountains: alpine meadow, then scree and rock on the slopes
+            float hY = vPWorld.y;
+            float nA = texture2D( uNoise, vPWorld.xz * 0.05 ).r;
+            float alp = smoothstep( 5.0, 8.5, hY + ( nA - 0.5 ) * 1.8 );
+            alpG = alp;
+            if ( alp > 0.001 ) {
+              float slopeK = smoothstep( 0.1, 0.42, 1.0 - wN.y );
+              vec3 scree = rockTriplanar( vPWorld, wN ) * vec3( 0.93, 0.91, 0.87 ) * 1.5 * ( 0.85 + 0.3 * macro );
+              vec3 meadow = albedo * vec3( 0.92, 0.95, 0.82 );
+              albedo = mix( albedo, mix( meadow, scree, clamp( slopeK * 0.9 + alp * 0.35, 0.0, 1.0 ) ), alp );
+            }
+          }
           vec2 p = vPWorld.xz;
           float qf = 2.0 / 3.0 * p.x;
           float rf = -1.0 / 3.0 * p.x + 0.57735027 * p.y;
@@ -448,7 +466,7 @@ function makeTerrainMaterial({ grid = false, snow = false } = {}) {
           float fw = fwidth( ed );
           float line = 1.0 - smoothstep( 0.008, 0.008 + fw * 1.5, ed );
           float camD = distance( cameraPosition, vPWorld );
-          float gfade = uGrid * ( 1.0 - smoothstep( 60.0, 150.0, camD ) );
+          float gfade = uGrid * ( 1.0 - smoothstep( 60.0, 150.0, camD ) ) * ( 1.0 - 0.6 * alpG );
           albedo = mix( albedo, vec3( 1.0, 0.96, 0.82 ) * 0.85, line * gfade );
           vec4 ovc = texture2D( uOverlay, ( vPWorld.xz - uOverlayBounds.xy ) / uOverlayBounds.zw );
           albedo = mix( albedo, ovc.rgb * 1.3, ovc.a );
@@ -496,7 +514,9 @@ const cornerHeights = new Map();
         edgeTransitions[geoEdge] = 0.55;
       } else if (Math.abs(hexH - effH(neighbor)) > 0.01) {
         needsRing = true;
-        edgeTransitions[geoEdge] = getSegType(hex.q, hex.r, nq, nr) === 'cliff' ? 0.1 : 0.7;
+        const cliff = getSegType(hex.q, hex.r, nq, nr) === 'cliff';
+        // mountain slopes run from centre to centre (no flat tops / stepped blocks); elsewhere a flat with a bevel
+        edgeTransitions[geoEdge] = cliff ? 0.1 : (isMountain(hex) && isMountain(neighbor) ? 0.93 : 0.7);
       }
     }
     const wp = hexToWorld(hex.q, hex.r);
@@ -1003,7 +1023,7 @@ function setTimeOfDay(hour, { env = true } = {}) {
   }
   const glow = smoothstep(0.25, 0.95, Math.max(night, golden * 0.4 - 0.1));
   for (const m of lanternMats) m.emissiveIntensity = 7 * glow;
-  for (const m of windowMats) m.emissiveIntensity = 3.2 * glow;
+  for (const m of windowMats) m.emissiveIntensity = 5.5 * glow;
   const starA = smoothstep(0.35, 1, night);
   stars.material.uniforms.uNight.value = starA;
   birds.visible = night < 0.5;
@@ -1177,16 +1197,27 @@ for (const [key, hex] of allHexes) {
       }
     }
   } else if (vt === 'rocky') {
-    const n = 4 + Math.floor(rng() * 3);
+    // mountains: a few outcrops on the steep parts only (none on gentle slopes), alpine grass, sparse pines low down
+    let slope = 0;
+    for (const [dq, dr] of HEX_DIRS) { const n = allHexes.get(`${hex.q + dq},${hex.r + dr}`); if (n) slope = Math.max(slope, Math.abs(n.height - hex.height)); }
+    const n = slope >= 2 ? 1 + (rng() < 0.4 ? 1 : 0) : (rng() < 0.18 ? 1 : 0);
     for (let i = 0; i < n; i++) {
-      const [x, z] = randomInHex(wp.x, wp.z, rng, i === 0 ? 0.2 : 0.8);
-      const sc = i === 0 ? 0.7 + rng() * 0.3 : 0.3 + rng() * 0.45;
-      const target = i === 0 || rng() < 0.4 ? slabs : rocks;
-      target.push({ x, y: groundHeight(x, z) - 0.12 * sc, z, s: sc, sy: 0.8 + rng() * 0.7, ry: rng() * 6.28, rx: (rng() - 0.5) * 0.5, rz: (rng() - 0.5) * 0.5, color: mul(rng, 1.05, 1.0, 0.92, 0.35) });
+      const [x, z] = randomInHex(wp.x, wp.z, rng, 0.85);
+      const sc = 0.18 + rng() * (slope >= 2 ? 0.3 : 0.16);
+      const target = rng() < 0.45 ? slabs : rocks;
+      target.push({ x, y: groundHeight(x, z) - 0.15 * sc, z, s: sc, sy: 0.6 + rng() * 0.5, ry: rng() * 6.28, rx: (rng() - 0.5) * 0.5, rz: (rng() - 0.5) * 0.5, color: mul(rng, 1.0, 0.98, 0.94, 0.25) });
     }
-    for (let i = 0; i < 8; i++) {
+    const ng = hex.height >= 9 ? 3 : 12;
+    for (let i = 0; i < ng; i++) {
       const [x, z] = randomInHex(wp.x, wp.z, rng, 1.0);
-      grass.push({ x, y: groundHeight(x, z) - 0.01, z, s: 0.7 + rng() * 0.5, ry: rng() * 6.28, color: mul(rng, 1.2, 1.05, 0.75, 0.2) });
+      grass.push({ x, y: groundHeight(x, z) - 0.01, z, s: 0.55 + rng() * 0.45, ry: rng() * 6.28, color: mul(rng, 1.1, 1.06, 0.8, 0.2) });
+    }
+    if (hex.height <= 7 && rng() < 0.45) {
+      const np = 1 + Math.floor(rng() * 3);
+      for (let i = 0; i < np; i++) {
+        const [x, z] = randomInHex(wp.x, wp.z, rng, 0.9);
+        conifers[rng() < 0.6 ? 0 : 1].push({ x, y: groundHeight(x, z) - 0.04, z, s: 0.6 + rng() * 0.4, sy: 0.95 + rng() * 0.35, ry: rng() * 6.28, color: mul(rng, 0.88, 0.98, 0.86, 0.3) });
+      }
     }
   }
 }
@@ -1210,10 +1241,11 @@ for (const [segKey, type] of Object.entries(segmentData)) {
     const ex = ec[0].x + (ec[1].x - ec[0].x) * t, ez = ec[0].z + (ec[1].z - ec[0].z) * t;
     const off = -0.05 + rng() * 0.12;
     const x = ex + ox * off, z = ez + oz * off;
-    const big = rng() < 0.35;
+    const big = rng() < 0.18;
     const eda = Math.atan2(-(ec[1].z - ec[0].z), ec[1].x - ec[0].x);
-    if (big) slabs.push({ x, y: lerp(effH(lo), effH(hi), 0.15 + rng() * 0.2), z, s: 0.45 + rng() * 0.25, sy: 0.6 + drop * (0.4 + rng() * 0.3), ry: eda + (rng() - 0.5) * 1.2, rx: (rng() - 0.5) * 0.5, rz: (rng() - 0.5) * 0.5, color: mul(rng, 1.0, 0.96, 0.9, 0.3) });
-    else rocks.push({ x, y: lerp(effH(lo), effH(hi), 0.1 + rng() * 0.35), z, s: 0.28 + rng() * 0.32, sy: 0.7 + rng() * 0.6, ry: rng() * 6.28, rx: (rng() - 0.5) * 1.2, rz: (rng() - 0.5) * 1.2, color: mul(rng, 1.0, 0.96, 0.9, 0.35) });
+    // low craggy outcrops along the face (no tall standing needles)
+    if (big) slabs.push({ x, y: lerp(effH(lo), effH(hi), 0.1 + rng() * 0.2), z, s: 0.35 + rng() * 0.2, sy: 0.5 + Math.min(drop, 2) * (0.2 + rng() * 0.15), ry: eda + (rng() - 0.5) * 1.2, rx: (rng() - 0.5) * 0.5, rz: (rng() - 0.5) * 0.5, color: mul(rng, 1.0, 0.96, 0.9, 0.3) });
+    else rocks.push({ x, y: lerp(effH(lo), effH(hi), 0.05 + rng() * 0.3), z, s: 0.2 + rng() * 0.22, sy: 0.6 + rng() * 0.4, ry: rng() * 6.28, rx: (rng() - 0.5) * 1.2, rz: (rng() - 0.5) * 1.2, color: mul(rng, 1.0, 0.96, 0.9, 0.35) });
     if (rng() < 0.5) {
       const d = 0.15 + rng() * 0.25;
       const sx = ex + ox * d * 1.5, sz = ez + oz * d * 1.5;
@@ -1300,7 +1332,7 @@ vegGroup.add(grassMesh, wheatMesh, flowerMesh);
 
 await setProgress(78, 'Raising villages...');
 
-const { waterwheels, smokeSources, lanternSpots, decks } = buildStructures({
+const { waterwheels, smokeSources, lanternSpots, windowSpots, decks } = buildStructures({
   scene, vegGroup, allHexes, hexesByType, segmentData, getSegType, parseSeg, edgeCorners,
   hexToWorld, hexCorner, groundHeight, effH, isWaterHex, footbridges, gateways,
   HEX_DIRS, DIR_TO_GEO_EDGE, CORNER_NEIGHBORS, HEX_HEIGHT_STEP, WATER_LEVEL, RIVERBED_HEIGHT,
@@ -1346,8 +1378,14 @@ function deckClamp(x, z, maxOff) {
 }
 
 {
-  const pools = lanternSpots.map(p => ({ x: p.x, y: groundHeight(p.x, p.z) + 0.05, z: p.z, r: 1.4 }));
-  for (const s of smokeSources) pools.push({ x: s.x, y: groundHeight(s.x, s.z) + 0.05, z: s.z, r: 3.2 });
+  // light comes out of the windows: a warm patch on the ground in front of each lit window, small pools under
+  // lanterns and around camp fires (no more glow discs centred on the houses)
+  const pools = lanternSpots.map(p => ({ x: p.x, y: groundHeight(p.x, p.z) + 0.05, z: p.z, r: 0.6, k: Math.max(0.15, 0.55 - 0.25 * Math.max(0, p.y - groundHeight(p.x, p.z) - 0.4)) }));
+  for (const s of smokeSources) if (s.fire) pools.push({ x: s.x, y: groundHeight(s.x, s.z) + 0.05, z: s.z, r: 1.5, k: 0.8 });
+  for (const w of windowSpots) {
+    const x = w.x + w.nx * 0.3, z = w.z + w.nz * 0.3;
+    pools.push({ x, y: groundHeight(x, z) + 0.04, z, sx: 0.32, sz: 0.5, ry: Math.atan2(w.nx, w.nz), k: 0.32 });
+  }
   const poolMesh = createLightPools(pools);
   scene.add(poolMesh);
   nightFx.push(poolMesh);

@@ -144,9 +144,11 @@ export function createLightPools(spots) {
     vertexShader: /* glsl */`
       varying vec2 vUv;
       varying float vSeed;
+      varying float vK;
       void main() {
         vUv = uv;
         vSeed = instanceMatrix[ 3 ].x * 1.7 + instanceMatrix[ 3 ].z;
+        vK = length( instanceMatrix[ 1 ].xyz );
         gl_Position = projectionMatrix * viewMatrix * modelMatrix * instanceMatrix * vec4( position, 1.0 );
       }
     `,
@@ -155,11 +157,12 @@ export function createLightPools(spots) {
       uniform float uTime;
       varying vec2 vUv;
       varying float vSeed;
+      varying float vK;
       void main() {
         float d = length( vUv - 0.5 ) * 2.0;
         float f = pow( max( 1.0 - d, 0.0 ), 2.2 );
         float flick = 0.9 + 0.1 * sin( uTime * 9.0 + vSeed ) * sin( uTime * 5.3 + vSeed * 2.0 );
-        float a = f * uGlow * flick;
+        float a = f * uGlow * flick * vK;
         if ( a < 0.002 ) discard;
         gl_FragColor = vec4( vec3( 1.0, 0.52, 0.18 ) * a * 0.9, 1.0 );
       }
@@ -167,9 +170,12 @@ export function createLightPools(spots) {
   });
   const mesh = new THREE.InstancedMesh(geo, mat, Math.max(1, spots.length));
   const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion(), yAxis = new THREE.Vector3(0, 1, 0);
+  // spot: { x, y, z, r } disc, or { sx, sz, ry } ellipse (window light on the ground); k = intensity (stored in the
+  // unused y scale of the flat quad)
   spots.forEach((s, i) => {
-    m.makeScale(s.r * 2, 1, s.r * 2);
-    m.setPosition(s.x, s.y, s.z);
+    q.setFromAxisAngle(yAxis, s.ry || 0);
+    m.compose(new THREE.Vector3(s.x, s.y, s.z), q, new THREE.Vector3((s.sx ?? s.r) * 2, s.k ?? 1, (s.sz ?? s.r) * 2));
     mesh.setMatrixAt(i, m);
   });
   mesh.count = spots.length;
