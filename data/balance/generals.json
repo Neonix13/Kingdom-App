@@ -22,15 +22,15 @@
     "name": "Mou Bu",
     "kingdom": "QIN",
     "army": 10000,
-    "vitality": 130,
-    "maxVitality": 130,
-    "armor": 20,
+    "vitality": 120,
+    "maxVitality": 120,
+    "armor": 19,
     "intimidation": 8,
     "weapon": {
       "name": "Masse",
-      "damage": 21
+      "damage": 20
     },
-    "force": 18,
+    "force": 17,
     "strategy": 12,
     "charisma": 16,
     "citation": "«Ce n'est pas la stratégie qui gagne les guerres… c'est la force !»"
@@ -40,8 +40,8 @@
     "name": "Ou Sen",
     "kingdom": "QIN",
     "army": 9500,
-    "vitality": 110,
-    "maxVitality": 110,
+    "vitality": 120,
+    "maxVitality": 120,
     "armor": 18,
     "intimidation": 8,
     "weapon": {
@@ -76,15 +76,15 @@
     "name": "Ri Boku",
     "kingdom": "ZHAO",
     "army": 11000,
-    "vitality": 100,
-    "maxVitality": 100,
+    "vitality": 105,
+    "maxVitality": 105,
     "armor": 19,
     "intimidation": 8,
     "weapon": {
       "name": "Sabre",
       "damage": 20
     },
-    "force": 11,
+    "force": 12,
     "strategy": 18,
     "charisma": 17,
     "citation": "«Gagner une guerre sans combattre est la plus grande des victoires.»"
@@ -94,8 +94,8 @@
     "name": "Kei Sha",
     "kingdom": "ZHAO",
     "army": 10000,
-    "vitality": 100,
-    "maxVitality": 100,
+    "vitality": 105,
+    "maxVitality": 105,
     "armor": 19,
     "intimidation": 7,
     "weapon": {
@@ -104,7 +104,7 @@
     },
     "force": 13,
     "strategy": 16,
-    "charisma": 14,
+    "charisma": 15,
     "citation": "«La guerre est un art, et seuls les plus fins stratèges en maîtrisent toutes les nuances.»"
   },
   {
@@ -112,8 +112,8 @@
     "name": "Shi Ba Shou",
     "kingdom": "ZHAO",
     "army": 8500,
-    "vitality": 130,
-    "maxVitality": 130,
+    "vitality": 125,
+    "maxVitality": 125,
     "armor": 19,
     "intimidation": 8,
     "weapon": {
@@ -130,8 +130,8 @@
     "name": "Ren Pa",
     "kingdom": "ZHAO/WEI",
     "army": 11000,
-    "vitality": 120,
-    "maxVitality": 120,
+    "vitality": 115,
+    "maxVitality": 115,
     "armor": 20,
     "intimidation": 9,
     "weapon": {
@@ -148,8 +148,8 @@
     "name": "Go Kei",
     "kingdom": "WEI",
     "army": 10000,
-    "vitality": 90,
-    "maxVitality": 90,
+    "vitality": 100,
+    "maxVitality": 100,
     "armor": 20,
     "intimidation": 8,
     "weapon": {
@@ -166,17 +166,17 @@
     "name": "Go Hou Mei",
     "kingdom": "WEI",
     "army": 9000,
-    "vitality": 80,
-    "maxVitality": 80,
-    "armor": 17,
+    "vitality": 105,
+    "maxVitality": 105,
+    "armor": 18,
     "intimidation": 7,
     "weapon": {
       "name": "-",
       "damage": 18
     },
-    "force": 10,
+    "force": 12,
     "strategy": 18,
-    "charisma": 14,
+    "charisma": 15,
     "citation": "«La guerre est un jeu d'échecs où chaque mouvement détermine le vainqueur avant même que l'ennemi ne s'en rende compte.»"
   },
   {
@@ -184,15 +184,15 @@
     "name": "Gai Mou",
     "kingdom": "WEI",
     "army": 10000,
-    "vitality": 130,
-    "maxVitality": 130,
+    "vitality": 125,
+    "maxVitality": 125,
     "armor": 20,
     "intimidation": 8,
     "weapon": {
       "name": "Naginata",
       "damage": 21
     },
-    "force": 18,
+    "force": 17,
     "strategy": 12,
     "charisma": 16,
     "citation": "«Que ce soit dix, cent ou mille ennemis… je les écraserai tous de mes propres mains !»"

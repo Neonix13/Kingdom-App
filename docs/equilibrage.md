@@ -96,3 +96,62 @@ La ligne de commande ne change pas : `node simulation/run.js --games 50 --budget
 ## Pour le client
 
 Le client 2D garde encore ses copies en dur : `SEGMENT_DEFS_CLIENT`, `TERRAINS_DATA` et `STANCES_DATA` dans `public/js/game.js`, `UNITS_DATA` et `GENERALS_DATA` dans `public/js/lobby.js`. Pour que les modifications d'équilibrage y apparaissent, il suffit de charger `GET /api/balance` au démarrage et d'utiliser `tables.units`, `tables.generals`, `tables.terrains`, `tables.segments` et `tables.stances`, qui ont la même forme que les modules serveur. En hébergement statique (S3/CloudFront), il faut publier une copie de ces JSON à côté du site ou les envoyer par le WebSocket.
+
+## Passe d'équilibrage (novembre 2026)
+
+Mesures : `node simulation/run.js --budget 4000` (11 × 11 généraux), en séquentiel (IA du simulateur) et en simultané (`--simultaneous`, IA Vétéran de `game/bots`) ; avant = 3 parties par affrontement (363), après = 12 (1 452). Taux de victoire = victoires / parties (un nul n'est pas une victoire).
+
+### Constat
+
+- **L'armure annulait presque tous les dégâts.** Dégâts = (dés de l'attaquant − vitalité × armure de la cible) / 10 : à pleine santé, aucune paire d'unités ne se blessait au corps à corps en posture Combat ; 43 à 56 % des coups qui touchaient faisaient 0 dégât (70 à 88 % contre les généraux, la cavalerie lourde, l'assassin, la phalange), et 78 à 89 % des ripostes aussi. Les batailles se jouaient au moral et les généraux (armure 17 à 20) étaient presque intuables : d'où les nuls et la domination des généraux à forte Force.
+- **Généraux** : le taux de victoire suivait la Force (en séquentiel, Mou Bu 79 %, Gai Mou 73 %, Go Hou Mei 15 %).
+- **Unités** : en combats à coût égal (`_resolveCombat`, 4 800 or par camp, mêlée), les Soldats battaient tout (99 %) ; les Bâtisseurs (moral 75) et le Char ne gagnaient presque jamais. Les capacités décrites dans `bonus` ne sont pas implémentées par le moteur (`bonusType` n'est lu nulle part).
+
+### Changements
+
+| Règle / donnée | Avant | Après | Pourquoi |
+|---|---|---|---|
+| `RULES.combat.maxArmorAbsorb` (nouveau, `public/js/rules.js`) | absorption illimitée | l'armure absorbe au plus 75 % des dégâts (riposte comprise) | un coup qui touche blesse toujours ; les généraux deviennent tuables |
+| Vitesse de début de tour | minimum 0 | minimum 1 | Soldats et Phalange (vitesse 2) au Repos, ou en Combat en forêt, tombaient à 0 et ne pouvaient plus jamais changer de posture |
+| Mou Bu | Vit 130, Arm 20, Force 18, arme 21 | 120, 19, 17, 20 | le plus fort ; reste en tête des brutes |
+| Gai Mou | Vit 130, Force 18 | 125, 17 | idem |
+| Shi Ba Shou / Ren Pa | Vit 130 / 120 | 125 / 115 | au-dessus de 55 % |
+| Ou Sen / Go Kei | Vit 110 / 90 | 120 / 100 | sous 40 % |
+| Ri Boku | Vit 100, Force 11 | 105, 12 | sous 40 % |
+| Kei Sha | Vit 100, Charisme 14 | 105, 15 | sous 40 % |
+| Go Hou Mei | Vit 80, Arm 17, Force 10, Charisme 14 | 105, 18, 12, 15 | 15 % ; reste le plus faible combattant |
+| Bâtisseurs | moral 75, 1 000 or | 150, 800 | brisés au premier coup, aucune capacité implémentée |
+| Cavalier lourd | Vit 100, 1 200 or | 130, 1 100 | son armure ne suffit plus à le protéger |
+| Cavalier léger / Assassin | 900 / 800 or | 800 / 700 | survie la plus basse, perdants des combats à coût égal |
+| Char | Vit 75, 1 600 or | 100, 1 300 | idem |
+
+### Résultats
+
+| | Séquentiel avant | Séquentiel après | Simultané avant | Simultané après |
+|---|---|---|---|---|
+| Parties nulles | 8,3 % | 2,7 % | 55 % | 0,8 % |
+| Taux de victoire des généraux (min – max) | 15 – 79 % | 39 – 59 % | 11 – 41 % (nuls) | 42 – 58 % |
+
+| Général | Séq. avant | Séq. après | Simul. avant | Simul. après |
+|---|---|---|---|---|
+| Mou Bu | 79 | 57 | 21 | 52 |
+| Gai Mou | 73 | 59 | 24 | 58 |
+| Ren Pa | 65 | 52 | 33 | 57 |
+| Shi Ba Shou | 59 | 59 | 24 | 52 |
+| Ou Ki | 44 | 51 | 41 | 56 |
+| Go Kei | 39 | 46 | 11 | 42 |
+| Ou Sen | 36 | 45 | 23 | 50 |
+| Kan Ki | 33 | 46 | 18 | 46 |
+| Kei Sha | 32 | 39 | 18 | 48 |
+| Ri Boku | 29 | 42 | 15 | 44 |
+| Go Hou Mei | 15 | 40 | 18 | 42 |
+
+Intervalle de confiance après : environ ± 6 points par général et par mode. Les nuls du mode simultané « avant » viennent de l'IA (voir `docs/ia-et-tutoriel.md`) . Avec l'IA corrigée mais les règles et données d'origine (726 parties par mode) : simultané Mou Bu 72 %, Go Hou Mei 22 %, aucun nul ; séquentiel Mou Bu 80 %, Go Hou Mei 16 %, 2,6 % de nuls.
+
+Combats à coût égal après : les infanteries s'équilibrent (victoires moyennes : Phalange 84 %, Piétaille 80 %, Soldats 76 %, Espion 70 %, Lancier 67 %) ; la cavalerie et l'assassin restent en dessous (34 à 41 %), le Char à 14 % : leur intérêt est la vitesse et la charge, que ce test ne mesure pas.
+
+### Limites
+
+- Les capacités d'unités (`bonus`) et la plupart des capacités de généraux ne sont pas implémentées : Bâtisseurs, Espion et Char n'ont aucun rôle propre en partie.
+- Le simulateur séquentiel ne recrute jamais de Char (le budget de sa catégorie est inférieur à son coût).
+- La Force reste la statistique la plus forte (attaque, défense et duel des généraux) ; la Stratégie ne compte que pour l'initiative, la vision et les points de commandement.

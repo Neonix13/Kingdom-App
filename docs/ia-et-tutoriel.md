@@ -18,7 +18,9 @@ Une IA est un joueur ordinaire de la salle (`isBot: true`, nom « Ren Pa (IA) »
 | `tutorial.js` | Scénario du tutoriel |
 
 ### Brouillard de guerre
-L'IA ne lit jamais les positions qu'elle ne voit pas : ennemis = unités visibles par son joueur, chemins bloqués seulement par les unités visibles (une embuscade l'arrête comme un humain). Sans ennemi en vue, elle suit un **itinéraire de recherche** tiré d'informations publiques : les zones fixes de la carte s'il y en a ; sinon l'arc des cases situées à environ un diamètre du cercle des zones aléatoires (`10 + 4 × joueurs`) de sa propre zone, en commençant par le secteur tourné vers le centre de la carte. Les points sont visités selon un calendrier (≈ 2,5 cases par tour + 2 tours sur place), sans mémoire. Les buts inaccessibles (de l'autre côté de falaises ou de murs) sont remplacés par la case accessible la plus proche.
+L'IA ne lit jamais les positions qu'elle ne voit pas : ennemis = unités visibles par son joueur, chemins bloqués seulement par les unités visibles (une embuscade l'arrête comme un humain). **Mémoire** (`world.js`, cache du processus comme les itinéraires : un démarrage à froid de la lambda l'oublie seulement) : dernière position de chaque ennemi aperçu, oubliée quand sa case est revue vide (une case de forêt ou de bâtiment seulement de près, l'ennemi pouvant s'y cacher) ou après 12 tours, et dernier tour où chaque case a été vue. Sans ennemi en vue, l'armée va vers le dernier ennemi aperçu (le général d'abord) ; sinon elle explore : premier point non encore vu de l'**itinéraire de recherche** tiré d'informations publiques (les zones fixes de la carte s'il y en a ; sinon l'arc des cases situées à environ un diamètre du cercle des zones aléatoires (`10 + 4 × joueurs`) de sa propre zone, en commençant par le secteur tourné vers le centre de la carte), puis la case d'une grille grossière vue depuis le plus longtemps près de l'armée (abandonnée après 14 tours si elle reste hors d'atteinte). Les buts inaccessibles (de l'autre côté de falaises ou de murs) sont remplacés par la case accessible la plus proche.
+
+**Fin de partie** : un général resté sans armée part chercher le général adverse si c'est le seul ennemi qu'il connaît (le duel tranche) ; s'il a vu au moins deux unités ennemies, l'IA **abandonne** (`leave_room` : elle est éliminée, « a quitté la partie »). Jamais dans le tutoriel. Le simulateur d'équilibrage applique la même règle.
 
 ### Niveaux
 
@@ -47,7 +49,10 @@ Défense : phalange « Encaisser » contre les tirs ; au corps à corps, contre-
 - Une IA visée par une attaque répond en ~1 s (pas les 20 s du minuteur de défense).
 
 ### Mode simultané
-Chaque planification, l'IA envoie tous ses ordres (`set_orders`, `replace: true`, dans la limite des points de commandement : attaques/charges d'abord, capacité et motivation du général, puis déplacements) puis les valide (`commit_orders`).
+Chaque planification, l'IA envoie tous ses ordres (`set_orders`, `replace: true`, dans la limite des points de commandement : attaques/charges d'abord, capacité et motivation du général, puis déplacements) puis les valide (`commit_orders`). Chaque ordre est d'abord vérifié avec la règle du serveur (`room.turns.validateOrder`) : un ordre refusé faisait rejeter tout le lot.
+- Un tireur ne bouge pas quand il a un ordre d'attaque : hors de portée, il marche d'abord vers une position de tir (loin des unités de mêlée ennemies).
+- Le général attaque quand le duel lui est favorable (mêmes critères qu'en séquentiel) ou une unité affaiblie.
+- Long trajet sans ennemi en vue : posture Marche (le changement coûte la vitesse du tour, la posture la rend ensuite).
 
 ## 2. Protocole et salle
 
@@ -83,12 +88,25 @@ Vue 3D : rien ne dépend du canevas 2D. Le panneau (z-index 9500) est au-dessus 
 
 ## 5. Mesures (carte par défaut, zones aléatoires)
 
+**Parties nulles (novembre 2026)** — IA réelles par le protocole, 60 parties par paire, budget 4 000, limite de 100 tours :
+
+| Paire | Simultané avant | Simultané après | Séquentiel avant | Séquentiel après |
+|---|---|---|---|---|
+| Vétéran – Vétéran | 37 nuls (62 %) | 0 | 8 (13 %) | 4 (7 %) |
+| Stratège – Stratège | 35 (58 %) | 1 (2 %) | 21 (35 %) | 4 (7 %) |
+| Recrue – Stratège | 35 (58 %) | 0 | 2 (3 %) | 0 |
+
+Causes des nuls : armées qui se perdaient de vue sans mémoire ; tireurs en mode simultané qui gardaient un ordre d'attaque sur une cible hors de portée (ils ne bougent pas) ; généraux restés seuls qui ne bougeaient plus ; unités lentes bloquées au Repos (vitesse 0, posture impossible à changer) ; lots d'ordres rejetés pour une seule posture sans vitesse ; armure qui annulait les dégâts (voir `docs/equilibrage.md`). Après : Stratège bat Recrue 57–3 (simultané) et 56–4 (séquentiel), Stratège bat Vétéran 35–25 et 36–20. Simulateur d'équilibrage : nuls 55 % → 0,8 % (simultané), 8,3 % → 2,7 % (séquentiel).
+
+Mesures précédentes :
+
 - **Niveaux** (30 parties IA contre IA par paire, budget 4000, 30 tours max) : Vétéran bat Recrue 20–10 ; Stratège bat Vétéran 19–8 (2 nuls) ; Stratège bat Recrue 23–6. 2 parties sur 90 bloquées au déploiement (zone vide, voir ci-dessous).
 - **Contre un joueur immobile** (15 parties par niveau, 30 tours) : contact établi dans environ 2 parties sur 3 (Recrue 14/15, Vétéran 10/15, Stratège 11/15 lors d'une mesure ; les zones étant tirées au hasard, les chiffres varient d'une série à l'autre). Un joueur qui avance rencontre l'IA bien plus tôt.
 
 ## 6. Limites connues
 - `HexUtils.getStartingZones` (zones aléatoires) produit parfois une zone vide (~2 % des salles sur la carte par défaut) : personne ne peut s'y déployer, IA comme humain. Le test le contourne en recommençant.
 - Lambda : l'IA joue toute sa manche d'un coup à la réception d'un message (pas de pause possible sans minuterie).
-- La mémoire des ennemis aperçus n'est pas conservée d'un tour à l'autre (l'IA ne connaît que ce qu'elle voit maintenant) : contre un joueur qui reste caché ou immobile loin de l'itinéraire de recherche, l'IA peut ne jamais le trouver (la limite de tours ou les objectifs départagent alors).
+- La mémoire de l'IA est un cache du processus : sur la lambda, une nouvelle instance repart sans mémoire (elle retrouve l'ennemi par l'exploration).
+- Un joueur qui cache son général seul dans une forêt loin de l'armée de l'IA peut encore tenir longtemps (l'exploration finit par passer, la limite de tours ou les objectifs départagent sinon).
 - Le Stratège avance groupé, donc lentement : il arrive au contact plus tard que la Recrue.
 - Les capacités des généraux autres qu'Ou Ki, Mou Bu et Ri Boku n'ont pas d'effet côté serveur : l'IA ne les utilise pas.
