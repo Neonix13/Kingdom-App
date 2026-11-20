@@ -634,6 +634,14 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     if (room.phase === 'ended') reply(tx, connId, gameOverMessage(room));
   }
 
+  // Responses the defender may pick: shots can only be blocked by a unit with the defend_ranged ability (phalange)
+  function defenseOptions(room, a) {
+    if (!a.isRanged) return ['counter', 'absorb', 'rien'];
+    const target = room.findUnit(a.targetId);
+    const ab = target ? room.ability(target) : null;
+    return ab && ab.type === 'defend_ranged' && !RULES.combat.archerTypes.includes(a.attackerTypeId) ? ['absorb', 'rien'] : ['rien'];
+  }
+
   function defenseRequest(room, attackId, a, seconds) {
     const att = room.findUnit(a.attackerId);
     const seen = !!att && room.canSee(a.targetPlayerId, att);
@@ -641,7 +649,7 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
       event: 'defense_request', attackId, roomCode: room.roomCode,
       attackerName: seen ? a.attackerName : UNKNOWN, attackerId: seen ? a.attackerId : null, targetName: a.targetName, targetId: a.targetId,
       targetQ: a.targetQ, targetR: a.targetR, isRanged: a.isRanged, targetTypeId: a.targetTypeId,
-      seconds, expiresAt: a.expiresAt,
+      seconds, expiresAt: a.expiresAt, options: defenseOptions(room, a),
     };
   }
 
@@ -1072,10 +1080,8 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
       resolvePending(tx, result.attackId, 'duel');
       return;
     }
-    const target = room.findUnit(result.targetId || pending.targetId);
-    const targetAb = target ? room.ability(target) : null;
-    const canDefend = !pending.isRanged || (targetAb && targetAb.type === 'defend_ranged' && !RULES.combat.archerTypes.includes(pending.attackerTypeId));
-    if (!canDefend) {
+    if (defenseOptions(room, { ...pending, targetId: result.targetId || pending.targetId }).length === 1) {
+      // Nothing to choose (a shot the target cannot block): resolve now instead of asking the defender
       resolvePending(tx, result.attackId, 'rien');
       return;
     }

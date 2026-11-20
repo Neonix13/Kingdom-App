@@ -1730,7 +1730,8 @@ function renderTurnOrder(turnOrder, initiativeRolls, currentPlayerId) {
 function endTurn(confirmed = false) {
   if (gameState?.currentPlayerId !== myId) return;
   if (!confirmed && gameState.actionsLeft > 0) {
-    document.getElementById('confirm-end-msg').textContent = `${gameState.actionsLeft} unité${gameState.actionsLeft > 1 ? 's peuvent' : ' peut'} encore agir.`;
+    const names = (gameState.actionUnitIds || []).map(id => (gameState.myUnits || []).find(u => u.id === id)?.name).filter(Boolean);
+    document.getElementById('confirm-end-msg').textContent = `${gameState.actionsLeft} unité${gameState.actionsLeft > 1 ? 's peuvent' : ' peut'} encore agir${names.length ? ' : ' + names.join(', ') : ''}.`;
     document.getElementById('overlay-confirm-end').style.display = 'flex';
     return;
   }
@@ -1891,6 +1892,7 @@ function toggleRules() {
 // ---- END OF BATTLE: recap + replay ----
 let replayChunks = null;
 let replayAction = null;
+let replayWindow = null;
 
 function showRecap(data) {
   const recap = data.recap;
@@ -1917,6 +1919,11 @@ function showRecap(data) {
 function requestReplay(action) {
   replayAction = action;
   replayChunks = null;
+  // Open the tab during the click: browsers block window.open once the replay arrives over the socket
+  if (action === 'view') {
+    replayWindow = window.open('', '_blank');
+    if (replayWindow) replayWindow.document.title = 'Replay…';
+  }
   wsSend('get_replay', { roomCode });
 }
 
@@ -1933,8 +1940,15 @@ function onReplayChunk(data) {
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   } else {
-    try { localStorage.setItem('kb_last_replay', text); } catch (e) { notify('Replay trop volumineux pour le stockage local : téléchargez-le.'); return; }
-    window.open('/replay.html?local=1', '_blank');
+    const win = replayWindow;
+    replayWindow = null;
+    try { localStorage.setItem('kb_last_replay', text); } catch (e) {
+      if (win && !win.closed) win.close();
+      notify('Replay trop volumineux pour le stockage local : téléchargez-le.');
+      return;
+    }
+    if (win && !win.closed) win.location.href = '/replay.html?local=1';
+    else if (!window.open('/replay.html?local=1', '_blank')) notify('Le navigateur a bloqué l\'ouverture du replay : autorisez les fenêtres pour ce site, ou téléchargez-le.');
   }
 }
 
@@ -2550,7 +2564,10 @@ function showDefenseRequest(data) {
   // Ranged attack: only phalange can absorb, nobody can counter
   const btnCounter = document.getElementById('btn-defense-counter');
   const btnAbsorb = document.getElementById('btn-defense-absorb');
-  if (data.isRanged) {
+  if (Array.isArray(data.options)) {
+    if (btnCounter) btnCounter.style.display = data.options.includes('counter') ? '' : 'none';
+    if (btnAbsorb) btnAbsorb.style.display = data.options.includes('absorb') ? '' : 'none';
+  } else if (data.isRanged) {
     if (btnCounter) btnCounter.style.display = 'none';
     if (btnAbsorb) btnAbsorb.style.display = data.targetTypeId === 'phalange' ? '' : 'none';
   } else {
@@ -2954,6 +2971,7 @@ function wsDispatch(event, data) {
         break;
       }
       if (data.code === 'not_your_turn' && data.action === 'end_turn') break;
+      if (data.action === 'get_replay' && replayWindow) { if (!replayWindow.closed) replayWindow.close(); replayWindow = null; }
       notify(data.message || String(data));
       break;
   }
