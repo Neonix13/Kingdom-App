@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { G } from './shaderPatches.js';
+import { G, WAR_FOG_PARS } from './shaderPatches.js';
 
 // Stylised water: depth tint from terrain heightfields, shore foam, scrolling normals,
 // sky fresnel and sun glints. No reflection render pass (cheap enough for 60 fps).
@@ -32,6 +32,7 @@ export function createWaterMaterial({ fineTex, fineBounds, coarseTex, coarseBoun
   uniforms.uSunColor.value.copy(sunColor);
   uniforms.uTime = G.uTime;
   uniforms.uNoise = G.uNoise;
+  for (const k of ['uFogOn', 'uVisA', 'uVisB', 'uVisMix', 'uVisBounds']) uniforms[k] = G[k];
 
   return new THREE.ShaderMaterial({
     uniforms,
@@ -81,6 +82,7 @@ export function createWaterMaterial({ fineTex, fineBounds, coarseTex, coarseBoun
       #ifdef RIBBON
         varying float vEdge;
       #endif
+      ${WAR_FOG_PARS}
 
       float terrainH( vec2 xz ) {
         vec2 uf = ( xz - uFineBounds.xy ) / uFineBounds.zw;
@@ -147,6 +149,7 @@ export function createWaterMaterial({ fineTex, fineBounds, coarseTex, coarseBoun
         gl_FragColor = vec4( col, alpha );
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
+        gl_FragColor.rgb = applyWarFog( gl_FragColor.rgb, vW, uTime, uNoise );
         #include <fog_fragment>
       }
     `,

@@ -219,6 +219,14 @@
     .tt-grid .tt-label { text-align:left; color:#c8a060; padding-right:8px; }
     .tt-extra { margin-top:3px; font-size:0.85em; }
   </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+    }
+  }
+  </script>
 </head>
 <body>
   <div id="turn-order-panel" style="display:none">
@@ -244,6 +252,8 @@
         <button class="tool-btn" id="tool-coords" title="Afficher les coordonnées des cases" onclick="toggleCoords()">Q,R</button>
         <div class="tool-separator"></div>
         <button class="tool-btn" id="tool-ping" title="Ping (clic sur une case pour signaler)" onclick="togglePing()">&#128204;</button>
+        <div class="tool-separator"></div>
+        <button class="tool-btn" id="tool-3d" title="Vue 3D" onclick="toggleView3d()" style="font-size:11px;font-weight:700">3D</button>
         <div class="tool-separator"></div>
         <!-- Groupe Grille -->
         <button class="tool-btn" id="tool-grid-group" title="Grille" onclick="toggleGridSubmenu()">&#35;</button>
@@ -425,5 +435,28 @@
   <script src="/js/hexGrid.js"></script>
   <script src="/js/game.js"></script>
   <script>document.getElementById('app-version').textContent = APP_VERSION;</script>
+  <script type="module">
+    let mounting = null;
+    async function setView3d(on) {
+      const btn = document.getElementById('tool-3d');
+      const canvas2d = document.getElementById('game-canvas');
+      localStorage.setItem('kb_view3d', on ? '1' : '0');
+      btn.classList.toggle('active', on);
+      if (on) {
+        if (!window.view3d) {
+          mounting = mounting || import('/js/map3d/gameView.js').then((m) => m.mountGameView(window.gameBridge, { container: document.getElementById('canvas-area') }));
+          window.view3d = await mounting;
+        }
+        canvas2d.style.visibility = 'hidden';
+        window.view3d.setActive(true);
+      } else if (window.view3d) {
+        window.view3d.setActive(false);
+        canvas2d.style.visibility = '';
+        window.gameBridge.redraw2D();
+      }
+    }
+    window.toggleView3d = () => setView3d(!(window.view3d && window.view3d.active));
+    if (localStorage.getItem('kb_view3d') === '1') setView3d(true);
+  </script>
 </body>
 </html>

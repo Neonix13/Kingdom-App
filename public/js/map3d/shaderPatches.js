@@ -10,7 +10,36 @@ export const G = {
   uCloudHeight: { value: 95 },
   uWindDir: { value: new THREE.Vector2(0.82, 0.57) },
   uWindStrength: { value: 1.0 },
+  uFogOn: { value: 0 },
+  uVisA: { value: null },
+  uVisB: { value: null },
+  uVisMix: { value: 1 },
+  uVisBounds: { value: new THREE.Vector4(0, 0, 1, 1) },
+  uOverlay: { value: null },
+  uOverlayBounds: { value: new THREE.Vector4(0, 0, 1, 1) },
 };
+
+// Fog of war, applied after lighting to every patched material (and the water shader)
+export const WAR_FOG_PARS = /* glsl */`
+uniform float uFogOn;
+uniform sampler2D uVisA;
+uniform sampler2D uVisB;
+uniform float uVisMix;
+uniform vec4 uVisBounds;
+vec3 applyWarFog( vec3 c, vec3 wp, float t, sampler2D noiseTex ) {
+  if ( uFogOn < 0.5 ) return c;
+  vec2 vuv = ( wp.xz - uVisBounds.xy ) / uVisBounds.zw;
+  float vis = mix( texture2D( uVisA, vuv ).r, texture2D( uVisB, vuv ).r, uVisMix );
+  float hidden = 1.0 - vis;
+  if ( hidden < 0.002 ) return c;
+  float l = dot( c, vec3( 0.3, 0.59, 0.11 ) );
+  vec3 fogged = mix( vec3( l ), c, 0.2 ) * 0.38 + vec3( 0.012, 0.018, 0.03 );
+  float mist = texture2D( noiseTex, wp.xz * 0.045 + t * vec2( 0.012, 0.007 ) ).g * 0.6
+             + texture2D( noiseTex, wp.xz * 0.11 - t * vec2( 0.009, 0.014 ) ).b * 0.4;
+  fogged += vec3( 0.09, 0.1, 0.12 ) * smoothstep( 0.35, 0.85, mist );
+  return mix( c, fogged, hidden );
+}
+`;
 
 // Height-attenuated exponential fog: dense in valleys / far plains, thin on mountain peaks.
 export function installHeightFog(base = 0.0, falloff = 0.055) {
@@ -71,6 +100,7 @@ export function patchLit(material, opts = {}, extra = null, cacheKey = '') {
     shader.uniforms.uCloudHeight = G.uCloudHeight;
     shader.uniforms.uWindDir = G.uWindDir;
     shader.uniforms.uWindStrength = G.uWindStrength;
+    for (const k of ['uFogOn', 'uVisA', 'uVisB', 'uVisMix', 'uVisBounds']) shader.uniforms[k] = G[k];
 
     let defs = '';
     if (o.wind) defs += `#define PATCH_WIND\n#define WIND_BEND ${o.windBend.toFixed(4)}\n#define WIND_FREQ ${o.windFreq.toFixed(3)}\n#define WIND_FLUTTER ${o.flutter.toFixed(4)}\n${o.flutter > 0 ? '#define PATCH_FLUTTER\n' : ''}`;
@@ -137,6 +167,7 @@ uniform vec2 uCloudSpeed;
 uniform vec2 uCloudShift;
 uniform float uCloudHeight;
 varying vec3 vPWorld;
+${WAR_FOG_PARS}
 float cloudDensity( vec2 xz ) {
   vec2 p = xz * uCloudScale;
   float c = texture2D( uNoise, p + uCloudSpeed * uTime ).r * 0.75;
@@ -161,6 +192,9 @@ float cloudDensity( vec2 xz ) {
 }
 #endif
 `);
+
+    shader.fragmentShader = shader.fragmentShader.replace('#include <fog_fragment>', `gl_FragColor.rgb = applyWarFog( gl_FragColor.rgb, vPWorld, uTime, uNoise );
+#include <fog_fragment>`);
 
     if (extra) extra(shader);
   };

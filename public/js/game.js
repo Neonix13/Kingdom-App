@@ -344,6 +344,7 @@ let camX = -MAP_CENTER_WORLD_X * zoom;
 let camY = -MAP_CENTER_WORLD_Y * zoom;
 
 function smoothPanTo(worldX, worldY, durationMs = 600) {
+  if (window.view3d && window.view3d.active) { const h = pixelToHex(worldX, worldY); window.view3d.focusHex(h.q, h.r); return; }
   const startX = camX, startY = camY;
   const targetX = -worldX * zoom, targetY = -worldY * zoom;
   const startTime = performance.now();
@@ -382,6 +383,7 @@ window.addEventListener('resize', resizeCanvas);
 
 // ---- RENDER ----
 function render() {
+  if (window.view3d && window.view3d.active) { window.view3d.markDirty(); return; }
   if (!canvas.width) return;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = '#0a0a0a';
@@ -2149,6 +2151,7 @@ function onWsOpen() {
 }
 
 function wsDispatch(event, data) {
+  if (window.view3d) window.view3d.onEvent(event, data);
   switch (event) {
     case 'deployment_state': {
       myId = data.myId;
@@ -2331,6 +2334,56 @@ function wsDispatch(event, data) {
       break;
   }
 }
+
+// ---- 3D VIEW BRIDGE ----
+window.gameBridge = {
+  get state() { return gameState; },
+  get deployState() { return deployState; },
+  get myId() { return myId; },
+  get mode() { return mode; },
+  get selectedUnit() { return selectedUnit; },
+  get movableTiles() { return movableTiles; },
+  get attackableTiles() { return attackableTiles; },
+  get rangeTiles() { return rangeTiles; },
+  get rangeCenter() { return rangeCenter; },
+  get motivateTiles() { return motivateTiles; },
+  get motivateCenter() { return motivateCenter; },
+  get showTerrain() { return showTerrain; },
+  get terrainData() { return terrainData; },
+  get pingMode() { return pingMode; },
+  unitAnimations,
+  ANIM_STEP_MS,
+  stanceIcons,
+  unitTokenImages,
+  generalTokenImages,
+  getGeneralIdForUnit,
+  getPlayerColor,
+  hexFacingClient,
+  setHoveredHex(h) { hoveredHex = h; },
+  click(hex) {
+    if (!hex) return;
+    if (pingMode) { if (roomCode) wsSend('ping', { roomCode, q: hex.q, r: hex.r }); return; }
+    handleHexClick(hex);
+  },
+  doubleClick(hex) {
+    const units = gameState?.units || deployState?.units || [];
+    const unit = units.find(u => u.q === hex.q && u.r === hex.r);
+    if (unit) showUnitCard(unit);
+  },
+  contextMenu(hex, clientX, clientY) {
+    if (gameState?.phase !== 'battle' || gameState?.currentPlayerId !== myId || !hex) return;
+    const unit = gameState.units.find(u => u.q === hex.q && u.r === hex.r && u.isMine);
+    if (!unit) return;
+    if (unit.speedRemaining <= 0) { notify('Plus de vitesse disponible.', 'info'); return; }
+    showFacingPopup(unit, clientX, clientY);
+  },
+  hover(hex, e) {
+    hoveredHex = hex;
+    if (showTerrain && hex && e) showTerrainTooltip(buildTerrainTooltip(terrainData[`${hex.q},${hex.r}`] || 'plain'), e);
+    else hideTerrainTooltip();
+  },
+  redraw2D() { resizeCanvas(); },
+};
 
 // Init
 resizeCanvas();

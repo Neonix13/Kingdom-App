@@ -10,6 +10,7 @@ import { createPost, QualityGovernor } from './post.js';
 import { createCloudLayer } from './clouds.js';
 import { createStars, createMoon, createFireflies, createLightPools } from './night.js';
 import { buildStructures } from './buildings.js';
+import { createBoardLayers } from './overlays.js';
 
 export async function createWorld(opts = {}) {
 
@@ -332,6 +333,8 @@ function makeTerrainMaterial({ grid = false, snow = false } = {}) {
     for (let i = 0; i < terrainTextures.length; i++) shader.uniforms['uTex' + i] = { value: terrainTextures[i] };
     shader.uniforms.uGrid = terrainUniforms.uGrid;
     shader.uniforms.uRoadMask = { value: roadTex };
+    shader.uniforms.uOverlay = G.uOverlay;
+    shader.uniforms.uOverlayBounds = G.uOverlayBounds;
     shader.uniforms.uRoadBounds = { value: roadBounds };
     const defs = (grid ? '#define GRID\n' : '') + (snow ? '#define SNOW\n' : '');
     shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>
@@ -349,6 +352,8 @@ function makeTerrainMaterial({ grid = false, snow = false } = {}) {
       uniform float uGrid;
       uniform sampler2D uRoadMask;
       uniform vec4 uRoadBounds;
+      uniform sampler2D uOverlay;
+      uniform vec4 uOverlayBounds;
       varying vec3 vBlendIds;
       varying vec3 vBlendWeights;
       varying vec3 vWN;
@@ -360,8 +365,23 @@ function makeTerrainMaterial({ grid = false, snow = false } = {}) {
         else if ( idx == 4 ) return texture2D( uTex4, uv ).rgb;
         return texture2D( uTex5, uv ).rgb;
       }
+      vec3 tSampleG( int idx, vec2 uv, vec2 dx, vec2 dy ) {
+        if ( idx <= 0 ) return textureGrad( uTex0, uv, dx, dy ).rgb;
+        else if ( idx == 1 ) return textureGrad( uTex1, uv, dx, dy ).rgb;
+        else if ( idx == 2 ) return textureGrad( uTex2, uv, dx, dy ).rgb;
+        else if ( idx == 3 ) return textureGrad( uTex3, uv, dx, dy ).rgb;
+        else if ( idx == 4 ) return textureGrad( uTex4, uv, dx, dy ).rgb;
+        return textureGrad( uTex5, uv, dx, dy ).rgb;
+      }
+      vec2 gOffA, gOffB, gDx, gDy;
+      float gBn, gFar;
+      // Anti-tiling: two copies of the texture with region-dependent offsets, blended by low-frequency noise,
+      // plus a rotated large-scale copy that takes over with distance
       vec3 tLayer( int idx, vec2 uvA, vec2 uvB, float m ) {
-        return mix( tSample( idx, uvA ), tSample( idx, uvB ), m );
+        vec3 a = tSampleG( idx, uvA + gOffA, gDx, gDy );
+        vec3 b = tSampleG( idx, uvA + gOffB, gDx, gDy );
+        vec3 nearC = mix( a, b, gBn );
+        return mix( nearC, tSample( idx, uvB ), clamp( m * 0.5 + gFar, 0.0, 0.85 ) );
       }
       vec3 rockTriplanar( vec3 p, vec3 n ) {
         vec3 bf = pow( abs( n ), vec3( 4.0 ) );
@@ -375,6 +395,16 @@ function makeTerrainMaterial({ grid = false, snow = false } = {}) {
         vec2 uvA = vPWorld.xz * ${TEX_UV_SCALE.toFixed(3)};
         vec2 uvB = mat2( 0.8, -0.6, 0.6, 0.8 ) * vPWorld.xz * ${(TEX_UV_SCALE * 0.31).toFixed(4)} + vec2( 0.31, 0.17 );
         float m = 0.3 + 0.4 * texture2D( uNoise, vPWorld.xz * 0.021 ).a;
+        {
+          float kN = texture2D( uNoise, vPWorld.xz * 0.043 ).r * 8.0;
+          float iA = floor( kN );
+          gOffA = sin( vec2( 3.0, 7.0 ) * iA );
+          gOffB = sin( vec2( 3.0, 7.0 ) * ( iA + 1.0 ) );
+          gBn = smoothstep( 0.2, 0.8, fract( kN ) );
+          gDx = dFdx( uvA );
+          gDy = dFdy( uvA );
+          gFar = 0.45 * smoothstep( 18.0, 70.0, distance( cameraPosition, vPWorld ) );
+        }
         int id0 = int( vBlendIds.x + 0.5 );
         int id1 = int( vBlendIds.y + 0.5 );
         int id2 = int( vBlendIds.z + 0.5 );
@@ -385,6 +415,7 @@ function makeTerrainMaterial({ grid = false, snow = false } = {}) {
         float micro = texture2D( uNoise, vPWorld.xz * 0.083 ).b;
         vec3 albedo = diffuseColor.rgb * tex * 2.0;
         albedo *= ( 0.8 + 0.4 * macro ) * ( 0.92 + 0.16 * micro );
+        albedo *= mix( 1.0, 0.82 + 0.36 * texture2D( uNoise, vPWorld.xz * 0.0045 ).a, gFar * 2.0 );
         {
           float road = texture2D( uRoadMask, ( vPWorld.xz - uRoadBounds.xy ) / uRoadBounds.zw ).r;
           float rm = smoothstep( 0.32, 0.62, road + ( micro - 0.5 ) * 0.35 + ( macro - 0.5 ) * 0.1 );
@@ -428,6 +459,8 @@ function makeTerrainMaterial({ grid = false, snow = false } = {}) {
           float camD = distance( cameraPosition, vPWorld );
           float gfade = uGrid * ( 1.0 - smoothstep( 60.0, 150.0, camD ) );
           albedo = mix( albedo, vec3( 1.0, 0.96, 0.82 ) * 0.85, line * gfade );
+          vec4 ovc = texture2D( uOverlay, ( vPWorld.xz - uOverlayBounds.xy ) / uOverlayBounds.zw );
+          albedo = mix( albedo, ovc.rgb * 1.3, ovc.a );
         #endif
         diffuseColor.rgb = albedo;
       }`);
@@ -713,6 +746,14 @@ await setProgress(42, 'Raising mountains...');
 
 // --- Surrounding landscape ---
 const nHill = makeNoise2D(101), nMtn = makeNoise2D(202), nWarp = makeNoise2D(303), nDet = makeNoise2D(404), nForest = makeNoise2D(505);
+function nominalHeight(x, z) {
+  const qf = 2 / 3 * x, rf = -1 / 3 * x + sqrt3 / 3 * z;
+  let rq = Math.round(qf), rr = Math.round(rf), rs = Math.round(-qf - rf);
+  const dq = Math.abs(rq - qf), dr = Math.abs(rr - rf), ds = Math.abs(rs + qf + rf);
+  if (dq > dr && dq > ds) rq = -rr - rs; else if (dr > ds) rr = -rq - rs;
+  const h = allHexes.get(`${rq},${rr}`);
+  return h ? h.height * HEX_HEIGHT_STEP : NaN;
+}
 function edgeHeight(x, z) {
   const clampX = (v) => Math.min(bx1 - 1.1, Math.max(bx0 + 1.1, v));
   const clampZ = (v) => Math.min(bz1 - 1.1, Math.max(bz0 + 1.1, v));
@@ -720,7 +761,7 @@ function edgeHeight(x, z) {
   const alongX = cx === x;
   let sum = 0, n = 0;
   for (let k = -3; k <= 3; k++) {
-    const h = boardHeight(alongX ? clampX(cx + k * 0.9) : cx, alongX ? cz : clampZ(cz + k * 0.9));
+    const h = nominalHeight(alongX ? clampX(cx + k * 0.9) : cx, alongX ? cz : clampZ(cz + k * 0.9));
     if (!Number.isNaN(h)) { sum += h; n++; }
   }
   return n ? sum / n : 1;
@@ -1256,6 +1297,9 @@ vegGroup.add(farTrees);
 vegGroup.add(VEG.instanced(VEG.makeBushGeometry(), bushMat, bushes, { castShadow: true }));
 vegGroup.add(VEG.instanced(VEG.makeRockGeometry(3), rockMat, rocks, { castShadow: true }));
 vegGroup.add(VEG.instanced(VEG.makeRockGeometry(8, 'slab'), rockMat, slabs, { castShadow: true }));
+for (const g of grass) g.s *= 0.6;
+for (const w of wheat) w.s *= 0.8;
+for (const f of flowers) f.s *= 0.75;
 const grassMesh = VEG.instanced(VEG.makeGrassTuftGeometry(5), grassMat, grass);
 const wheatMesh = VEG.instanced(VEG.makeWheatGeometry(9), wheatMat, wheat);
 const flowerMat = vegMat({ wind: true, windBend: 6.0, windFreq: 2.4, fadeNear: 30, fadeFar: 48 }, 'flower');
@@ -1399,6 +1443,8 @@ function updateBirds(t) {
   birds.instanceMatrix.needsUpdate = true;
 }
 
+const boardLayers = createBoardLayers({ scene, hexToWorld, groundHeight, bounds: { bx0, bx1, bz0, bz1 } });
+
 await setProgress(92, 'Compiling shaders...');
 
 // --- Post-processing + adaptive quality ---
@@ -1537,10 +1583,27 @@ function pickPoint(clientX, clientY) {
   const rect = canvas.getBoundingClientRect();
   _ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
   raycaster.setFromCamera(_ndc, camera);
-  const hits = raycaster.intersectObject(boardMesh, false);
-  if (hits.length) return hits[0].point;
-  const t = (1 - raycaster.ray.origin.y) / raycaster.ray.direction.y;
-  return t > 0 ? raycaster.ray.at(t, new THREE.Vector3()) : null;
+  const { origin: o, direction: d } = raycaster.ray;
+  if (d.y > -1e-4) return null;
+  // March the ray through the CPU heightfield (cheap, no triangle tests)
+  const tTop = Math.max(0, (7 - o.y) / d.y);
+  const tBot = (-1 - o.y) / d.y;
+  const step = 0.25;
+  let prev = tTop;
+  for (let t = tTop; t <= tBot; t += step) {
+    const x = o.x + d.x * t, z = o.z + d.z * t;
+    if (o.y + d.y * t <= groundHeight(x, z)) {
+      let lo = prev, hi = t;
+      for (let i = 0; i < 8; i++) {
+        const mid = (lo + hi) / 2;
+        const mx = o.x + d.x * mid, mz = o.z + d.z * mid;
+        if (o.y + d.y * mid <= groundHeight(mx, mz)) hi = mid; else lo = mid;
+      }
+      return new THREE.Vector3(o.x + d.x * hi, o.y + d.y * hi, o.z + d.z * hi);
+    }
+    prev = t;
+  }
+  return null;
 }
 function pickHex(clientX, clientY) {
   const p = pickPoint(clientX, clientY);
@@ -1562,7 +1625,7 @@ function resize() {
 // --- Animate ---
 const clock = new THREE.Clock();
 const perf = { cpu: 0, frame: 16.7 };
-const frameHooks = [];
+const frameHooks = [(dt) => boardLayers.update(dt)];
 let running = true;
 function animate() {
   if (!running) return;
@@ -1608,6 +1671,6 @@ return {
   setTimeOfDay, previewTimeOfDay, commitTimeOfDay, get hour() { return timeState.hour; }, timeState,
   applyQuality, qualityHooks, frameHooks,
   setGrid(v) { terrainUniforms.uGrid.value = v; }, get grid() { return terrainUniforms.uGrid.value; },
-  sunDir, G,
+  sunDir, G, layers: boardLayers,
 };
 }

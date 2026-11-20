@@ -751,6 +751,7 @@ class GameRoom {
     }
 
     const combatLog = {
+      attackerId, targetId, ranged: !isCac,
       attackerName: attacker.name, targetName: target.name,
       defenseChoice,
       attackTotal: result.attackTotal, attackD20: result.attackD20, hit: result.hit,
