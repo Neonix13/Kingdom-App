@@ -507,24 +507,46 @@ function render() {
       const { x, y } = hexToPixel(q, r);
       const isVisible = visibleSet.has(key);
       const isHovered = hoveredHex && hoveredHex.q === q && hoveredHex.r === r;
-      let fill = isVisible ? 'rgba(0,0,0,0)' : 'rgba(0,0,0,0.72)';
+      let fill = isVisible ? 'rgba(0,0,0,0)' : 'rgba(14,12,10,0.74)';
       let stroke = isVisible ? `rgba(${gridColorRGB},${gridOpacity})` : 'rgba(0,0,0,0)';
-      if (isVisible && movableTiles.has(key)) fill = 'rgba(40,120,20,0.35)';
-      if (abilityTiles.has(key)) fill = 'rgba(40,110,200,0.42)';
-      if (isVisible && attackableTiles.has(key)) fill = approachAttacks.has(key) ? 'rgba(220,110,20,0.4)' : 'rgba(180,30,10,0.35)';
-      if (isHovered && isVisible) stroke = '#c8960c';
+      if (isVisible && movableTiles.has(key)) fill = 'rgba(255,255,255,0.22)';
+      if (abilityTiles.has(key)) fill = 'rgba(47,95,168,0.45)';
+      if (isVisible && attackableTiles.has(key)) fill = approachAttacks.has(key) ? 'rgba(216,53,42,0.24)' : 'rgba(216,53,42,0.45)';
+      if (isHovered && isVisible) stroke = '#D8352A';
       drawHex(ctx, x, y, fill, stroke, 1, gridThickness);
     }
   } else {
+    const zoneKeys = new Set();
     for (const { q, r } of mapHexes) {
       const { x, y } = hexToPixel(q, r);
       const inZone = startZone?.tileSet ? startZone.tileSet.has(`${q},${r}`) : (startZone ? hexDistance(q, r, startZone.q, startZone.r) <= (startZone.radius || 4) : false);
+      if (inZone) zoneKeys.add(`${q},${r}`);
       const isHovered = hoveredHex && hoveredHex.q === q && hoveredHex.r === r;
-      let fill = inZone ? 'rgba(40,120,20,0.25)' : 'rgba(0,0,0,0)';
-      let stroke = inZone ? `rgba(80,200,40,${Math.min(1, gridOpacity * 2)})` : `rgba(${gridColorRGB},${gridOpacity * 0.6})`;
-      if (inZone && isHovered) fill = 'rgba(60,180,30,0.4)';
-      if (isHovered && !inZone) stroke = 'rgba(200,160,80,0.5)';
+      let fill = inZone ? 'rgba(255,255,255,0.3)' : 'rgba(14,12,10,0.4)';
+      let stroke = inZone ? `rgba(0,0,0,${Math.min(1, 0.25 + gridOpacity * 2)})` : `rgba(${gridColorRGB},${gridOpacity * 0.6})`;
+      if (inZone && isHovered) fill = 'rgba(255,255,255,0.55)';
+      if (isHovered && !inZone) stroke = 'rgba(216,53,42,0.5)';
       drawHex(ctx, x, y, fill, stroke, 1, gridThickness);
+    }
+    if (zoneKeys.size) {
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      for (const key of zoneKeys) {
+        const [q, r] = key.split(',').map(Number);
+        const { x, y } = hexToPixel(q, r);
+        const corners = hexCorners(x, y);
+        for (let i = 0; i < 6; i++) {
+          const [dq, dr] = SEGMENT_EDGE_DIRS[i];
+          if (!zoneKeys.has(`${q + dq},${r + dr}`)) {
+            ctx.moveTo(corners[i].x, corners[i].y);
+            ctx.lineTo(corners[(i + 1) % 6].x, corners[(i + 1) % 6].y);
+          }
+        }
+      }
+      ctx.strokeStyle = '#000'; ctx.lineWidth = 6 / zoom; ctx.stroke();
+      ctx.strokeStyle = '#D8352A'; ctx.lineWidth = 3 / zoom; ctx.stroke();
+      ctx.restore();
     }
   }
 
@@ -533,8 +555,7 @@ function render() {
     const interior = new Set(rangeTiles);
     interior.add(`${rangeCenter.q},${rangeCenter.r}`);
     ctx.save();
-    ctx.strokeStyle = 'rgba(255,220,0,0.9)';
-    ctx.lineWidth = 3;
+    const outlineColor = '#ffffff';
     ctx.lineCap = 'round';
     ctx.beginPath();
     for (const key of rangeTiles) {
@@ -549,7 +570,8 @@ function render() {
         }
       }
     }
-    ctx.stroke();
+    ctx.strokeStyle = '#000'; ctx.lineWidth = Math.max(6, 5 / zoom); ctx.stroke();
+    ctx.strokeStyle = outlineColor; ctx.lineWidth = Math.max(3, 2.5 / zoom); ctx.stroke();
     ctx.restore();
   }
 
@@ -558,8 +580,7 @@ function render() {
     const interior = new Set(motivateTiles);
     interior.add(`${motivateCenter.q},${motivateCenter.r}`);
     ctx.save();
-    ctx.strokeStyle = 'rgba(80,180,255,0.9)';
-    ctx.lineWidth = 3;
+    const outlineColor = '#6f9bf0';
     ctx.lineCap = 'round';
     ctx.beginPath();
     for (const key of motivateTiles) {
@@ -574,7 +595,8 @@ function render() {
         }
       }
     }
-    ctx.stroke();
+    ctx.strokeStyle = '#000'; ctx.lineWidth = Math.max(6, 5 / zoom); ctx.stroke();
+    ctx.strokeStyle = outlineColor; ctx.lineWidth = Math.max(3, 2.5 / zoom); ctx.stroke();
     ctx.restore();
   }
 
@@ -600,7 +622,7 @@ function render() {
 
     // Vision radius for general (highlight)
     if (isSelected && u.visionRange > 0) {
-      drawHex(ctx, x, y, 'transparent', '#ffd70060', 0.5);
+      drawHex(ctx, x, y, 'transparent', 'rgba(216,53,42,0.4)', 0.5);
     }
 
     drawUnit(ctx, x, y, u, u.playerId, isSelected);
@@ -684,8 +706,12 @@ function drawObjectives(ctx) {
     ctx.lineTo(x + HEX_SIZE * 0.85, y - HEX_SIZE * 0.62);
     ctx.lineTo(x + HEX_SIZE * 0.5, y - HEX_SIZE * 0.5);
     ctx.fill();
-    ctx.font = `bold ${Math.round(HEX_SIZE * 0.22)}px sans-serif`;
+    ctx.font = `900 ${Math.round(HEX_SIZE * 0.24)}px 'Zen Kaku Gothic New', sans-serif`;
     ctx.textAlign = 'center';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = HEX_SIZE * 0.08;
+    ctx.strokeText(`${o.name} (${o.points})`, x, y + HEX_SIZE * 0.95);
     ctx.fillStyle = '#fff';
     ctx.fillText(`${o.name} (${o.points})`, x, y + HEX_SIZE * 0.95);
     ctx.restore();
@@ -757,8 +783,8 @@ function drawUnit(ctx, x, y, unit, playerId, isSelected = false) {
     ctx.beginPath();
     ctx.arc(x, y, HEX_SIZE * 0.98, 0, Math.PI * 2);
     ctx.setLineDash([HEX_SIZE * 0.12, HEX_SIZE * 0.1]);
-    ctx.strokeStyle = 'rgba(140,220,140,0.9)';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.lineWidth = 2.5;
     ctx.stroke();
     ctx.setLineDash([]);
   }
@@ -766,9 +792,12 @@ function drawUnit(ctx, x, y, unit, playerId, isSelected = false) {
   // Selection ring
   if (isSelected) {
     ctx.beginPath();
-    ctx.arc(x, y, size + 7, 0, Math.PI * 2);
-    ctx.strokeStyle = '#ffd700';
-    ctx.lineWidth = 2.5;
+    ctx.arc(x, y, HEX_SIZE * 1.08, 0, Math.PI * 2);
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = HEX_SIZE * 0.16;
+    ctx.stroke();
+    ctx.strokeStyle = '#D8352A';
+    ctx.lineWidth = HEX_SIZE * 0.08;
     ctx.stroke();
   }
 
@@ -816,15 +845,27 @@ function drawUnit(ctx, x, y, unit, playerId, isSelected = false) {
     }
   }
 
-  // HP bar
-  const hpRatio = unit.vitality / unit.maxVitality;
-  const barW = HEX_SIZE * 1.2;
-  const barH = 4;
+  // Ink frame: black ring, player colour inside
+  ctx.beginPath();
+  ctx.arc(x, y, tokenR, 0, Math.PI * 2);
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = HEX_SIZE * 0.09;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(x, y, tokenR - HEX_SIZE * 0.07, 0, Math.PI * 2);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = HEX_SIZE * 0.06;
+  ctx.stroke();
+
+  // HP bar (white on black, red when low)
+  const hpRatio = Math.max(0, Math.min(1, unit.vitality / unit.maxVitality));
+  const barW = HEX_SIZE * 1.3;
+  const barH = Math.max(4, HEX_SIZE * 0.13);
   const bx = x - barW / 2;
-  const by = y + tokenR + 2;
-  ctx.fillStyle = '#1a0a04';
-  ctx.fillRect(bx, by, barW, barH);
-  ctx.fillStyle = hpRatio > 0.5 ? '#2a8c2a' : hpRatio > 0.25 ? '#c8960c' : '#a02020';
+  const by = y + tokenR + HEX_SIZE * 0.06;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(bx - 2, by - 2, barW + 4, barH + 4);
+  ctx.fillStyle = hpRatio > 0.3 ? '#ffffff' : '#D8352A';
   ctx.fillRect(bx, by, barW * hpRatio, barH);
 
   // Draw stance icon (bottom-right of hex) — all non-general units
@@ -837,16 +878,16 @@ function drawUnit(ctx, x, y, unit, playerId, isSelected = false) {
     // Background circle + golden border
     ctx.beginPath();
     ctx.arc(iconX, iconY, r, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(20,14,6,0.82)';
+    ctx.fillStyle = '#111';
     ctx.fill();
-    ctx.strokeStyle = unit.isMine ? '#c8960c' : '#9090c0';
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = unit.isMine ? '#ffffff' : '#D8352A';
+    ctx.lineWidth = 2;
     ctx.stroke();
     if (icon && icon.complete && icon.naturalWidth) {
       ctx.drawImage(icon, iconX - iconSize/2, iconY - iconSize/2, iconSize, iconSize);
     } else {
-      ctx.fillStyle = unit.isMine ? '#c8960c' : '#a0a0e0';
-      ctx.font = `bold ${Math.round(HEX_SIZE * 0.22)}px sans-serif`;
+      ctx.fillStyle = '#fff';
+      ctx.font = `900 ${Math.round(HEX_SIZE * 0.22)}px 'Zen Kaku Gothic New', sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText((unit.stance || '').charAt(0).toUpperCase(), iconX, iconY);
@@ -1218,14 +1259,18 @@ function drawApproachPreview(ctx) {
   ctx.save();
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   ctx.globalAlpha = 0.85;
-  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3; ctx.setLineDash([6, 7]);
-  ctx.beginPath(); pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); ctx.stroke();
+  const trace = () => { ctx.beginPath(); pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); };
+  ctx.strokeStyle = '#000'; ctx.lineWidth = 6; ctx.setLineDash([]); trace(); ctx.stroke();
+  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3; ctx.setLineDash([6, 7]); trace(); ctx.stroke();
   const pe = pts[pts.length - 1];
-  ctx.strokeStyle = '#ff5030'; ctx.lineWidth = 4; ctx.setLineDash((selectedUnit.range || 1) > 1 ? [3, 7] : []);
+  ctx.setLineDash([]);
+  ctx.strokeStyle = '#000'; ctx.lineWidth = 7;
+  ctx.beginPath(); ctx.moveTo(pe.x, pe.y); ctx.lineTo(tgt.x, tgt.y); ctx.stroke();
+  ctx.strokeStyle = '#D8352A'; ctx.lineWidth = 4; ctx.setLineDash((selectedUnit.range || 1) > 1 ? [3, 7] : []);
   ctx.beginPath(); ctx.moveTo(pe.x, pe.y); ctx.lineTo(tgt.x, tgt.y); ctx.stroke();
   ctx.setLineDash([]);
-  ctx.fillStyle = '#ff5030';
-  ctx.beginPath(); ctx.arc(pe.x, pe.y, HEX_SIZE * 0.18, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#D8352A'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.arc(pe.x, pe.y, HEX_SIZE * 0.18, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   ctx.restore();
 }
 
@@ -1408,8 +1453,8 @@ function renderUnitList() {
     const stanceLabel = u.stance ? (stanceNames[u.stance] || u.stance).charAt(0).toUpperCase() : '';
     div.className = `unit-row${selectedUnit?.id === u.id ? ' selected' : ''}${done ? ' done' : ''}${u.isGeneral ? ' is-general' : ''}`;
     div.innerHTML = `
-      <span class="icon">${u.isGeneral ? '★' : '·'}</span>
-      <span class="uname"${fleeing}>${u.name}${u.isFleeing ? ' ✦' : ''}</span>
+      <span class="icon">${u.isGeneral ? '将' : '·'}</span>
+      <span class="uname"${fleeing}>${u.name}${u.isFleeing ? ' (fuite)' : ''}</span>
       ${!u.isGeneral ? `<span class="uhp" style="font-size:0.75em;color:#7a5820" title="${u.stance || ''}">[${stanceLabel}]</span>` : ''}
       <span class="uhp">${u.vitality}/${u.maxVitality}</span>
     `;
@@ -1437,7 +1482,7 @@ function renderDeployUnitList(units) {
     <strong style="color:#c8960c">Comment placer :</strong><br>
     1. Clique sur une unité ci-dessous<br>
     2. Clique sur la <span style="color:#4aaa4a">zone verte</span> de la carte<br>
-    3. Place ton ★ Général en dernier<br>
+    3. Place ton Général en dernier<br>
     4. Clique <strong>Prêt !</strong>
   `;
   list.appendChild(instr);
@@ -1449,9 +1494,9 @@ function renderDeployUnitList(units) {
     div.className = `unit-row${u.isGeneral ? ' is-general' : ''}${isSelected ? ' selected' : ''}`;
     div.style.cssText = placed ? 'opacity:0.6;' : 'cursor:pointer;';
     div.innerHTML = `
-      <span class="icon">${u.isGeneral ? '★' : '·'}</span>
+      <span class="icon">${u.isGeneral ? '将' : '·'}</span>
       <span class="uname">${u.name}</span>
-      <span class="uhp" style="color:${placed ? '#4aaa4a' : '#c8960c'}">${placed ? '✓ Placé' : 'À placer'}</span>
+      <span class="uhp" style="color:${placed ? '#4aaa4a' : '#c8960c'}">${placed ? 'Placé' : 'À placer'}</span>
     `;
     div.onclick = () => {
       selectedUnit = u;
@@ -1629,7 +1674,7 @@ function renderTurnOrder(turnOrder, initiativeRolls, currentPlayerId) {
     } else if (imgTokenSrc) {
       portraitHtml = `<img class="to-portrait" src="${imgTokenSrc}">`;
     } else {
-      portraitHtml = `<div class="to-portrait-placeholder">★</div>`;
+      portraitHtml = `<div class="to-portrait-placeholder">将</div>`;
     }
 
     const name = roll?.playerName || roll?.generalName || id;
@@ -1637,7 +1682,7 @@ function renderTurnOrder(turnOrder, initiativeRolls, currentPlayerId) {
     const div = document.createElement('div');
     div.className = `turn-order-item${isCurrent ? ' current' : ''}${hasPlayed ? ' played' : ''}`;
     if (offline) { div.style.opacity = '0.45'; div.title = 'Hors ligne'; }
-    div.innerHTML = `${portraitHtml}<span class="to-name">${escapeHtml(name)}${offline ? ' ⚠' : ''}</span>`;
+    div.innerHTML = `${portraitHtml}<span class="to-name">${escapeHtml(name)}${offline ? ' (absent)' : ''}</span>`;
     list.appendChild(div);
   }
 }
@@ -1745,7 +1790,7 @@ function renderTopInfo() {
   const el = document.getElementById('top-time');
   if (!el) return;
   if (!gameState || gameState.timeOfDay == null) { el.textContent = ''; return; }
-  el.textContent = `${gameState.isNight ? '☾' : '☀'} Jour ${gameState.day || 1} · ${KBRules.formatHour(gameState.timeOfDay)}`;
+  el.textContent = `${gameState.isNight ? 'Nuit ·' : ''} Jour ${gameState.day || 1} · ${KBRules.formatHour(gameState.timeOfDay)}`;
   el.style.color = gameState.isNight ? '#9fb4ff' : '#e8c060';
   const sc = document.getElementById('top-scores');
   const objs = gameState.objectives || [];
@@ -1814,10 +1859,10 @@ function showRecap(data) {
   const box = document.getElementById('recap-content');
   if (!recap) { box.innerHTML = ''; }
   else {
-    const rows = recap.players.map(p => `<tr><td style="color:${p.color}">${escapeHtml(p.name)}${p.id === recap.winnerId ? ' 🏆' : ''}</td><td>${p.damageDealt}</td><td>${p.damageTaken}</td><td>${p.kills}</td><td>${p.losses}</td><td>${p.captures}</td><td>${p.points}</td><td>${p.unitsAlive}/${p.unitsTotal}</td></tr>`).join('');
+    const rows = recap.players.map(p => `<tr><td style="color:${p.color}">${escapeHtml(p.name)}${p.id === recap.winnerId ? ' (vainqueur)' : ''}</td><td>${p.damageDealt}</td><td>${p.damageTaken}</td><td>${p.kills}</td><td>${p.losses}</td><td>${p.captures}</td><td>${p.points}</td><td>${p.unitsAlive}/${p.unitsTotal}</td></tr>`).join('');
     const units = recap.units.slice().sort((a, b) => b.damageDealt - a.damageDealt).map(u => {
       const pl = recap.players.find(p => p.id === u.playerId);
-      return `<tr style="${u.alive ? '' : 'opacity:0.55'}"><td style="color:${pl?.color || '#ccc'}">${u.isGeneral ? '★ ' : ''}${escapeHtml(u.name)}</td><td>${u.damageDealt}</td><td>${u.damageTaken}</td><td>${u.kills}</td><td>${u.alive ? 'vivante' : u.fled ? 'en fuite' : 'détruite'}</td></tr>`;
+      return `<tr style="${u.alive ? '' : 'opacity:0.55'}"><td style="color:${pl?.color || '#ccc'}">${u.isGeneral ? '将 ' : ''}${escapeHtml(u.name)}</td><td>${u.damageDealt}</td><td>${u.damageTaken}</td><td>${u.kills}</td><td>${u.alive ? 'vivante' : u.fled ? 'en fuite' : 'détruite'}</td></tr>`;
     }).join('');
     box.innerHTML = `<div class="text-muted" style="margin-bottom:8px">${reasons[recap.endReason] || ''} · ${recap.turns} tours</div>
       <table class="recap-table"><tr><th>Joueur</th><th>Dégâts infligés</th><th>Dégâts subis</th><th>Victimes</th><th>Pertes</th><th>Captures</th><th>Points</th><th>Unités</th></tr>${rows}</table>
@@ -1856,7 +1901,7 @@ function onReplayChunk(data) {
 function deploymentReady() {
   const gen = deployState?.units.find(u => u.isGeneral);
   if (!gen || gen.q === null) {
-    notify('Vous devez placer votre Général (★) avant d\'être prêt.');
+    notify('Vous devez placer votre Général avant d\'être prêt.');
     return;
   }
   wsSend('deployment_ready', { roomCode });
@@ -1879,18 +1924,18 @@ function addCombatLog(log) {
 
   let text = '';
   if (log.abilityUsed) {
-    text = `⚡ ${log.abilityUsed}: ${log.effects?.join(', ')}`;
+    text = `${log.abilityUsed} : ${log.effects?.join(', ')}`;
   } else if (log.duel) {
     const w = log.duel.winnerId === log.attackerId ? log.attackerName : log.duel.winnerId === log.targetId ? log.targetName : null;
-    text = `⚔ Duel ${log.attackerName} / ${log.targetName} : ${w ? `${w} l'emporte` : 'indécis'}`;
-    if (log.generalKilled) text += ' ⚠ GÉNÉRAL TUÉ!';
+    text = `Duel ${log.attackerName} / ${log.targetName} : ${w ? `${w} l'emporte` : 'indécis'}`;
+    if (log.generalKilled) text += ' — GÉNÉRAL TUÉ !';
   } else {
     text = `${log.attackerName} → ${log.targetName}: `;
     // Support both old format (damage) and new format (dmgReceived)
     const dmg = log.dmgReceived != null ? log.dmgReceived : log.damage;
     text += log.hit ? `${dmg} dégâts` : 'Manqué';
     if (log.targetKilled) text += ` (${log.targetName} éliminé!)`;
-    if (log.generalKilled) text += ` ⚠ GÉNÉRAL TUÉ!`;
+    if (log.generalKilled) text += ` — GÉNÉRAL TUÉ !`;
     if (log.trample) text = `Piétinement : ${text}`;
     if (log.bonuses && log.bonuses.length) text += ` — ${log.bonuses.map(b => b.text).join(' ; ')}`;
   }
@@ -1911,7 +1956,7 @@ function showUnitCard(unit) {
     if (src) {
       imgHtml = `<img class="uc-pdf-img" src="${src}" alt="${unit.name}">`;
     } else {
-      imgHtml = `<div class="uc-pdf-img-placeholder" style="font-size:52px;flex-direction:column;gap:8px">★<span style="font-size:14px;color:#7a5820">${unit.name}</span></div>`;
+      imgHtml = `<div class="uc-pdf-img-placeholder" style="font-size:52px;flex-direction:column;gap:8px">将<span style="font-size:14px;color:#7a5820">${unit.name}</span></div>`;
     }
   } else {
     const src = img1Url(UNIT_IMAGE1_MAP, unit.typeId, 'UNIT IMAGE 1-1');
@@ -2123,8 +2168,8 @@ function formatHistoryEntry({ log, round }) {
     <span class="h-arrow" id="arrow-${id}">▶</span>
     <span class="h-title">T${round} — <b>${log.attackerName||'?'}</b> → <b>${log.targetName||'?'}</b></span>
     ${hitBadge}
-    ${log.targetKilled ? `<span class="h-badge h-dead">💀</span>` : ''}
-    ${log.attackerKilled ? `<span class="h-badge h-dead">💀 (attaquant)</span>` : ''}
+    ${log.targetKilled ? `<span class="h-badge h-dead">DÉTRUIT</span>` : ''}
+    ${log.attackerKilled ? `<span class="h-badge h-dead">ATTAQUANT DÉTRUIT</span>` : ''}
   </div>`;
 
   // Detail table
@@ -2141,7 +2186,7 @@ function formatHistoryEntry({ log, round }) {
 
   let table = `<div class="h-detail" id="${id}" style="display:none"><table class="h-table">
     <tbody>
-    <tr class="h-section"><td colspan="2">⚔ ATTAQUE</td></tr>
+    <tr class="h-section"><td colspan="2">ATTAQUE</td></tr>
     ${row('Base attaque', b.attackBase ?? '—')}
     ${signRow('Posture atq. ('+(stanceNames2[b.attackerStance]||b.attackerStance||'?')+')', b.stA_attack||0)}
     ${signRow('Terrain atq. ('+(b.attackerTerrain||'?')+')', b.tA_attack||0)}
@@ -2151,7 +2196,7 @@ function formatHistoryEntry({ log, round }) {
 
   if (hit) {
     table += `
-    <tr class="h-section"><td colspan="2">💥 DÉGÂTS</td></tr>
+    <tr class="h-section"><td colspan="2">DÉGÂTS</td></tr>
     ${row('Dés', `${b.diceCount??'?'} × D${b.dieFaces??'?'}`)}
     ${row('Dégâts infligés', b.dmgInflicted??0)}
     ${(b.armorAbsorb||0) > 0 ? row('Absorption (Vit×Arm, max 75 %)', `${b.armorAbsorb} (armure eff. ${b.effectiveArmor??'?'})`) : ''}
@@ -2160,14 +2205,14 @@ function formatHistoryEntry({ log, round }) {
   }
 
   if (log.moralDmg > 0 || log.targetMoraleLeft != null) {
-    table += `<tr class="h-section"><td colspan="2">😰 MORAL</td></tr>`;
+    table += `<tr class="h-section"><td colspan="2">MORAL</td></tr>`;
     if (log.moralDmg > 0) table += row('Moral infligé (Vit×Intim.)', log.moralDmg);
     if (log.targetMoraleLeft != null) table += row('Moral restant cible', log.targetMoraleLeft);
   }
 
   if (log.defenseChoice && log.defenseChoice !== 'none') {
     const ds = log.defenseSuccess;
-    table += `<tr class="h-section"><td colspan="2">🛡 DÉFENSE — ${defLabels[log.defenseChoice]||log.defenseChoice}</td></tr>
+    table += `<tr class="h-section"><td colspan="2">DÉFENSE — ${defLabels[log.defenseChoice]||log.defenseChoice}</td></tr>
     ${row('Base défense', b.defBase??'—')}
     ${signRow('Posture déf. ('+(stanceNames2[b.defenderStance]||b.defenderStance||'?')+')', b.stD_defense||0)}
     ${signRow('Terrain déf. ('+(b.defenderTerrain||'?')+')', b.tD_defense||0)}
@@ -2402,7 +2447,7 @@ function showCombatResult(log) {
   const el = document.getElementById('combat-result-box');
   if (!el) return;
   if (log.abilityUsed) {
-    el.innerHTML = `⚡ <b>${escapeHtml(log.abilityUsed)}</b><br>${(log.effects || []).map(escapeHtml).join('<br>')}`;
+    el.innerHTML = `<b>${escapeHtml(log.abilityUsed)}</b><br>${(log.effects || []).map(escapeHtml).join('<br>')}`;
     el.style.display = 'block';
     clearTimeout(window._combatResultTimer);
     window._combatResultTimer = setTimeout(() => { el.style.display = 'none'; }, 5000);
@@ -2410,7 +2455,7 @@ function showCombatResult(log) {
   }
   if (log.duel) {
     const name = (id) => (id === log.attackerId ? log.attackerName : id === log.targetId ? log.targetName : 'Unité inconnue');
-    let html = `<b>⚔ Duel : ${escapeHtml(log.attackerName)} contre ${escapeHtml(log.targetName)}</b><br>`;
+    let html = `<b>Duel : ${escapeHtml(log.attackerName)} contre ${escapeHtml(log.targetName)}</b><br>`;
     log.duel.rounds.forEach((rd, i) => {
       html += `Passe ${i + 1} : ${rd.attackerRoll} contre ${rd.defenderRoll} → ${rd.attacker ? `${escapeHtml(name(rd.attacker))} frappe (${rd.dmg})` : 'parade'}<br>`;
     });
@@ -2508,8 +2553,8 @@ function renderSpectatorBar() {
   }
   const offline = players.filter(p => p.connected === false && !p.isEliminated);
   const parts = [];
-  if (offline.length) parts.push(`<span style="color:#e0a030" title="Hors ligne">⚠ ${offline.map(p => escapeHtml(p.name)).join(', ')} hors ligne</span>`);
-  if (specs.length) parts.push(`<span title="${specs.map(s => escapeHtml(s.name)).join(', ')}">👁 ${specs.length} spectateur${specs.length > 1 ? 's' : ''}</span>`);
+  if (offline.length) parts.push(`<span style="color:#e0a030" title="Hors ligne">${offline.map(p => escapeHtml(p.name)).join(', ')} hors ligne</span>`);
+  if (specs.length) parts.push(`<span title="${specs.map(s => escapeHtml(s.name)).join(', ')}">${specs.length} spectateur${specs.length > 1 ? 's' : ''}</span>`);
   bar.innerHTML = parts.join(' · ');
   const dl = gameState?.turnDeadline;
   if (dl && gameState.phase === 'battle') {
@@ -2650,8 +2695,8 @@ function wsDispatch(event, data) {
       renderTopInfo();
       const currPlayer = data.players.find(p => p.id === data.currentPlayerId);
       document.getElementById('top-current-player').textContent =
-        data.phase === 'deployment' ? 'Déploiement en cours' : data.currentPlayerId === myId ? '⚔️ Votre manche' : `Manche de : ${currPlayer?.name || '?'}`;
-      document.getElementById('top-phase').textContent = isSpectator ? '👁 Spectateur' : data.phase === 'battle' ? 'Bataille' : data.phase === 'deployment' ? 'Déploiement' : data.phase === 'ended' ? 'Terminée' : '';
+        data.phase === 'deployment' ? 'Déploiement en cours' : data.currentPlayerId === myId ? 'Votre manche' : `Manche de : ${currPlayer?.name || '?'}`;
+      document.getElementById('top-phase').textContent = isSpectator ? 'Spectateur' : data.phase === 'battle' ? 'Bataille' : data.phase === 'deployment' ? 'Déploiement' : data.phase === 'ended' ? 'Terminée' : '';
       if (!cameraPlaced && data.units.length) {
         const focus = data.units.find(u => u.isMine && u.isGeneral) || data.units[0];
         const { x, y } = hexToPixel(focus.q, focus.r);
@@ -2922,6 +2967,13 @@ window.gameBridge = {
     else hideTerrainTooltip();
   },
   redraw2D() { resizeCanvas(); },
+  panToHex(q, r) { const p = hexToPixel(q, r); smoothPanTo(p.x, p.y); },
+  hexOnScreen2D(q, r, margin = 0.12) {
+    const p = hexToPixel(q, r);
+    const sx = canvas.width / 2 + camX + p.x * zoom, sy = canvas.height / 2 + camY + p.y * zoom;
+    const mx = canvas.width * margin, my = canvas.height * margin;
+    return sx >= mx && sx <= canvas.width - mx && sy >= my && sy <= canvas.height - my;
+  },
   pathTo(unit, tq, tr) {
     if (window.KBSim && KBSim.active()) return KBSim.pathTo(unit, tq, tr);
     if (!unit || unit.q == null) return null;

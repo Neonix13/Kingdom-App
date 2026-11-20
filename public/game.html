@@ -302,9 +302,9 @@
       </div>
 
       <div class="sidebar-tabs">
-        <button class="sidebar-tab active" onclick="switchSidebarTab('units')">⚔ Unités</button>
-        <button class="sidebar-tab" onclick="switchSidebarTab('history')">📜 Historique</button>
-        <button class="sidebar-tab" id="tab-chat" onclick="switchSidebarTab('chat')">💬 Chat</button>
+        <button class="sidebar-tab active" onclick="switchSidebarTab('units')">Unités</button>
+        <button class="sidebar-tab" onclick="switchSidebarTab('history')">Historique</button>
+        <button class="sidebar-tab" id="tab-chat" onclick="switchSidebarTab('chat')">Chat</button>
       </div>
       <div id="global-action-bar" style="padding:4px 8px;border-bottom:1px solid #3a2408;display:flex;gap:4px">
         <button class="btn btn-success" id="btn-end-turn-global" onclick="endTurn()" style="display:none;flex:1">Fin du tour</button>
@@ -373,13 +373,13 @@
   <!-- Defense choice overlay -->
   <div class="overlay" id="overlay-defense" style="display:none">
     <div class="overlay-box" style="min-width:340px;text-align:center">
-      <h3 style="color:#c8960c;margin:0 0 10px">&#9876; Vous êtes attaqué !</h3>
+      <h3 style="color:#c8960c;margin:0 0 10px">Vous êtes attaqué !</h3>
       <p><b id="defense-attacker-name"></b> attaque <b id="defense-target-name"></b></p>
       <p style="color:#a89060;font-size:0.9em">Choisissez votre réponse (<span id="defense-countdown">8</span>s)</p>
       <div id="defense-buttons" style="display:flex;gap:10px;justify-content:center;margin-top:12px">
         <button class="btn" onclick="sendDefenseChoice('rien')" style="background:#3a2408;border:1px solid #7a5820;color:#e0c080;padding:8px 14px">Rien</button>
-        <button class="btn" id="btn-defense-counter" onclick="sendDefenseChoice('counter')" style="background:#1a3a08;border:1px solid #4a8020;color:#a0e080;padding:8px 14px">&#9876; Contre-attaquer</button>
-        <button class="btn" id="btn-defense-absorb" onclick="sendDefenseChoice('absorb')" style="background:#08203a;border:1px solid #205080;color:#80c0e0;padding:8px 14px">&#128737; Encaisser</button>
+        <button class="btn" id="btn-defense-counter" onclick="sendDefenseChoice('counter')" style="background:#1a3a08;border:1px solid #4a8020;color:#a0e080;padding:8px 14px">Contre-attaquer</button>
+        <button class="btn" id="btn-defense-absorb" onclick="sendDefenseChoice('absorb')" style="background:#08203a;border:1px solid #205080;color:#80c0e0;padding:8px 14px">Encaisser</button>
       </div>
     </div>
   </div>
@@ -387,7 +387,7 @@
   <!-- Stance confirmation overlay -->
   <div class="overlay" id="overlay-stance" style="display:none">
     <div class="overlay-box" style="min-width:320px;text-align:center">
-      <h3 style="color:#c8960c;margin:0 0 10px">&#9876; Changer de posture</h3>
+      <h3 style="color:#c8960c;margin:0 0 10px">Changer de posture</h3>
       <p><b id="stance-unit-name"></b></p>
       <p style="color:#a89060;font-size:0.9em"><span id="stance-from"></span> → <b id="stance-to"></b></p>
       <div style="display:flex;gap:10px;justify-content:center;margin-top:14px">
@@ -489,8 +489,18 @@
   <script type="module">
     let mounting = null;
     let hud = null;
+    // The style-D HUD serves both views; this adapter routes camera moves to the 3D view or the 2D canvas.
+    const viewAdapter = {
+      get active() { return !!(window.view3d && window.view3d.active); },
+      get world() { return window.view3d ? window.view3d.world : null; },
+      hexOnScreen(q, r, m) { return this.active ? window.view3d.hexOnScreen(q, r, m) : window.gameBridge.hexOnScreen2D(q, r, m); },
+      focusHex(q, r) { if (this.active) window.view3d.focusHex(q, r); else window.gameBridge.panToHex(q, r); },
+    };
     async function ensureHud() {
-      if (!hud) hud = (await import('/js/hud/battleHud.js')).mountBattleHud(window.gameBridge, window.view3d);
+      if (!hud) {
+        hud = (await import('/js/hud/battleHud.js')).mountBattleHud(window.gameBridge, viewAdapter);
+        hud.setActive(true);
+      }
       return hud;
     }
     async function setView3d(on) {
@@ -505,16 +515,16 @@
         }
         canvas2d.style.visibility = 'hidden';
         window.view3d.setActive(true);
-        (await ensureHud()).setActive(true);
       } else if (window.view3d) {
-        if (hud) hud.setActive(false);
         window.view3d.setActive(false);
         canvas2d.style.visibility = '';
         window.gameBridge.redraw2D();
       }
+      (await ensureHud()).setView();
     }
     window.toggleView3d = () => setView3d(!(window.view3d && window.view3d.active));
     if (localStorage.getItem('kb_view3d') === '1') setView3d(true);
+    else ensureHud().then((h) => h.setView());
     import('/js/audio/gameAudio.js').then((m) => m.attachGameAudio(window.gameBridge)).catch((e) => console.warn('[audio]', e));
   </script>
 </body>

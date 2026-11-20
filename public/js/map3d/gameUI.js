@@ -1,4 +1,5 @@
 // 3D game view chrome: settings panel, photo mode, keyboard camera, floating combat text
+import { attackTipHtml } from '../hud/attackTip.js';
 const CSS = `
 #v3-gear { font-size:15px; }
 #v3-settings { position:absolute; top:52px; left:64px; z-index:60; width:250px; padding:12px 14px; display:none;
@@ -260,24 +261,7 @@ export function createGameUI({ world, container, bridge, getView }) {
   function showAttackTip(att, tgt, e) {
     if (!att || !tgt || !e) { tip.style.display = 'none'; return; }
     const rect = container.getBoundingClientRect();
-    const ranged = (att.range || 1) > 1;
-    const row = (label, a, b) => `<span>${a ?? '–'}</span><span>${label}</span><span>${b ?? '–'}</span>`;
-    const R = window.KBRules, types = window.gameBridge && window.gameBridge.unitTypes;
-    const abA = R && R.ability(att, types), abT = R && R.ability(tgt, types);
-    const notes = [];
-    const cav = R ? R.RULES.abilities.antiCavalryCategories : [];
-    if (!ranged && abA && abA.type === 'anti_cavalry' && cav.includes(tgt.category)) notes.push(`Lanciers : +${abA.value} attaque`);
-    if (!ranged && abT && abT.type === 'anti_cavalry' && cav.includes(att.category)) notes.push(`Lanciers en face : +${abT.value} défense`);
-    if (!ranged && abA && abA.type === 'charge_bonus' && att.stance === 'charge') notes.push(`Charge lourde : +${abA.value} puissance`);
-    if (abA && abA.type === 'ambush') notes.push('Assassin : avantage si premier coup du jour');
-    if (ranged && abT && abT.type === 'defend_ranged') notes.push('Phalange : peut lever les boucliers');
-    if (ranged && !(abT && abT.type === 'defend_ranged')) notes.push('Tir : pas de jet de défense');
-    if (!ranged && abA && abA.type === 'trample') notes.push('Char : frappe aussi l\'unité derrière');
-    tip.innerHTML = `<b>${ranged ? 'Tir' : 'Attaque'}</b> : ${att.name} → ${tgt.name}<div class="vs">
-      ${row('Attaque / Défense', att.attack ?? att.force, tgt.defense ?? '–')}
-      ${row('Puissance / Armure', att.power, tgt.armor)}
-      ${row('Vitalité', att.vitality, tgt.vitality)}
-      ${row('Moral', att.morale ?? '–', tgt.morale ?? '–')}</div>${notes.map((n) => `<div class="note">${n}</div>`).join('')}`;
+    tip.innerHTML = attackTipHtml(att, tgt, window.gameBridge && window.gameBridge.unitTypes);
     tip.style.display = 'block';
     tip.style.left = Math.min(rect.width - 240, e.clientX - rect.left + 16) + 'px';
     tip.style.top = Math.max(8, e.clientY - rect.top - 10) + 'px';

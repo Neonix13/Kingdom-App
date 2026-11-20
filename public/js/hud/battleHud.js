@@ -1,7 +1,9 @@
-// Battle HUD (style D) shown over the 3D view. It is a presentation layer only: the legacy sidebar, top bar and buttons
+// Battle HUD (style D) shown over the 3D view and the 2D canvas. It is a presentation layer only: the legacy sidebar, top bar and buttons
 // stay in the DOM (hidden) and keep their logic in game.js / simultaneous.js / tutorial.js; the HUD reads the bridge state
 // and those elements, and forwards every click to the legacy control, so the rules live in one place.
 import { createCombatSplash } from './combatSplash.js';
+import { attackTipHtml } from './attackTip.js';
+import { createGameOver } from './gameOver.js';
 export const KANJI = { pietaille: '卒', soldats: '兵', phalange: '盾', lancier: '槍', espion: '諜', assassin: '刺', cavalier_leger: '騎', cavalier_lourd: '騎', archer: '弓', archer_elite: '弓', batisseurs: '工', char: '車' };
 const CAM_CODES = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Equal', 'Minus', 'NumpadAdd', 'NumpadSubtract']);
 const ACTIONS = [
@@ -146,6 +148,9 @@ export function mountBattleHud(bridge, view) {
     el.journal.classList.toggle('unread', !!$('tab-chat')?.classList.contains('unread'));
     el.journal.classList.toggle('on', document.body.classList.contains('hud-drawer'));
     el.tools.classList.toggle('on', document.body.classList.contains('hud-tools'));
+    const vb = root.querySelector('[data-hud="2d"]');
+    const label = view.active ? '2D' : '3D';
+    if (vb.textContent !== label) { vb.textContent = label; vb.title = vb.ariaLabel = `Vue ${label}`; }
     tick();
   }
 
@@ -512,9 +517,37 @@ export function mountBattleHud(bridge, view) {
   }, 400);
 
   const area = $('canvas-area');
-  if (area && window.ResizeObserver) new ResizeObserver(() => { if (active && view.active && view.world) view.world.resize(); }).observe(area);
+  const resizeView = () => {
+    if (!active) return;
+    if (view.active && view.world) view.world.resize();
+    else if (bridge.redraw2D) bridge.redraw2D();
+  };
+  if (area && window.ResizeObserver) new ResizeObserver(resizeView).observe(area);
 
-  const splash = createCombatSplash({ bridge, portrait, kanji: unitKanji, isActive: () => active && !!view.active });
+  const splash = createCombatSplash({ bridge, portrait, kanji: unitKanji, isActive: () => active });
+  const gameOver = createGameOver({ bridge });
+
+  // ---- 2D view: attack tooltip on hoverable targets (the 3D view has its own, same content) ----
+  const tip2d = document.createElement('div');
+  tip2d.id = 'hud-tip2d';
+  document.body.appendChild(tip2d);
+  const canvas2d = $('game-canvas');
+  if (canvas2d) {
+    canvas2d.addEventListener('mousemove', (e) => {
+      if (!active || view.active || e.buttons) { tip2d.style.display = 'none'; return; }
+      const sel = bridge.selectedUnit;
+      const hex = window.getHexUnderMouse ? window.getHexUnderMouse(e) : null;
+      const key = hex ? `${hex.q},${hex.r}` : null;
+      const tgt = key && sel && bridge.attackableTiles && bridge.attackableTiles.has(key)
+        ? (bridge.state?.units || []).find((u) => u.q === hex.q && u.r === hex.r && !u.isMine) : null;
+      if (!tgt) { tip2d.style.display = 'none'; return; }
+      tip2d.innerHTML = attackTipHtml(sel, tgt, bridge.unitTypes);
+      tip2d.style.display = 'block';
+      tip2d.style.left = Math.min(innerWidth - 250, e.clientX + 16) + 'px';
+      tip2d.style.top = Math.max(8, Math.min(innerHeight - tip2d.offsetHeight - 8, e.clientY - 10)) + 'px';
+    });
+    canvas2d.addEventListener('mouseleave', () => { tip2d.style.display = 'none'; });
+  }
   (window.gameEventHooks = window.gameEventHooks || []).push((event, data) => {
     if (event !== 'combat_result' || !active) return;
     const log = (data && data.combatLog) || data;
@@ -525,8 +558,9 @@ export function mountBattleHud(bridge, view) {
 
   function setActive(on) {
     active = on;
-    if (!on) splash.hide();
+    if (!on) { splash.hide(); gameOver.hide(); }
     document.body.classList.toggle('hud-d', on);
+    document.body.classList.toggle('hud-2d', on && !view.active);
     if (!on) {
       document.body.classList.remove('hud-drawer', 'hud-tools', 'hud-coach');
       const p = $('sim-panel');
@@ -536,8 +570,17 @@ export function mountBattleHud(bridge, view) {
       watchSim();
       render();
     }
-    requestAnimationFrame(() => { if (view.active && view.world) view.world.resize(); });
+    requestAnimationFrame(resizeView);
   }
 
-  return { setActive, invalidate, get active() { return active; } };
+  // Called after switching between the 2D and the 3D view.
+  function setView() {
+    document.body.classList.toggle('hud-2d', active && !view.active);
+    tip2d.style.display = 'none';
+    if (!view.active) document.body.classList.remove('hud-tools');
+    invalidate();
+    requestAnimationFrame(resizeView);
+  }
+
+  return { setActive, setView, invalidate, get active() { return active; } };
 }
