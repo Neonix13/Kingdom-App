@@ -696,11 +696,13 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
   H.create_room = async (connId, data) => {
     const name = v.name(data.playerName);
     const mapId = typeof data.mapId === 'string' && maps.mapExists(data.mapId) ? data.mapId : 'default';
+    // the client asks for its default turn mode (simultaneous in the lobby and solo); without it, sequential
+    const mode = isModeAvailable(data.mode) ? data.mode : 'sequential';
     const playerId = randomId('p_');
     const token = randomToken();
     let room = null;
     for (let i = 0; i < 20 && !room; i++) {
-      const candidate = new GameRoom(randomRoomCode(), playerId, { mapId, record: true });
+      const candidate = new GameRoom(randomRoomCode(), playerId, { mapId, record: true, mode });
       candidate.addPlayer(playerId, name, { token, connId, connected: true, color: PALETTE[0] });
       candidate.createdAt = candidate.lastActivity = now();
       if (await store.create(candidate)) room = candidate;
@@ -957,7 +959,7 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     v.name(data.playerName);
     const difficulty = data.difficulty == null ? 'veteran' : v.oneOf(data.difficulty, bots.DIFFICULTIES, 'invalid_difficulty', 'Difficulté inconnue.');
     const generalId = data.generalId == null || data.generalId === '' ? null : v.oneOf(data.generalId, GENERALS.map(g => g.id), 'invalid_general', 'Général inconnu.');
-    const code = await H.create_room(connId, { playerName: data.playerName, mapId: data.mapId });
+    const code = await H.create_room(connId, { playerName: data.playerName, mapId: data.mapId, mode: data.mode });
     await withRoom(code, (tx) => {
       const room = tx.room;
       const host = room.getPlayer(room.hostId);

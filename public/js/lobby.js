@@ -118,7 +118,7 @@ function createRoom() {
   const name = readName('create-name');
   if (!name) return notify('Entrez votre nom.');
   KBNet.clearSession();
-  KBNet.send('create_room', { playerName: name, roomCode: undefined });
+  KBNet.send('create_room', { playerName: name, roomCode: undefined, mode: 'simultaneous' });
 }
 
 function joinRoom(asSpectator) {
@@ -411,6 +411,7 @@ function playSolo() {
   const name = readName('create-name') || savedName() || 'Joueur';
   KBNet.clearSession();
   KBNet.send('create_solo', {
+    mode: 'simultaneous',
     playerName: name,
     difficulty: document.getElementById('solo-difficulty').value,
     generalId: document.getElementById('solo-general').value || undefined,
