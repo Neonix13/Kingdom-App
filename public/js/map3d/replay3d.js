@@ -1,6 +1,7 @@
 import { createWorld } from './world.js';
 import { createGameUI } from './gameUI.js';
 import { createCombatSplash } from '../hud/combatSplash.js';
+import { createCorpseLayer } from './corpses3d.js';
 import { generalPortrait, unitPortrait, unitKanji } from '../portraits.js';
 
 const HEX_DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
@@ -78,6 +79,26 @@ export async function mountReplay3d(rep, { container, canvas, onProgress, contro
   const gens = Object.fromEntries((rep.players || []).map((p) => [p.id, KINGDOM_OF[p.generalId]]));
   const { createUnitLayer } = await import('./units3d.js');
   const units3d = createUnitLayer(world, { getPlayerColor, getPlayerEmblem: (id) => gens[id] });
+  // Fallen units stay on the field: rebuilt from the events up to the current index
+  const corpses = createCorpseLayer(world);
+  function corpsesUpTo(upTo) {
+    const st = model.stateAt(0);
+    const out = [];
+    for (let i = 0; i < upTo && i < model.events.length; i++) {
+      const ev = model.events[i];
+      if (ev.k === 'combat') {
+        const log = ev.log || {};
+        for (const [id, killed, salt] of [[log.targetId, log.targetKilled, 1], [log.attackerId, log.attackerKilled, 2]]) {
+          const u = killed && st.units.get(id);
+          if (!u || u.q == null) continue;
+          const kind = u.isGeneral ? 'general' : u.typeId === 'char' ? 'chariot' : /^cavalier/.test(u.typeId || '') ? 'horse' : 'foot';
+          out.push({ q: u.q, r: u.r, kind, color: getPlayerColor(u.playerId), n: kind === 'foot' ? 9 : kind === 'horse' ? 4 : kind === 'chariot' ? 2 : 1, banner: true, seed: i * 7 + salt });
+        }
+      }
+      model.apply(st, ev);
+    }
+    return out;
+  }
   const generalOf = Object.fromEntries((rep.players || []).map((p) => [p.id, p.generalId]));
   const splash = createCombatSplash({
     bridge: { get state() { return { units: [...state.units.values()] }; }, getPlayerColor },
@@ -148,6 +169,7 @@ export async function mountReplay3d(rep, { container, canvas, onProgress, contro
       }
       model.apply(state, ev);
       syncAll();
+      if (log.targetKilled || log.attackerKilled) corpses.set(corpsesUpTo(index + 1));
       await wait(350);
       return;
     }
@@ -172,6 +194,7 @@ export async function mountReplay3d(rep, { container, canvas, onProgress, contro
     index = Math.max(0, Math.min(model.events.length, i));
     state = model.stateAt(index);
     syncAll();
+    corpses.set(corpsesUpTo(index));
     render();
   }
 
