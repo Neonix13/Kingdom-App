@@ -1,0 +1,57 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: #1a1008; color: #e8d5a0; font-size: 14px; }
+a { color: #f0c040; }
+button, .btn, select, input, textarea {
+  font: inherit; color: #e8d5a0; background: #2a1a08; border: 1px solid #5a3c10; border-radius: 4px; padding: 5px 9px;
+}
+button, .btn { cursor: pointer; text-decoration: none; display: inline-block; transition: background 0.15s, border-color 0.15s; }
+button:hover, .btn:hover { background: #3a260c; border-color: #8b5e0a; }
+button.on { background: #c8960c; color: #1a1008; border-color: #f0c040; }
+button.primary, .btn.primary { background: #8b5e0a; color: #fff; border-color: #c8960c; }
+button.primary:hover, .btn.primary:hover { background: #c8960c; }
+button.danger, .btn.danger { background: #5a1414; color: #fff; border-color: #8b2020; }
+button.danger:hover, .btn.danger:hover { background: #a02020; }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn.small, button.small { padding: 3px 8px; font-size: 0.85em; }
+input:focus, select:focus, textarea:focus { outline: none; border-color: #c8960c; }
+input[type=number] { width: 80px; }
+input[type=range] { padding: 0; accent-color: #c8960c; }
+input[type=checkbox] { accent-color: #c8960c; }
+.muted { color: #a08860; font-size: 0.85em; }
+.err { color: #ff7060; font-size: 0.9em; min-height: 1.2em; }
+.row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+h4 { color: #c8960c; font-size: 0.82em; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
+.section { display: flex; flex-direction: column; gap: 7px; border-top: 1px solid #3a2810; padding-top: 8px; }
+.section:first-child { border-top: 0; padding-top: 0; }
+.fld { display: flex; flex-direction: column; gap: 3px; font-size: 0.85em; color: #a89060; }
+.fld input[type=text], .fld textarea, .fld select { width: 100%; }
+.fld small { color: #806840; }
+.chk { display: flex; gap: 6px; align-items: center; font-size: 0.85em; cursor: pointer; }
+.rangewrap { display: flex; gap: 8px; align-items: center; }
+.rangewrap input { flex: 1; }
+.rangewrap output { min-width: 28px; text-align: right; color: #f0c040; font-size: 0.85em; }
+.segctl { display: flex; flex-wrap: wrap; gap: 3px; }
+.segctl button { font-size: 0.82em; padding: 4px 7px; display: flex; align-items: center; gap: 5px; }
+.segctl.vertical { flex-direction: column; }
+.segctl.vertical button { width: 100%; text-align: left; }
+.segctl i, .zonelist i { display: inline-block; width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.6); flex: none; }
+.zonelist, .objlist { display: flex; flex-direction: column; gap: 3px; }
+.zonelist button, .objlist button { text-align: left; font-size: 0.82em; display: flex; gap: 6px; align-items: center; }
+.card-sub { display: flex; flex-direction: column; gap: 6px; border: 1px solid #5a3c10; border-radius: 5px; padding: 8px; background: #22160a; }
+.card { background: rgba(40, 25, 8, 0.9); border: 1px solid #5a3c10; border-radius: 8px; padding: 20px; }
+.card h2 { color: #c8960c; margin-bottom: 14px; font-size: 1.2em; }
+
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.modal { background: #24170a; border: 1px solid #8b5e0a; border-radius: 8px; padding: 18px; width: min(440px, 94vw); max-height: 90vh; overflow-y: auto; box-shadow: 0 10px 40px rgba(0,0,0,0.6); }
+.modal.wide { width: min(640px, 96vw); }
+.modal h3 { color: #c8960c; margin-bottom: 12px; }
+.modal-body { display: flex; flex-direction: column; gap: 10px; }
+.modal-body input[type=text], .modal-body input[type=password] { width: 100%; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+.toasts { position: fixed; bottom: 34px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; z-index: 1100; align-items: center; }
+.toast { background: #2c1d0a; border: 1px solid #8b5e0a; border-radius: 5px; padding: 7px 10px; display: flex; gap: 10px; align-items: center; box-shadow: 0 4px 16px rgba(0,0,0,0.5); font-size: 0.9em; }
+.toast.ok { border-color: #2a8c2a; }
+.toast.error { border-color: #c03030; color: #ffb0a0; }
+.toast button { padding: 2px 8px; font-size: 0.85em; }
+.toast button.x { background: transparent; border: 0; }

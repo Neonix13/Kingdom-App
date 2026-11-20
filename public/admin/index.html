@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Administration — Kingdom Battleground</title>
+<link rel="stylesheet" href="/admin/admin.css">
+<style>
+  .wrap { max-width: 980px; margin: 0 auto; padding: 32px 20px 60px; }
+  .logo { text-align: center; margin-bottom: 28px; }
+  .logo h1 { font-size: 2.4em; color: #c8960c; text-shadow: 2px 2px 8px rgba(0,0,0,0.8); letter-spacing: 4px; }
+  .logo p { color: #a89060; margin-top: 6px; }
+  .topline { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 10px; }
+  #login { max-width: 380px; margin: 40px auto; }
+  #login form { display: flex; flex-direction: column; gap: 10px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  .tile { display: flex; flex-direction: column; gap: 8px; }
+  .tile p { color: #a89060; font-size: 0.92em; flex: 1; }
+  .tile.soon { opacity: 0.6; border-style: dashed; }
+  table.maps { width: 100%; border-collapse: collapse; }
+  table.maps th { text-align: left; color: #a89060; font-weight: normal; font-size: 0.85em; padding: 6px; border-bottom: 1px solid #5a3c10; }
+  table.maps td { padding: 8px 6px; border-bottom: 1px solid #2a1a06; vertical-align: middle; }
+  table.maps td.actions { text-align: right; white-space: nowrap; }
+  table.maps td.actions > * { margin-left: 4px; }
+  table.maps .id { color: #806840; font-size: 0.85em; }
+  .empty { color: #a08860; padding: 16px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo"><h1>⚔ KINGDOM</h1><p>Administration</p></div>
+
+  <div id="login" class="card" hidden>
+    <h2>Connexion administrateur</h2>
+    <form id="loginForm">
+      <input type="password" id="pwd" placeholder="Mot de passe" autocomplete="current-password" required>
+      <button type="submit" class="primary">Se connecter</button>
+      <p class="err" id="loginErr"></p>
+    </form>
+  </div>
+
+  <div id="dash" hidden>
+    <div class="topline">
+      <a href="/" class="btn small">← Retour au jeu</a>
+      <button type="button" id="logout" class="small">Se déconnecter</button>
+    </div>
+    <div class="grid">
+      <div class="card tile">
+        <h2>🗺 Éditeur de cartes</h2>
+        <p>Terrain, hauteurs, forme de la carte, segments (falaises, murs, rivières…), décor, zones de déploiement, objectifs, calque sur image peinte, validation et aperçu 3D.</p>
+        <div class="row"><a class="btn primary" href="/admin/map-editor.html">Ouvrir l'éditeur</a><a class="btn" href="/admin/map-editor.html?new=1">Nouvelle carte</a></div>
+      </div>
+      <div class="card tile soon" id="balanceCard">
+        <h2>⚖ Éditeur d'équilibrage</h2>
+        <p>Statistiques des unités, généraux, terrains et segments. Bientôt disponible.</p>
+        <div class="row"><button type="button" disabled>Bientôt</button></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="topline"><h2 style="margin:0">Cartes</h2><a class="btn primary small" href="/admin/map-editor.html?new=1">+ Nouvelle carte</a></div>
+      <table class="maps">
+        <thead><tr><th>Nom</th><th>Cases</th><th>Modifiée</th><th></th></tr></thead>
+        <tbody id="mapRows"><tr><td colspan="4" class="empty">Chargement…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { api, toast, modal, confirmModal } from '/js/editor/ui.js';
+import { h, field } from '/js/editor/dom.js';
+import { ID_RE } from '/js/editor/constants.js';
+
+const $ = (id) => document.getElementById(id);
+let maps = [];
+
+async function init() {
+  let me = { admin: false, configured: false };
+  try { me = await api('GET', '/api/admin/me'); } catch (e) { /* offline */ }
+  $('login').hidden = me.admin;
+  $('dash').hidden = !me.admin;
+  if (!me.configured) $('loginErr').textContent = 'Aucun mot de passe admin configuré (ADMIN_PASSWORD ou config.local.json).';
+  if (me.admin) loadMaps(); else $('pwd').focus();
+}
+
+$('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  $('loginErr').textContent = '';
+  try { await api('POST', '/api/admin/login', { password: $('pwd').value }); $('pwd').value = ''; init(); }
+  catch (err) { $('loginErr').textContent = err.message; }
+});
+
+$('logout').addEventListener('click', async () => { await api('POST', '/api/admin/logout').catch(() => {}); init(); });
+
+async function loadMaps() {
+  try { maps = await api('GET', '/api/maps'); } catch (e) { maps = []; toast('Liste des cartes indisponible : ' + e.message, 'error'); }
+  const tb = $('mapRows');
+  tb.innerHTML = '';
+  if (!maps.length) tb.append(h('tr', null, h('td', { colspan: 4, class: 'empty' }, 'Aucune carte.')));
+  for (const m of maps) {
+    tb.append(h('tr', null,
+      h('td', null, h('b', null, m.name), ' ', h('span', { class: 'id' }, `[${m.id}]`), m.description ? h('div', { class: 'muted' }, m.description) : null),
+      h('td', null, String(m.hexCount)),
+      h('td', { class: 'muted' }, m.updatedAt ? new Date(m.updatedAt).toLocaleString('fr-FR') : '—'),
+      h('td', { class: 'actions' },
+        h('a', { class: 'btn small primary', href: `/admin/map-editor.html?map=${encodeURIComponent(m.id)}` }, 'Éditer'),
+        h('a', { class: 'btn small', href: `/map3d.html?map=${encodeURIComponent(m.id)}`, target: '_blank' }, '3D'),
+        h('button', { type: 'button', class: 'small', onclick: () => duplicate(m) }, 'Dupliquer'),
+        h('button', { type: 'button', class: 'small', onclick: () => rename(m) }, 'Renommer'),
+        m.id === 'default' ? null : h('button', { type: 'button', class: 'small danger', onclick: () => remove(m) }, 'Supprimer'))));
+  }
+}
+
+async function withAuth(fn) {
+  try { return await fn(); } catch (e) {
+    if (e.status === 401) { toast('Session expirée : reconnectez-vous.', 'error'); init(); }
+    throw e;
+  }
+}
+
+async function duplicate(m) {
+  const idIn = h('input', { type: 'text', value: uniqueId(`${m.id}-copie`) });
+  const nameIn = h('input', { type: 'text', value: `${m.name} (copie)` });
+  const err = h('p', { class: 'err' });
+  const ok = await modal({
+    title: `Dupliquer « ${m.name} »`,
+    body: [field('Nouvel identifiant', idIn), field('Nom', nameIn), err],
+    buttons: [{ label: 'Annuler', value: false }, {
+      label: 'Dupliquer', value: true, primary: true,
+      validate: () => {
+        const id = idIn.value.trim();
+        if (!ID_RE.test(id)) { err.textContent = 'Identifiant invalide (a-z, 0-9, - et _).'; return false; }
+        if (maps.some((x) => x.id === id)) { err.textContent = 'Cet identifiant existe déjà.'; return false; }
+        if (!nameIn.value.trim()) { err.textContent = 'Nom requis.'; return false; }
+        return true;
+      },
+    }],
+  });
+  if (!ok) return;
+  try {
+    const doc = await api('GET', `/api/maps/${encodeURIComponent(m.id)}`);
+    const id = idIn.value.trim();
+    await withAuth(() => api('PUT', `/api/maps/${encodeURIComponent(id)}`, { ...doc, id, name: nameIn.value.trim() }));
+    toast('Carte dupliquée.', 'ok');
+    loadMaps();
+  } catch (e) { toast('Échec : ' + e.message, 'error'); }
+}
+
+async function rename(m) {
+  const nameIn = h('input', { type: 'text', value: m.name });
+  const descIn = h('textarea', { rows: 3 });
+  descIn.value = m.description || '';
+  const ok = await modal({
+    title: `Renommer « ${m.name} »`,
+    body: [field('Nom', nameIn), field('Description', descIn), h('small', { class: 'muted' }, `L'identifiant « ${m.id} » ne change pas (utiliser Dupliquer puis Supprimer pour le modifier).`)],
+    buttons: [{ label: 'Annuler', value: false }, { label: 'Renommer', value: true, primary: true, validate: () => !!nameIn.value.trim() }],
+  });
+  if (!ok) return;
+  try {
+    const doc = await api('GET', `/api/maps/${encodeURIComponent(m.id)}`);
+    await withAuth(() => api('PUT', `/api/maps/${encodeURIComponent(m.id)}`, { ...doc, name: nameIn.value.trim(), description: descIn.value.trim() }));
+    toast('Carte renommée.', 'ok');
+    loadMaps();
+  } catch (e) { toast('Échec : ' + e.message, 'error'); }
+}
+
+async function remove(m) {
+  if (!(await confirmModal('Supprimer la carte', `Supprimer définitivement « ${m.name} » [${m.id}] ?`, { okLabel: 'Supprimer', danger: true }))) return;
+  try {
+    await withAuth(() => api('DELETE', `/api/maps/${encodeURIComponent(m.id)}`));
+    localStorage.removeItem(`kbMapEditor:draft:${m.id}`);
+    toast('Carte supprimée.', 'ok');
+    loadMaps();
+  } catch (e) { toast('Échec : ' + e.message, 'error'); }
+}
+
+function uniqueId(base) {
+  base = base.slice(0, 60);
+  let id = base;
+  for (let i = 2; maps.some((x) => x.id === id); i++) id = `${base}-${i}`;
+  return id;
+}
+
+init();
+</script>
+</body>
+</html>
