@@ -356,3 +356,36 @@ body {
 .lobby-error { background: #3a0c0c; border: 1px solid #a02020; color: #ffb0b0; border-radius: 6px; padding: 10px 14px; margin-bottom: 16px; display: none; }
 .resume-card { border-color: #8b5e0a; }
 .waiting-box { text-align: center; color: #a89060; padding: 20px; }
+
+/* ---- IA (lobby) ---- */
+.player-badge.bot { background: #2a4a6a; }
+.bot-controls { align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; font-size: 0.85em; }
+.bot-controls select { background: #0c0502; border: 1px solid #3a2408; color: #e0c080; border-radius: 4px; padding: 4px 6px; }
+.player-list li .bot-remove { margin-left: 6px; padding: 2px 8px; font-size: 0.75em; }
+.solo-card .hint { font-size: 0.8em; color: #7a6040; margin-top: 8px; }
+
+/* ---- Tutoriel (public/js/tutorial.js) : au-dessus de la vue 2D et 3D ---- */
+#tuto-coach {
+  position: fixed; left: 12px; bottom: 60px; z-index: 9500; width: 350px; max-width: calc(100vw - 24px);
+  background: rgba(18, 10, 4, 0.96); border: 2px solid #c8960c; border-radius: 10px;
+  box-shadow: 0 4px 22px rgba(0, 0, 0, 0.75); color: #e0c080; font-size: 0.86em; line-height: 1.5;
+  padding: 10px 12px 12px;
+}
+#tuto-coach.minimized { width: auto; padding: 6px 10px; cursor: pointer; }
+#tuto-coach.tuto-side { top: 52px; bottom: auto; width: 240px; font-size: 0.78em; max-height: calc(100vh - 70px); overflow-y: auto; }
+#tuto-coach.minimized .tuto-body { display: none; }
+#tuto-coach .tuto-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+#tuto-coach .tuto-badge { background: #c8960c; color: #120804; font-weight: bold; font-size: 0.78em; padding: 1px 7px; border-radius: 3px; letter-spacing: 0.5px; }
+#tuto-coach .tuto-count { color: #7a5820; font-size: 0.8em; flex: 1; }
+#tuto-coach .tuto-min { background: none; border: none; color: #a89060; cursor: pointer; font-size: 1.1em; padding: 0 4px; }
+#tuto-coach .tuto-title { color: #ffd700; font-weight: bold; font-size: 1.05em; margin-bottom: 4px; }
+#tuto-coach .tuto-text b { color: #ffd700; }
+#tuto-coach .tuto-tip { border-left: 3px solid #e05050; padding-left: 8px; }
+#tuto-coach .tuto-goal { margin-top: 6px; color: #80c080; font-size: 0.92em; }
+#tuto-coach .tuto-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; }
+#tuto-coach .tuto-actions button { padding: 5px 12px; font-size: 0.85em; border-radius: 4px; cursor: pointer; }
+#tuto-coach .tuto-skip { background: none; border: 1px solid #5a3c10; color: #a89060; }
+#tuto-coach .tuto-next { background: #1a3a08; border: 1px solid #4a8020; color: #a0e080; font-weight: bold; }
+#tuto-coach .tuto-done { color: #80e080; font-weight: bold; }
+.tuto-highlight { outline: 3px solid #ffd700 !important; outline-offset: 2px; animation: tuto-pulse 1.2s ease-in-out infinite; }
+@keyframes tuto-pulse { 0%, 100% { outline-color: #ffd700; } 50% { outline-color: rgba(255, 215, 0, 0.25); } }

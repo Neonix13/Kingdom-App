@@ -6,7 +6,7 @@ const rules = require('../rules');
 const AIAgent = require('../../simulation/AIAgent');
 const { hexDistance, hexKey, segmentEdgeKey } = require('../HexUtils');
 const { distanceField } = require('./pathing');
-const { buildWorld, inRange, unitValue, centroid } = require('./world');
+const { buildWorld, inRange, unitValue, centroid, nearestHex } = require('./world');
 const { rngFor, pick } = require('./rng');
 
 const { RULES } = rules;
@@ -164,9 +164,13 @@ function planGeneral(world, profile, g, rng, blunder) {
     return approach(world, profile, g, reach, nearestEnemy(world, g).enemy, null);
   }
   const keep = profile.caution + 1;
-  const center = centroid(troops) || { q: g.q, r: g.r };
+  const c0 = centroid(troops) || { q: g.q, r: g.r };
+  const center = nearestHex(room, c0.q, c0.r);
+  // Walking cost to the army (cliffs and walls), straight distance if the army is out of reach
+  const field = distanceField(room, center.q, center.r, false);
+  const toArmy = (q, r) => { const f = field.get(keyOf(q, r)); return f == null ? hexDistance(q, r, center.q, center.r) * 2 : f; };
   const score = (q, r) => {
-    let s = -hexDistance(q, r, center.q, center.r) * 1.5;
+    let s = -toArmy(q, r) * 1.5;
     const d = world.enemies.length ? Math.min(...world.enemies.map(e => hexDistance(q, r, e.q, e.r))) : Infinity;
     if (d < keep) s -= (keep - d) * 6;
     s += terrainScore(world, q, r) * profile.terrain * 0.5;

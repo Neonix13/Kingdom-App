@@ -37,6 +37,18 @@ function guessEnemyCenter(room, player) {
   return nearestHex(room, q, r);
 }
 
+// Nobody where we expected the enemy: sweep around the map centre, a new direction every 3 turns
+function explorationGoal(room, player, mine, guess) {
+  const c = centroid(mine.filter(u => !u.isGeneral)) || centroid(mine);
+  if (!c || hexDistance(c.q, c.r, guess.q, guess.r) > 4) return guess;
+  const center = room.mapCenter || { q: 0, r: 0 };
+  const dirs = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
+  const radius = 14;
+  const [dq, dr] = dirs[(Math.floor(room.turn / 3) + player.id.length) % 6];
+  const target = nearestHex(room, center.q + dq * radius, center.r + dr * radius);
+  return hexDistance(target.q, target.r, c.q, c.r) <= 3 ? nearestHex(room, center.q, center.r) : target;
+}
+
 function buildWorld(room, playerId) {
   const player = room.getPlayer(playerId);
   const vis = room.getVisibleHexes(playerId);
@@ -57,7 +69,7 @@ function buildWorld(room, playerId) {
   return {
     room, player, playerId, vis, enemies, mine, height, blocked,
     night: room.isNight(),
-    enemyGuess: guessEnemyCenter(room, player),
+    enemyGuess: explorationGoal(room, player, mine, guessEnemyCenter(room, player)),
     terrainAt: (q, r) => room.terrainData[hexKey(q, r)] || 'plain',
   };
 }

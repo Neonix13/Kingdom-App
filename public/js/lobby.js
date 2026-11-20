@@ -240,6 +240,58 @@ function startGame() {
   KBNet.send('start_game');
 }
 
+// ---- IA (game/bots) ----
+const BOT_DIFFICULTIES = [
+  { id: 'recrue', name: 'Recrue (facile)' },
+  { id: 'veteran', name: 'Vétéran (moyen)' },
+  { id: 'stratege', name: 'Stratège (difficile)' },
+];
+
+function playSolo() {
+  const name = readName('create-name') || savedName() || 'Joueur';
+  KBNet.clearSession();
+  KBNet.send('create_solo', {
+    playerName: name,
+    difficulty: document.getElementById('solo-difficulty').value,
+    generalId: document.getElementById('solo-general').value || undefined,
+    roomCode: undefined,
+  });
+}
+
+function startTutorial() {
+  const name = readName('create-name') || savedName() || 'Recrue';
+  KBNet.clearSession();
+  KBNet.send('start_tutorial', { playerName: name, roomCode: undefined });
+}
+
+function addBot() {
+  const sel = document.getElementById('bot-difficulty');
+  KBNet.send('add_bot', { difficulty: sel ? sel.value : 'veteran' });
+}
+
+function removeBot(id) {
+  KBNet.send('remove_bot', { playerId: id });
+}
+
+function renderBotControls(data) {
+  const box = document.getElementById('bot-controls');
+  if (!box) return;
+  const show = data.phase === 'lobby' && data.hostId === myId && data.players.length < 8;
+  box.style.display = show ? 'flex' : 'none';
+  if (!show) return;
+  const prev = document.getElementById('bot-difficulty');
+  const current = prev ? prev.value : 'veteran';
+  box.innerHTML = `<span class="text-muted">Ajouter une IA :</span>
+    <select id="bot-difficulty">${BOT_DIFFICULTIES.map(d => `<option value="${d.id}"${d.id === current ? ' selected' : ''}>${d.name}</option>`).join('')}</select>
+    <button class="btn btn-ghost btn-sm" onclick="addBot()">+ IA</button>`;
+}
+
+function fillSoloGenerals() {
+  const sel = document.getElementById('solo-general');
+  if (!sel || sel.options.length > 1) return;
+  for (const g of GENERALS_DATA) sel.insertAdjacentHTML('beforeend', `<option value="${escapeHtml(g.id)}">${escapeHtml(g.name)}</option>`);
+}
+
 function renderGenerals(takenList) {
   const grid = document.getElementById('generals-grid');
   grid.innerHTML = '';
@@ -366,7 +418,9 @@ function renderPlayerList(data) {
     if (!p.connected) li.classList.add('offline');
     const genName = p.generalId ? GENERALS_DATA.find(g => g.id === p.generalId)?.name || p.generalId : '—';
     const color = p.color || '#4a90d9';
-    const badge = `<span class="player-badge${p.id === hostId ? ' host' : ''}">${p.id === hostId ? 'Hôte' : 'Joueur'}</span>`;
+    const bot = (data.bots || []).find(b => b.id === p.id);
+    const badge = bot ? `<span class="player-badge bot">IA · ${escapeHtml(bot.label)}</span>`
+      : `<span class="player-badge${p.id === hostId ? ' host' : ''}">${p.id === hostId ? 'Hôte' : 'Joueur'}</span>`;
     let colorHtml;
     if (p.id === myId && phase === 'lobby') {
       colorHtml = `<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">${PLAYER_COLORS.map(c => {
@@ -389,10 +443,12 @@ function renderPlayerList(data) {
       <span>${escapeHtml(p.name)}${p.id === myId ? ' <span class="text-muted">(vous)</span>' : ''}</span>
       <span class="text-muted" style="font-size:0.85em">${escapeHtml(genName)}</span>
       <span class="player-status${ready ? ' ready' : ''}">${statusText}</span>
+      ${bot && phase === 'lobby' && hostId === myId ? `<button class="btn btn-ghost btn-sm bot-remove" onclick="removeBot('${escapeHtml(p.id)}')" title="Retirer cette IA">Retirer</button>` : ''}
     `;
     list.appendChild(li);
   }
   document.getElementById('player-count').textContent = players.length;
+  renderBotControls(data);
   const specs = data.spectators || [];
   document.getElementById('spectator-list').innerHTML = specs.length
     ? `Spectateurs : ${specs.map(s => `<span class="tag${s.connected ? '' : ' offline'}">${escapeHtml(s.name)}${s.id === myId ? ' (vous)' : ''}</span>`).join('')}`
@@ -619,6 +675,7 @@ async function loadBalanceData() {
 
 function initLobby() {
   loadBalanceData();
+  fillSoloGenerals();
   KBNet.mountIndicator();
   const params = new URLSearchParams(location.search);
   const joinCode = (params.get('join') || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
