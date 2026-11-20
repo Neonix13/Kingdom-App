@@ -488,6 +488,11 @@
   <script>document.getElementById('app-version').textContent = APP_VERSION;</script>
   <script type="module">
     let mounting = null;
+    let hud = null;
+    async function ensureHud() {
+      if (!hud) hud = (await import('/js/hud/battleHud.js')).mountBattleHud(window.gameBridge, window.view3d);
+      return hud;
+    }
     async function setView3d(on) {
       const btn = document.getElementById('tool-3d');
       const canvas2d = document.getElementById('game-canvas');
@@ -500,7 +505,9 @@
         }
         canvas2d.style.visibility = 'hidden';
         window.view3d.setActive(true);
+        (await ensureHud()).setActive(true);
       } else if (window.view3d) {
+        if (hud) hud.setActive(false);
         window.view3d.setActive(false);
         canvas2d.style.visibility = '';
         window.gameBridge.redraw2D();
