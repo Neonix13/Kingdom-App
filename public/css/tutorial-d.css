@@ -1,0 +1,49 @@
+/* Tutorial coach (2D view; the 3D HUD restyles it further in hud.css) and story intro, style D. */
+#tuto-coach { background: var(--ink-paper-2); color: #111; border: 3px solid #000; box-shadow: 0 0 0 3px var(--ink-paper-2), 0 0 0 6px #000, 0 14px 30px rgba(0,0,0,.45); border-radius: 0; font-family: var(--ink-body); }
+#tuto-coach .tuto-badge { background: var(--ink-red); color: #fff; border-radius: 0; font: 400 11px var(--ink-display); letter-spacing: 1px; padding: 2px 8px; }
+#tuto-coach .tuto-count, #tuto-coach .tuto-min { color: #333; }
+#tuto-coach .tuto-title { color: #000; font: 400 17px var(--ink-display); }
+#tuto-coach .tuto-text { color: #111; line-height: 1.5; }
+#tuto-coach .tuto-text b { color: #B8261C; }
+#tuto-coach .tuto-text .text-muted { color: #555; }
+#tuto-coach .tuto-tip { border-left-color: var(--ink-red); }
+#tuto-coach .tuto-goal, #tuto-coach .tuto-done { color: #1d6a28; font-weight: 700; }
+#tuto-coach .tuto-actions button { border-radius: 0; border: 2px solid #000; background: #fff; color: #000; font: 900 13px var(--ink-body); padding: 6px 12px; min-height: 36px; }
+#tuto-coach .tuto-actions button:hover { background: #000; color: #fff; }
+#tuto-coach .tuto-next { background: var(--ink-red); color: #fff; border-color: #000; }
+#tuto-coach .tuto-next:hover { background: #000; }
+.tuto-highlight { outline-color: var(--ink-red) !important; }
+
+/* Story intro: manga panels, one page at a time */
+#tuto-story { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 24px; font-family: var(--ink-body);
+  background: radial-gradient(ellipse at 50% 45%, rgba(20,18,16,.92) 0%, rgba(8,8,8,.97) 70%); }
+#tuto-story .ts-speed { position: absolute; inset: 0; pointer-events: none; opacity: .5;
+  background: repeating-conic-gradient(from 0deg at 50% 48%, rgba(239,232,216,.07) 0deg 1deg, transparent 1deg 6deg);
+  -webkit-mask-image: radial-gradient(circle at 50% 48%, transparent 25%, #000 70%); mask-image: radial-gradient(circle at 50% 48%, transparent 25%, #000 70%); }
+#tuto-story .ts-page { position: relative; width: min(980px, 100%); display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); background: var(--ink-paper-2); color: #111;
+  border: 4px solid #000; box-shadow: 0 0 0 4px var(--ink-paper-2), 0 0 0 8px #000, 0 30px 60px rgba(0,0,0,.6); animation: ts-in .35s ease-out; }
+@keyframes ts-in { from { transform: translateY(14px) rotate(-.6deg); opacity: 0; } to { transform: none; opacity: 1; } }
+#tuto-story .ts-art { position: relative; min-height: 380px; border-right: 4px solid #000; overflow: hidden; background: #fff; clip-path: polygon(0 0, 100% 0, 92% 100%, 0 100%); }
+#tuto-story .ts-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 55% 25%; filter: grayscale(1) contrast(1.3); }
+#tuto-story .ts-art .ts-kanji { position: absolute; left: 14px; top: 14px; writing-mode: vertical-rl; font: 64px var(--ink-brush); color: var(--ink-red); -webkit-text-stroke: 6px #000; paint-order: stroke fill; line-height: 1; }
+#tuto-story .ts-text { padding: 30px 32px 24px 18px; display: flex; flex-direction: column; gap: 14px; }
+#tuto-story .ts-kicker { font: 900 11px var(--ink-body); letter-spacing: 3px; color: var(--ink-red); text-transform: uppercase; }
+#tuto-story h2 { font: 400 clamp(26px, 3.4vw, 40px) var(--ink-display); line-height: 1.05; color: #000; }
+#tuto-story .ts-stroke { width: 180px; height: 10px; }
+#tuto-story p { font: 500 16px/1.6 var(--ink-body); color: #222; }
+#tuto-story p b { color: #B8261C; }
+#tuto-story .ts-cap { background: #000; color: var(--ink-paper-2); font: 700 14px/1.5 var(--ink-mincho); padding: 10px 14px; align-self: flex-start; }
+#tuto-story .ts-foot { margin-top: auto; display: flex; align-items: center; gap: 10px; padding-top: 6px; }
+#tuto-story .ts-dots { display: flex; gap: 6px; flex: 1; }
+#tuto-story .ts-dots i { width: 22px; height: 6px; background: #ccc; border: 1px solid #000; }
+#tuto-story .ts-dots i.on { background: var(--ink-red); }
+#tuto-story button { min-height: 42px; border-radius: 0; border: 3px solid #000; background: #fff; color: #000; font: 900 14px var(--ink-body); padding: 0 16px; cursor: pointer; }
+#tuto-story button:hover { background: #000; color: #fff; }
+#tuto-story button.ts-next { background: var(--ink-red); color: #fff; box-shadow: 4px 4px 0 #000; }
+#tuto-story button.ts-next:hover { background: #000; }
+#tuto-story button:focus-visible { outline: 3px solid var(--ink-red); outline-offset: 2px; }
+@media (max-width: 720px) {
+  #tuto-story .ts-page { grid-template-columns: 1fr; }
+  #tuto-story .ts-art { min-height: 200px; border-right: 0; border-bottom: 4px solid #000; clip-path: none; }
+  #tuto-story .ts-text { padding: 18px; }
+}

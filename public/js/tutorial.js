@@ -15,6 +15,15 @@
   let shownTip = null;
   let lastCurrent = null;
   let renderedKey = '';
+  let storyEl = null;
+
+  for (const href of ['/css/ink-d.css', '/css/tutorial-d.css']) {
+    if (document.querySelector(`link[href="${href}"]`)) continue;
+    const l = document.createElement('link');
+    l.rel = 'stylesheet';
+    l.href = href;
+    document.head.appendChild(l);
+  }
 
   const bridge = () => window.gameBridge || {};
   const state = () => bridge().state || null;
@@ -147,6 +156,76 @@
     return STEPS[progress.step];
   }
 
+  // ---------- story intro (manga pages, before the first step) ----------
+  const STORY = [
+    {
+      kicker: 'Chine, IIIe siècle av. J.-C.', title: 'Les Royaumes combattants', kanji: '秦',
+      img: '/assets/unites/GENERAL%20IMAGE%201-1/OU%20KI%201-1.jpg',
+      text: 'Sept royaumes se disputent la Chine depuis des siècles. Le jeune roi de <b>Qin</b> rêve de les unifier, et ses généraux portent cette ambition sur les champs de bataille.',
+      cap: '« La guerre, c\'est amusant ! »',
+    },
+    {
+      kicker: 'Votre commandement', title: 'L\'armée de Ou Ki', kanji: '将',
+      img: '/assets/unites/UNIT%20IMAGE%201-1/SOLDAT.jpg',
+      text: 'Le grand général <b>Ou Ki</b> vous confie une petite armée : des <b>Soldats</b>, des <b>Archers</b> et un <b>Cavalier léger</b>. Chaque unité a ses forces, ses postures et sa vitesse.',
+      cap: 'Un bon chef connaît chacun de ses hommes.',
+    },
+    {
+      kicker: 'Votre mission', title: 'La bataille du gué', kanji: '戦',
+      img: '/assets/unites/GENERAL%20IMAGE%201-1/GO%20HOU%20MEI%201-1.jpg',
+      text: '<b>Go Hou Mei</b>, stratège de Wei, défend un gué près d\'un village. Tenez le <b>drapeau</b> jusqu\'à 6 points, ou abattez son général. Le guide vous accompagne pas à pas.',
+      cap: 'Au combat !',
+    },
+  ];
+
+  function showStory(done) {
+    let page = 0;
+    storyEl = document.createElement('div');
+    storyEl.id = 'tuto-story';
+    storyEl.setAttribute('role', 'dialog');
+    storyEl.setAttribute('aria-label', 'Introduction du tutoriel');
+    document.body.appendChild(storyEl);
+    const close = () => {
+      window.removeEventListener('keydown', onKey, true);
+      if (storyEl) { storyEl.remove(); storyEl = null; }
+      done();
+    };
+    const go = (i) => {
+      if (i >= STORY.length) return close();
+      page = i;
+      const st = STORY[i];
+      const last = i === STORY.length - 1;
+      storyEl.innerHTML = `<div class="ts-speed"></div>
+        <div class="ts-page">
+          <div class="ts-art"><img src="${st.img}" alt=""><span class="ts-kanji">${st.kanji}</span></div>
+          <div class="ts-text">
+            <span class="ts-kicker">${st.kicker}</span>
+            <h2>${st.title}</h2>
+            <svg class="ts-stroke" viewBox="0 0 180 10" aria-hidden="true"><path d="M2 6 C 40 2, 90 9, 130 4 S 172 6, 178 3" stroke="#D8352A" stroke-width="4" fill="none" stroke-linecap="round"/></svg>
+            <p>${st.text}</p>
+            <div class="ts-cap">${st.cap}</div>
+            <div class="ts-foot">
+              <div class="ts-dots">${STORY.map((_, k) => `<i class="${k <= i ? 'on' : ''}"></i>`).join('')}</div>
+              <button type="button" class="ts-skip">Passer</button>
+              <button type="button" class="ts-next">${last ? 'Au combat !' : 'Suite'}</button>
+            </div>
+          </div>
+        </div>`;
+      storyEl.querySelector('.ts-skip').onclick = close;
+      storyEl.querySelector('.ts-next').onclick = () => go(page + 1);
+      storyEl.querySelector('.ts-next').focus();
+    };
+    const onKey = (e) => {
+      if (!storyEl) return;
+      if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); close(); }
+      else if (e.key === 'Enter' || e.code === 'Space' || e.key === 'ArrowRight') { e.preventDefault(); e.stopImmediatePropagation(); go(page + 1); }
+      else if (e.key === 'ArrowLeft' && page > 0) { e.preventDefault(); e.stopImmediatePropagation(); go(page - 1); }
+      else e.stopImmediatePropagation();
+    };
+    window.addEventListener('keydown', onKey, true);
+    go(0);
+  }
+
   // ---------- rendering ----------
   function clearHighlights() {
     document.querySelectorAll('.tuto-highlight').forEach(el => el.classList.remove('tuto-highlight'));
@@ -200,7 +279,7 @@
   }
 
   function render(force) {
-    if (!active || !progress || progress.hidden) return;
+    if (!active || !progress || progress.hidden || storyEl) return;
     const el = ensureBox();
     const tipId = Object.keys(progress.tips).find(k => progress.tips[k] === 'pending');
     if (tipId && !shownTip) shownTip = tipId;
@@ -330,6 +409,10 @@
     save();
     clearInterval(pollTimer);
     pollTimer = setInterval(() => { observe(); render(false); }, 400);
+    if (!progress.storySeen && progress.step === 0 && !storyEl) {
+      showStory(() => { progress.storySeen = true; save(); render(true); });
+      return;
+    }
     render(true);
   }
 
@@ -338,6 +421,7 @@
     clearInterval(pollTimer);
     clearHighlights();
     if (box) { box.remove(); box = null; }
+    if (storyEl) { storyEl.remove(); storyEl = null; }
   }
 
   window.gameEventHooks = window.gameEventHooks || [];
