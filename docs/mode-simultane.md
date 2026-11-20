@@ -52,11 +52,10 @@ La résolution s'arrête au premier tick sans déplacement ni combat (40 ticks a
 - Entrer sur la case d'un **ennemi immobile** est impossible : l'unité s'arrête et l'attaque.
 - Plus de deux unités ennemies sur une même case : chaque paire d'ennemis libres livre une rencontre.
 
-### Zone de contrôle, embuscades, percée
+### Zone de contrôle, embuscades
 
 - Une unité qui **arrive au contact** d'un ennemi visible s'arrête. Un simple déplacement n'attaque pas ; une unité qui avait un ordre d'attaque ou de charge frappe l'ennemi qui l'a arrêtée si ce n'est pas sa cible.
 - Une unité qui découvre ainsi un ennemi **caché** (forêt, bâtiment) tombe dans une **embuscade** : elle s'arrête, perd le reste de sa vitesse, et l'embusqué est révélé.
-- **Percée** : une unité en posture Percée qui se déplace et est arrêtée par un contact **attaque** l'ennemi qui l'arrête ; si elle remporte la mêlée (cible détruite, en fuite, ou plus de dégâts infligés que reçus), elle poursuit son déplacement d'une case en ignorant la zone de contrôle une fois.
 
 ### Combats
 
@@ -66,7 +65,7 @@ Les jets sont ceux du mode classique (`_resolveCombat`). La **réponse du défen
 |---|---|
 | Marche | Encaisser, ou **rien** si l'unité s'est déplacée ce tour (prise en mouvement) |
 | Combat, Charge | Contre-attaquer |
-| Percée, Défense à distance | Encaisser |
+| Défense à distance | Encaisser |
 | Défense de combat | Contre-attaquer ; **annule le bonus de charge** adverse |
 | Repos | Rien |
 | Général | Contre-attaquer |
@@ -110,3 +109,10 @@ Les autres réglages (tours par demi-journée, tours max, points de victoire, vi
 - Les rencontres à mi-chemin peuvent opposer deux unités à 2 cases l'une de l'autre (case disputée entre elles).
 - Simulateur : `node simulation/run.js --simultaneous` (ordres des IA de `game/bots`).
 - Replay : les déplacements d'un tour sont enregistrés par unité (regroupés jusqu'au combat suivant) ; le replay ne montre donc pas toute la simultanéité.
+
+## Après la fusion avec la branche de l'ami
+
+- La Percée n'existe plus (remplacée par le Repos) : plus de poursuite après une mêlée gagnée.
+- Les combats suivent la résolution NGO (règles §5) ; le bonus de charge s'ajoute à l'attaque et à la puissance effectives.
+- Mode par équipe : les alliés ne s'affrontent pas (pas de rencontre ni d'attaque entre eux, ils peuvent se croiser).
+- Le char ne traverse pas les unités en mode simultané.
