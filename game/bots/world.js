@@ -2,6 +2,7 @@
 // room.canSee), the public map, objectives and its own units.
 const UNITS = require('../data/units');
 const { hexDistance, hexKey } = require('../HexUtils');
+const rules = require('../rules');
 
 const GENERAL_VALUE = 1500;
 
@@ -207,10 +208,10 @@ function hopeless(world) {
   return !hasArmy(world) && knownTroops(world) >= 2;
 }
 
-// Same reach rule as GameRoom.initiateCombat: base range + height advantage
+// Same reach rule as GameRoom.initiateCombat (rules.attackRange: ± height difference, at least 1)
 function inRange(world, unit, fq, fr, t) {
   const d = hexDistance(fq, fr, t.q, t.r);
-  return d >= 1 && d <= (unit.range || 1) + Math.max(0, world.height(fq, fr) - world.height(t.q, t.r));
+  return d >= 1 && d <= rules.attackRange(unit.range, world.height(fq, fr), world.height(t.q, t.r));
 }
 
 module.exports = { buildWorld, inRange, unitValue, guessEnemyCenter, centroid, nearestHex, loneGeneralGoal, hopeless };

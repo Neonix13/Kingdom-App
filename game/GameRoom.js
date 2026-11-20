@@ -1840,7 +1840,7 @@ class GameRoom {
       for (const t of p.units) {
         if (t.q === null) continue;
         const dist = hexDistance(unit.q, unit.r, t.q, t.r);
-        const range = (unit.range || 1) + Math.max(0, hA - (this.heightData[hexKey(t.q, t.r)] || 0));
+        const range = rules.attackRange(unit.range, hA, this.heightData[hexKey(t.q, t.r)] || 0);
         if (dist <= range && this.canSee(playerId, t, t.q, t.r, vis)) return true;
       }
     }

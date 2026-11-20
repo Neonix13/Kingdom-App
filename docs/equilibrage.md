@@ -178,3 +178,34 @@ Les capacités décrites dans `bonus` sont maintenant appliquées par le moteur 
 Combats à coût égal (mêlée, 4 800 or par camp) : les lanciers battent maintenant la cavalerie à 92 – 97 % (82 – 88 % avant) ; le reste ne bouge pas au-delà du bruit.
 
 Aucun coût n'a été modifié : les écarts restent dans l'intervalle de confiance (± 4 à 6 points), sauf les Bâtisseurs et l'Assassin du mode simultané qui remontent (l'IA du mode simultané pose des chevaux de frise et fait disparaître ses assassins ; le simulateur séquentiel, `simulation/AIAgent.js`, n'utilise pas les capacités actives). Le Char n'est toujours jamais recruté par le simulateur : son piétinement et sa traversée ne sont mesurés que par les tests (`tests/abilities.test.js`).
+
+## Après la fusion avec la branche de l'ami (règles NGO, données de l'ami conservées telles quelles)
+
+Aucune valeur retouchée : statistiques d'unités, de généraux, de postures, de terrains et de segments reprises de `origin/main`. Seule l'IA a été adaptée (estimation des coups avec la formule NGO, portée réduite quand la cible est plus haute, alliés ignorés en mode par équipe).
+
+**Simulateur** (`node simulation/run.js --games 12 --budget 2500`, 1 452 parties par mode, ±6 points) — taux de victoire par général :
+
+| Général | Séquentiel | Simultané |
+|---|---|---|
+| Gai Mou | 64 % | 58 % |
+| Shi Ba Shou | 61 % | 61 % |
+| Mou Bu | 60 % | 64 % |
+| Ren Pa | 58 % | 52 % |
+| Ou Ki | 51 % | 57 % |
+| Ou Sen | 50 % | 46 % |
+| Kei Sha | 46 % | 44 % |
+| Kan Ki | 46 % | 41 % |
+| Ri Boku | 44 % | 42 % |
+| Go Kei | 39 % | 44 % |
+| Go Hou Mei | 31 % | 41 % |
+
+Nuls : 0 en séquentiel, 6 sur 1 452 en simultané (0,4 %). Les généraux à forte Force / armure dominent toujours ; Go Hou Mei est le plus faible. Le simulateur séquentiel utilise encore `simulation/AIAgent.js` (IA de l'ami), qui se bat peu (survie des unités ~97 %) ; en simultané, survie de 31 % (bâtisseurs) à 72 % (phalange). Le char n'est acheté par aucune des deux IA.
+
+**IA réelle** (`game/bots`, carte par défaut, budget 2 500, 20 parties par paire, via le protocole) :
+
+| Mode | Vétéran contre Vétéran | Stratège contre Recrue | Nuls | Tour médian |
+|---|---|---|---|---|
+| Séquentiel | 9 – 11 | 20 – 0 | 0 | 3 à 6 |
+| Simultané | 10 – 10 | 16 – 4 | 0 | 6 à 9 |
+
+Les parties sont courtes : les zones de déploiement de l'ami sont proches (centres à 3 + nombre de joueurs cases du centre de bataille) et les généraux (80 à 130 de vitalité) tombent vite sous les tirs.

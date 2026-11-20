@@ -1319,7 +1319,7 @@ function computeRangeTiles(unit) {
   while (queue.length) {
     const { q, r, d } = queue.shift();
     const hT = hd[`${q},${r}`] || 0;
-    const effectiveRange = (unit.range || 1) + Math.max(0, hA - hT);
+    const effectiveRange = KBRules.attackRange(unit.range, hA, hT);
     if (d > 0) rangeTiles.add(`${q},${r}`);
     if (d >= effectiveRange || d >= maxRange) continue;
     for (const [dq, dr] of dirs) {
