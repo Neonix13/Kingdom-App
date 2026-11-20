@@ -74,7 +74,7 @@ export function createTools(E) {
 
   // ---------- terrain ----------
   T.terrain = {
-    id: 'terrain', name: 'Terrain', key: '1', icon: '▦',
+    id: 'terrain', name: 'Terrain', key: '1', icon: 'M4 4h16v16H4zM4 12h16M12 4v16',
     help: 'Clic/glisser : peindre. Mode remplissage : remplit la zone contiguë. Alt+clic ou I : pipette.',
     panel() {
       const counts = {};
@@ -95,7 +95,7 @@ export function createTools(E) {
 
   // ---------- height ----------
   T.height = {
-    id: 'height', name: 'Hauteur', key: '2', icon: '⛰',
+    id: 'height', name: 'Hauteur', key: '2', icon: 'M3 20l6-10 4 6 3-4 5 8z',
     help: 'Élever/abaisser : +1/−1 par passage (Maj inverse). Fixer : valeur. Aplanir : hauteur du point de départ. Lisser : moyenne des voisins.',
     panel() {
       const hs = [...model.height.values()];
@@ -146,7 +146,7 @@ export function createTools(E) {
 
   // ---------- hexes ----------
   T.hex = {
-    id: 'hex', name: 'Cases', key: '3', icon: '⬡',
+    id: 'hex', name: 'Cases', key: '3', icon: 'M12 3l8 4.5v9L12 21l-8-4.5v-9z',
     help: 'Ajouter / supprimer des cases (forme de la carte). Maj = mode inverse. Supprimer une case retire aussi son terrain, ses champs, zones, objectifs et segments orphelins.',
     panel() {
       return [
@@ -169,7 +169,7 @@ export function createTools(E) {
 
   // ---------- segments ----------
   T.segment = {
-    id: 'segment', name: 'Segments', key: '4', icon: '╱',
+    id: 'segment', name: 'Segments', key: '4', icon: 'M5 19L19 5M4 14l6 6M14 4l6 6',
     help: 'Cliquer/glisser le long des bords de cases. Maj = gomme. Seuls les bords entre deux cases de la carte sont peints.',
     panel() {
       const counts = {};
@@ -197,7 +197,7 @@ export function createTools(E) {
 
   // ---------- decor ----------
   T.decor = {
-    id: 'decor', name: 'Décor', key: '5', icon: '❀',
+    id: 'decor', name: 'Décor', key: '5', icon: 'M12 3l6 8H6zM12 8l7 9H5zM12 17v4',
     help: 'Champs de blé (purement visuels, sur plaines). Maj = gomme.',
     panel() {
       return [
@@ -219,7 +219,7 @@ export function createTools(E) {
 
   // ---------- zones ----------
   T.zone = {
-    id: 'zone', name: 'Zones', key: '6', icon: '⚑',
+    id: 'zone', name: 'Zones', key: '6', icon: 'M5 21V4h11l-2 4 2 4H5',
     help: 'Zones de déploiement fixes (optionnel ; sinon le jeu les génère). Maj = gomme.',
     panel() {
       const sizes = model.zoneSizes();
@@ -269,7 +269,7 @@ export function createTools(E) {
 
   // ---------- objectives ----------
   T.objective = {
-    id: 'objective', name: 'Objectifs', key: '7', icon: '★',
+    id: 'objective', name: 'Objectifs', key: '7', icon: 'M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6l-5.4 2.9 1.2-6-4.5-4.2 6.1-.7z',
     help: 'Clic sur une case vide : nouvel objectif. Clic sur un objectif : sélection ; glisser pour déplacer. Suppr : supprimer.',
     panel() {
       const objs = model.objectives;
@@ -338,7 +338,7 @@ export function createTools(E) {
 
   // ---------- background / calibration ----------
   T.background = {
-    id: 'background', name: 'Fond', key: '8', icon: '🖼',
+    id: 'background', name: 'Fond', key: '8', icon: 'M3 5h18v14H3zM3 16l5-5 4 4 3-3 6 6',
     help: 'Glisser : déplacer l\'image (origine). Maj+glisser vertical : échelle (taille d\'hex). Réglages fins dans le panneau.',
     panel() { return E.ui.backgroundPanel(); },
     down(p) {

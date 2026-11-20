@@ -35,7 +35,7 @@ function buildToolbar() {
   bar.innerHTML = '';
   for (const id of tools.order) {
     const t = tools.tools[id];
-    bar.append(h('button', { type: 'button', class: id === state.tool ? 'on' : '', title: `${t.name} (${t.key})`, onclick: () => setTool(id) }, t.icon, h('small', null, t.name)));
+    bar.append(h('button', { type: 'button', class: id === state.tool ? 'on' : '', title: `${t.name} (${t.key})`, onclick: () => setTool(id) }, h('span', { class: 'tool-ic', html: `<svg class="ink-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="${t.icon}"/></svg>` }), h('small', null, t.name)));
   }
 }
 

@@ -40,6 +40,16 @@
   }
   body.clean #hud, body.clean #controls { opacity: 0; pointer-events: none; }
 </style>
+<link rel="stylesheet" href="/css/ink-d.css">
+<style>
+  #hud { font-family: var(--ink-body); background: rgba(14,13,12,.86); border: 0; border-top: 2px solid var(--ink-red); border-radius: 0; color: var(--ink-text); backdrop-filter: none; }
+  #hud .title { font: 400 14px var(--ink-display); letter-spacing: 3px; color: var(--ink-text); }
+  #hud .stats, #hud .sel, #hud label { color: var(--ink-soft); }
+  #hud .keys { color: var(--ink-muted); }
+  #hud .keys b { color: var(--ink-red-text); }
+  #hud input[type=range] { accent-color: var(--ink-red); }
+  #loading { font-family: var(--ink-display); color: var(--ink-text); background: var(--ink-bg); }
+</style>
 </head>
 <body>
 

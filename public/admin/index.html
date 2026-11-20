@@ -5,31 +5,37 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Administration — Kingdom Battleground</title>
 <link rel="stylesheet" href="/admin/admin.css">
+<link href="https://fonts.googleapis.com/css2?family=Yuji+Boku&display=swap" rel="stylesheet">
 <style>
   .wrap { max-width: 980px; margin: 0 auto; padding: 32px 20px 60px; }
   .logo { text-align: center; margin-bottom: 28px; }
-  .logo h1 { font-size: 2.4em; color: #c8960c; text-shadow: 2px 2px 8px rgba(0,0,0,0.8); letter-spacing: 4px; }
-  .logo p { color: #a89060; margin-top: 6px; }
+  .logo { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .logo h1 { font-family: var(--a-display); font-weight: 400; font-size: 2.6em; color: var(--a-text); letter-spacing: 6px; display: flex; align-items: center; gap: 16px; }
+  .logo h1 .seal { width: 52px; height: 52px; border-radius: 50%; background: var(--a-red); color: var(--a-bg); font-family: 'Yuji Boku', var(--a-mincho); font-size: 30px; letter-spacing: 0; display: inline-flex; align-items: center; justify-content: center; }
+  .logo .stroke { width: 220px; height: 10px; }
+  .logo p { color: var(--a-muted); font-size: 12px; letter-spacing: 4px; text-transform: uppercase; font-weight: 700; }
   .topline { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 10px; }
   #login { max-width: 380px; margin: 40px auto; }
   #login form { display: flex; flex-direction: column; gap: 10px; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px; }
   @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
   .tile { display: flex; flex-direction: column; gap: 8px; }
-  .tile p { color: #a89060; font-size: 0.92em; flex: 1; }
+  .tile p { color: var(--a-muted); font-size: 0.92em; flex: 1; }
   .tile.soon { opacity: 0.6; border-style: dashed; }
   table.maps { width: 100%; border-collapse: collapse; }
-  table.maps th { text-align: left; color: #a89060; font-weight: normal; font-size: 0.85em; padding: 6px; border-bottom: 1px solid #5a3c10; }
-  table.maps td { padding: 8px 6px; border-bottom: 1px solid #2a1a06; vertical-align: middle; }
+  table.maps th { text-align: left; color: var(--a-muted); font-weight: normal; font-size: 0.85em; padding: 6px; border-bottom: 1px solid var(--a-line); }
+  table.maps td { padding: 8px 6px; border-bottom: 1px solid var(--a-line-soft); vertical-align: middle; }
   table.maps td.actions { text-align: right; white-space: nowrap; }
   table.maps td.actions > * { margin-left: 4px; }
-  table.maps .id { color: #806840; font-size: 0.85em; }
-  .empty { color: #a08860; padding: 16px; text-align: center; }
+  table.maps .id { color: var(--a-dim); font-size: 0.85em; }
+  .empty { color: var(--a-muted); padding: 16px; text-align: center; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="logo"><h1>⚔ KINGDOM</h1><p>Administration</p></div>
+  <div class="logo"><h1><span class="seal">戦</span>KINGDOM</h1>
+    <svg class="stroke" viewBox="0 0 220 10" aria-hidden="true"><path d="M2 6 C 50 2, 110 9, 160 4 S 210 6, 218 3" stroke="#D8352A" stroke-width="4" fill="none" stroke-linecap="round"/></svg>
+    <p>Administration</p></div>
 
   <div id="login" class="card" hidden>
     <h2>Connexion administrateur</h2>
@@ -47,12 +53,12 @@
     </div>
     <div class="grid">
       <div class="card tile">
-        <h2>🗺 Éditeur de cartes</h2>
+        <h2><svg class="ink-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15M15 6v15"/></svg>Éditeur de cartes</h2>
         <p>Terrain, hauteurs, forme de la carte, segments (falaises, murs, rivières…), décor, zones de déploiement, objectifs, calque sur image peinte, validation et aperçu 3D.</p>
         <div class="row"><a class="btn primary" href="/admin/map-editor.html">Ouvrir l'éditeur</a><a class="btn" href="/admin/map-editor.html?new=1">Nouvelle carte</a></div>
       </div>
       <div class="card tile" id="balanceCard">
-        <h2>⚖ Éditeur d'équilibrage</h2>
+        <h2><svg class="ink-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M5 21h14M4 7h16"/><path d="M7 7l-3 7a3 3 0 0 0 6 0zM17 7l-3 7a3 3 0 0 0 6 0z"/></svg>Éditeur d'équilibrage</h2>
         <p>Statistiques des unités, généraux, terrains, segments et postures, historique des versions, simulations IA contre IA (taux de victoire, matrice des affrontements, efficacité des unités).</p>
         <div class="row"><a class="btn primary" href="/admin/balance.html">Ouvrir l'éditeur</a><a class="btn" href="/admin/balance.html#sim">Simulation</a></div>
       </div>
