@@ -3,7 +3,7 @@ import * as THREE from 'three';
 // Large translucent d20s thrown onto the ground in front of the camera, landing on the real rolled value.
 //   const dice = createDice3d(world);
 //   dice.roll([{ value: 17, edge: '#D8352A' }, { value: 4 }], { at: THREE.Vector3 | null, label })
-//   dice.onEvent(event, data)   combat_result (attackD20 / defenseRoll) and initiative_rolled (rolls[id].d20)
+//   dice.onEvent(event, data)   combat_result (generals' d20: breakdown.generalD20 / generalD20Def) and initiative_rolled (rolls[id].d20)
 //   dice.enabled = false        nothing is shown
 const INK = '#111111';
 const RED = '#D8352A';
@@ -201,8 +201,10 @@ export function createDice3d(world) {
       const log = data.combatLog || data;
       if (!log || log.duel || log.abilityUsed || data.playback) return;
       const list = [];
-      if (log.attackD20 != null) list.push({ value: log.attackD20, edge: RED });
-      if (log.defenseRoll != null) list.push({ value: log.defenseRoll, edge: INK });
+      // NGO resolution: a unit rolls one die per 5 vitality (shown in the combat card); generals roll a single d20
+      const b = log.breakdown || {};
+      if (b.generalD20 != null) list.push({ value: b.generalD20, edge: RED });
+      if (b.generalD20Def != null) list.push({ value: b.generalD20Def, edge: INK });
       if (list.length) roll(list, { at: ctx.at || null });
     } else if (event === 'initiative_rolled' && data.rolls) {
       const order = data.turnOrder || Object.keys(data.rolls);
