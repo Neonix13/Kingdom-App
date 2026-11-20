@@ -68,6 +68,10 @@ audio.setAmbience({
 
 `renderOffline(seconds, setup, { volumes, seed, timeline })` (export de `index.js`) rend la même chaîne (bus, réverbération, limiteur) dans un `OfflineAudioContext` et renvoie un `AudioBuffer`. `analyze.js` fournit `metrics(buffer)` (crête, RMS, DC, écrêtage, centroïde, planéité, ratio harmonique, raccord de boucle). Bouton « Lancer l'analyse » sur la page de démo, ou `await kbAnalyse()` dans la console.
 
+## Export MIDI
+
+`npm run export-midi` (options : `-- --out DOSSIER --bars 32 --seed 1234`) écrit dans `~/Downloads/Kingdom-MIDI/` un fichier MIDI par état de la musique générative (menu, calme, déploiement, bataille à intensité 0,2 / 0,5 / 0,9, bataille en montée 0 → 1, victoire, défaite), avec les mêmes tirages que le jeu pour une graine donnée. Une piste par instrument (programmes General MIDI : koto pour le guzheng, shamisen pour le pipa, guitare nylon pour le guqin, harpe pour ses harmoniques, shakuhachi pour le dizi ; percussions sur le canal 10 : 35 taiko grave, 47 taiko médium, 50 tambour aigu, 76 bloc de bois), carte de tempo incluse (la bataille accélère avec l'intensité). Les glissés courts du guzheng deviennent une appogiature, les petits glissés des pitch bends (amplitude ±2 demi-tons).
+
 ## Architecture
 
 | Fichier | Rôle |
