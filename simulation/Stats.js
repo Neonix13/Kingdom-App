@@ -218,7 +218,7 @@ class Stats {
     return { avgWinner, avgLoser };
   }
 
-  exportJSON(filepath) {
+  exportJSON(filepath, extra = {}) {
     const report = {
       timestamp: new Date().toISOString(),
       totalGames: this.games.length,
@@ -227,6 +227,7 @@ class Stats {
       generalReport: this.getGeneralReport(),
       unitEfficiency: this.getUnitEfficiency(),
       armyComposition: this.getArmyCompositionStats(),
+      ...extra,
     };
 
     fs.mkdirSync(path.dirname(filepath), { recursive: true });

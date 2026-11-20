@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Équilibrage — Kingdom Battleground</title>
+<link rel="stylesheet" href="/admin/admin.css">
+<style>
+  [hidden] { display: none !important; }
+  .wrap { max-width: 1500px; margin: 0 auto; padding: 18px 18px 60px; }
+  header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  header h1 { color: #c8960c; font-size: 1.5em; letter-spacing: 2px; }
+  header .version { color: #806840; font-size: 0.85em; margin-left: 8px; }
+  #login { max-width: 420px; margin: 60px auto; }
+  .tabs { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid #5a3c10; margin-bottom: 12px; }
+  .tabs button { border-radius: 4px 4px 0 0; border-bottom: 0; display: flex; gap: 6px; align-items: center; }
+  .tabs button.on { background: #c8960c; color: #1a1008; }
+  .tabs button.err { box-shadow: inset 0 -3px 0 #c03030; }
+  .tabs .badge:not(:empty) { background: #8b5e0a; color: #fff; border-radius: 8px; padding: 0 6px; font-size: 0.8em; }
+  .tabs button.on .badge:not(:empty) { background: #1a1008; color: #f0c040; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; align-items: start; }
+  .layout.full { grid-template-columns: minmax(0, 1fr); }
+  @media (max-width: 1000px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+  .note { margin-bottom: 8px; }
+  .scroll { overflow: auto; max-width: 100%; }
+  .gridwrap .scroll { max-height: calc(100vh - 210px); border: 1px solid #3a2810; border-radius: 6px; }
+  table.bt { border-collapse: separate; border-spacing: 0; font-size: 0.9em; }
+  table.bt th, table.bt td { border-bottom: 1px solid #2a1a06; border-right: 1px solid #2a1a06; padding: 3px; background: #1f1409; }
+  table.bt thead th { position: sticky; top: 0; z-index: 2; background: #2c1d0a; color: #c8a050; font-weight: normal; font-size: 0.85em; white-space: nowrap; padding: 5px 6px; cursor: help; }
+  table.bt thead tr.groups th { top: 0; color: #806840; text-transform: uppercase; letter-spacing: 1px; font-size: 0.7em; text-align: center; cursor: default; }
+  table.bt thead tr.groups + tr th { top: 22px; }
+  table.bt .sticky { position: sticky; left: 0; z-index: 1; background: #24170a; text-align: left; min-width: 140px; }
+  table.bt thead .sticky { z-index: 3; }
+  table.bt .rowhead b { color: #e8d5a0; font-weight: 600; }
+  table.bt .rowhead .id { color: #806840; font-size: 0.8em; font-weight: normal; }
+  table.bt input[type=number] { width: 66px; text-align: right; }
+  table.bt.modifiers input[type=number] { width: 52px; }
+  table.bt input[type=number].big { width: 84px; }
+  table.bt input[type=text] { width: 120px; }
+  table.bt input[type=text].wide { width: 180px; }
+  table.bt textarea.grow { width: 220px; height: 30px; resize: none; vertical-align: top; }
+  table.bt textarea.grow:focus { height: 110px; position: relative; z-index: 4; }
+  table.bt td.t-bool { text-align: center; }
+  table.bt input.mod.pos { color: #9ad89a; }
+  table.bt input.mod.neg { color: #ff9a8a; }
+  table.bt input.mod:not(.pos):not(.neg) { color: #806840; }
+  table.bt td.changed { background: #3a2c08; }
+  table.bt td.changed input, table.bt td.changed select, table.bt td.changed textarea { border-color: #f0c040; }
+  table.bt td.invalid { background: #3a1010; }
+  table.bt td.invalid input, table.bt td.invalid select, table.bt td.invalid textarea { border-color: #ff5040; }
+  sup { color: #806840; margin-left: 2px; }
+  #side { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow: auto; }
+  #side h3, .report h3, .datachanges h3 { color: #c8960c; font-size: 1em; margin: 6px 0; }
+  #side .errh { color: #ff7060; }
+  ul.changes, ul.errors { list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 0.85em; }
+  ul.changes li { display: flex; gap: 4px; align-items: baseline; flex-wrap: wrap; }
+  ul.changes .before { color: #a08860; text-decoration: line-through; }
+  ul.changes .after { color: #f0c040; }
+  ul.changes .x { margin-left: auto; padding: 0 6px; }
+  ul.errors li { color: #ffb0a0; }
+  .actions { white-space: nowrap; text-align: right; }
+  .actions > * { margin-left: 4px; }
+  table.hist, table.difftable, table.gen, table.units { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+  table.hist th, table.difftable th, table.gen th, table.units th { text-align: left; color: #a89060; font-weight: normal; font-size: 0.85em; padding: 5px; border-bottom: 1px solid #5a3c10; }
+  table.hist td, table.difftable td, table.gen td, table.units td { padding: 5px; border-bottom: 1px solid #2a1a06; vertical-align: middle; }
+  td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  td.sig { color: #f0c040; font-weight: 600; }
+  .simform { align-items: flex-end; gap: 12px; margin: 10px 0; }
+  .simform input[type=number] { width: 100px; }
+  .warn { color: #fab219; font-size: 0.9em; margin: 6px 0; }
+  .runstatus { margin: 10px 0 6px; display: flex; flex-direction: column; gap: 6px; }
+  .progress { height: 10px; background: #2a1a08; border: 1px solid #5a3c10; border-radius: 5px; overflow: hidden; }
+  .progress i { display: block; height: 100%; width: 0; background: #3987e5; transition: width 0.3s; }
+  .progress.done i { background: #0ca30c; }
+  .progress.failed i { background: #a02020; }
+  pre.log { max-height: 220px; overflow: auto; font-size: 0.8em; background: #120b04; padding: 8px; border-radius: 4px; color: #c8b890; }
+  .views > .view > .card + .card { margin-top: 14px; }
+  .report > * + * { margin-top: 14px; }
+  .barcol { width: 38%; min-width: 180px; }
+  .track { position: relative; height: 16px; background: #2a1a08; border-radius: 3px; }
+  .track .fill { position: absolute; left: 0; top: 3px; bottom: 3px; background: #3987e5; border-radius: 0 4px 4px 0; }
+  .track .ci { position: absolute; top: 7px; height: 2px; background: #e8d5a0; opacity: 0.85; }
+  .track .ci::before, .track .ci::after { content: ''; position: absolute; top: -4px; width: 2px; height: 10px; background: #e8d5a0; }
+  .track .ci::before { left: 0; } .track .ci::after { right: 0; }
+  .track .prev { position: absolute; top: 0; bottom: 0; width: 2px; background: #f0c040; }
+  .track .mid { position: absolute; left: 50%; top: -2px; bottom: -2px; border-left: 1px dashed #a08860; }
+  table.gen tr.strong td:first-child::after { content: ' ▲'; color: #3987e5; }
+  table.gen tr.weak td:first-child::after { content: ' ▼'; color: #e66767; }
+  table.units tr.general td { color: #a08860; }
+  table.matrix { border-collapse: separate; border-spacing: 2px; font-size: 0.85em; }
+  table.matrix th { color: #a89060; font-weight: normal; padding: 3px 6px; white-space: nowrap; text-align: right; }
+  table.matrix th.colh { height: 90px; vertical-align: bottom; text-align: left; padding: 0; }
+  table.matrix th.colh span { display: inline-block; writing-mode: vertical-rl; transform: rotate(180deg); padding: 4px 0; }
+  table.matrix td { width: 46px; height: 30px; text-align: center; color: #fff; text-shadow: 0 0 3px rgba(0,0,0,0.9); border-radius: 3px; font-variant-numeric: tabular-nums; cursor: default; }
+  table.matrix td:hover { outline: 2px solid #e8d5a0; }
+  .legend { display: flex; gap: 8px; align-items: center; margin: 8px 0; font-size: 0.85em; }
+  .legend i { display: inline-block; width: 180px; height: 10px; border-radius: 3px; }
+  .datachanges ul { margin-left: 18px; font-size: 0.9em; display: flex; flex-direction: column; gap: 2px; }
+  .tip { position: fixed; z-index: 1200; pointer-events: none; background: #2c1d0a; border: 1px solid #8b5e0a; border-radius: 5px; padding: 6px 9px; font-size: 0.85em; display: none; box-shadow: 0 4px 16px rgba(0,0,0,0.5); max-width: 360px; }
+  .tip b { color: #f0c040; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="login" class="card" hidden>
+    <h2>Équilibrage — connexion administrateur</h2>
+    <p class="muted">Cette page est réservée aux administrateurs.</p>
+    <div class="row" style="margin-top:10px"><button type="button" id="loginBtn" class="primary">Se connecter</button><a class="btn" href="/admin/">Administration</a></div>
+    <p class="err" id="loginErr"></p>
+  </div>
+
+  <div id="app" hidden>
+    <header>
+      <div class="row"><a href="/admin/" class="btn small">← Administration</a><h1>⚖ Équilibrage</h1><span class="version" id="version"></span></div>
+      <div class="row" id="editActions">
+        <button type="button" id="undoBtn" title="Annuler (Ctrl+Z)">↶ Annuler</button>
+        <button type="button" id="redoBtn" title="Rétablir (Ctrl+Maj+Z)">↷ Rétablir</button>
+        <button type="button" id="discardBtn" title="Revenir à la version enregistrée de cette table">Abandonner les modifications</button>
+      </div>
+      <button type="button" id="saveBtn" class="primary" title="Enregistrer toutes les tables modifiées (Ctrl+S)">Enregistrer</button>
+    </header>
+    <p class="muted" style="margin-bottom:10px">Les données enregistrées s'appliquent aux nouvelles parties sans redémarrer le serveur. Dans une partie en cours, les unités déjà créées gardent leurs statistiques ; les modificateurs de terrains, segments et postures sont lus à chaque action.</p>
+    <nav class="tabs" id="tabs"></nav>
+    <div class="layout">
+      <div class="views" id="views"></div>
+      <aside class="card" id="side"></aside>
+    </div>
+  </div>
+</div>
+<script type="module" src="/js/balance/main.js"></script>
+</body>
+</html>

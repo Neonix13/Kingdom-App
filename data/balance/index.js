@@ -143,10 +143,26 @@ function restore(file, opts = {}) {
   return { table: h.table, ...save(h.table, h.data, opts) };
 }
 
+// Server only: reloads a table when its file changes on disk outside the API (hand edit, git checkout, another process)
+let watching = false;
+function watch(log = console) {
+  if (watching) return;
+  watching = true;
+  for (const t of TABLES) {
+    fs.watchFile(filePath(t), { interval: 2000, persistent: false }, () => {
+      if (!live[t]) return;
+      let raw;
+      try { raw = fs.readFileSync(filePath(t), 'utf8'); } catch (e) { return; }
+      if (hash(raw) === versions[t]) return;
+      try { reload(t); log.log(`[balance] ${t}.json rechargé (modifié sur le disque).`); } catch (e) { log.error(`[balance] ${t}.json ignoré : ${e.message}`); }
+    });
+  }
+}
+
 function all() {
   const tables = {};
   for (const t of TABLES) tables[t] = table(t);
   return tables;
 }
 
-module.exports = { TABLES, SPEC, table, reload, version, globalVersion, save, listHistory, readHistory, restore, all, serialize, validateTable, idsOf };
+module.exports = { TABLES, SPEC, table, reload, watch, version, globalVersion, save, listHistory, readHistory, restore, all, serialize, validateTable, idsOf };

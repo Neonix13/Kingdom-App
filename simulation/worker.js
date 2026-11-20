@@ -19,6 +19,7 @@ for (const { generalId1, generalId2 } of matchups) {
       isDraw: true,
     });
   }
+  parentPort.postMessage({ type: 'progress', done: results.length });
 }
 
 parentPort.postMessage(results);

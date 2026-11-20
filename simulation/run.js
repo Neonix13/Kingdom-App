@@ -56,6 +56,18 @@ const startTime = Date.now();
 
 console.log(`Starting simulation...`);
 
+// When started by the admin UI (child_process.fork), progress and the report path are sent over IPC
+const workerProgress = new Array(threadCount).fill(0);
+let lastProgressSent = 0;
+if (process.send) process.on('disconnect', () => process.exit(1));
+function sendProgress(force) {
+  if (!process.send) return;
+  const now = Date.now();
+  if (!force && now - lastProgressSent < 250) return;
+  lastProgressSent = now;
+  process.send({ type: 'progress', done: workerProgress.reduce((a, b) => a + b, 0), total: totalGames });
+}
+
 const workers = chunks.map((chunk, i) => {
   return new Promise((resolve, reject) => {
     const worker = new Worker(path.join(__dirname, 'worker.js'), {
@@ -63,6 +75,11 @@ const workers = chunks.map((chunk, i) => {
     });
 
     worker.on('message', (results) => {
+      if (!Array.isArray(results)) {
+        workerProgress[i] = results.done;
+        sendProgress(false);
+        return;
+      }
       for (const result of results) {
         stats.recordGame(result);
         completedGames++;
@@ -90,11 +107,17 @@ Promise.all(workers)
     // Export report
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
     const reportPath = path.join(outputDir, `report_${timestamp}.json`);
-    stats.exportJSON(reportPath);
+    const balance = require('../data/balance');
+    stats.exportJSON(reportPath, {
+      params: { gamesPerMatchup, budget, threads: threadCount, initiative: !noInitiative },
+      balance: { version: balance.globalVersion(), tables: balance.all() },
+    });
     console.log(`Report saved to: ${reportPath}`);
+    if (process.send) { sendProgress(true); process.send({ type: 'done', reportPath }); }
 
     // Print summary
     stats.printSummary();
+    if (process.send) { process.removeAllListeners('disconnect'); process.disconnect(); }
   })
   .catch((err) => {
     console.error('Simulation failed:', err);
