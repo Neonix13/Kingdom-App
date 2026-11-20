@@ -1,6 +1,7 @@
 const express = require('express');
 const http = require('http');
 const path = require('path');
+const fs = require('fs');
 const crypto = require('crypto');
 const WebSocket = require('ws');
 const { createProtocol } = require('../game/protocol');
@@ -27,6 +28,10 @@ function createServer({ livereload = false, config = {}, log = console } = {}) {
   require('./editorRoutes').mountEditorRoutes(app);
   require('./balanceRoutes').mountBalanceRoutes(app);
   app.get('/join/:code', (req, res) => res.redirect(`/?join=${encodeURIComponent(String(req.params.code).toUpperCase().replace(/[^A-Z0-9]/g, ''))}`));
+  app.get('/audio/music/manifest.json', (req, res, next) => {
+    if (fs.existsSync(path.join(ROOT, 'public/audio/music/manifest.json'))) return next();
+    res.json({ format: 'kb-music-1', states: {} });
+  });
   app.use(express.static(path.join(ROOT, 'public')));
   app.use('/simulation/results', express.static(path.join(ROOT, 'simulation/results')));
 
