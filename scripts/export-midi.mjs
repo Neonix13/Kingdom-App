@@ -1,5 +1,6 @@
 // Exports the generative music (public/js/audio/music.js) as MIDI files, one per music state.
-// Usage: node scripts/export-midi.mjs [--out DIR] [--bars 32] [--seed 1234]
+// Usage: node scripts/export-midi.mjs [--out DIR] [--bars 32] [--seed 1234] [--minutes 20]
+// --minutes: one long take per state (battle also as a variable-intensity take); victory/defeat stay short cues.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
@@ -9,7 +10,8 @@ const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, arr) =>
   if (a.startsWith('--')) acc.push([a.slice(2), arr[i + 1]]);
   return acc;
 }, []));
-const OUT = resolve(args.out || join(homedir(), 'Downloads', 'Kingdom-MIDI'));
+const MINUTES = parseFloat(args.minutes) || 0;
+const OUT = resolve(args.out || join(homedir(), 'Downloads', MINUTES ? `Kingdom-MIDI-${MINUTES}min` : 'Kingdom-MIDI'));
 const BARS = Math.max(4, parseInt(args.bars, 10) || 32);
 const SEED = parseInt(args.seed, 10) || 1234;
 const PPQ = 480;
@@ -26,7 +28,28 @@ const TRACKS = {
   m_wood: { name: 'Bloc de bois', ch: 9, drum: 76, ref: 0.12 },
 };
 
-const PIECES = [
+function wander(seed) {
+  let x = seed >>> 0;
+  const rnd = () => ((x = (x * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const plateaus = [];
+  return (bar) => {
+    const i = Math.floor(bar / 16);
+    while (plateaus.length <= i) plateaus.push(plateaus.length === 0 ? 0.1 : Math.min(1, Math.max(0.05, plateaus[plateaus.length - 1] + (rnd() - 0.45) * 0.7)));
+    return plateaus[i];
+  };
+}
+
+const PIECES = MINUTES ? [
+  { file: '01-menu', state: 'menu', minutes: MINUTES },
+  { file: '02-calme', state: 'calm', minutes: MINUTES },
+  { file: '03-deploiement', state: 'deploy', minutes: MINUTES },
+  { file: '04-bataille-faible', state: 'battle', minutes: MINUTES, intensity: () => 0.2 },
+  { file: '05-bataille-moyenne', state: 'battle', minutes: MINUTES, intensity: () => 0.5 },
+  { file: '06-bataille-intense', state: 'battle', minutes: MINUTES, intensity: () => 0.9 },
+  { file: '07-bataille-variable', state: 'battle', minutes: MINUTES, intensity: wander(SEED) },
+  { file: '08-victoire', state: 'victory', bars: Math.max(8, Math.round(BARS * 0.75)) },
+  { file: '09-defaite', state: 'defeat', bars: Math.max(8, Math.round(BARS * 0.75)) },
+] : [
   { file: '01-menu', state: 'menu' },
   { file: '02-calme', state: 'calm' },
   { file: '03-deploiement', state: 'deploy' },
@@ -64,7 +87,7 @@ function record(piece) {
     }
   }
   const m = new Recorder(engine, SEED);
-  const n = piece.bars || BARS;
+  let n = piece.minutes ? Infinity : piece.bars || BARS;
   m.set(piece.state);
   if (piece.intensity) { m.intensity = piece.intensity(0, n); m.targetIntensity = m.intensity; }
   let t = 0;
@@ -72,6 +95,8 @@ function record(piece) {
     if (piece.intensity) m.targetIntensity = piece.intensity(bars.length, n);
     m.scheduleWindow(t, t + 0.05);
     t += 0.05;
+    const lb = bars[bars.length - 1];
+    if (piece.minutes && lb && lb.t + 4 * lb.beat - bars[0].t >= piece.minutes * 60) n = bars.length;
   }
   const end = bars[n - 1].t + 4 * bars[n - 1].beat;
   return { events: events.filter((e) => e.t < end), bars: bars.slice(0, n), end };
