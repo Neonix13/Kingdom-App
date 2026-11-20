@@ -149,3 +149,44 @@ test('combat hors de vue : un troisième joueur ne reçoit pas combat_result', a
   assert.equal(c.all('combat_result').length, 0);
   assert.equal(c.all('defense_request').length, 0);
 });
+
+test('combat vu d\'un seul côté : le troisième joueur ne reçoit que ce qu\'il voit (attaquant anonyme, sans détail)', async () => {
+  const h = createHarness();
+  const [a, b, c] = [h.client('a'), h.client('b'), h.client('c')];
+  await a.send('create_room', { playerName: 'Alice' });
+  await b.send('join_room', { roomCode: a.session.roomCode, playerName: 'Bob' });
+  await c.send('join_room', { roomCode: a.session.roomCode, playerName: 'Chloé' });
+  await a.send('set_map', { mapId: 'test-small' });
+  for (const [p, g] of [[a, 'ou_ki'], [b, 'mou_bu'], [c, 'ri_boku']]) await p.send('select_general', { generalId: g });
+  await a.send('start_game');
+  for (const p of [a, b, c]) await p.send('submit_army', { units: [{ typeId: 'soldats', count: 1 }] });
+  const front = { [a.session.playerId]: 1, [b.session.playerId]: 2, [c.session.playerId]: 7 };
+  for (const p of [a, b, c]) {
+    const ds = p.last('deployment_state');
+    const q = front[p.session.playerId];
+    await p.send('place_unit', { unitId: ds.units.find(u => !u.isGeneral).id, q, r: 3 });
+    const back = ds.startingZone.tiles.find(t => t.q !== q && t.r === 6);
+    await p.send('place_unit', { unitId: ds.units.find(u => u.isGeneral).id, q: back.q, r: back.r });
+    await p.send('deployment_ready');
+  }
+  const room = await h.store.get(a.session.roomCode);
+  for (const pl of room.players) for (const u of pl.units) u.visionRange = 3;
+  const cs = room.getPlayer(c.session.playerId).units.find(u => !u.isGeneral);
+  cs.q = 5; cs.r = 3;
+  room._rebuildUnitMap();
+  room.turnOrder = [a.session.playerId, b.session.playerId, c.session.playerId];
+  room.currentTurnIndex = 0;
+  const vis = room.getVisibleHexes(c.session.playerId);
+  assert.ok(vis.has('2,3') && !vis.has('1,3'));
+  await a.send('get_state');
+  const gs = a.last('game_state');
+  c.clear();
+  await a.send('attack_unit', { attackerId: gs.myUnits.find(u => !u.isGeneral).id, targetId: gs.units.find(u => !u.isMine && !u.isGeneral).id });
+  await b.send('defend_choice', { attackId: b.last('defense_request').attackId, choice: 'rien' });
+  const log = c.last('combat_result').combatLog;
+  assert.equal(log.attackerId, null);
+  assert.equal(log.attackerName, 'Unité inconnue');
+  assert.equal(log.breakdown, undefined);
+  assert.ok(log.targetId);
+  assert.ok(a.last('combat_result').combatLog.breakdown, 'l\'attaquant a le détail');
+});

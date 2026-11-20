@@ -8,7 +8,7 @@ const { getTurnController } = require('./turns');
 const rules = require('./rules');
 const replay = require('./replay');
 
-const { STANCES, RULES } = rules;
+const { RULES } = rules;
 
 const MAP_RADIUS = 70;
 // Derived from the map or rebuilt on load: never serialized
@@ -799,7 +799,7 @@ class GameRoom {
   }
 
   _getStanceMods(unit) {
-    return STANCES[unit.stance] || STANCES['marche'];
+    return rules.getStance(unit.stance) || rules.getStance('marche');
   }
 
   _initUnitSpeedForTurn(unit) {
@@ -890,7 +890,7 @@ class GameRoom {
   }
 
   changeStance(playerId, unitId, stanceId) {
-    if (!Object.prototype.hasOwnProperty.call(STANCES, stanceId)) return { error: 'Posture invalide.' };
+    if (!rules.hasStance(stanceId)) return { error: 'Posture invalide.' };
     const player = this.getPlayer(playerId);
     if (!player) return { error: 'Joueur introuvable.' };
     const unit = player.units.find(u => u.id === unitId);
