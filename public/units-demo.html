@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kingdom Battleground — Units demo</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { overflow: hidden; background: #0b0d10; font-family: 'Segoe UI', system-ui, sans-serif; }
+  #canvas3d { display: block; width: 100vw; height: 100vh; outline: none; }
+  #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; color: #d9bf78; background: #0b0b0d; z-index: 100; letter-spacing: 4px; transition: opacity 0.8s; }
+  #loading.hidden { opacity: 0; pointer-events: none; }
+  #hud {
+    position: fixed; top: 16px; left: 16px; color: #e3cf96; font-size: 12px; line-height: 1.65;
+    background: rgba(12,12,16,0.6); padding: 12px 16px; border-radius: 10px; border: 1px solid rgba(217,191,120,0.18);
+    backdrop-filter: blur(6px); user-select: none; max-width: 340px;
+  }
+  #hud .title { font-size: 13px; letter-spacing: 3px; font-weight: 600; margin-bottom: 4px; }
+  #hud .stats, #hud .sel { color: #bfb08a; font-variant-numeric: tabular-nums; }
+  #hud .keys { margin-top: 6px; color: #8e8670; font-size: 11px; }
+  #hud .keys b { color: #d9bf78; }
+  #plates { position: fixed; inset: 0; pointer-events: none; }
+  .plate { position: absolute; transform: translate(-50%, -100%); width: 46px; height: 5px; background: rgba(0,0,0,0.55); border-radius: 3px; overflow: hidden; border: 1px solid rgba(0,0,0,0.6); }
+  .plate i { display: block; height: 100%; }
+</style>
+</head>
+<body>
+<div id="loading">LOADING…</div>
+<div id="hud">
+  <div class="title">KINGDOM · UNITS DEMO</div>
+  <div class="stats" id="stats"></div>
+  <div class="sel" id="sel"></div>
+  <div class="keys">
+    Click: select · <b>1/2/3</b> focus army<br>
+    <b>M</b> move 3 hexes · <b>A</b> melee · <b>F</b> volley · <b>D</b> damage<br>
+    <b>K</b> destroy · <b>T</b> rout · <b>V</b> moved (desat) · <b>E</b> turn<br>
+    <b>Space</b> march in place · <b>B</b> health plates<br>
+    <b>S</b> stress 150 units · <b>L</b> toggle layer
+  </div>
+</div>
+<div id="plates"></div>
+<canvas id="canvas3d" tabindex="0"></canvas>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import { createWorld } from './js/map3d/world.js';
+import { createUnitLayer } from './js/map3d/units3d.js';
+
+const canvas = document.getElementById('canvas3d');
+const loading = document.getElementById('loading');
+const world = await createWorld({
+  canvas, container: document.body, intro: false,
+  onProgress: (pct, text) => { loading.textContent = `${text || 'LOADING'} ${Math.round(pct)}%`; },
+});
+
+const PLAYERS = {
+  qin: { color: '#c8321e', emblem: '秦', mine: true },
+  zhao: { color: '#2a62c9', emblem: '趙' },
+  wei: { color: '#7d3cc0', emblem: '魏' },
+};
+const layer = createUnitLayer(world, {
+  getPlayerColor: (id) => PLAYERS[id]?.color,
+  getPlayerEmblem: (id) => PLAYERS[id]?.emblem,
+});
+
+const HEX_DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
+const MAXV = { pietaille: 300, soldats: 200, phalange: 200, lancier: 200, espion: 240, assassin: 200, cavalier_leger: 200, cavalier_lourd: 240, archer: 160, archer_elite: 180, batisseurs: 160, char: 260, general: 300 };
+const CAT = { pietaille: 'Infanterie', soldats: 'Infanterie', phalange: 'Infanterie', lancier: 'Infanterie', espion: 'Infanterie', assassin: 'Infanterie', cavalier_leger: 'Chevaux', cavalier_lourd: 'Chevaux', archer: 'Tireurs', archer_elite: 'Tireurs', batisseurs: 'Chars', char: 'Chars', general: 'Général' };
+const ALL_TYPES = ['general', 'soldats', 'phalange', 'lancier', 'archer', 'archer_elite', 'cavalier_lourd', 'cavalier_leger', 'char', 'pietaille', 'batisseurs', 'espion', 'assassin'];
+
+const key = (q, r) => `${q},${r}`;
+const isLand = (q, r) => {
+  const h = world.allHexes.get(key(q, r));
+  return h && !['river', 'building', 'bridge'].includes(h.terrain) && !(world.isWaterHex && world.isWaterHex(h));
+};
+const occupied = new Map();
+let units = [];
+let nextId = 1;
+
+function facingToward(q, r, tq, tr) {
+  const a = world.hexToWorld(q, r), b = world.hexToWorld(tq, tr);
+  const ang = Math.atan2(b.x - a.x, b.z - a.z);
+  let best = 0, bd = Infinity;
+  HEX_DIRS.forEach(([dq, dr], i) => {
+    const o = world.hexToWorld(0, 0), p = world.hexToWorld(dq, dr);
+    let d = Math.abs(Math.atan2(p.x - o.x, p.z - o.z) - ang);
+    d = Math.min(d, Math.PI * 2 - d);
+    if (d < bd) { bd = d; best = i; }
+  });
+  return best;
+}
+function freeHexesAround(cq, cr, n) {
+  const out = [], seen = new Set([key(cq, cr)]), queue = [[cq, cr]];
+  while (queue.length && out.length < n) {
+    const [q, r] = queue.shift();
+    if (isLand(q, r) && !occupied.has(key(q, r))) out.push([q, r]);
+    for (const [dq, dr] of HEX_DIRS) {
+      const k = key(q + dq, r + dr);
+      if (!seen.has(k) && world.allHexes.has(k)) { seen.add(k); queue.push([q + dq, r + dr]); }
+    }
+  }
+  return out;
+}
+function makeUnit(playerId, typeId, q, r, facing, vit = 1) {
+  const general = typeId === 'general';
+  const mv = MAXV[typeId];
+  const u = {
+    id: 'u' + nextId++, playerId, typeId, name: typeId, category: CAT[typeId], isGeneral: general, generalId: null,
+    q, r, facing, vitality: Math.max(1, Math.round(mv * vit)), maxVitality: mv, morale: 100, maxMorale: 100,
+    isFleeing: false, hasMoved: false, isMine: !!PLAYERS[playerId]?.mine, stance: null,
+  };
+  occupied.set(key(q, r), u);
+  return u;
+}
+
+const ARMIES = [
+  { player: 'qin', center: [37, 6], enemy: [43, 5], types: ALL_TYPES },
+  { player: 'zhao', center: [43, 5], enemy: [37, 6], types: ALL_TYPES },
+  { player: 'wei', center: [37, 11], enemy: [40, 7], types: ['general', 'lancier', 'phalange', 'archer', 'cavalier_leger', 'char', 'pietaille', 'soldats'] },
+];
+const rnd = (() => { let s = 12345; return () => ((s = (s * 16807) % 2147483647) / 2147483647); })();
+for (const army of ARMIES) {
+  const spots = freeHexesAround(army.center[0], army.center[1], army.types.length);
+  army.types.forEach((t, i) => {
+    const [q, r] = spots[i];
+    const vit = i === 0 ? 1 : 0.35 + rnd() * 0.65;
+    units.push(makeUnit(army.player, t, q, r, facingToward(q, r, army.enemy[0], army.enemy[1]), vit));
+  });
+}
+units.find((u) => u.playerId === 'zhao' && u.typeId === 'pietaille').isFleeing = true;
+units.filter((u) => u.playerId === 'qin' && ['soldats', 'archer'].includes(u.typeId)).forEach((u) => { u.hasMoved = true; });
+
+const sync = () => layer.sync(units);
+const t0 = performance.now();
+sync();
+const firstSyncMs = performance.now() - t0;
+
+{
+  const c = world.hexToWorld(40, 6), T = new world.THREE.Vector3(c.x, world.groundHeight(c.x, c.z), c.z);
+  world.controls.target.copy(T);
+  world.camera.position.set(T.x + 5, T.y + 12, T.z + 8);
+  world.controls.update();
+}
+world.start();
+setTimeout(() => loading.classList.add('hidden'), 150);
+
+// --- selection / hover ---
+let selected = units.find((u) => u.playerId === 'qin' && u.typeId === 'soldats');
+layer.setSelected(selected.id);
+const unitAt = (h) => (h ? occupied.get(key(h.q, h.r)) : null);
+let downAt = null;
+canvas.addEventListener('pointerdown', (e) => { downAt = [e.clientX, e.clientY]; });
+canvas.addEventListener('pointerup', (e) => {
+  if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 5) return;
+  const u = unitAt(world.pickHex(e.clientX, e.clientY));
+  selected = u || null;
+  layer.setSelected(u ? u.id : null);
+});
+let hoverPending = null;
+canvas.addEventListener('pointermove', (e) => { hoverPending = [e.clientX, e.clientY]; });
+world.frameHooks.push(() => {
+  if (!hoverPending) return;
+  const u = unitAt(world.pickHex(hoverPending[0], hoverPending[1]));
+  hoverPending = null;
+  layer.setHovered(u ? u.id : null);
+});
+
+// --- actions ---
+const enemiesOf = (u) => units.filter((o) => o.playerId !== u.playerId);
+function nearestEnemy(u) {
+  const a = world.hexToWorld(u.q, u.r);
+  let best = null, bd = Infinity;
+  for (const o of enemiesOf(u)) {
+    const b = world.hexToWorld(o.q, o.r), d = Math.hypot(a.x - b.x, a.z - b.z);
+    if (d < bd) { bd = d; best = o; }
+  }
+  return best;
+}
+function damage(u, frac, delay = 0) {
+  layer.playHit(u.id, { delay });
+  setTimeout(() => {
+    u.vitality = Math.max(0, u.vitality - Math.round(u.maxVitality * frac));
+    if (u.vitality <= 0) { units = units.filter((o) => o !== u); occupied.delete(key(u.q, u.r)); if (selected === u) selected = null; }
+    sync();
+  }, delay * 1000);
+}
+const moving = new Set();
+function moveUnit(u, steps = 3) {
+  if (!u || moving.has(u.id)) return;
+  const path = [[u.q, u.r]];
+  let [q, r] = [u.q, u.r];
+  let dir = u.facing;
+  for (let s = 0; s < steps; s++) {
+    let ok = false;
+    for (const turn of [0, 1, 5, 2, 4]) {
+      const d = (dir + turn) % 6;
+      const nq = q + HEX_DIRS[d][0], nr = r + HEX_DIRS[d][1];
+      if (isLand(nq, nr) && !occupied.has(key(nq, nr))) { q = nq; r = nr; dir = d; ok = true; break; }
+    }
+    if (!ok) break;
+    path.push([q, r]);
+  }
+  if (path.length < 2) return;
+  moving.add(u.id);
+  layer.setMoving(u.id, true);
+  const pts = path.map(([pq, pr]) => world.hexToWorld(pq, pr));
+  const speed = u.category === 'Chevaux' || u.isGeneral || u.typeId === 'char' ? 2.2 : 1.3;
+  const segLen = Math.hypot(pts[1].x - pts[0].x, pts[1].z - pts[0].z);
+  const total = (segLen * (pts.length - 1)) / speed;
+  const start = performance.now();
+  const hook = () => {
+    const e = Math.min(1, (performance.now() - start) / 1000 / total);
+    const f = e * (pts.length - 1), i = Math.min(pts.length - 2, Math.floor(f)), k = f - i;
+    const a = pts[i], b = pts[i + 1];
+    layer.setDisplayPosition(u.id, a.x + (b.x - a.x) * k, a.z + (b.z - a.z) * k, Math.atan2(b.x - a.x, b.z - a.z));
+    if (e >= 1) {
+      world.frameHooks.splice(world.frameHooks.indexOf(hook), 1);
+      occupied.delete(key(u.q, u.r));
+      u.q = q; u.r = r; u.facing = dir; u.hasMoved = true;
+      occupied.set(key(q, r), u);
+      sync();
+      layer.clearDisplayPosition(u.id);
+      layer.setMoving(u.id, false);
+      moving.delete(u.id);
+    }
+  };
+  world.frameHooks.push(hook);
+}
+
+const fallback = () => selected || units.find((u) => u.playerId === 'qin' && u.typeId === 'lancier');
+const armyCenters = ARMIES.map((a) => a.center);
+let stress = null;
+
+window.addEventListener('keydown', (e) => {
+  const k = e.key.toLowerCase();
+  const u = fallback();
+  if (k >= '1' && k <= '3') { const c = armyCenters[+k - 1]; world.focusHex(c[0], c[1]); return; }
+  if (k === 'm') moveUnit(u);
+  else if (k === 'a' && u) {
+    const tgt = nearestEnemy(u);
+    if (!tgt) return;
+    const delay = layer.playAttack(u.id, tgt.id, { ranged: false });
+    damage(tgt, 0.18, delay);
+  } else if (k === 'f') {
+    const shooter = u && ['Tireurs', 'Chevaux', 'Chars'].includes(u.category) ? u : units.find((o) => o.playerId === (u?.playerId || 'qin') && o.typeId === 'archer');
+    const tgt = shooter && nearestEnemy(shooter);
+    if (!tgt) return;
+    const delay = layer.playAttack(shooter.id, tgt.id, { ranged: true });
+    damage(tgt, 0.15, delay);
+  } else if (k === 'd' && u) damage(u, 0.2);
+  else if (k === 'k' && u) damage(u, 1.1);
+  else if (k === 't' && u) { u.isFleeing = !u.isFleeing; sync(); }
+  else if (k === 'v' && u) { u.hasMoved = !u.hasMoved; sync(); }
+  else if (k === 'e' && u) { u.facing = (u.facing + 1) % 6; sync(); }
+  else if (k === ' ' && u) { e.preventDefault(); u._march = !u._march; layer.setMoving(u.id, u._march); }
+  else if (k === 'l') layer.group.visible = !layer.group.visible;
+  else if (k === 'b') plates.style.display = plates.style.display === 'none' ? '' : 'none';
+  else if (k === 's') toggleStress();
+});
+
+function toggleStress() {
+  if (stress) {
+    for (const s of stress) occupied.delete(key(s.q, s.r));
+    units = units.filter((o) => !stress.includes(o));
+    stress = null;
+  } else {
+    stress = [];
+    const spots = freeHexesAround(40, 8, 400).filter(() => rnd() < 0.6).slice(0, 150 - units.length);
+    const players = Object.keys(PLAYERS);
+    spots.forEach(([q, r], i) => stress.push(makeUnit(players[i % 3], ALL_TYPES[i % ALL_TYPES.length], q, r, Math.floor(rnd() * 6), 0.4 + rnd() * 0.6)));
+    units = units.concat(stress);
+  }
+  const t = performance.now();
+  sync();
+  console.log(`[units-demo] sync ${units.length} units: ${(performance.now() - t).toFixed(2)} ms`);
+}
+
+// --- HUD + health plates ---
+const plates = document.getElementById('plates');
+const plateEls = new Map();
+const anchor = new world.THREE.Vector3();
+world.frameHooks.push(() => {
+  if (plates.style.display === 'none') return;
+  const seen = new Set();
+  for (const u of units) {
+    if (!layer.getAnchor(u.id, anchor)) continue;
+    const s = world.projectToScreen(anchor);
+    let el = plateEls.get(u.id);
+    if (!el) { el = document.createElement('div'); el.className = 'plate'; el.appendChild(document.createElement('i')); plates.appendChild(el); plateEls.set(u.id, el); }
+    seen.add(u.id);
+    el.style.display = s.visible ? '' : 'none';
+    el.style.left = s.x + 'px'; el.style.top = s.y + 'px';
+    el.firstChild.style.width = (100 * u.vitality / u.maxVitality) + '%';
+    el.firstChild.style.background = PLAYERS[u.playerId].color;
+  }
+  for (const [id, el] of plateEls) if (!seen.has(id)) { el.remove(); plateEls.delete(id); }
+});
+plates.style.display = 'none';
+
+const statsEl = document.getElementById('stats'), selEl = document.getElementById('sel');
+setInterval(() => {
+  const s = layer.stats(), g = world.governor;
+  const inst = Object.entries(s.instances).map(([k, v]) => `${k} ${v}`).join(' · ');
+  statsEl.innerHTML = `${s.formations} units · ${s.total} instances<br>${inst}<br>`
+    + `${g.avgMs > 0 ? (1000 / g.avgMs).toFixed(0) + ' fps · ' : ''}${world.LEVELS[g.level].name} · first sync ${firstSyncMs.toFixed(1)} ms`;
+  selEl.textContent = selected ? `▶ ${selected.playerId} ${selected.typeId} ${selected.vitality}/${selected.maxVitality}${selected.isFleeing ? ' (routed)' : ''}` : '';
+}, 400);
+
+window.addEventListener('resize', () => world.resize());
+window.__map3d = world;
+window.__units = { world, layer, get units() { return units; }, sync, moveUnit, damage, toggleStress, PLAYERS };
+</script>
+</body>
+</html>

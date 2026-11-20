@@ -9,6 +9,11 @@ function getTerrainData() {
     try {
       _terrainData = JSON.parse(fs.readFileSync(path.join(__dirname, '../public/data/terrain.json'), 'utf8'));
     } catch(e) { _terrainData = {}; }
+    // terrain.json only lists non-plain hexes: every hex of the map (height.json) defaults to plain
+    try {
+      const heights = JSON.parse(fs.readFileSync(path.join(__dirname, '../public/data/height.json'), 'utf8'));
+      for (const key of Object.keys(heights)) if (!_terrainData[key]) _terrainData[key] = 'plain';
+    } catch(e) {}
   }
   return _terrainData;
 }

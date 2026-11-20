@@ -57,7 +57,14 @@ export async function mountGameView(bridge, { container }) {
   let units3d = null;
   try {
     const mod = await import('./units3d.js');
-    units3d = mod.createUnitLayer(world, { getPlayerColor: (pid) => bridge.getPlayerColor(pid) });
+    const KINGDOM_OF = { ou_ki: '秦', mou_bu: '秦', ou_sen: '秦', kan_ki: '秦', ri_boku: '趙', kei_sha: '趙', shi_ba_shou: '趙', ren_pa: '趙', go_kei: '魏', go_hou_mei: '魏', gai_mou: '魏' };
+    units3d = mod.createUnitLayer(world, {
+      getPlayerColor: (pid) => bridge.getPlayerColor(pid),
+      getPlayerEmblem: (pid) => {
+        const p = bridge.state?.players?.find((x) => x.id === pid);
+        return (p && KINGDOM_OF[p.generalId]) || undefined;
+      },
+    });
   } catch (e) {
     console.warn('[3D] unit layer unavailable', e);
   }
@@ -242,7 +249,7 @@ export async function mountGameView(bridge, { container }) {
       }
     }
     const camDist = world.camera.position.distanceTo(world.controls.target);
-    const showPlates = camDist < 70;
+    const showPlates = camDist < 55;
     plates.style.display = showPlates ? '' : 'none';
     if (showPlates) {
       for (const el of plateEls.values()) {
@@ -268,8 +275,8 @@ export async function mountGameView(bridge, { container }) {
       if (event === 'combat_result') {
         const log = data.combatLog || data;
         if (units3d && log && log.attackerId != null && log.targetId != null) {
-          units3d.playAttack(log.attackerId, log.targetId, { ranged: !!log.ranged });
-          setTimeout(() => units3d.playHit(log.targetId), log.ranged ? 900 : 450);
+          const impact = units3d.playAttack(log.attackerId, log.targetId, { ranged: !!log.ranged });
+          units3d.playHit(log.targetId, { delay: typeof impact === 'number' ? impact : 0.5 });
         }
       } else if (event === 'ping') {
         world.layers.addPing(data.q, data.r, data.color || '#ffd700');
