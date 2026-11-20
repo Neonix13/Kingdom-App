@@ -54,6 +54,9 @@ const SPEC = {
       int('cost', 'Coût', 50, 10000, { hint: 'or ; minimum 50 (le constructeur d\'armée de l\'IA boucle sur le coût)' }),
       str('bonus', 'Bonus (texte)', 0, 400, { multiline: true }),
       str('bonusType', 'Type de bonus', 1, 40, { pattern: ID_PATTERN, optional: true }),
+      int('bonusValue', 'Valeur du bonus', 0, 100, { optional: true, group: 'Capacité', hint: 'moral/tour (piétaille), % de vitalité (soldats), +attaque/défense (lanciers), +vitesse (cav. légère), +puissance/intimidation (cav. lourde)' }),
+      int('bonusRange', 'Portée du bonus', 0, 20, { optional: true, group: 'Capacité', hint: 'en cases : distance au général (piétaille), aucun ennemi à moins de (assassin)' }),
+      int('bonusCost', 'Coût de la capacité', 0, 12, { optional: true, group: 'Capacité', hint: 'vitesse dépensée (espion, assassin, bâtisseurs)' }),
     ],
     rules: [
       { type: 'lte', a: 'vitality', b: 'maxVitality', message: 'La vitalité ne peut pas dépasser la vitalité max.' },

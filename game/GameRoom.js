@@ -103,10 +103,112 @@ class GameRoom {
     this.segmentData = map.segments || {};
     this.heightData = map.height || {};
     this.hexMap = buildHexMap(map);
+    this._applyMapEdits();
     const keys = Object.keys(this.hexMap);
     let sq = 0, sr = 0;
     for (const k of keys) { sq += this.hexMap[k].q; sr += this.hexMap[k].r; }
     this.mapCenter = keys.length ? { q: Math.round(sq / keys.length), r: Math.round(sr / keys.length) } : { q: 0, r: 0 };
+  }
+
+  // Map changes made during the battle (espions, bâtisseurs), persisted and re-applied over the shared map
+  _applyMapEdits() {
+    const ed = this.mapEdits;
+    if (!ed || (!Object.keys(ed.seg || {}).length && !Object.keys(ed.ter || {}).length)) return;
+    this.segmentData = { ...this.segmentData };
+    this.terrainData = { ...this.terrainData };
+    for (const [k, t] of Object.entries(ed.seg || {})) {
+      if (t) this.segmentData[k] = t; else delete this.segmentData[k];
+    }
+    for (const [k, t] of Object.entries(ed.ter || {})) {
+      this.terrainData[k] = t;
+      if (this.hexMap[k]) this.hexMap[k] = { ...this.hexMap[k], terrain: t };
+    }
+  }
+
+  _editMap(kind, key, value) {
+    this.mapEdits = this.mapEdits || { seg: {}, ter: {} };
+    this.mapEdits[kind][key] = value;
+    this._applyMapEdits();
+  }
+
+  ability(unit) {
+    return rules.ability(unit, UNITS);
+  }
+
+  // Shared checks of the unit actions (sabotage, build, vanish): returns { unit, ab } or { error }
+  _abilityUnit(playerId, unitId, type) {
+    if (this.phase !== 'battle') return { error: 'Action possible seulement pendant la bataille.' };
+    const unit = this.getPlayer(playerId)?.units.find(u => u.id === unitId);
+    if (!unit || unit.q === null) return { error: 'Unité introuvable.' };
+    const ab = this.ability(unit);
+    if (!ab || ab.type !== type) return { error: 'Cette unité n\'a pas cette capacité.' };
+    if (unit.isFleeing) return { error: 'Unité en fuite.' };
+    if (unit.speedRemaining < ab.cost) return { error: `Il faut ${ab.cost} de vitesse.` };
+    return { unit, ab };
+  }
+
+  _neighbour(unit, q, r) {
+    if (!Number.isInteger(q) || !Number.isInteger(r) || !this.hexMap[hexKey(q, r)]) return false;
+    return hexDistance(unit.q, unit.r, q, r) === 1;
+  }
+
+  // Espion: destroys the infrastructure on the edge toward (q, r), or the bridge hex (q, r) if it is empty
+  sabotage(playerId, unitId, q, r) {
+    const c = this._abilityUnit(playerId, unitId, 'sabotage');
+    if (c.error) return c;
+    const { unit, ab } = c;
+    if (!this._neighbour(unit, q, r)) return { error: 'Choisissez une case voisine.' };
+    const ek = segmentEdgeKey(unit.q, unit.r, q, r), hk = hexKey(q, r);
+    const opt = rules.sabotageOption(this.segmentData[ek] || null, this.terrainData[hk]);
+    if (!opt) return { error: 'Rien à saboter ici.' };
+    if (opt.target === 'hex' && this.unitMap[hk]) return { error: 'Le pont est occupé.' };
+    const before = opt.target === 'edge' ? this.segmentData[ek] : this.terrainData[hk];
+    if (opt.target === 'edge') this._editMap('seg', ek, opt.to); else this._editMap('ter', hk, opt.to);
+    unit.speedRemaining = Math.max(0, rules.snap(unit.speedRemaining - ab.cost));
+    const change = { kind: 'sabotage', unitId: unit.id, playerId, target: opt.target, q1: unit.q, r1: unit.r, q, r, from: before, to: opt.to };
+    this._record('map_edit', change);
+    this.emitEvent({ event: 'map_edit', ...change });
+    return { ok: true, ...change };
+  }
+
+  // Bâtisseurs: builds on the edge toward (q, r) (barrière, chevaux de frise, échelle on a cliff, pont on a river)
+  // or works the hex (q, r) (pont on a river hex, burns a forest)
+  build(playerId, unitId, q, r, kind) {
+    const c = this._abilityUnit(playerId, unitId, 'build');
+    if (c.error) return c;
+    const { unit, ab } = c;
+    if (!this._neighbour(unit, q, r)) return { error: 'Choisissez une case voisine.' };
+    const ek = segmentEdgeKey(unit.q, unit.r, q, r), hk = hexKey(q, r);
+    const options = rules.buildOptions(this.segmentData[ek] || null, this.terrainData[hk]);
+    const opt = options.find(o => o.id === kind);
+    if (!opt) return { error: 'Construction impossible ici.' };
+    const def = RULES.abilities.build_kinds[kind];
+    if (opt.target === 'hex' && kind === 'pont' && this.unitMap[hk]) return { error: 'Case occupée.' };
+    const before = opt.target === 'edge' ? (this.segmentData[ek] || null) : this.terrainData[hk];
+    const to = opt.target === 'edge' ? def.edgeTo : def.terrainTo;
+    if (opt.target === 'edge') this._editMap('seg', ek, to); else this._editMap('ter', hk, to);
+    unit.speedRemaining = Math.max(0, rules.snap(unit.speedRemaining - ab.cost));
+    const change = { kind, unitId: unit.id, playerId, target: opt.target, q1: unit.q, r1: unit.r, q, r, from: before, to };
+    this._record('map_edit', change);
+    this.emitEvent({ event: 'map_edit', ...change });
+    return { ok: true, ...change };
+  }
+
+  // Assassin: disappears for the rest of the day when no enemy is within its ability range
+  vanish(playerId, unitId) {
+    const c = this._abilityUnit(playerId, unitId, 'ambush');
+    if (c.error) return c;
+    const { unit, ab } = c;
+    if (unit.vanishedDay === this.dayNumber()) return { error: 'Déjà disparu pour la journée.' };
+    for (const p of this.players) {
+      if (p.id === playerId) continue;
+      for (const e of p.units) if (e.q !== null && hexDistance(e.q, e.r, unit.q, unit.r) <= ab.range) return { error: `Un ennemi est à moins de ${ab.range} cases.` };
+    }
+    unit.vanishedDay = this.dayNumber();
+    unit.revealedUntilRound = null;
+    unit.speedRemaining = Math.max(0, rules.snap(unit.speedRemaining - ab.cost));
+    this._record('vanish', { u: unit.id });
+    return { ok: true, unitId: unit.id };
   }
 
   setMap(mapId) {
@@ -279,6 +381,10 @@ class GameRoom {
       buffs: [],
       category: data.category,
       bonus: data.bonus || null,
+      bonusType: data.bonusType || null,
+      bonusValue: data.bonusValue ?? null,
+      bonusRange: data.bonusRange ?? null,
+      bonusCost: data.bonusCost ?? null,
       stance: 'marche',
       speedRemaining: 0,
       isFleeing: false,
@@ -611,7 +717,7 @@ class GameRoom {
 
   // Hidden from this viewer at (q, r)? Cover terrain, not revealed, no viewer unit adjacent / spy within range
   isConcealedFrom(viewerId, unit, q = unit.q, r = unit.r) {
-    if (!this._inCover(q, r) || this._isRevealed(unit)) return false;
+    if ((!this._inCover(q, r) && !this._vanished(unit)) || this._isRevealed(unit)) return false;
     if (this.activeEffects.some(e => e.type === 'reveal_hidden' && e.targetPlayerId === viewerId)) return false;
     const viewer = this.getPlayer(viewerId);
     if (!viewer) return true;
@@ -635,6 +741,20 @@ class GameRoom {
 
   _reveal(unit, rounds = RULES.concealment.revealRounds) {
     unit.revealedUntilRound = Math.max(unit.revealedUntilRound || 0, this.turn + rounds);
+    unit.vanishedDay = null;
+  }
+
+  // Assassin that used its ability today (hidden anywhere, like in a forest)
+  _vanished(unit) {
+    return unit.vanishedDay != null && unit.vanishedDay === this.dayNumber();
+  }
+
+  _enemyAdjacent(unit) {
+    for (const p of this.players) {
+      if (p.id === unit.playerId) continue;
+      for (const e of p.units) if (e.q !== null && hexDistance(e.q, e.r, unit.q, unit.r) === 1) return true;
+    }
+    return false;
   }
 
   findUnit(unitId) {
@@ -675,6 +795,7 @@ class GameRoom {
       objectives: this.objectives,
       scores: this.scores,
       movementRules: this.moveTable(),
+      mapEdits: this.mapEdits || null,
       recap: this.phase === 'ended' ? this.getRecap() : null,
     };
   }
@@ -717,7 +838,7 @@ class GameRoom {
     // Build visible units list
     const visibleUnits = [];
     const enemies = this.players.filter(p => p.id !== playerId && !p.isEliminated);
-    const concealedOf = (u) => u.q !== null && this._inCover(u.q, u.r) && !this._isRevealed(u) && enemies.every(e => this.isConcealedFrom(e.id, u));
+    const concealedOf = (u) => u.q !== null && (this._inCover(u.q, u.r) || this._vanished(u)) && !this._isRevealed(u) && enemies.every(e => this.isConcealedFrom(e.id, u));
     const myUnits = player.units.map(u => ({ ...u, concealed: concealedOf(u) }));
     for (const p of this.players) {
       for (const u of p.units) {
@@ -758,18 +879,26 @@ class GameRoom {
       const occ = this.unitMap[k];
       return !!occ && this.canSee(playerId, occ, occ.q, occ.r, vis);
     };
-    const found = findPathCost(this.hexMap, this.unitMap, unit.q, unit.r, targetQ, targetR, unit.speedRemaining, unit, this.segmentData, blocked, this.moveTable(), rules.hasFullSpeed(unit));
+    // Chariots drive through the units they can see, but never stop on one
+    const ab = this.ability(unit);
+    const drive = !!ab && ab.type === 'trample';
+    if (drive && blocked(hexKey(targetQ, targetR))) return { error: 'Case occupée.' };
+    const found = findPathCost(this.hexMap, this.unitMap, unit.q, unit.r, targetQ, targetR, unit.speedRemaining, unit, this.segmentData, blocked, this.moveTable(), rules.hasFullSpeed(unit), drive ? blocked : null);
     if (found === null) return { error: 'Chemin inaccessible.' };
 
     const fromQ = unit.q, fromR = unit.r;
     let path = found.path;
     let ambush = null;
-    const stop = path.findIndex(([q, r]) => this.unitMap[hexKey(q, r)]);
+    const stop = path.findIndex(([q, r]) => {
+      const occ = this.unitMap[hexKey(q, r)];
+      return !!occ && !(drive && blocked(hexKey(q, r)));
+    });
     if (stop !== -1) {
       const occ = this.unitMap[hexKey(path[stop][0], path[stop][1])];
       ambush = { byUnitId: occ.id, q: occ.q, r: occ.r, playerId: occ.playerId };
       path = path.slice(0, stop);
     }
+    while (drive && path.length && this.unitMap[hexKey(path[path.length - 1][0], path[path.length - 1][1])]) path.pop();
     const moveCost = path.length ? this._pathCost(unit, fromQ, fromR, path) : 0;
 
     delete this.unitMap[hexKey(unit.q, unit.r)];
@@ -839,6 +968,8 @@ class GameRoom {
     // at least 1: a slow unit resting or fighting in a forest must still be able to leave its stance
     let speed = Math.max(unit.speed > 0 ? 1 : 0, unit.speed + (stance.vitesse || 0) + terrain.vitesse);
     if (this.isNight() && speed > 0) speed = Math.max(1, speed - RULES.night.speedMalus);
+    const ab = this.ability(unit);
+    if (ab && ab.type === 'speed_free' && !this._enemyAdjacent(unit)) speed += ab.value;
     unit.speedRemaining = unit.turnSpeed = speed;
   }
 
@@ -853,6 +984,11 @@ class GameRoom {
     if (ar !== 0) unit.armor = Math.max(0, Math.min(unit.maxArmor || unit.armor, unit.armor + ar));
     if (mr !== 0 && !unit.isGeneral) unit.morale = Math.max(0, Math.min(unit.maxMorale, unit.morale + mr));
     if (vr !== 0) unit.vitality = Math.max(0, Math.min(unit.maxVitality, unit.vitality + vr));
+    const ab = this.ability(unit);
+    if (ab && ab.type === 'moral_near_general' && !unit.isFleeing) {
+      const g = this.getPlayer(unit.playerId)?.generalUnit;
+      if (g && g.q !== null && hexDistance(g.q, g.r, unit.q, unit.r) <= ab.range) unit.morale = Math.min(unit.maxMorale, unit.morale + ab.value);
+    }
   }
 
   // Called at the start of a player's turn to handle fleeing units
@@ -1048,9 +1184,28 @@ class GameRoom {
       if (isCac) this._reveal(target);
     }
 
+    const second = isCac ? this.trampleTarget(attacker, target) : null;
     const result = this._resolveCombat(attacker, target, isCac, defenseChoice);
     const combatLog = this._applyCombat(attacker, target, isCac, defenseChoice, result, attackerPlayer, targetPlayer);
-    return { ok: true, combatLog };
+    const trample = [];
+    if (second && attacker.vitality > 0 && !attacker.isFleeing && this.findUnit(second.id)) {
+      const sP = this.getPlayer(second.playerId);
+      const r2 = this._resolveCombat(attacker, second, true, 'rien');
+      const log2 = this._applyCombat(attacker, second, true, 'rien', r2, attackerPlayer, sP);
+      log2.trample = true;
+      trample.push({ combatLog: log2, attackerPlayerId: attackerPlayer.id, targetPlayerId: sP.id, attackerId: attacker.id, targetId: second.id });
+    }
+    return { ok: true, combatLog, trample };
+  }
+
+  // Char: the enemy unit right behind its (adjacent) target, in line with it, is struck too
+  trampleTarget(attacker, target) {
+    const ab = this.ability(attacker);
+    if (!ab || ab.type !== 'trample' || !target || hexDistance(attacker.q, attacker.r, target.q, target.r) !== 1) return null;
+    const bq = 2 * target.q - attacker.q, br = 2 * target.r - attacker.r;
+    const u = this.unitMap[hexKey(bq, br)];
+    if (!u || u.playerId === attacker.playerId || u.q === null || !this.canSee(attacker.playerId, u)) return null;
+    return u;
   }
 
   // Applies a computed combat result (damage, morale, rout, stats, deaths, replay); returns the combat log
@@ -1075,6 +1230,19 @@ class GameRoom {
       attacker.morale = Math.max(0, attacker.morale - result.counterMoralDmg);
       if (attacker.morale <= 0 && !attacker.isFleeing) { attacker.stance = 'marche'; attacker.isFleeing = true; }
     }
+    const bonuses = [...(result.bonuses || [])];
+    if (result.advantage) attacker.ambushDay = this.dayNumber();
+    // Soldats: an enemy left at or below the threshold after the fight is finished off (never a general)
+    const executeBy = (killer, victim, side) => {
+      const ab = this.ability(killer);
+      if (!ab || ab.type !== 'execute_low_hp' || victim.isGeneral || killer.vitality <= 0 || victim.vitality <= 0) return;
+      if (victim.vitality <= Math.ceil(victim.maxVitality * ab.value / 100)) {
+        victim.vitality = 0;
+        bonuses.push({ side, type: 'execute_low_hp', text: 'Soldats : unité achevée' });
+      }
+    };
+    executeBy(attacker, target, 'attacker');
+    if (result.counterDmgReceived > 0) executeBy(target, attacker, 'target');
 
     const combatLog = {
       attackerId, targetId, ranged: !isCac,
@@ -1087,6 +1255,7 @@ class GameRoom {
       counterDmgReceived: result.counterDmgReceived, counterMoralDmg: result.counterMoralDmg,
       targetVitalityLeft: target.vitality, targetMoraleLeft: target.morale,
       attackerVitalityLeft: attacker.vitality,
+      bonuses: bonuses.length ? bonuses : undefined,
       breakdown: result.breakdown,
     };
 
@@ -1214,6 +1383,19 @@ class GameRoom {
     // Segment on the edge between attacker and target (only for adjacent melee)
     const segDef = isCac ? this._getSegmentDef(attacker.q, attacker.r, target.q, target.r) : null;
 
+    // Unit abilities (rules.RULES.abilities): lanciers vs horses/chariots, heavy cavalry charge, assassin advantage
+    const abA = this.ability(attacker), abD = this.ability(target);
+    const antiCav = RULES.abilities.antiCavalryCategories;
+    const bonuses = [];
+    const lancerAtk = isCac && abA && abA.type === 'anti_cavalry' && antiCav.includes(target.category) ? abA.value : 0;
+    const lancerDef = isCac && abD && abD.type === 'anti_cavalry' && antiCav.includes(attacker.category) ? abD.value : 0;
+    const charging = isCac && abA && abA.type === 'charge_bonus' && (attacker.stance === 'charge' || (extra && extra.charge === 'bonus')) ? abA.value : 0;
+    const advantage = !!(abA && abA.type === 'ambush' && attacker.ambushDay !== this.dayNumber());
+    if (lancerAtk) bonuses.push({ side: 'attacker', type: 'anti_cavalry', text: `Lanciers : +${lancerAtk} attaque contre la cavalerie` });
+    if (lancerDef) bonuses.push({ side: 'target', type: 'anti_cavalry', text: `Lanciers : +${lancerDef} défense contre la cavalerie` });
+    if (charging) bonuses.push({ side: 'attacker', type: 'charge_bonus', text: `Charge lourde : +${charging} puissance et intimidation` });
+    if (advantage) bonuses.push({ side: 'attacker', type: 'ambush', text: 'Assassin : avantage (meilleur de 2 dés)' });
+
     // Bonus/malus de hauteur
     const hA = this.heightData[hexKey(attacker.q, attacker.r)] || 0;
     const hD = this.heightData[hexKey(target.q, target.r)] || 0;
@@ -1228,17 +1410,23 @@ class GameRoom {
     const attackBase = attacker.isGeneral ? attacker.force : attacker.attack;
     const extraAttack = extra ? (extra.attack || 0) : 0;
     const extraPower = extra ? (extra.power || 0) : 0;
-    const attackTotal = attackBase + extraAttack
+    const attackTotal = attackBase + extraAttack + lancerAtk
       + (stA[`attack_${type}`] || 0) + (tA[`attack_${type}`] || 0) + (segDef ? (segDef[`attack_${type}`] || 0) : 0)
       - (stD[`esquive_${type}`] || 0) - (tD[`esquive_${type}`] || 0)
       + heightDiff + nightMod;
-    const attackD20 = Math.floor(this._random() * 20) + 1;
+    let attackD20 = Math.floor(this._random() * 20) + 1;
+    let advantageRolls = null;
+    if (advantage) {
+      const second = Math.floor(this._random() * 20) + 1;
+      advantageRolls = [attackD20, second];
+      attackD20 = Math.min(attackD20, second);
+    }
     const hit = attackTotal >= attackD20;
 
     // Damage inflicted: N dé X where N=attacker.vitality, X=effective power
     let dmgInflicted = 0;
     if (hit) {
-      const dieFaces = Math.max(1, attacker.power + extraPower + powerA + (stA[`puissance_${type}`] || 0) + (tA[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0));
+      const dieFaces = Math.max(1, attacker.power + extraPower + charging + powerA + (stA[`puissance_${type}`] || 0) + (tA[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0));
       for (let i = 0; i < attacker.vitality; i++) {
         dmgInflicted += Math.floor(this._random() * dieFaces) + 1;
       }
@@ -1253,17 +1441,12 @@ class GameRoom {
     let dmgReceived = Math.max(0, Math.floor((dmgInflicted - armorAbsorb) / 10));
 
     // Intimidation → moral damage
-    const effectiveIntimidation = attacker.intimidation + (stA[`intimidation_${type}`] || 0) + (tA[`intimidation_${type}`] || 0);
+    const effectiveIntimidation = attacker.intimidation + charging + (stA[`intimidation_${type}`] || 0) + (tA[`intimidation_${type}`] || 0);
     let moralDmg = Math.max(0, Math.floor(attacker.vitality * effectiveIntimidation / 10));
 
-    // Defense choice — ranged attacks: only phalange can absorb, no counter allowed
-    if (!isCac) {
-      if (target.typeId === 'phalange' && defenseChoice === 'absorb') {
-        // allowed — handled below
-      } else {
-        defenseChoice = 'rien';
-      }
-    }
+    // Defense choice — ranged attacks: no defence test (archers), except a phalange (defend_ranged) which may test
+    const shieldWall = !isCac && !!abD && abD.type === 'defend_ranged';
+    if (!isCac) defenseChoice = shieldWall && (defenseChoice === 'absorb' || defenseChoice === 'counter') ? 'absorb' : 'rien';
 
     let defenseRoll = null, defenseSuccess = false;
     let counterDmgReceived = 0, counterMoralDmg = 0;
@@ -1271,14 +1454,17 @@ class GameRoom {
     if (defenseChoice === 'counter' || defenseChoice === 'absorb') {
       // Généraux utilisent force comme base de défense
       const defBase = target.isGeneral ? target.force : target.defense;
-      const defTotal = defBase
+      const defTotal = defBase + lancerDef
         + (stD[`defense_${type}`] || 0) + (tD[`defense_${type}`] || 0) + (segDef ? (segDef[`defense_${type}`] || 0) : 0)
         - (stA[`precision_${type}`] || 0) - (tA[`precision_${type}`] || 0)
         - heightDiff;
       defenseRoll = Math.floor(this._random() * 20) + 1;
       defenseSuccess = defTotal >= defenseRoll;
 
-      if (defenseSuccess) {
+      if (defenseSuccess && shieldWall) {
+        dmgReceived = 0; // the phalange ignores the shooters' power: no vitality loss (morale still suffers)
+        bonuses.push({ side: 'target', type: 'defend_ranged', text: 'Phalange : boucliers levés, aucun dégât' });
+      } else if (defenseSuccess) {
         const counterDieFaces = Math.max(1, target.power + powerD + (stD[`puissance_${type}`] || 0) + (tD[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0));
         let counterRaw = 0;
         for (let i = 0; i < target.vitality; i++) {
@@ -1317,7 +1503,7 @@ class GameRoom {
       hit,
       night: nightMod,
       extraAttack, extraPower,
-      dieFaces: Math.max(1, attacker.power + extraPower + powerA + (stA[`puissance_${type}`] || 0) + (tA[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0)),
+      dieFaces: Math.max(1, attacker.power + extraPower + charging + powerA + (stA[`puissance_${type}`] || 0) + (tA[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0)),
       diceCount: attacker.vitality,
       dmgInflicted,
       armorAbsorb,
@@ -1331,10 +1517,11 @@ class GameRoom {
       stA_precision: (stA[`precision_${type}`] || 0),
       tA_precision:  (tA[`precision_${type}`] || 0),
       defTotal: (defenseChoice === 'counter' || defenseChoice === 'absorb')
-        ? (target.isGeneral ? target.force : target.defense) + (stD[`defense_${type}`] || 0) + (tD[`defense_${type}`] || 0) + (segDef ? (segDef[`defense_${type}`] || 0) : 0) - (stA[`precision_${type}`] || 0) - (tA[`precision_${type}`] || 0)
+        ? (target.isGeneral ? target.force : target.defense) + lancerDef + (stD[`defense_${type}`] || 0) + (tD[`defense_${type}`] || 0) + (segDef ? (segDef[`defense_${type}`] || 0) : 0) - (stA[`precision_${type}`] || 0) - (tA[`precision_${type}`] || 0)
         : null,
       defenseRoll,
       defenseSuccess,
+      lancerAtk, lancerDef, charging, advantageRolls,
       counterDmgReceived,
       counterMoralDmg,
       attackerStance: attacker.stance,
@@ -1346,7 +1533,7 @@ class GameRoom {
       seg_defense: segDef ? (segDef[`defense_${type}`] || 0) : 0,
       seg_puissance: segDef ? (segDef[`puissance_${type}`] || 0) : 0,
     };
-    return { attackTotal, attackD20, hit, dmgInflicted, armorAbsorb, dmgReceived, moralDmg, defenseRoll, defenseSuccess, counterDmgReceived, counterMoralDmg, breakdown };
+    return { attackTotal, attackD20, hit, dmgInflicted, armorAbsorb, dmgReceived, moralDmg, defenseRoll, defenseSuccess, counterDmgReceived, counterMoralDmg, breakdown, bonuses, advantage };
   }
 
   useGeneralAbility(playerId, targetHex, targetId) {

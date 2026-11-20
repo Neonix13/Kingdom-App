@@ -65,7 +65,7 @@ function generateHexMap() {
 // Shortest path within maxSpeed using the shared movement rules (public/js/rules.js).
 // blocked(key) decides which hexes cannot be entered (default: any unit in unitMap).
 // Returns { path: [[q, r], ...], cost } or null.
-function findPathCost(hexMap, unitMap, q1, r1, q2, r2, maxSpeed, unit, segMap = getSegmentData(), blocked = null, table = null, minStep = false) {
+function findPathCost(hexMap, unitMap, q1, r1, q2, r2, maxSpeed, unit, segMap = getSegmentData(), blocked = null, table = null, minStep = false, transit = null) {
   if (q1 === q2 && r1 === r2) return { path: [], cost: 0 };
   const { dist, prev } = rules.reachable(table || rules.MOVE_TABLE, {
     start: { q: q1, r: r1 },
@@ -74,6 +74,7 @@ function findPathCost(hexMap, unitMap, q1, r1, q2, r2, maxSpeed, unit, segMap = 
     mounted: rules.isMounted(unit),
     hexAt: (k) => hexMap[k] || null,
     blocked: blocked || ((k) => !!unitMap[k]),
+    transit,
     segAt: (a, b, c, d) => segMap[segmentEdgeKey(a, b, c, d)] || null,
   });
   const key = hexKey(q2, r2);

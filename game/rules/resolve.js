@@ -254,11 +254,17 @@ function run(room, ordersByPlayer, seed) {
   function resolveStrikes(strikes) {
     const snap = new Map();
     const frozen = (u) => { if (!snap.has(u.id)) snap.set(u.id, { ...u }); return snap.get(u.id); };
+    // chariots also strike the enemy right behind their target (no reaction from the trampled unit)
+    for (const s of [...strikes]) {
+      if (s.duel || hexDistance(s.a.q, s.a.r, s.t.q, s.t.r) !== 1) continue;
+      const u2 = room.trampleTarget(s.a, s.t);
+      if (u2 && !strikes.some(x => x.a === s.a && x.t === u2)) strikes.splice(strikes.indexOf(s) + 1, 0, { a: s.a, t: u2, kind: 'trample', trample: true });
+    }
     for (const s of strikes) { frozen(s.a); frozen(s.t); }
     const planned = strikes.map(s => {
       if (s.duel) return s;
-      const isCac = hexDistance(s.a.q, s.a.r, s.t.q, s.t.r) <= 1 || s.kind === 'encounter';
-      const choice = s.kind === 'encounter' ? 'counter' : reactionOf(s.t, ctl.get(s.t.id));
+      const isCac = s.trample || hexDistance(s.a.q, s.a.r, s.t.q, s.t.r) <= 1 || s.kind === 'encounter';
+      const choice = s.trample ? 'rien' : s.kind === 'encounter' ? 'counter' : reactionOf(s.t, ctl.get(s.t.id));
       return { ...s, isCac, choice, result: room._resolveCombat(frozen(s.a), frozen(s.t), isCac, choice, s.extra) };
     });
     let n = 0;
@@ -281,6 +287,7 @@ function run(room, ordersByPlayer, seed) {
         }
         log = room._applyCombat(a, t, s.isCac, s.choice, s.result, aP, tP);
         if (s.extra && s.extra.charge) log.charge = s.extra.charge;
+        if (s.trample) log.trample = true;
       }
       n++;
       emitCombat(s.duel ? 'duel' : s.kind, a, t, log, aP.id, tP.id, w, s.extra);

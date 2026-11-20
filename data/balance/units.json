@@ -16,7 +16,9 @@
     "range": 1,
     "cost": 400,
     "bonus": "+1 de moral par tour lorsque l'unité se trouve dans la troupe du général.",
-    "bonusType": "moral_near_general"
+    "bonusType": "moral_near_general",
+    "bonusValue": 15,
+    "bonusRange": 2
   },
   "soldats": {
     "id": "soldats",
@@ -35,7 +37,8 @@
     "range": 1,
     "cost": 600,
     "bonus": "Après un combat si l'unité ennemie est laissée avec 3 de vitalité ou moins, elle est détruite.",
-    "bonusType": "execute_low_hp"
+    "bonusType": "execute_low_hp",
+    "bonusValue": 15
   },
   "phalange": {
     "id": "phalange",
@@ -73,7 +76,8 @@
     "range": 1,
     "cost": 700,
     "bonus": "+3 attaque et défense contre les unités à cheval et les chars.",
-    "bonusType": "anti_cavalry"
+    "bonusType": "anti_cavalry",
+    "bonusValue": 3
   },
   "espion": {
     "id": "espion",
@@ -92,7 +96,8 @@
     "range": 1,
     "cost": 600,
     "bonus": "Peut détruire une infrastructure pour 2 de vitesse.",
-    "bonusType": "sabotage"
+    "bonusType": "sabotage",
+    "bonusCost": 2
   },
   "assassin": {
     "id": "assassin",
@@ -111,7 +116,9 @@
     "range": 1,
     "cost": 700,
     "bonus": "Avantage sur le premier jet d'attaque par jour. Peut disparaître si aucun ennemi à moins de 600m.",
-    "bonusType": "ambush"
+    "bonusType": "ambush",
+    "bonusRange": 6,
+    "bonusCost": 2
   },
   "cavalier_leger": {
     "id": "cavalier_leger",
@@ -130,7 +137,8 @@
     "range": 1,
     "cost": 800,
     "bonus": "+1 de vitesse si l'unité n'est pas engagée.",
-    "bonusType": "speed_free"
+    "bonusType": "speed_free",
+    "bonusValue": 1
   },
   "cavalier_lourd": {
     "id": "cavalier_lourd",
@@ -149,7 +157,8 @@
     "range": 1,
     "cost": 1100,
     "bonus": "+1 de puissance et d'intimidation lors d'une charge.",
-    "bonusType": "charge_bonus"
+    "bonusType": "charge_bonus",
+    "bonusValue": 1
   },
   "archer": {
     "id": "archer",
@@ -206,7 +215,8 @@
     "range": 1,
     "cost": 800,
     "bonus": "Pour 2 vitesse, peut construire une barrière, un cheval de frise, une échelle, un pont ou brûler une tuile inflammable adjacente.",
-    "bonusType": "build"
+    "bonusType": "build",
+    "bonusCost": 2
   },
   "char": {
     "id": "char",

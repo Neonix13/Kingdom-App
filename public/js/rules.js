@@ -49,6 +49,32 @@
       spyDistance: 2,                   // ...or an enemy spy is within 2 hexes
       revealRounds: 1,                  // attacking reveals the unit until the end of its owner's next turn
     },
+    // Unit abilities (data/balance/units.json: bonusType + optional bonusValue / bonusRange / bonusCost; defaults below)
+    abilities: {
+      moral_near_general: { value: 15, range: 2 },   // piétaille: +value morale per turn within range of its general
+      execute_low_hp: { value: 15 },                  // soldats: an enemy left at <= value % of its max vitality after a fight is destroyed
+      defend_ranged: {},                              // phalange: defence test against shooters; success = no vitality damage
+      anti_cavalry: { value: 3 },                     // lancier: +value attack and defence against horses and chariots
+      sabotage: { cost: 2 },                          // espion: destroys an adjacent infrastructure for cost speed
+      ambush: { range: 6, cost: 2 },                  // assassin: advantage on its first attack roll of the day; vanishes if no enemy within range
+      speed_free: { value: 1 },                       // cavalier léger: +value speed when no enemy is adjacent
+      charge_bonus: { value: 1 },                     // cavalier lourd: +value power and intimidation when charging
+      ranged_no_defense: {},                          // archers: the target makes no defence test (except a phalange)
+      build: { cost: 2 },                             // bâtisseurs: build on / burn an adjacent edge or hex for cost speed
+      trample: {},                                    // char: strikes the unit behind its target too; drives through units
+      antiCavalryCategories: ['Chevaux', 'Chars'],
+      // infrastructure an espion can destroy: segment -> what remains (null = nothing)
+      sabotage_segments: { bridge: 'river', passerelle: 'river', barriere: null, chevaux_de_frise: null, echelle: 'cliff' },
+      sabotage_terrain: { bridge: 'river' },
+      // what bâtisseurs can do on the edge (or the hex) next to them
+      build_kinds: {
+        barriere: { label: 'Barrière', edgeFrom: [null], edgeTo: 'barriere' },
+        chevaux_de_frise: { label: 'Chevaux de frise', edgeFrom: [null], edgeTo: 'chevaux_de_frise' },
+        echelle: { label: 'Échelle', edgeFrom: ['cliff'], edgeTo: 'echelle' },
+        pont: { label: 'Pont', edgeFrom: ['river'], edgeTo: 'bridge', terrainFrom: ['river'], terrainTo: 'bridge' },
+        bruler: { label: 'Brûler', terrainFrom: ['forest'], terrainTo: 'plain' },
+      },
+    },
     combat: {
       maxArmorAbsorb: 0.75,  // armor (vitality x armor of the target) absorbs at most 75% of the damage dealt: a hit always hurts
     },
@@ -142,6 +168,7 @@
   // Dijkstra from opts.start within opts.maxCost.
   //   hexAt(key) -> { terrain, height } | null (off map), blocked(key) -> true when the hex cannot be entered,
   //   segAt(q1, r1, q2, r2) -> segment type | null, mounted: bool,
+  //   transit(key) -> true when a blocked hex can still be driven through (chariots), never as a destination
   //   minStep: the unit has not spent any speed this turn, so one step to a neighbour is always allowed
   //            (if passable), even when it costs more than maxCost: nobody stays stuck in a river or below a slope
   // Returns { dist: Map(key -> cost), prev: Map(key -> previous key) } (start included with cost 0).
@@ -164,7 +191,7 @@
         const nq = cur.q + dq, nr = cur.r + dr, nk = hexKey(nq, nr);
         const there = opts.hexAt(nk);
         if (!there) continue;
-        if (opts.blocked && opts.blocked(nk)) continue;
+        if (opts.blocked && opts.blocked(nk) && !(opts.transit && opts.transit(nk))) continue;
         const c = stepCost(table, here, there, opts.segAt(cur.q, cur.r, nq, nr), !!opts.mounted);
         if (!isFinite(c)) continue;
         let nc = snap(cur.cost + c);
@@ -189,6 +216,35 @@
   // Attack range from a hex at height hFrom on a target at height hTo: +1 per level above the target
   function attackRange(range, hFrom, hTo) {
     return (range || 1) + Math.max(0, (hFrom || 0) - (hTo || 0));
+  }
+
+  // Ability of a unit: { type, value, range, cost } (unit fields first, then the unit type table, then RULES defaults)
+  function ability(unit, unitTypes) {
+    if (!unit || unit.isGeneral) return null;
+    const src = unit.bonusType ? unit : (unitTypes && unitTypes[unit.typeId]) || null;
+    const type = src && src.bonusType;
+    if (!type) return null;
+    const d = RULES.abilities[type] || {};
+    const pick = (k, dk) => (src[k] != null ? src[k] : (d[dk] != null ? d[dk] : 0));
+    return { type, value: pick('bonusValue', 'value'), range: pick('bonusRange', 'range'), cost: pick('bonusCost', 'cost') };
+  }
+
+  // What a bâtisseur can do toward a neighbour: list of build kinds allowed by the current edge segment / hex terrain
+  function buildOptions(segType, terrain) {
+    const out = [];
+    for (const [id, k] of Object.entries(RULES.abilities.build_kinds)) {
+      if (k.edgeFrom && k.edgeFrom.indexOf(segType || null) !== -1) out.push({ id, target: 'edge' });
+      else if (k.terrainFrom && k.terrainFrom.indexOf(terrain) !== -1) out.push({ id, target: 'hex' });
+    }
+    return out;
+  }
+
+  // What an espion can destroy toward a neighbour: { target: 'edge'|'hex', to } or null
+  function sabotageOption(segType, terrain) {
+    const a = RULES.abilities;
+    if (segType && Object.prototype.hasOwnProperty.call(a.sabotage_segments, segType)) return { target: 'edge', to: a.sabotage_segments[segType] };
+    if (terrain && Object.prototype.hasOwnProperty.call(a.sabotage_terrain, terrain)) return { target: 'hex', to: a.sabotage_terrain[terrain] };
+    return null;
   }
 
   // A unit that has not spent any speed this turn (no move, stance change or pivot) may always take one step
@@ -308,7 +364,7 @@
   return {
     RULES, snap, hexKey, edgeKey, DIRS, isMounted,
     movementTable, stepCost, reachable, pathFromPrev,
-    hexDistance, attackRange, hasFullSpeed, bestAttackHex,
+    hexDistance, attackRange, hasFullSpeed, bestAttackHex, ability, buildOptions, sabotageOption,
     hoursPerTurn, timeOfDay, dayNumber, isNightHour, formatHour,
     defaultSettings, mergeSettings,
   };

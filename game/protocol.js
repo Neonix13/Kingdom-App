@@ -14,6 +14,7 @@ const maps = require('./maps');
 const { MODES, isModeAvailable } = require('./turns');
 const { hexKey } = require('./HexUtils');
 const v = require('./validate');
+const { RULES } = require('./rules');
 const bots = require('./bots');
 const { UNKNOWN, combatView } = require('./views');
 
@@ -261,6 +262,9 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
       tx.dirty = true;
       if (e.event === 'ambush') {
         emit(tx, r => (r.role === 'spectator' ? spectatorsLive(room) : (r.member.id === e.playerId || r.member.id === e.byPlayerId)), e);
+      } else if (e.event === 'map_edit') {
+        const { unitId, playerId, ...pub } = e;
+        emitBuild(tx, 'all', (r) => (r.role === 'player' && r.member.id === playerId ? e : pub));
       } else {
         emit(tx, 'all', e);
       }
@@ -343,9 +347,8 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     gameOverFlow(tx);
   }
 
-  function combatFlow(tx, pending, resolved, witnesses) {
+  function emitCombatResult(tx, pending, log, witnesses) {
     const room = tx.room;
-    const log = resolved.combatLog;
     emitBuild(tx, 'all', (r) => {
       if (r.role === 'spectator') return spectatorsLive(room) ? { event: 'combat_result', combatLog: log } : null;
       const id = r.member.id;
@@ -355,17 +358,29 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
       if (!w.seeAttacker && !w.seeTarget) return null;
       return { event: 'combat_result', combatLog: combatView(log, { ...w, details: false }) };
     });
+  }
+
+  function combatFlow(tx, pending, resolved, witnesses, trampleWitnesses) {
+    emitCombatResult(tx, pending, resolved.combatLog, witnesses);
+    for (const t of resolved.trample || []) emitCombatResult(tx, t, t.combatLog, trampleWitnesses || {});
     settleFlow(tx);
     autoEndFlow(tx);
     emitState(tx);
   }
 
   function resolvePending(tx, attackId, choice) {
-    const pending = tx.room.pendingAttacks[attackId];
-    const witnesses = pending ? combatWitnesses(tx.room, pending) : {};
-    const resolved = tx.room.resolveAttack(attackId, choice);
+    const room = tx.room;
+    const pending = room.pendingAttacks[attackId];
+    const witnesses = pending ? combatWitnesses(room, pending) : {};
+    let trampleWitnesses = null;
+    if (pending && !pending.duel) {
+      const a = room.findUnit(pending.attackerId), t = room.findUnit(pending.targetId);
+      const u2 = a && t ? room.trampleTarget(a, t) : null;
+      if (u2) trampleWitnesses = combatWitnesses(room, { attackerId: a.id, targetId: u2.id, attackerPlayerId: pending.attackerPlayerId, targetPlayerId: u2.playerId });
+    }
+    const resolved = room.resolveAttack(attackId, choice);
     tx.dirty = true;
-    if (resolved.ok) combatFlow(tx, pending, resolved, witnesses);
+    if (resolved.ok) combatFlow(tx, pending, resolved, witnesses, trampleWitnesses);
     else emitState(tx);
     return resolved;
   }
@@ -1020,6 +1035,34 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
       if (r.role === 'spectator' && !spectatorsLive(tx.room)) return null;
       return { event: 'combat_result', combatLog: publicLog };
     });
+    autoEndFlow(tx);
+    emitState(tx);
+  });
+
+  // Unit abilities that act on the map or on the unit itself (espion, bâtisseurs, assassin)
+  H.unit_sabotage = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    const p = requireTurn(tx, connId);
+    engine(tx.room.sabotage(p.id, v.id(data.unitId), v.int(data.q, -10000, 10000), v.int(data.r, -10000, 10000)));
+    tx.dirty = true;
+    roomEventsFlow(tx);
+    autoEndFlow(tx);
+    emitState(tx);
+  });
+
+  H.unit_build = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    const p = requireTurn(tx, connId);
+    const kind = v.oneOf(data.kind, Object.keys(RULES.abilities.build_kinds), 'invalid_kind', 'Construction inconnue.');
+    engine(tx.room.build(p.id, v.id(data.unitId), v.int(data.q, -10000, 10000), v.int(data.r, -10000, 10000), kind));
+    tx.dirty = true;
+    roomEventsFlow(tx);
+    autoEndFlow(tx);
+    emitState(tx);
+  });
+
+  H.unit_vanish = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    const p = requireTurn(tx, connId);
+    engine(tx.room.vanish(p.id, v.id(data.unitId)));
+    tx.dirty = true;
     autoEndFlow(tx);
     emitState(tx);
   });
