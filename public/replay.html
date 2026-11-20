@@ -78,7 +78,14 @@
     <span class="info" id="time-info"></span>
     <span class="info" id="matchup-info"></span>
     <span class="info" id="result-info"></span>
+    <a id="link-3d" href="#" style="margin-left:auto;color:#ffd700;font-size:12px;text-decoration:none;border:1px solid #5a3c10;border-radius:6px;padding:3px 10px">Voir en 3D</a>
   </div>
+  <script>
+    (function () {
+      const p = new URLSearchParams(location.search);
+      document.getElementById('link-3d').href = '/replay3d.html' + (p.get('file') ? '?file=' + encodeURIComponent(p.get('file')) : '?local=1');
+    })();
+  </script>
 
   <div id="canvas-container">
     <canvas id="replay-canvas"></canvas>

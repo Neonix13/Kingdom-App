@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kingdom Battleground — Replay 3D</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { overflow: hidden; background: #0b0d10; font-family: 'Segoe UI', system-ui, sans-serif; color: #e8d5a0; }
+  #stage { position: fixed; inset: 0; }
+  #c3d { display: block; width: 100%; height: 100%; outline: none; }
+  #controls { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 50; display: flex; gap: 6px; align-items: center;
+    background: rgba(14,9,4,0.82); border: 1px solid rgba(200,150,40,0.4); border-radius: 999px; padding: 6px 12px; font-size: 12px; }
+  #controls button { background: #2a1408; color: #e8d5a0; border: 1px solid #5a3c10; border-radius: 999px; width: 30px; height: 26px; cursor: pointer; }
+  #controls button:hover { border-color: #c8960c; }
+  #controls input[type=range] { width: 260px; accent-color: #c8960c; }
+  #controls select { background: #1a0e05; color: #e8d5a0; border: 1px solid #5a3c10; border-radius: 4px; }
+  #controls .info { min-width: 260px; color: #cfbf90; }
+  #title { position: fixed; top: 12px; left: 14px; z-index: 50; font-size: 13px; letter-spacing: 3px; color: #d9bf78; background: rgba(14,9,4,0.6); padding: 6px 12px; border-radius: 8px; }
+  #title a { color: #9a8a60; font-size: 11px; letter-spacing: 0; margin-left: 10px; }
+  #drop { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: radial-gradient(ellipse at 50% 40%, #1b1a16 0%, #0a0a0c 70%); }
+  #drop.hidden { display: none; }
+  #drop .box { border: 2px dashed #5a3c10; border-radius: 12px; padding: 30px 40px; text-align: center; }
+  #drop .bar { width: 280px; height: 2px; background: rgba(217,191,120,.15); }
+  #drop .bar i { display: block; height: 100%; width: 0; background: #d9bf78; }
+  body.v3-photo #controls, body.v3-photo #title { display: none; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/" } }
+</script>
+</head>
+<body>
+<div id="stage"><canvas id="c3d" tabindex="0"></canvas></div>
+<div id="title">REPLAY 3D <a href="/replay.html?local=1">vue 2D</a><a href="/">menu</a></div>
+<div id="controls"></div>
+<div id="drop">
+  <div class="box">
+    <div style="font-size:15px;letter-spacing:3px;margin-bottom:8px">REPLAY 3D</div>
+    <div id="msg" style="font-size:12px;opacity:.7">Déposez un fichier de replay (.json) ou choisissez-le</div>
+    <input type="file" accept=".json,application/json" style="margin-top:12px">
+  </div>
+  <div class="bar"><i></i></div>
+</div>
+<script type="module">
+import { mountReplay3d } from './js/map3d/replay3d.js';
+
+const drop = document.getElementById('drop');
+const msg = document.getElementById('msg');
+const bar = drop.querySelector('.bar i');
+let started = false;
+
+async function start(rep) {
+  if (started) return;
+  if (!rep || rep.format !== 'kb-replay-1') { msg.textContent = 'Format non reconnu (kb-replay-1 attendu).'; return; }
+  started = true;
+  msg.textContent = 'Chargement de la carte…';
+  window.__replay = await mountReplay3d(rep, {
+    container: document.getElementById('stage'),
+    canvas: document.getElementById('c3d'),
+    controlsEl: document.getElementById('controls'),
+    onProgress: (p) => { bar.style.width = p + '%'; },
+  });
+  drop.classList.add('hidden');
+}
+
+const params = new URLSearchParams(location.search);
+if (params.has('local')) {
+  try { const raw = localStorage.getItem('kb_last_replay'); if (raw) start(JSON.parse(raw)); else msg.textContent = 'Aucun replay enregistré dans ce navigateur.'; }
+  catch (e) { msg.textContent = 'Replay illisible.'; }
+} else if (params.get('file')) {
+  fetch(params.get('file')).then((r) => r.json()).then(start).catch(() => { msg.textContent = 'Impossible de charger le replay.'; });
+}
+const readFile = (f) => f && f.text().then((t) => start(JSON.parse(t))).catch(() => { msg.textContent = 'Fichier invalide.'; });
+drop.querySelector('input').addEventListener('change', (e) => readFile(e.target.files[0]));
+addEventListener('dragover', (e) => e.preventDefault());
+addEventListener('drop', (e) => { e.preventDefault(); readFile(e.dataTransfer.files[0]); });
+</script>
+</body>
+</html>
