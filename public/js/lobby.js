@@ -151,8 +151,8 @@ function renderResume() {
   if (!list.length) { card.style.display = 'none'; return; }
   document.getElementById('resume-text').textContent = list.length > 1 ? 'Vous avez des parties en cours :' : '';
   card.querySelector('.btn-row').innerHTML = list.map((s, i) =>
-    `<button class="btn btn-primary btn-sm" onclick="resumeSession(${i})">Reprendre : salle ${escapeHtml(s.roomCode)} — ${escapeHtml(s.name || '')}${s.role === 'spectator' ? ' (spectateur)' : ''}</button>`
-  ).join('') + '<button class="btn btn-ghost btn-sm" onclick="dismissResume()">Ignorer</button>';
+    `<button class="ld-btn ld-btn-red" onclick="resumeSession(${i})">Reprendre : salle ${escapeHtml(s.roomCode)} — ${escapeHtml(s.name || '')}${s.role === 'spectator' ? ' (spectateur)' : ''}</button>`
+  ).join('') + '<button class="ld-btn" onclick="dismissResume()">Ignorer</button>';
   card.style.display = 'block';
 }
 
@@ -174,6 +174,7 @@ function leaveRoom() {
   KBNet.send('leave_room');
   KBNet.clearSession();
   myId = null; roomCode = null; lastLobby = null;
+  document.getElementById('ld-room-tag').hidden = true;
   show('screen-home');
   renderResume();
 }
@@ -281,9 +282,9 @@ function renderBotControls(data) {
   if (!show) return;
   const prev = document.getElementById('bot-difficulty');
   const current = prev ? prev.value : 'veteran';
-  box.innerHTML = `<span class="text-muted">Ajouter une IA :</span>
+  box.innerHTML = `<label for="bot-difficulty" class="ld-label" style="margin:0;align-self:center">IA</label>
     <select id="bot-difficulty">${BOT_DIFFICULTIES.map(d => `<option value="${d.id}"${d.id === current ? ' selected' : ''}>${d.name}</option>`).join('')}</select>
-    <button class="btn btn-ghost btn-sm" onclick="addBot()">+ IA</button>`;
+    <button class="ld-btn" onclick="addBot()">Ajouter une IA</button>`;
 }
 
 function fillSoloGenerals() {
@@ -292,36 +293,115 @@ function fillSoloGenerals() {
   for (const g of GENERALS_DATA) sel.insertAdjacentHTML('beforeend', `<option value="${escapeHtml(g.id)}">${escapeHtml(g.name)}</option>`);
 }
 
+const KINGDOMS = [{ id: 'QIN', k: '秦', name: 'Qin' }, { id: 'ZHAO', k: '趙', name: 'Zhao' }, { id: 'WEI', k: '魏', name: 'Wei' }];
+const UNIT_KANJI = { pietaille: '卒', soldats: '兵', phalange: '盾', lancier: '槍', espion: '諜', assassin: '刺', cavalier_leger: '騎', cavalier_lourd: '騎', archer: '弓', archer_elite: '弓', batisseurs: '工', char: '車' };
+let genTab = null;
+let previewGeneralId = null;
+let lastTaken = [];
+
+const kingdomsOf = (g) => String(g.kingdom || '').split('/');
+const kingdomInfo = (g) => KINGDOMS.find(k => k.id === kingdomsOf(g)[0]) || KINGDOMS[0];
+const kingdomLabel = (g) => kingdomsOf(g).map(id => (KINGDOMS.find(k => k.id === id) || { name: id }).name).join(' / ');
+
+function generalImageUrl(g) {
+  const e = GENERAL_IMAGE1_MAP[g.id];
+  return e ? `/assets/unites/GENERAL IMAGE 1-1/${encodeURIComponent(e.file)}.${e.ext}` : null;
+}
+
+function unitImageUrl(u) {
+  const e = UNIT_IMAGE1_MAP[u.id];
+  return e ? `/assets/unites/UNIT IMAGE 1-1/${encodeURIComponent(e.file)}.${e.ext}` : null;
+}
+
+function scrollHtml(g) {
+  const img = generalImageUrl(g);
+  const k = kingdomInfo(g).k;
+  return `<div class="ld-scroll" aria-hidden="true"><div class="ld-rod"></div><div class="ld-paper">
+    ${img ? `<img src="${img}" alt="">` : `<span class="ld-paper-k">${escapeHtml(g.name.charAt(0))}</span>`}
+    <span class="ld-stamp">${k}</span></div><div class="ld-rod"></div></div>`;
+}
+
+function statBars(g) {
+  const rows = [['Force', g.force], ['Stratégie', g.strategy], ['Charisme', g.charisma]];
+  const best = Math.max(...rows.map(r => r[1] || 0));
+  return `<div class="ld-bars">${rows.map(([label, v]) => `<div class="ld-bar"><span>${label}</span>
+    <span class="ld-track"><i class="${v === best ? 'red' : ''}" style="width:${Math.min(100, (v || 0) / 20 * 100)}%"></i></span>
+    <span class="ld-num">${v ?? '—'}</span></div>`).join('')}</div>`;
+}
+
+function generalFacts(g) {
+  const facts = [];
+  if (g.army) facts.push(['Armée', Number(g.army).toLocaleString('fr-FR')]);
+  if (g.vitality) facts.push(['Vitalité', g.vitality]);
+  if (g.weapon) facts.push(['Arme', `${g.weapon.name}${g.weapon.damage != null ? ' · ' + g.weapon.damage : ''}`]);
+  if (g.armor != null) facts.push(['Armure', g.armor]);
+  return `<div class="ld-facts">${facts.map(([l, v]) => `<div><span>${l}</span><b>${escapeHtml(String(v))}</b></div>`).join('')}</div>`;
+}
+
 function renderGenerals(takenList) {
+  lastTaken = takenList || [];
   const grid = document.getElementById('generals-grid');
-  grid.innerHTML = '';
-  for (const g of GENERALS_DATA) {
-    const taken = takenList.includes(g.id) && g.id !== selectedGeneral;
-    const sel = g.id === selectedGeneral;
-    const div = document.createElement('div');
-    div.className = `general-card${taken ? ' taken' : ''}${sel ? ' selected' : ''}`;
-    const imgEntry = GENERAL_IMAGE1_MAP[g.id];
-    const imgHtml = imgEntry
-      ? `<img src="/assets/unites/GENERAL IMAGE 1-1/${encodeURIComponent(imgEntry.file)}.${imgEntry.ext}" style="width:100%;aspect-ratio:1/1;object-fit:cover;object-position:top;border-radius:4px;margin-bottom:6px;display:block">`
-      : '';
-    div.innerHTML = `
-      ${imgHtml}
-      <div class="gen-name">${g.name}</div>
-      <div class="gen-kingdom">${g.kingdom}</div>
-      <div class="gen-stats">Force ${g.force} · Strat ${g.strategy} · Char ${g.charisma}</div>
-      ${sel ? '<div style="color:#c8960c;font-size:0.8em;margin-top:4px">✓ Sélectionné</div>' : ''}
-    `;
-    if (!taken && myRole === 'player') div.onclick = () => selectGeneral(g.id);
-    div.ondblclick = (e) => { e.stopPropagation(); showGeneralCard(g); };
-    grid.appendChild(div);
-  }
+  const chosen = GENERALS_DATA.find(g => g.id === selectedGeneral);
+  if (!genTab) genTab = chosen ? kingdomInfo(chosen).id : 'QIN';
+  const inTab = GENERALS_DATA.filter(g => kingdomsOf(g).includes(genTab));
+  let g = inTab.find(x => x.id === previewGeneralId) || inTab.find(x => x.id === selectedGeneral) || inTab[0];
+  if (!g) { grid.innerHTML = ''; return; }
+  const isTaken = (x) => lastTaken.includes(x.id) && x.id !== selectedGeneral;
+  const player = myRole === 'player';
+  let status;
+  if (!player) status = '';
+  else if (g.id === selectedGeneral) status = '<span class="ld-btn ld-btn-red" role="status" style="cursor:default">Votre général</span>';
+  else if (isTaken(g)) status = '<span class="ld-gen-taken">Déjà choisi par un autre joueur</span>';
+  else status = `<button class="ld-btn ld-btn-red" data-pick="${escapeHtml(g.id)}">Choisir ${escapeHtml(g.name)}</button>`;
+  const abil = [];
+  if (g.activeAbility) abil.push(`<p><b>${escapeHtml(g.activeAbility.name)}</b> (capacité, recharge ${g.activeAbility.cooldown} tours) — ${escapeHtml(g.activeAbility.description)}</p>`);
+  if (g.passiveAbility) abil.push(`<p><b>${escapeHtml(g.passiveAbility.name)}</b> (passif) — ${escapeHtml(g.passiveAbility.description)}</p>`);
+  grid.innerHTML = `
+    <div class="ld-tabs" role="group" aria-label="Royaume">${KINGDOMS.map(k => `<button class="ld-tab" data-tab="${k.id}" aria-pressed="${k.id === genTab}" aria-label="${k.name}" title="${k.name}">${k.k}</button>`).join('')}</div>
+    <div class="ld-gen">
+      <div class="ld-gen-info">
+        <div class="ld-gen-kicker">GÉNÉRAL · ${escapeHtml(kingdomLabel(g).toUpperCase())}</div>
+        <div class="ld-gen-name">${escapeHtml(g.name)}</div>
+        <svg class="ld-stroke" width="220" height="12" viewBox="0 0 220 12" aria-hidden="true"><path d="M2 8 C 50 2, 110 11, 160 5 S 210 7, 218 4" stroke="currentColor" stroke-width="4" fill="none" stroke-linecap="round"/></svg>
+        ${g.citation ? `<p class="ld-gen-quote">${escapeHtml(g.citation)}</p>` : ''}
+        ${statBars(g)}
+        ${generalFacts(g)}
+        ${abil.length ? `<div class="ld-abil">${abil.join('')}</div>` : ''}
+        <div class="ld-gen-actions">${status}<button class="ld-btn" data-sheet="${escapeHtml(g.id)}">Fiche complète</button></div>
+      </div>
+      ${scrollHtml(g)}
+    </div>
+    <div class="ld-roster">${inTab.map(x => {
+      const cls = [x.id === g.id ? 'preview' : '', x.id === selectedGeneral ? 'mine' : '', isTaken(x) ? 'taken' : ''].join(' ');
+      const img = generalImageUrl(x);
+      const flag = x.id === selectedGeneral ? '<span class="ld-flag">VOUS</span>' : isTaken(x) ? '<span class="ld-flag">PRIS</span>' : '';
+      return `<button class="ld-gbtn ${cls}" data-gen="${escapeHtml(x.id)}" aria-pressed="${x.id === g.id}">
+        <span class="ld-face">${img ? `<img src="${img}" alt="">` : escapeHtml(x.name.charAt(0))}</span>${flag}<span>${escapeHtml(x.name)}</span></button>`;
+    }).join('')}</div>`;
+  grid.onclick = (e) => {
+    const t = e.target.closest('button');
+    if (!t) return;
+    if (t.dataset.tab) { genTab = t.dataset.tab; previewGeneralId = null; renderGenerals(lastTaken); return; }
+    if (t.dataset.sheet) { const x = GENERALS_DATA.find(y => y.id === t.dataset.sheet); if (x) showGeneralCard(x); return; }
+    const id = t.dataset.pick || t.dataset.gen;
+    if (!id) return;
+    previewGeneralId = id;
+    const x = GENERALS_DATA.find(y => y.id === id);
+    if (player && x && !isTaken(x) && id !== selectedGeneral) selectGeneral(id);
+    renderGenerals(lastTaken);
+  };
+  grid.ondblclick = (e) => {
+    const t = e.target.closest('[data-gen]');
+    const x = t && GENERALS_DATA.find(y => y.id === t.dataset.gen);
+    if (x) showGeneralCard(x);
+  };
 }
 
 function showGeneralCard(g) {
   const imgEntry = GENERAL_IMAGE1_MAP[g.id];
   const imgHtml = imgEntry
     ? `<img class="uc-pdf-img" src="/assets/unites/GENERAL IMAGE 1-1/${encodeURIComponent(imgEntry.file)}.${imgEntry.ext}" alt="${g.name}">`
-    : `<div class="uc-pdf-img-placeholder" style="font-size:52px;flex-direction:column;gap:8px">★<span style="font-size:14px;color:#7a5820">${g.name}</span></div>`;
+    : `<div class="uc-pdf-img-placeholder">${kingdomInfo(g).k}</div>`;
 
   const row2 = [
     { label: 'Force',     value: g.force },
@@ -332,8 +412,8 @@ function showGeneralCard(g) {
     { label: 'Armure', value: g.armor },
     { label: 'Arme',   value: g.weapon ? `${g.weapon.name} (${g.weapon.damage})` : '—' },
   ];
-  const vit = `<div class="uc-pdf-stat" style="grid-column:1/-1"><div class="uc-pdf-stat-label">Vitalité</div><div class="uc-pdf-stat-value">${g.vitality}</div></div>`;
-  const r2 = `<div style="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px">${row2.map(s => `<div class="uc-pdf-stat"><div class="uc-pdf-stat-label">${s.label}</div><div class="uc-pdf-stat-value">${s.value}</div></div>`).join('')}</div>`;
+  const vit = `<div class="uc-pdf-stat"><div class="uc-pdf-stat-label">Vitalité</div><div class="uc-pdf-stat-value">${g.vitality}</div></div>`;
+  const r2 = row2.map(s => `<div class="uc-pdf-stat"><div class="uc-pdf-stat-label">${s.label}</div><div class="uc-pdf-stat-value">${s.value}</div></div>`).join('');
   const r3 = row3.map(s => `<div class="uc-pdf-stat"><div class="uc-pdf-stat-label">${s.label}</div><div class="uc-pdf-stat-value">${s.value}</div></div>`).join('');
   const statsHtml = vit + r2 + r3;
 
@@ -355,7 +435,7 @@ function showGeneralCard(g) {
         ${bonusHtml}
       </div>
       <div class="uc-pdf-right">
-        <div class="uc-pdf-title">${g.name}<br><span style="font-size:0.85em">${g.kingdom}</span></div>
+        <div class="uc-pdf-title">${g.name}<br><span>${escapeHtml(kingdomLabel(g).toUpperCase())}</span></div>
         <div class="uc-pdf-stats">${statsHtml}</div>
       </div>
       ${descHtml}
@@ -372,7 +452,7 @@ function showUnitCardLobby(u) {
   const imgEntry = UNIT_IMAGE1_MAP[u.id];
   const imgHtml = imgEntry
     ? `<img class="uc-pdf-img" src="/assets/unites/UNIT IMAGE 1-1/${encodeURIComponent(imgEntry.file)}.${imgEntry.ext}" alt="${u.name}">`
-    : `<div class="uc-pdf-img-placeholder">${u.name.charAt(0)}</div>`;
+    : `<div class="uc-pdf-img-placeholder">${UNIT_KANJI[u.id] || u.name.charAt(0)}</div>`;
 
   const stats = [
     { label: 'Vitalité',      value: u.vitality },
@@ -391,7 +471,7 @@ function showUnitCardLobby(u) {
 
   const bonusHtml = u.bonus
     ? `<div class="uc-pdf-bonus"><strong>Bonus :</strong> ${u.bonus}</div>`
-    : `<div class="uc-pdf-bonus" style="color:#888;font-style:italic">Aucun bonus spécial</div>`;
+    : `<div class="uc-pdf-bonus"><em>Aucun bonus spécial</em></div>`;
 
   document.getElementById('general-card-content').innerHTML = `
     <div class="uc-pdf">
@@ -400,7 +480,7 @@ function showUnitCardLobby(u) {
         ${bonusHtml}
       </div>
       <div class="uc-pdf-right">
-        <div class="uc-pdf-title">${u.name}<br><span style="font-size:0.85em">${u.category} — ${u.cost} or</span></div>
+        <div class="uc-pdf-title">${u.name}<br><span>${u.category.toUpperCase()} · ${u.cost} OR</span></div>
         <div class="uc-pdf-stats">${statsHtml}</div>
       </div>
     </div>
@@ -421,29 +501,25 @@ function renderPlayerList(data) {
     const bot = (data.bots || []).find(b => b.id === p.id);
     const badge = bot ? `<span class="player-badge bot">IA · ${escapeHtml(bot.label)}</span>`
       : `<span class="player-badge${p.id === hostId ? ' host' : ''}">${p.id === hostId ? 'Hôte' : 'Joueur'}</span>`;
-    let colorHtml;
-    if (p.id === myId && phase === 'lobby') {
-      colorHtml = `<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">${PLAYER_COLORS.map(c => {
-        const taken = usedColors.has(c.hex);
-        const active = c.hex === (selectedColor || '').toLowerCase();
-        return `<div class="color-swatch${active ? ' active' : ''}${taken ? ' taken' : ''}" title="${c.name}${taken ? ' (prise)' : ''}"
-          style="width:18px;height:18px;border-radius:50%;background:${c.hex};cursor:pointer;border:2px solid ${active ? '#fff' : 'transparent'};flex-shrink:0"
-          ${taken ? '' : `onclick="pickColor('${c.hex}')"`}></div>`;
-      }).join('')}</div>`;
-    } else {
-      colorHtml = `<div style="width:16px;height:16px;border-radius:50%;background:${escapeHtml(color)};flex-shrink:0;border:1px solid rgba(255,255,255,0.3)"></div>`;
-    }
+    const mine = p.id === myId && phase === 'lobby';
+    const swatches = mine ? `<div class="ld-swatches" role="group" aria-label="Votre couleur">${PLAYER_COLORS.map(c => {
+      const taken = usedColors.has(c.hex);
+      const active = c.hex === (selectedColor || '').toLowerCase();
+      return `<button class="color-swatch${active ? ' active' : ''}${taken ? ' taken' : ''}" style="background:${c.hex}" title="${c.name}${taken ? ' (prise)' : ''}"
+        aria-label="${c.name}${taken ? ' (prise)' : ''}" aria-pressed="${active}"${taken ? ' disabled' : ` onclick="pickColor('${c.hex}')"`}></button>`;
+    }).join('')}</div>` : '';
     let statusText, ready = false;
     if (!p.connected) statusText = 'hors ligne';
     else if (phase === 'army_building') { ready = p.isReady; statusText = p.isReady ? 'armée prête' : 'recrute…'; }
     else { ready = !!p.generalId; statusText = p.generalId ? 'prêt' : 'choisit un général'; }
     li.innerHTML = `
+      <span class="ld-dot" style="background:${escapeHtml(color)}"></span>
+      <span class="ld-pname">${escapeHtml(p.name)}${p.id === myId ? ' <em>(vous)</em>' : ''}</span>
       ${badge}
-      ${colorHtml}
-      <span>${escapeHtml(p.name)}${p.id === myId ? ' <span class="text-muted">(vous)</span>' : ''}</span>
-      <span class="text-muted" style="font-size:0.85em">${escapeHtml(genName)}</span>
+      <span class="ld-pgen">${escapeHtml(genName)}</span>
       <span class="player-status${ready ? ' ready' : ''}">${statusText}</span>
-      ${bot && phase === 'lobby' && hostId === myId ? `<button class="btn btn-ghost btn-sm bot-remove" onclick="removeBot('${escapeHtml(p.id)}')" title="Retirer cette IA">Retirer</button>` : ''}
+      ${bot && phase === 'lobby' && hostId === myId ? `<button class="ld-btn bot-remove" onclick="removeBot('${escapeHtml(p.id)}')" title="Retirer cette IA">Retirer</button>` : ''}
+      ${swatches}
     `;
     list.appendChild(li);
   }
@@ -476,44 +552,51 @@ function renderSettings(data) {
   renderGameSettings(data, host);
   document.getElementById('settings-hint').textContent = host ? 'Vous êtes l\'hôte : les paramètres s\'appliquent à tous.' : 'Seul l\'hôte peut modifier les paramètres.';
   const startBtn = document.getElementById('start-btn');
-  startBtn.style.display = host ? 'block' : 'none';
+  startBtn.style.display = host ? '' : 'none';
   const missing = data.players.filter(p => !p.generalId).length;
   startBtn.disabled = missing > 0;
-  startBtn.textContent = missing > 0 ? `Lancer la bataille (${missing} joueur(s) sans général)` : 'Lancer la bataille';
+  startBtn.setAttribute('aria-label', missing > 0 ? `Lancer la bataille (${missing} joueur(s) sans général)` : 'Lancer la bataille');
+  document.getElementById('ld-start-label').textContent = 'Lancer';
+  document.getElementById('ld-start-hint').textContent = host
+    ? (missing > 0 ? `${missing} joueur(s) sans général` : (data.players.length < 2 ? 'Ajoutez un joueur ou une IA.' : 'Tout le monde est prêt.'))
+    : (myRole === 'player' ? 'L\'hôte lancera la bataille.' : '');
+  const settingsBox = document.getElementById('ld-settings');
+  if (!settingsBox.dataset.touched && (!host || window.matchMedia('(max-width: 640px)').matches)) settingsBox.open = false;
 }
 
 // Army builder
+function renderArmyGeneral() {
+  const box = document.getElementById('ld-army-general');
+  const g = GENERALS_DATA.find(x => x.id === selectedGeneral);
+  if (!g) { box.innerHTML = ''; return; }
+  box.innerHTML = `<div class="ld-gen-kicker">VOTRE GÉNÉRAL · ${escapeHtml(kingdomLabel(g).toUpperCase())}</div>
+    <div class="ld-gen-name">${escapeHtml(g.name)}</div>
+    ${statBars(g)}
+    ${scrollHtml(g)}`;
+}
+
 function renderArmyBuilder() {
   const shop = document.getElementById('unit-shop');
   shop.innerHTML = '';
   armyQuantities = {};
   UNITS_DATA.forEach(u => { armyQuantities[u.id] = 0; });
-
+  renderArmyGeneral();
   for (const u of UNITS_DATA) {
-    const div = document.createElement('div');
-    div.className = 'unit-card';
-    const imgEntry = UNIT_IMAGE1_MAP[u.id];
-    const imgHtml = imgEntry
-      ? `<img src="/assets/unites/UNIT IMAGE 1-1/${encodeURIComponent(imgEntry.file)}.${imgEntry.ext}" style="width:100%;aspect-ratio:1/1;object-fit:cover;object-position:top;border-radius:4px;margin-bottom:6px;display:block">`
-      : '';
-    div.innerHTML = `
-      ${imgHtml}
-      <h4>${u.name}</h4>
-      <div class="unit-category">${u.category}</div>
-      <div class="unit-stats">
-        Vitalité ${u.vitality} · Attaque ${u.attack} · Défense ${u.defense}<br>
-        Puissance ${u.power} · Armure ${u.armor} · Vitesse ${u.speed}
-        ${u.range > 1 ? `<br>Portée ${u.range} cases` : ''}
-      </div>
-      <div class="unit-cost">${u.cost} or/unité</div>
+    const row = document.createElement('div');
+    row.className = 'ld-unit';
+    row.id = `unit-row-${u.id}`;
+    const img = unitImageUrl(u);
+    const stats = `ATQ ${u.attack} · PUI ${u.power} · DÉF ${u.defense} · ARM ${u.armor} · VIT ${u.speed}${u.range > 1 ? ` · portée ${u.range}` : ''}`;
+    row.innerHTML = `
+      <button class="ld-unit-face" aria-label="Fiche : ${escapeHtml(u.name)}">${img ? `<img src="${img}" alt="">` : ''}<span class="ld-brush">${UNIT_KANJI[u.id] || '兵'}</span></button>
+      <div class="ld-unit-info"><b>${escapeHtml(u.name)}</b><small title="${escapeHtml(stats)}">${escapeHtml(u.category)} · ${stats}</small><span class="ld-cost">${u.cost.toLocaleString('fr-FR')} or</span></div>
       <div class="unit-qty">
-        <button onclick="changeQty('${u.id}', -1)" ondblclick="event.stopPropagation()">−</button>
-        <span id="qty-${u.id}">0</span>
-        <button onclick="changeQty('${u.id}', 1)" ondblclick="event.stopPropagation()">+</button>
-      </div>
-    `;
-    div.ondblclick = (e) => { e.stopPropagation(); showUnitCardLobby(u); };
-    shop.appendChild(div);
+        <button aria-label="Retirer : ${escapeHtml(u.name)}" onclick="changeQty('${u.id}', -1)">−</button>
+        <span id="qty-${u.id}" aria-live="polite">0</span>
+        <button aria-label="Ajouter : ${escapeHtml(u.name)}" onclick="changeQty('${u.id}', 1)">+</button>
+      </div>`;
+    row.querySelector('.ld-unit-face').onclick = () => showUnitCardLobby(u);
+    shop.appendChild(row);
   }
   updateBudgetDisplay();
 }
@@ -528,6 +611,8 @@ function changeQty(typeId, delta) {
   }
   armyQuantities[typeId] = newQty;
   document.getElementById(`qty-${typeId}`).textContent = newQty;
+  const row = document.getElementById(`unit-row-${typeId}`);
+  if (row) row.classList.toggle('has', newQty > 0);
   updateBudgetDisplay();
 }
 
@@ -542,9 +627,11 @@ function computeSpent() {
 
 function updateBudgetDisplay() {
   const spent = computeSpent();
-  document.getElementById('army-budget').textContent = budget.toLocaleString();
-  document.getElementById('army-spent').textContent = spent.toLocaleString();
-  document.getElementById('army-remaining').textContent = (budget - spent).toLocaleString();
+  document.getElementById('army-budget').textContent = budget.toLocaleString('fr-FR');
+  document.getElementById('army-spent').textContent = spent.toLocaleString('fr-FR');
+  document.getElementById('army-remaining').textContent = (budget - spent).toLocaleString('fr-FR');
+  const fill = document.getElementById('ld-budget-fill');
+  if (fill) fill.style.width = `${budget > 0 ? Math.min(100, spent / budget * 100) : 0}%`;
 }
 
 function submitArmy() {
@@ -560,6 +647,7 @@ function enterArmyBuilding(data) {
   const wasVisible = document.getElementById('screen-army').style.display === 'block';
   show('screen-army');
   if (!wasVisible) renderArmyBuilder();
+  else renderArmyGeneral();
   updateBudgetDisplay();
   if (data && data.armySubmitted) markArmySubmitted();
 }
@@ -567,7 +655,8 @@ function enterArmyBuilding(data) {
 function markArmySubmitted() {
   armySubmitted = true;
   const btn = document.getElementById('army-submit-btn');
-  btn.textContent = 'Modifier et reconfirmer';
+  btn.querySelector('.ld-seal-label').textContent = 'Reconfirmer';
+  btn.setAttribute('aria-label', 'Modifier et reconfirmer l\'armée');
 }
 
 function updateArmyWait(data) {
@@ -578,6 +667,8 @@ function updateArmyWait(data) {
 }
 
 function goToGame() {
+  if (goToGame.done) return;
+  goToGame.done = true;
   window.location.href = '/game.html';
 }
 
@@ -587,10 +678,12 @@ function onRoomUpdate(data) {
   budget = data.budget;
   isHost = data.hostId === myId;
   document.getElementById('room-code-display').textContent = data.roomCode;
+  document.getElementById('ld-room-code-mini').textContent = data.roomCode;
+  document.getElementById('ld-room-tag').hidden = false;
   const me = data.players.find(p => p.id === myId);
   if (me) { selectedGeneral = me.generalId; selectedColor = me.color; }
   document.getElementById('role-hint').textContent = myRole === 'spectator' ? 'Vous regardez cette partie en spectateur.' : 'Partagez le code ou le lien avec vos amis.';
-  document.getElementById('generals-card').style.display = myRole === 'player' ? 'block' : 'none';
+  document.getElementById('generals-card').style.display = myRole === 'player' ? '' : 'none';
   renderPlayerList(data);
   renderSettings(data);
   renderGenerals(data.takenGenerals || []);
@@ -675,6 +768,8 @@ async function loadBalanceData() {
 
 function initLobby() {
   loadBalanceData();
+  const settingsBox = document.getElementById('ld-settings');
+  settingsBox.addEventListener('toggle', () => { settingsBox.dataset.touched = '1'; });
   fillSoloGenerals();
   KBNet.mountIndicator();
   const params = new URLSearchParams(location.search);

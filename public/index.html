@@ -4,219 +4,240 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Kingdom Battleground</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Yuji+Boku&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=Zen+Old+Mincho:wght@700;900&display=swap">
   <link rel="stylesheet" href="/css/style.css">
-  <style>
-    #general-card-box { max-width:740px; width:min(740px,95vw); background:#2a2a2e; border:3px solid #111; padding:12px; border-radius:6px; position:relative; }
-    .uc-pdf { display:grid; grid-template-columns:260px 1fr; grid-template-rows:auto auto; gap:8px; color:#111; }
-    .uc-pdf-left { display:flex; flex-direction:column; gap:8px; }
-    .uc-pdf-img { width:100%; aspect-ratio:1/1; object-fit:cover; object-position:top; border:2px solid #444; background:#111; }
-    .uc-pdf-img-placeholder { width:100%; aspect-ratio:1/1; background:#111; border:2px solid #444; display:flex; align-items:center; justify-content:center; font-size:64px; color:#555; }
-    .uc-pdf-bonus { background:#fff; border:2px solid #444; padding:10px 12px; font-size:0.85em; line-height:1.6; flex:1; }
-    .uc-pdf-bonus strong { color:#8b1a1a; }
-    .uc-pdf-right { display:flex; flex-direction:column; gap:7px; }
-    .uc-pdf-title { background:#fff; border:2px solid #444; text-align:center; padding:12px 8px; font-size:1.15em; font-weight:bold; color:#8b1a1a; line-height:1.3; font-family:'Georgia',serif; }
-    .uc-pdf-stats { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
-    .uc-pdf-stat { background:#fff; border:2px solid #444; text-align:center; padding:8px 6px; }
-    .uc-pdf-stat-label { font-weight:bold; font-size:0.85em; color:#222; font-family:'Georgia',serif; }
-    .uc-pdf-stat-value { font-size:1.35em; font-weight:bold; color:#111; margin-top:3px; }
-    .uc-pdf-desc { grid-column:1/-1; background:#fff; border:2px solid #444; padding:10px 12px; font-size:0.85em; line-height:1.6; color:#111; }
-    .uc-pdf-desc strong { color:#8b1a1a; }
-  </style>
+  <link rel="stylesheet" href="/css/lobby-d.css">
 </head>
-<body>
-  <div class="lobby-container">
-    <div class="logo">
-      <h1>KINGDOM</h1>
-      <p>Battleground — Stratégie au Tour par Tour</p>
-    </div>
+<body class="lobby-d">
+  <div class="ld-backdrop" aria-hidden="true"></div>
 
+  <header class="ld-header">
+    <span class="ld-seal-mini ld-brush" aria-hidden="true">戦</span>
+    <span class="ld-wordmark">KINGDOM BATTLEGROUND</span>
+    <span class="ld-grow"></span>
+    <span class="ld-room" id="ld-room-tag" hidden>Salle <b id="ld-room-code-mini"></b></span>
+  </header>
+
+  <main class="lobby-container">
     <div class="lobby-error" id="lobby-error"></div>
 
-    <!-- Écran d'accueil -->
-    <div id="screen-home">
-      <div class="card resume-card" id="resume-card" style="display:none">
+    <!-- Accueil -->
+    <section id="screen-home">
+      <div class="ld-hero">
+        <h1 class="ld-title">KINGDOM</h1>
+        <svg class="ld-stroke" width="260" height="14" viewBox="0 0 260 14" aria-hidden="true"><path d="M3 9 C 60 2, 130 13, 190 6 S 250 8, 257 5" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round"/></svg>
+        <p class="ld-tagline">Batailles des Royaumes combattants, au tour par tour</p>
+      </div>
+
+      <div class="ld-panel resume-card" id="resume-card" style="display:none">
         <h2>Partie en cours</h2>
-        <p class="text-muted" id="resume-text" style="margin-bottom:12px"></p>
+        <p class="ld-muted" id="resume-text"></p>
         <div class="btn-row">
-          <button class="btn btn-primary" onclick="resumeSession()">Reprendre ma place</button>
-          <button class="btn btn-ghost" onclick="dismissResume()">Ignorer</button>
+          <button class="ld-btn ld-btn-red" onclick="resumeSession()">Reprendre ma place</button>
+          <button class="ld-btn" onclick="dismissResume()">Ignorer</button>
         </div>
       </div>
-      <div class="card">
-        <h2>Créer une partie</h2>
-        <div class="input-group">
-          <label for="create-name">Votre nom</label>
-          <input type="text" id="create-name" placeholder="Ex: Shin" maxlength="20">
-        </div>
-        <button class="btn btn-primary" onclick="createRoom()">Créer la salle</button>
-      </div>
-      <div class="card solo-card">
-        <h2>Jouer contre l'IA</h2>
-        <div class="host-grid">
-          <div class="input-group">
-            <label for="solo-difficulty">Difficulté</label>
-            <select id="solo-difficulty">
-              <option value="recrue">Recrue — facile</option>
-              <option value="veteran" selected>Vétéran — moyen</option>
-              <option value="stratege">Stratège — difficile</option>
-            </select>
-          </div>
-          <div class="input-group">
-            <label for="solo-general">Votre général</label>
-            <select id="solo-general"><option value="">Aléatoire</option></select>
-          </div>
-        </div>
-        <div class="btn-row">
-          <button class="btn btn-primary" onclick="playSolo()">Jouer en solo</button>
-          <button class="btn btn-ghost" onclick="startTutorial()" title="Bataille guidée pas à pas contre une IA">Tutoriel</button>
-        </div>
-        <p class="hint">Vous recrutez votre armée, l'IA aussi, puis la bataille commence. Nom : celui de « Créer une partie ».</p>
-      </div>
-      <div class="divider">— ou —</div>
-      <div class="card" id="join-card">
-        <h2>Rejoindre une partie</h2>
-        <div class="input-group">
-          <label for="join-name">Votre nom</label>
-          <input type="text" id="join-name" placeholder="Ex: Kyoukai" maxlength="20">
-        </div>
-        <div class="input-group">
-          <label for="join-code">Code de la salle</label>
-          <input type="text" id="join-code" placeholder="Ex: AB3XYZ" maxlength="8" style="text-transform:uppercase">
-        </div>
-        <div class="btn-row">
-          <button class="btn btn-primary" onclick="joinRoom(false)">Rejoindre</button>
-          <button class="btn btn-ghost" onclick="joinRoom(true)" title="Suivre la partie sans jouer (vision complète)">Regarder en spectateur</button>
-        </div>
-      </div>
-    </div>
 
-    <!-- Salle d'attente -->
-    <div id="screen-lobby" style="display:none">
-      <div class="card">
-        <h2>Code de la salle</h2>
-        <div class="room-code" id="room-code-display">------</div>
+      <div class="ld-home-grid">
+        <div class="ld-panel">
+          <h2><span class="ld-brush ld-k" aria-hidden="true">陣</span>Créer une partie</h2>
+          <div class="input-group">
+            <label for="create-name">Votre nom</label>
+            <input type="text" id="create-name" placeholder="Ex : Shin" maxlength="20" autocomplete="nickname">
+          </div>
+          <button class="ld-btn ld-btn-red ld-wide" onclick="createRoom()">Créer la salle</button>
+          <p class="hint">Invitez vos amis avec le code ou le lien de la salle.</p>
+        </div>
+
+        <div class="ld-panel solo-card">
+          <h2><span class="ld-brush ld-k" aria-hidden="true">将</span>Jouer contre l'IA</h2>
+          <div class="ld-two">
+            <div class="input-group">
+              <label for="solo-difficulty">Difficulté</label>
+              <select id="solo-difficulty">
+                <option value="recrue">Recrue — facile</option>
+                <option value="veteran" selected>Vétéran — moyen</option>
+                <option value="stratege">Stratège — difficile</option>
+              </select>
+            </div>
+            <div class="input-group">
+              <label for="solo-general">Votre général</label>
+              <select id="solo-general"><option value="">Aléatoire</option></select>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="ld-btn ld-btn-red" onclick="playSolo()">Jouer en solo</button>
+            <button class="ld-btn" onclick="startTutorial()" title="Bataille guidée pas à pas contre une IA">Tutoriel</button>
+          </div>
+          <p class="hint">Vous recrutez votre armée, l'IA aussi, puis la bataille commence. Nom : celui de « Créer une partie ».</p>
+        </div>
+
+        <div class="ld-panel" id="join-card">
+          <h2><span class="ld-brush ld-k" aria-hidden="true">門</span>Rejoindre une partie</h2>
+          <div class="input-group">
+            <label for="join-name">Votre nom</label>
+            <input type="text" id="join-name" placeholder="Ex : Kyoukai" maxlength="20" autocomplete="nickname">
+          </div>
+          <div class="input-group">
+            <label for="join-code">Code de la salle</label>
+            <input type="text" id="join-code" placeholder="Ex : AB3XYZ" maxlength="8" style="text-transform:uppercase" autocomplete="off">
+          </div>
+          <div class="btn-row">
+            <button class="ld-btn ld-btn-red" onclick="joinRoom(false)">Rejoindre</button>
+            <button class="ld-btn" onclick="joinRoom(true)" title="Suivre la partie sans jouer">Regarder en spectateur</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Salle : conseil de guerre -->
+    <section id="screen-lobby" style="display:none">
+      <div class="ld-council-top">
+        <div class="ld-code-block">
+          <span class="ld-label">Code de la salle</span>
+          <div class="room-code" id="room-code-display">------</div>
+          <p class="ld-muted" id="role-hint"></p>
+        </div>
         <div class="invite-row">
-          <button class="btn btn-ghost btn-sm" onclick="copyInvite(false)">Copier le lien d'invitation</button>
-          <button class="btn btn-ghost btn-sm" onclick="copyInvite(true)">Copier le lien spectateur</button>
-          <button class="btn btn-ghost btn-sm" onclick="leaveRoom()">Quitter la salle</button>
+          <button class="ld-btn" onclick="copyInvite(false)">Copier le lien d'invitation</button>
+          <button class="ld-btn" onclick="copyInvite(true)">Lien spectateur</button>
+          <button class="ld-btn ld-btn-ghost" onclick="leaveRoom()">Quitter la salle</button>
         </div>
-        <p class="text-muted" id="role-hint" style="text-align:center;font-size:0.85em;margin-top:8px"></p>
       </div>
 
-      <div class="card">
-        <h2>Paramètres de la partie</h2>
-        <div class="host-grid">
-          <div class="input-group">
-            <label for="map-select">Carte</label>
-            <select id="map-select" onchange="setMap(this.value)"></select>
-            <div class="hint" id="map-desc"></div>
+      <div class="ld-council">
+        <aside class="ld-side">
+          <div class="ld-panel ld-dark">
+            <h2>Joueurs <span class="ld-count"><span id="player-count">0</span>/8</span></h2>
+            <ul class="player-list" id="player-list"></ul>
+            <div class="bot-controls" id="bot-controls" style="display:none"></div>
+            <div class="spectator-list" id="spectator-list"></div>
           </div>
-          <div class="input-group">
-            <label for="budget-input">Budget par joueur (or)</label>
-            <input type="number" id="budget-input" value="2500" min="1000" max="100000" step="500" onchange="setBudget()">
-          </div>
-          <div class="input-group">
-            <label for="mode-select">Mode de tour</label>
-            <select id="mode-select" onchange="setMode(this.value)"></select>
-          </div>
-          <div class="input-group">
-            <label for="set-turnsPerHalfDay">Tours par demi-journée</label>
-            <input type="number" id="set-turnsPerHalfDay" data-setting="turnsPerHalfDay" value="12" min="5" max="20" step="1" onchange="setSetting(this)">
-            <div class="hint">5 à 20 tours entre l'aube et le crépuscule (la nuit arrive au bout d'une demi-journée).</div>
-          </div>
-          <div class="input-group">
-            <label for="set-maxTurns">Nombre de tours maximum</label>
-            <input type="number" id="set-maxTurns" data-setting="maxTurns" value="0" min="0" max="200" step="1" onchange="setSetting(this)">
-            <div class="hint">0 = illimité. À la limite, le meilleur score l'emporte.</div>
-          </div>
-          <div class="input-group">
-            <label for="set-victoryPoints">Points de victoire pour gagner</label>
-            <input type="number" id="set-victoryPoints" data-setting="victoryPoints" value="0" min="0" max="1000" step="1" onchange="setSetting(this)">
-            <div class="hint">0 = désactivé. Points gagnés à chaque tour par objectif tenu.</div>
-          </div>
-          <div class="input-group">
-            <label for="set-turnTimer">Minuteur de manche (secondes)</label>
-            <input type="number" id="set-turnTimer" data-setting="turnTimer" value="0" min="0" max="600" step="5" onchange="setSetting(this)">
-            <div class="hint">0 = sans minuteur, sinon 15 à 600 s.</div>
-          </div>
-          <div class="input-group sim-only" style="display:none">
-            <label for="set-planningTimer">Minuteur de planification (secondes)</label>
-            <input type="number" id="set-planningTimer" data-setting="planningTimer" value="90" min="0" max="600" step="5" onchange="setSetting(this)">
-            <div class="hint">Mode simultané : 0 = sans minuteur, sinon 15 à 600 s. À l'expiration, les ordres donnés sont exécutés.</div>
-          </div>
-          <div class="input-group sim-only" style="display:none">
-            <label for="set-commandPoints">Points de commandement par tour</label>
-            <input type="number" id="set-commandPoints" data-setting="commandPoints" value="0" min="0" max="50" step="1" onchange="setSetting(this)">
-            <div class="hint">Mode simultané : nombre d'unités pouvant recevoir un ordre. 0 = 2 + Stratégie du général / 3.</div>
-          </div>
-          <div class="input-group">
-            <label for="set-spectatorVision">Vision des spectateurs</label>
-            <select id="set-spectatorVision" data-setting="spectatorVision" onchange="setSetting(this)">
-              <option value="full">Complète</option>
-              <option value="delayed">Différée (1 tour)</option>
-              <option value="off">Aucune</option>
-            </select>
-          </div>
+
+          <details class="ld-panel ld-dark ld-settings" id="ld-settings" open>
+            <summary><h2>Paramètres de la partie</h2></summary>
+            <div class="host-grid">
+              <div class="input-group">
+                <label for="map-select">Carte</label>
+                <select id="map-select" onchange="setMap(this.value)"></select>
+                <div class="hint" id="map-desc"></div>
+              </div>
+              <div class="input-group">
+                <label for="budget-input">Budget par joueur (or)</label>
+                <input type="number" id="budget-input" value="2500" min="1000" max="100000" step="500" onchange="setBudget()">
+              </div>
+              <div class="input-group">
+                <label for="mode-select">Mode de tour</label>
+                <select id="mode-select" onchange="setMode(this.value)"></select>
+              </div>
+              <div class="input-group">
+                <label for="set-turnsPerHalfDay">Tours par demi-journée</label>
+                <input type="number" id="set-turnsPerHalfDay" data-setting="turnsPerHalfDay" value="12" min="5" max="20" step="1" onchange="setSetting(this)">
+                <div class="hint">5 à 20 tours entre l'aube et le crépuscule.</div>
+              </div>
+              <div class="input-group">
+                <label for="set-maxTurns">Tours maximum</label>
+                <input type="number" id="set-maxTurns" data-setting="maxTurns" value="0" min="0" max="200" step="1" onchange="setSetting(this)">
+                <div class="hint">0 = illimité. À la limite, le meilleur score l'emporte.</div>
+              </div>
+              <div class="input-group">
+                <label for="set-victoryPoints">Points de victoire pour gagner</label>
+                <input type="number" id="set-victoryPoints" data-setting="victoryPoints" value="0" min="0" max="1000" step="1" onchange="setSetting(this)">
+                <div class="hint">0 = désactivé. Points gagnés à chaque tour par objectif tenu.</div>
+              </div>
+              <div class="input-group">
+                <label for="set-turnTimer">Minuteur de manche (s)</label>
+                <input type="number" id="set-turnTimer" data-setting="turnTimer" value="0" min="0" max="600" step="5" onchange="setSetting(this)">
+                <div class="hint">0 = sans minuteur, sinon 15 à 600 s.</div>
+              </div>
+              <div class="input-group sim-only" style="display:none">
+                <label for="set-planningTimer">Minuteur de planification (s)</label>
+                <input type="number" id="set-planningTimer" data-setting="planningTimer" value="90" min="0" max="600" step="5" onchange="setSetting(this)">
+                <div class="hint">0 = sans minuteur, sinon 15 à 600 s. À l'expiration, les ordres donnés sont exécutés.</div>
+              </div>
+              <div class="input-group sim-only" style="display:none">
+                <label for="set-commandPoints">Points de commandement par tour</label>
+                <input type="number" id="set-commandPoints" data-setting="commandPoints" value="0" min="0" max="50" step="1" onchange="setSetting(this)">
+                <div class="hint">Unités pouvant recevoir un ordre. 0 = 2 + Stratégie du général / 3.</div>
+              </div>
+              <div class="input-group">
+                <label for="set-spectatorVision">Vision des spectateurs</label>
+                <select id="set-spectatorVision" data-setting="spectatorVision" onchange="setSetting(this)">
+                  <option value="full">Complète</option>
+                  <option value="delayed">Différée (1 tour)</option>
+                  <option value="off">Aucune</option>
+                </select>
+              </div>
+            </div>
+            <p class="ld-muted" id="settings-hint">Seul l'hôte peut modifier les paramètres.</p>
+          </details>
+        </aside>
+
+        <div class="ld-main" id="generals-card">
+          <div class="generals-grid" id="generals-grid"></div>
         </div>
-        <p class="text-muted mt-8" style="font-size:0.8em" id="settings-hint">Seul l'hôte peut modifier les paramètres.</p>
       </div>
 
-      <div class="card">
-        <h2>Joueurs (<span id="player-count">0</span>/8)</h2>
-        <ul class="player-list" id="player-list"></ul>
-        <div class="bot-controls" id="bot-controls" style="display:none"></div>
-        <div class="spectator-list" id="spectator-list"></div>
-      </div>
-
-      <div class="card" id="generals-card">
-        <h2>Choisir votre Général</h2>
-        <div class="generals-grid" id="generals-grid"></div>
-      </div>
-
-      <div class="mt-16 flex gap-8">
-        <button class="btn btn-success flex-1" id="start-btn" onclick="startGame()" style="display:none">
-          Lancer la bataille
+      <div class="ld-seal-row">
+        <span class="ld-muted" id="ld-start-hint"></span>
+        <button class="ld-seal" id="start-btn" onclick="startGame()" style="display:none">
+          <span class="ld-brush ld-seal-k" aria-hidden="true">戦</span>
+          <span class="ld-seal-label" id="ld-start-label">Lancer</span>
         </button>
       </div>
-    </div>
+    </section>
 
-    <!-- Construction armée -->
-    <div id="screen-army" style="display:none">
-      <div class="phase-title">Construisez votre armée</div>
-      <div class="budget-bar">
-        <span class="budget-label">Budget :</span>
-        <span class="budget-value" id="army-budget">2 500</span>
-        <span class="budget-label">Dépensé :</span>
-        <span class="budget-used" id="army-spent">0</span>
-        <span class="budget-label">Restant :</span>
-        <span class="budget-value" id="army-remaining">2 500</span>
+    <!-- Composition de l'armée -->
+    <section id="screen-army" style="display:none">
+      <div class="ld-army">
+        <aside class="ld-army-side" id="ld-army-general"></aside>
+        <div class="ld-army-main">
+          <div class="ld-army-head">
+            <h2 class="phase-title">Composition de l'armée</h2>
+            <div class="budget-bar">
+              <div class="ld-budget-track"><i id="ld-budget-fill"></i></div>
+              <span class="budget-label">Dépensé</span>
+              <span class="budget-used" id="army-spent">0</span>
+              <span class="budget-label">sur</span>
+              <span class="budget-value" id="army-budget">2 500</span>
+              <span class="budget-label">· reste</span>
+              <span class="budget-value" id="army-remaining">2 500</span>
+            </div>
+          </div>
+          <div class="unit-shop" id="unit-shop"></div>
+        </div>
       </div>
-      <div class="unit-shop" id="unit-shop"></div>
-      <div class="mt-16 btn-row" style="align-items:center">
-        <button class="btn btn-success" id="army-submit-btn" onclick="submitArmy()">Confirmer l'armée</button>
-        <span class="text-muted" id="army-wait"></span>
+      <div class="ld-seal-row">
+        <span class="ld-muted" id="army-wait"></span>
+        <button class="ld-seal" id="army-submit-btn" onclick="submitArmy()">
+          <span class="ld-brush ld-seal-k" aria-hidden="true">戦</span>
+          <span class="ld-seal-label">Prêt</span>
+        </button>
       </div>
-    </div>
+    </section>
 
-    <!-- Attente (spectateur pendant la construction des armées) -->
-    <div id="screen-wait" style="display:none">
-      <div class="card waiting-box">
-        <h2>Construction des armées</h2>
+    <!-- Attente (spectateur pendant le recrutement) -->
+    <section id="screen-wait" style="display:none">
+      <div class="ld-panel ld-dark waiting-box">
+        <h2>Recrutement des armées</h2>
         <p id="wait-text">Les généraux recrutent leurs troupes…</p>
       </div>
-    </div>
-  </div>
+    </section>
+  </main>
 
-  <!-- Fiche général -->
-  <div id="overlay-general-card" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)closeGeneralCard()">
-    <div id="general-card-box">
-      <button onclick="closeGeneralCard()" style="position:absolute;top:8px;right:12px;background:none;border:none;color:#c8960c;font-size:1.4em;cursor:pointer;z-index:1">✕</button>
+  <!-- Fiche général / unité -->
+  <div id="overlay-general-card" style="display:none" onclick="if(event.target===this)closeGeneralCard()">
+    <div id="general-card-box" role="dialog" aria-modal="true">
+      <button class="ld-close" onclick="closeGeneralCard()" aria-label="Fermer">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg>
+      </button>
       <div id="general-card-content"></div>
     </div>
   </div>
 
   <div id="notification"></div>
-  <div id="app-version" style="position:fixed;bottom:8px;right:12px;font-size:0.72em;color:#5a3c10;opacity:0.7;pointer-events:none"></div>
+  <div id="app-version"></div>
 
   <script>
     if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
