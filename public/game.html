@@ -472,8 +472,8 @@
   </style>
 
   <script>
-    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-      window.WS_URL = 'ws://' + location.host;
+    if (/^(localhost|127\.0\.0\.1|\[::1\]|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|[^.]+\.local|[^.]+)$/.test(location.hostname)) {
+      window.WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
     } else {
       window.WS_URL = 'wss://czp9kaymr6.execute-api.eu-west-3.amazonaws.com/prod';
     }
