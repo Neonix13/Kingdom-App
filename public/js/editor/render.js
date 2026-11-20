@@ -75,6 +75,7 @@ export class Renderer {
         else if (l === 'terrain') this.dirty.hexes = true;
         else if (l === 'seg') this.dirty.segs = true;
         else if (l === 'field') this.dirty.fields = true;
+        else if (l === 'rampart' || l === 'props') this.request();
         else if (l === 'zone' || l === 'zoneCount') this.dirty.zones = true;
         else if (l === 'meta') this.syncBackground();
       }
@@ -325,6 +326,15 @@ export class Renderer {
       ctx.fillStyle = 'rgba(240,200,70,0.55)';
       ctx.fill(this.fieldPath);
       if (this.cam.zoom > 10) { ctx.strokeStyle = 'rgba(120,90,10,0.8)'; ctx.lineWidth = px; ctx.stroke(this.fieldPath); }
+    }
+    if (v.showFields && window.KBMapProps && (this.model.ramparts.size || this.model.props.length)) {
+      KBMapProps.drawDecor2D(ctx, { ramparts: [...this.model.ramparts], props: this.model.props }, center, 1, { lineWidth: Math.max(1.5 * px, 0.05) });
+      const sel = this.view.selectedProp;
+      if (sel != null && this.model.props[sel]) {
+        const c = center(this.model.props[sel].q, this.model.props[sel].r);
+        const p = new Path2D(); addHexPath(p, c.x, c.y, 0.9);
+        ctx.strokeStyle = '#ff3030'; ctx.lineWidth = Math.max(3 * px, 0.1); ctx.stroke(p);
+      }
     }
     if (v.showZones) {
       for (let i = 0; i < this.zoneFills.length; i++) {

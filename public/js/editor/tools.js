@@ -18,6 +18,10 @@ export const settings = {
   zoneErase: false,
   objType: 'village',
   objPoints: 1,
+  decorKind: 'field',
+  propType: 'tour',
+  propRot: 0,
+  propLabel: '',
 };
 
 const BRUSH_TOOLS = new Set(['terrain', 'height', 'hex', 'decor', 'zone']);
@@ -198,24 +202,118 @@ export function createTools(E) {
   // ---------- decor ----------
   T.decor = {
     id: 'decor', name: 'Décor', key: '5', icon: 'M12 3l6 8H6zM12 8l7 9H5zM12 17v4',
-    help: 'Champs de blé (purement visuels, sur plaines). Maj = gomme.',
+    help: 'Champs de blé (sur plaines) ou remparts (chemin de ronde : murailles et créneaux en 3D là où une falaise ou un mur borde la case). Purement visuels. Maj = gomme.',
     panel() {
       return [
-        seg([{ id: 'add', name: 'Champs de blé' }, { id: 'erase', name: 'Gomme' }], settings.fieldErase ? 'erase' : 'add', (v) => { settings.fieldErase = v === 'erase'; }),
+        seg([{ id: 'field', name: 'Champs de blé' }, { id: 'rampart', name: 'Remparts' }], settings.decorKind, (v) => { settings.decorKind = v; }),
+        seg([{ id: 'add', name: 'Peindre' }, { id: 'erase', name: 'Gomme' }], settings.fieldErase ? 'erase' : 'add', (v) => { settings.fieldErase = v === 'erase'; }),
         brushPanel(E),
-        h('small', { class: 'muted' }, `${model.fields.size} cases de champs`),
+        h('small', { class: 'muted' }, `${model.fields.size} cases de champs · ${model.ramparts.size} cases de remparts`),
+        settings.decorKind === 'rampart' ? h('small', { class: 'muted' }, 'Règles : placez les remparts plus haut que leurs abords et une falaise (ou un mur) sur leur face extérieure ; une échelle permet l\'assaut à pied.') : null,
       ];
     },
-    pick(p) { settings.fieldErase = !model.fields.has(p.k); return settings.fieldErase ? 'gomme' : 'champ'; },
+    pick(p) {
+      const set = settings.decorKind === 'rampart' ? model.ramparts : model.fields;
+      settings.fieldErase = !set.has(p.k);
+      return settings.fieldErase ? 'gomme' : (settings.decorKind === 'rampart' ? 'rempart' : 'champ');
+    },
     apply(p) {
       const erase = settings.fieldErase !== !!p.shift;
+      const layer = settings.decorKind === 'rampart' ? 'rampart' : 'field';
       for (const [q, r] of brushHexes(p.q, p.r)) {
         const k = key(q, r);
-        if (erase) model.set('field', k, false);
-        else if (model.has(k) && model.terrainAt(k) === 'plain') model.set('field', k, true);
+        if (erase) model.set(layer, k, false);
+        else if (model.has(k) && (layer === 'rampart' || model.terrainAt(k) === 'plain')) model.set(layer, k, true);
       }
     },
   };
+
+  // ---------- props (towers, gatehouses, tents, banners, stairs, campfires) ----------
+  const PT = () => (window.KBMapProps ? window.KBMapProps.PROP_TYPES : []);
+  const PTB = () => (window.KBMapProps ? window.KBMapProps.PROP_BY_ID : {});
+  const ROT_NAMES = ['↘ 0', '↗ 1', '↑ 2', '↖ 3', '↙ 4', '↓ 5'];
+  function setProps(label, next) { model.run(label, () => model.setWhole('props', next)); }
+  function editSelected(patch) {
+    const i = E.view.selectedProp;
+    if (i == null || !model.props[i]) return;
+    setProps('Modifier élément', model.props.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  }
+  T.props = {
+    id: 'props', name: 'Éléments', key: '9', icon: 'M6 21V9l6-5 6 5v12M9 21v-6h6v6M3 21h18',
+    help: 'Clic sur une case vide : poser l\'élément choisi. Clic sur un élément : le sélectionner (glisser pour le déplacer). R : tourner. Suppr : supprimer. Maj+clic : supprimer.',
+    panel() {
+      const out = [
+        seg(PT().map((t) => ({ id: t.id, name: t.name })), settings.propType, (v) => { settings.propType = v; E.ui.refreshPanel(); }, 'vertical'),
+        field('Orientation (R)', seg(ROT_NAMES.map((n, i) => ({ id: String(i), name: n })), String(settings.propRot), (v) => { settings.propRot = +v; editSelected({ rot: +v }); })),
+      ];
+      if (PTB()[settings.propType]?.label) {
+        const inp = h('input', { type: 'text', value: settings.propLabel, maxlength: 8, placeholder: '秦' });
+        inp.addEventListener('change', () => { settings.propLabel = inp.value.trim(); editSelected({ label: settings.propLabel || undefined }); });
+        out.push(field('Texte de la bannière', inp));
+      }
+      const i = E.view.selectedProp;
+      const sel = i != null ? model.props[i] : null;
+      if (sel) {
+        out.push(h('div', { class: 'row' },
+          h('b', null, `${PTB()[sel.type]?.name || sel.type} en ${sel.q},${sel.r}`),
+          h('button', { type: 'button', onclick: () => editSelected({ type: settings.propType }) }, 'Changer le type'),
+          h('button', { type: 'button', onclick: () => deleteSelectedProp() }, 'Supprimer')));
+      }
+      const counts = {};
+      for (const p of model.props) counts[p.type] = (counts[p.type] || 0) + 1;
+      out.push(h('small', { class: 'muted' }, `${model.props.length} élément(s) · ` + Object.entries(counts).map(([t, n]) => `${PTB()[t]?.name || t} : ${n}`).join(', ')));
+      return out;
+    },
+    down(p) {
+      const i = model.props.findIndex((o) => o.q === p.q && o.r === p.r);
+      if (p.shift) {
+        if (i >= 0) { setProps('Supprimer élément', model.props.filter((_, j) => j !== i)); E.view.selectedProp = null; }
+      } else if (i >= 0) {
+        E.view.selectedProp = i;
+        stroke.moveIdx = i;
+        const o = model.props[i];
+        settings.propType = o.type; settings.propRot = o.rot || 0; settings.propLabel = o.label || '';
+      } else if (model.has(p.k)) {
+        const t = PTB()[settings.propType];
+        const o = { type: settings.propType, q: p.q, r: p.r };
+        if (t?.oriented) o.rot = settings.propRot;
+        if (t?.label && settings.propLabel) o.label = settings.propLabel;
+        setProps('Nouvel élément', [...model.props, o]);
+        E.view.selectedProp = model.props.length - 1;
+      } else E.view.selectedProp = null;
+      E.ui.refreshPanel();
+      E.renderer.request();
+    },
+    drag(p) {
+      const i = stroke.moveIdx;
+      if (i === undefined || !model.has(p.k)) return;
+      const o = model.props[i];
+      if (o.q === p.q && o.r === p.r) return;
+      if (model.props.some((x, j) => j !== i && x.q === p.q && x.r === p.r)) return;
+      model.setWhole('props', model.props.map((x, j) => (j === i ? { ...x, q: p.q, r: p.r } : x)));
+    },
+    pick(p) {
+      const o = model.props.find((x) => x.q === p.q && x.r === p.r);
+      if (!o) return null;
+      settings.propType = o.type; settings.propRot = o.rot || 0; settings.propLabel = o.label || '';
+      return PTB()[o.type]?.name || o.type;
+    },
+  };
+
+  function rotateProp() {
+    settings.propRot = (settings.propRot + 1) % 6;
+    editSelected({ rot: settings.propRot });
+    E.ui.refreshPanel();
+  }
+
+  function deleteSelectedProp() {
+    const i = E.view.selectedProp;
+    if (i == null || !model.props[i]) return;
+    setProps('Supprimer élément', model.props.filter((_, j) => j !== i));
+    E.view.selectedProp = null;
+    E.ui.refreshPanel();
+    E.renderer.request();
+  }
 
   // ---------- zones ----------
   T.zone = {
@@ -381,7 +479,7 @@ export function createTools(E) {
 
   return {
     tools: T,
-    order: ['terrain', 'height', 'hex', 'segment', 'decor', 'zone', 'objective', 'background'],
+    order: ['terrain', 'height', 'hex', 'segment', 'decor', 'zone', 'objective', 'background', 'props'],
     isBrush: (id) => BRUSH_TOOLS.has(id),
     active: () => !!stroke,
     pick(toolId, ev) { const t = T[toolId]; return t.pick ? t.pick(pt(ev)) : null; },
@@ -424,6 +522,8 @@ export function createTools(E) {
     },
     cancel() { if (stroke) { stroke = null; model.commit(); } },
     deleteSelected,
+    deleteSelectedProp,
+    rotateProp,
     // Hover overlay: brush footprint / target edge
     overlay(toolId, hover, ctx, px) {
       if (!hover) return;

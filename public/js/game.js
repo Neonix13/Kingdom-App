@@ -505,8 +505,11 @@ function render() {
     for (const h of mapHexes) {
       const { x, y } = hexToPixel(h.q, h.r);
       drawHex(ctx, x, y, TERRAIN_BASE_COLORS[terrainData[h.key] || 'plain'] || TERRAIN_BASE_COLORS.plain, 'rgba(0,0,0,0.25)', 1, 1);
+      const hh = mapDoc.height[h.key] || 0;
+      if (hh > 3) drawHex(ctx, x, y, `rgba(205,192,168,${Math.min(0.5, (hh - 3) * 0.07)})`, 'rgba(0,0,0,0)', 1, 1);
     }
   }
+  if (mapDoc && window.KBMapProps) KBMapProps.drawDecor2D(ctx, mapDoc.decor, hexToPixel, HEX_SIZE);
 
   const visibleSet = new Set(gameState?.visibleHexes || []);
   const startZone = deployState?.startingZone;

@@ -16,7 +16,7 @@ const $ = (id) => document.getElementById(id);
 const view = Object.assign({
   display: 'terrain', fillAlpha: 0.85, bgVisible: true, bgOpacity: 1, showGrid: true, showSegments: true,
   showFields: true, showZones: true, showObjectives: true, showLabels: true, contours: false, selectedObjective: null,
-}, JSON.parse(localStorage.getItem(LS_VIEW) || '{}'), { selectedObjective: null });
+}, JSON.parse(localStorage.getItem(LS_VIEW) || '{}'), { selectedObjective: null, selectedProp: null });
 
 const model = new MapModel();
 const renderer = new Renderer($('map'), model, view);
@@ -79,7 +79,7 @@ E.ui.refreshPanel = refreshPanel;
 E.ui.refreshPanelSoon = refreshPanelSoon;
 
 function saveView() {
-  const { selectedObjective, ...rest } = view;
+  const { selectedObjective, selectedProp, ...rest } = view;
   localStorage.setItem(LS_VIEW, JSON.stringify(rest));
 }
 
@@ -426,6 +426,9 @@ function updateHoverInfo() {
     DIRS.forEach(([dq, dr], i) => { const t = model.segAt(hv.q, hv.r, hv.q + dq, hv.r + dr); if (t) segs.push(`${DIR_NAMES[i]}:${SEGMENT_BY_ID[t]?.name || t}`); });
     if (segs.length) parts.push('Segments ' + segs.join(', '));
     if (model.fields.has(k)) parts.push('Champ');
+    if (model.ramparts.has(k)) parts.push('Rempart');
+    const pr = model.props.find((x) => x.q === hv.q && x.r === hv.r);
+    if (pr) parts.push(`${window.KBMapProps?.PROP_BY_ID[pr.type]?.name || pr.type}${pr.label ? ' ' + pr.label : ''}`);
     const z = model.zoneOf.get(k);
     if (z !== undefined) parts.push(`Zone ${z + 1}`);
     const o = model.objectives.find((x) => x.q === hv.q && x.r === hv.r);
@@ -464,7 +467,8 @@ window.addEventListener('keydown', (e) => {
   else if (k === 'm') { view.display = { terrain: 'height', height: 'none', none: 'terrain' }[view.display]; saveView(); renderer.invalidateAll(); refreshPanel(); }
   else if (k === 'b') { view.bgVisible = !view.bgVisible; saveView(); renderer.request(); refreshPanel(); }
   else if (k === 'p') togglePreview();
-  else if (e.key === 'Delete' || e.key === 'Backspace') { if (state.tool === 'objective') tools.deleteSelected(); }
+  else if (e.key === 'Delete' || e.key === 'Backspace') { if (state.tool === 'objective') tools.deleteSelected(); else if (state.tool === 'props') tools.deleteSelectedProp(); }
+  else if (k === 'r' && state.tool === 'props') tools.rotateProp();
   else if (e.key === 'Escape') { tools.cancel(); state.pickOnce = false; vp.classList.remove('pick'); view.selectedObjective = null; renderer.highlight = null; renderer.request(); }
   else if (e.key === '?') showHelp();
   else if (e.key === '+' || e.key === '=') renderer.zoomAt(renderer.w / 2, renderer.h / 2, 1.25);

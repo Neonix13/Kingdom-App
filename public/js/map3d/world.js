@@ -10,6 +10,7 @@ import { createPost, QualityGovernor } from './post.js';
 import { createCloudLayer } from './clouds.js';
 import { createStars, createMoon, createFireflies, createLightPools } from './night.js';
 import { buildStructures } from './buildings.js';
+import { buildFortifications } from './fortifications.js';
 import { createBoardLayers } from './overlays.js';
 import { createObjectiveMarkers } from './objectives3d.js';
 
@@ -179,9 +180,11 @@ const TEX_UV_SCALE = 0.5;
 
 // --- Visual type per hex ---
 const fieldSet = new Set(decor.fields || []);
+const rampartSet = new Set(decor.ramparts || []);
 function isWaterHex(h) { return h.terrain === 'river' || h.terrain === 'bridge'; }
 function visualType(h) {
   if (isWaterHex(h)) return 'water';
+  if (rampartSet.has(`${h.q},${h.r}`)) return 'rampart';
   if (h.terrain !== 'plain') return h.terrain;
   if (fieldSet.has(`${h.q},${h.r}`)) return 'field';
   if (h.height >= 5) return 'rocky';
@@ -197,6 +200,7 @@ const VT_STYLE = {
   highland: { color: 0xb8a070, tex: 5, variation: 0.03 },
   rocky:    { color: 0x9f9483, tex: 3, variation: 0.03 },
   water:    { color: 0x7a6a55, tex: 3, variation: 0.0 },
+  rampart:  { color: 0x8c8374, tex: 3, variation: 0.015 },
 };
 const vtypeOf = new Map();
 for (const [k, h] of allHexes) vtypeOf.set(k, visualType(h));
@@ -1194,6 +1198,7 @@ for (const [segKey, type] of Object.entries(segmentData)) {
   const ha = allHexes.get(`${s.q1},${s.r1}`), hb = allHexes.get(`${s.q2},${s.r2}`);
   const ec = edgeCorners(s.q1, s.r1, s.q2, s.r2);
   if (!ha || !hb || !ec) continue;
+  if (rampartSet.has(`${s.q1},${s.r1}`) || rampartSet.has(`${s.q2},${s.r2}`)) continue;
   const rng = makeRng(s.q1 * 31 + s.r1 * 17 + s.q2 * 13 + s.r2 * 7 + 1);
   const [hi, lo] = effH(ha) >= effH(hb) ? [ha, hb] : [hb, ha];
   const ph = hexToWorld(hi.q, hi.r), pl = hexToWorld(lo.q, lo.r);
@@ -1300,6 +1305,7 @@ const { waterwheels, smokeSources, lanternSpots, decks } = buildStructures({
   hexToWorld, hexCorner, groundHeight, effH, isWaterHex, footbridges, gateways,
   HEX_DIRS, DIR_TO_GEO_EDGE, CORNER_NEIGHBORS, HEX_HEIGHT_STEP, WATER_LEVEL, RIVERBED_HEIGHT,
   lanternMats, windowMats,
+  decorate: (api) => buildFortifications(api, { decor, allHexes, hexToWorld, hexCorner, edgeCorners, groundHeight, effH, getSegType, HEX_DIRS, HEX_HEIGHT_STEP }),
 });
 
 // Height where units stand: the ground, or the deck of a bridge they are crossing
