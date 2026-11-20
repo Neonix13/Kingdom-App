@@ -152,3 +152,17 @@ test('vitesse de début de tour : au moins 1 (une unité lente au repos ou en fo
   room._initUnitSpeedForTurn(u);
   assert.equal(u.speedRemaining, Math.floor(u.speed / 2));
 });
+
+test('avertissement de fin de tour : une vitesse restante qui ne paie aucun pas ne compte pas', () => {
+  const room = battleRoom(2);
+  const pid = room.getCurrentPlayerId();
+  const u = room.getPlayer(pid).units.find(x => !x.isGeneral);
+  u.hasAttacked = true;
+  u.turnSpeed = 3;
+  u.speedRemaining = 0.33;
+  assert.ok(!room.unitsAbleToAct(pid, true).includes(u.id), 'strict : plus rien à faire');
+  assert.ok(room.unitsAbleToAct(pid).includes(u.id), 'fin de tour automatique : la vitesse paie encore une posture');
+  u.speedRemaining = 3;
+  assert.ok(room.unitsAbleToAct(pid, true).includes(u.id), 'peut encore se déplacer');
+  assert.deepEqual(room.getGameState(pid).actionUnitIds, room.unitsAbleToAct(pid, true));
+});

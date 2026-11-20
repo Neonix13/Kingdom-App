@@ -860,7 +860,10 @@ class GameRoom {
       units: visibleUnits,
       myUnits,
       activeEffects: this.activeEffects.filter(e => e.targetPlayerId === playerId),
-      actionsLeft: isCurrent && this.phase === 'battle' ? this.unitsAbleToAct(playerId).length : 0,
+      ...(() => {
+        const ids = isCurrent && this.phase === 'battle' ? this.unitsAbleToAct(playerId, true) : [];
+        return { actionsLeft: ids.length, actionUnitIds: ids };
+      })(),
       ...(this.turns.stateFor ? this.turns.stateFor(this, playerId) : {}),
     };
   }
@@ -1657,14 +1660,20 @@ class GameRoom {
   }
 
   // Units of the player that can still do something this turn (move, rotate, change stance, attack, motivate, ability)
-  unitsAbleToAct(playerId) {
+  // strict: only units that can still move, attack or use an action (the end-turn warning);
+  // otherwise any remaining speed counts, since it can still pay for a stance change or a pivot (automatic end of turn)
+  unitsAbleToAct(playerId, strict = false) {
     const player = this.getPlayer(playerId);
     if (!player || player.isEliminated) return [];
     const out = [];
     let vis = null;
     for (const u of player.units) {
       if (u.q === null || u.isFleeing) continue;
-      if (u.speedRemaining > 0) { out.push(u.id); continue; }
+      if (u.speedRemaining > 0) {
+        if (!strict) { out.push(u.id); continue; }
+        vis = vis || this.getVisibleHexes(playerId);
+        if (this._canStepSomewhere(playerId, u, vis) || this._canUseUnitAction(playerId, u)) { out.push(u.id); continue; }
+      }
       if (!u.hasAttacked) {
         vis = vis || this.getVisibleHexes(playerId);
         if (this._hasTargetInRange(playerId, u, vis)) { out.push(u.id); continue; }
@@ -1676,6 +1685,44 @@ class GameRoom {
       }
     }
     return out;
+  }
+
+  // Remaining speed only counts when it pays for at least one step (same rules as moveUnit)
+  _canStepSomewhere(playerId, unit, vis) {
+    const blocked = (k) => {
+      const occ = this.unitMap[k];
+      return !!occ && this.canSee(playerId, occ, occ.q, occ.r, vis);
+    };
+    const ab = this.ability(unit);
+    const transit = ab && ab.type === 'trample' ? blocked : null;
+    const table = this.moveTable();
+    for (const [dq, dr] of [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]]) {
+      const q = unit.q + dq, r = unit.r + dr, k = hexKey(q, r);
+      if (!this.hexMap[k] || blocked(k)) continue;
+      if (findPathCost(this.hexMap, this.unitMap, unit.q, unit.r, q, r, unit.speedRemaining, unit, this.segmentData, blocked, table, rules.hasFullSpeed(unit), transit) !== null) return true;
+    }
+    return false;
+  }
+
+  // Sabotage / build / vanish still possible this turn
+  _canUseUnitAction(playerId, unit) {
+    const ab = this.ability(unit);
+    if (!ab || unit.speedRemaining < ab.cost) return false;
+    if (ab.type === 'ambush') {
+      if (unit.vanishedDay === this.dayNumber()) return false;
+      return !this.players.some(p => p.id !== playerId && p.units.some(e => e.q !== null && hexDistance(e.q, e.r, unit.q, unit.r) <= ab.range && this.canSee(playerId, e)));
+    }
+    if (ab.type !== 'sabotage' && ab.type !== 'build') return false;
+    for (const [dq, dr] of [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]]) {
+      const q = unit.q + dq, r = unit.r + dr, hk = hexKey(q, r);
+      if (!this.hexMap[hk]) continue;
+      const seg = this.segmentData[segmentEdgeKey(unit.q, unit.r, q, r)] || null;
+      if (ab.type === 'sabotage') {
+        const opt = rules.sabotageOption(seg, this.terrainData[hk]);
+        if (opt && !(opt.target === 'hex' && this.unitMap[hk])) return true;
+      } else if (rules.buildOptions(seg, this.terrainData[hk]).some(o => !(o.target === 'hex' && o.id === 'pont' && this.unitMap[hk]))) return true;
+    }
+    return false;
   }
 
   canPlayerAct(playerId) {

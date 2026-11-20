@@ -163,3 +163,37 @@ test('hôte : changement de budget, mode, couleur unique', async () => {
   const players = a.last('room_update').players;
   assert.equal(players.find(p => p.name === 'Bob').color, '#2070e0');
 });
+
+// An archer steps back from the front line, then shoots an enemy of the given type at distance 2–3
+async function shootAt(targetType) {
+  const h = createHarness();
+  const { first, second } = await setupBattle(h, { units: [{ typeId: 'archer', count: 1 }, { typeId: 'phalange', count: 1 }] });
+  const gs = first.last('game_state');
+  const archer = gs.myUnits.find(u => u.typeId === 'archer');
+  const dist = (a, b) => (Math.abs(a.q - b.q) + Math.abs(a.r - b.r) + Math.abs(a.q + a.r - b.q - b.r)) / 2;
+  const taken = new Set([...gs.myUnits, ...gs.units].map(u => `${u.q},${u.r}`));
+  const enemies = gs.units.filter(u => !u.isMine && !u.isGeneral);
+  const target = enemies.find(e => e.typeId === targetType);
+  const back = [[-1, 0], [-1, 1], [0, -1], [1, -1], [0, 1], [1, 0]].map(([dq, dr]) => ({ q: archer.q + dq, r: archer.r + dr }))
+    .find(t => !taken.has(`${t.q},${t.r}`) && enemies.every(e => dist(e, t) >= 2) && dist(target, t) <= 3);
+  assert.ok(back, 'case de tir libre');
+  await first.send('move_unit', { unitId: archer.id, targetQ: back.q, targetR: back.r });
+  const moved = first.last('game_state').myUnits.find(u => u.id === archer.id);
+  assert.deepEqual([moved.q, moved.r], [back.q, back.r]);
+  const before = second.all('defense_request').length;
+  await first.send('attack_unit', { attackerId: archer.id, targetId: target.id });
+  return { first, second, asked: second.all('defense_request').length > before };
+}
+
+test('tir sur une unité qui ne peut pas le bloquer : résolu sans demander de défense', async () => {
+  const { first, second, asked } = await shootAt('archer');
+  assert.equal(asked, false);
+  assert.equal(first.last('combat_result').combatLog.defenseChoice, 'rien');
+  assert.ok(second.last('combat_result'));
+});
+
+test('tir sur une phalange : le défenseur choisit entre encaisser et rien', async () => {
+  const { second, asked } = await shootAt('phalange');
+  assert.equal(asked, true);
+  assert.deepEqual(second.last('defense_request').options, ['absorb', 'rien']);
+});
