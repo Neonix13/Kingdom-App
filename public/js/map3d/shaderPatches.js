@@ -16,6 +16,8 @@ export const G = {
   uVisMix: { value: 1 },
   uVisBounds: { value: new THREE.Vector4(0, 0, 1, 1) },
   uOverlay: { value: null },
+  uOcc: { value: null },
+  uOccOn: { value: 0 },
   uOverlayBounds: { value: new THREE.Vector4(0, 0, 1, 1) },
 };
 
@@ -88,6 +90,7 @@ export function patchLit(material, opts = {}, extra = null, cacheKey = '') {
     fadeNear: 0,
     fadeFar: 0,
     noFlip: false,
+    clearOnUnits: false,
     ...opts,
   };
   material.onBeforeCompile = (shader) => {
@@ -100,13 +103,14 @@ export function patchLit(material, opts = {}, extra = null, cacheKey = '') {
     shader.uniforms.uCloudHeight = G.uCloudHeight;
     shader.uniforms.uWindDir = G.uWindDir;
     shader.uniforms.uWindStrength = G.uWindStrength;
-    for (const k of ['uFogOn', 'uVisA', 'uVisB', 'uVisMix', 'uVisBounds']) shader.uniforms[k] = G[k];
+    for (const k of ['uFogOn', 'uVisA', 'uVisB', 'uVisMix', 'uVisBounds', 'uOcc', 'uOccOn']) shader.uniforms[k] = G[k];
 
     let defs = '';
     if (o.wind) defs += `#define PATCH_WIND\n#define WIND_BEND ${o.windBend.toFixed(4)}\n#define WIND_FREQ ${o.windFreq.toFixed(3)}\n#define WIND_FLUTTER ${o.flutter.toFixed(4)}\n${o.flutter > 0 ? '#define PATCH_FLUTTER\n' : ''}`;
     if (o.fadeFar > 0) defs += `#define PATCH_FADE\n#define FADE_NEAR ${o.fadeNear.toFixed(2)}\n#define FADE_FAR ${o.fadeFar.toFixed(2)}\n`;
     if (o.cloud) defs += '#define PATCH_CLOUD\n';
     if (o.noFlip) defs += '#define PATCH_NOFLIP\n';
+    if (o.clearOnUnits) defs += '#define PATCH_OCC\n';
 
     shader.vertexShader = shader.vertexShader.replace('#include <common>', `${defs}
 #include <common>
@@ -114,11 +118,14 @@ uniform float uTime;
 uniform sampler2D uNoise;
 uniform vec2 uWindDir;
 uniform float uWindStrength;
+uniform sampler2D uOcc;
+uniform float uOccOn;
+uniform vec4 uVisBounds;
 varying vec3 vPWorld;
 `);
 
     shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
-#if defined( PATCH_WIND ) || defined( PATCH_FADE )
+#if defined( PATCH_WIND ) || defined( PATCH_FADE ) || defined( PATCH_OCC )
 {
   vec3 _ip = vec3( 0.0 );
   mat3 _im = mat3( 1.0 );
@@ -138,6 +145,12 @@ varying vec3 vPWorld;
     #ifdef PATCH_FLUTTER
       transformed += normalize( objectNormal + vec3( 1e-4 ) ) * sin( uTime * 7.0 + position.x * 13.0 + position.z * 11.0 + _ph ) * WIND_FLUTTER * _hh;
     #endif
+  #endif
+  #ifdef PATCH_OCC
+    if ( uOccOn > 0.5 ) {
+      float _occ = texture2D( uOcc, ( _ipw.xz - uVisBounds.xy ) / uVisBounds.zw ).r;
+      transformed *= 1.0 - 0.82 * _occ;
+    }
   #endif
   #ifdef PATCH_FADE
     float _cd = distance( cameraPosition, _ipw );

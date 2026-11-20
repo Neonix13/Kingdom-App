@@ -80,6 +80,33 @@ export function createBoardLayers(world) {
     visFront = 1 - visFront;
   }
 
+  // --- Unit occupancy: trees/bushes shrink on hexes holding a formation so soldiers stay visible ---
+  const occ = makeCanvasTex(visW, visH);
+  G.uOcc.value = occ.tex;
+  let lastOcc = null;
+  function setOccupied(keys) {
+    const arr = keys ? Array.from(keys).sort() : [];
+    const sig = arr.join(';');
+    if (sig === lastOcc) return;
+    lastOcc = sig;
+    const ctx = occ.ctx;
+    ctx.filter = 'none';
+    ctx.clearRect(0, 0, visW, visH);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, visW, visH);
+    ctx.filter = `blur(${(0.18 * VIS_PPU).toFixed(1)}px)`;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    for (const k of arr) {
+      const [q, r] = k.split(',').map(Number);
+      hexPath(ctx, visP, q, r, 0.95);
+    }
+    ctx.fill();
+    ctx.filter = 'none';
+    occ.tex.needsUpdate = true;
+    G.uOccOn.value = arr.length ? 1 : 0;
+  }
+
   // --- Tile overlays (projected into the terrain shader) ---
   const OV_PPU = 12;
   const ovW = Math.ceil(B.z * OV_PPU), ovH = Math.ceil(B.w * OV_PPU);
@@ -216,5 +243,5 @@ export function createBoardLayers(world) {
     }
   }
 
-  return { setVisibility, setOverlay, setHover, addPing, update, bounds: B };
+  return { setVisibility, setOverlay, setOccupied, setHover, addPing, update, bounds: B };
 }

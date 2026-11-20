@@ -172,6 +172,9 @@ export async function mountGameView(bridge, { container }) {
   }
   function syncNow() {
     dirty = false;
+    preview.clear();
+    ui.showAttackTip(null);
+    hovered = null;
     ui.applyHour();
     const st = bridge.state;
     const ds = bridge.deployState;
@@ -196,6 +199,7 @@ export async function mountGameView(bridge, { container }) {
     world.layers.setOverlay({ fills, outlines });
 
     shownUnits = currentUnits().filter((u) => u.q != null);
+    world.layers.setOccupied(new Set(shownUnits.map((u) => hexKey(u.q, u.r))));
     if (units3d) {
       units3d.sync(shownUnits);
       units3d.setSelected(sel ? sel.id : null);
