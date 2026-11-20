@@ -21,7 +21,7 @@ export class Ambience {
     this.e = engine;
     this.rnd = rng(o.seed ?? 4242);
     this.range = o.cameraHeightRange || [3, 150];
-    this.p = { enabled: true, timeOfDay: 12, nearWater: 0, nearForest: 0, nearVillage: 0, cameraHeight: null, waterPan: 0, forestPan: 0, villagePan: 0 };
+    this.p = { enabled: false, timeOfDay: 12, nearWater: 0, nearForest: 0, nearVillage: 0, cameraHeight: null, waterPan: 0, forestPan: 0, villagePan: 0 };
     this.beds = {};
     this.next = {};
     this.applied = {};

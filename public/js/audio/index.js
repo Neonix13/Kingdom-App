@@ -50,6 +50,7 @@ export function createAudio(opts = {}) {
     get context() { return engine ? engine.ctx : null; },
     get settings() { return { ...settings }; },
     get musicState() { return musicState; },
+    get _internals() { return engine ? { engine, music, amb, bank } : { bank }; },
     ready: () => bank.warm(),
 
     unlock() {
@@ -95,8 +96,9 @@ export function createAudio(opts = {}) {
     stopAllLoops(fade) { engine && engine.stopAllLoops(fade); },
 
     setAmbience(p = {}) {
-      Object.assign(ambParams, p);
-      amb && amb.set(p);
+      const q = 'enabled' in ambParams || 'enabled' in p ? p : { enabled: true, ...p };
+      Object.assign(ambParams, q);
+      amb && amb.set(q);
     },
 
     setMusic(state) {
@@ -138,7 +140,7 @@ export async function renderOffline(seconds, setup, o = {}) {
     stopLoop: (id, fade) => engine.stopLoop(id, fade),
     setMusic: (s) => music.set(s),
     setIntensity: (x) => music.setIntensity(x),
-    setAmbience: (p) => { ambOn = true; amb.set(p); },
+    setAmbience: (p) => { ambOn = true; amb.set({ enabled: true, ...p }); },
   };
   const timeline = [...(o.timeline || [])].sort((a, b) => a[0] - b[0]);
   if (setup) await setup(api);

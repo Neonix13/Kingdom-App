@@ -1,0 +1,81 @@
+# Audio — Kingdom Battleground
+
+Couche sonore 100 % synthétisée (Web Audio API), sans fichier audio ni requête réseau. Modules ES dans `public/js/audio/`, démo et analyse dans `public/audio-demo.html` (http://localhost:3000/audio-demo.html).
+
+## Mise en route
+
+```js
+import { createAudio } from './js/audio/index.js';
+
+const audio = createAudio();            // pré-rendu des sons lancé en tâche de fond
+addEventListener('pointerdown', () => audio.unlock(), { once: true });  // 1er geste utilisateur
+```
+
+- `createAudio({ masterVolume, musicVolume, sfxVolume, ambienceVolume, cameraHeightRange })` : volumes 0..1 (défauts 0.8 / 0.6 / 0.8 / 0.6). Les réglages sauvegardés dans `localStorage['kb_audio']` **priment** sur ces arguments (qui ne servent que de valeurs par défaut).
+- `audio.unlock()` crée/reprend l'`AudioContext` (renvoie une promesse). Avant `unlock()`, tous les appels sont des no-op silencieux : `setMusic` / `setAmbience` / `setIntensity` sont mémorisés et appliqués au déverrouillage, `play` est ignoré.
+- `audio.setVolumes({ masterVolume, musicVolume, sfxVolume, ambienceVolume })`, `audio.mute(true|false)`, `audio.settings` : persistés automatiquement.
+- `audio.ready()` : promesse résolue quand tous les sons sont pré-rendus (~1,5 s, ~26 Mo).
+- `audio.dispose()` : coupe tout et ferme le contexte.
+
+## Effets (SFX)
+
+```js
+audio.play('attack_clash', { pan: -0.4, distance: 0.3, volume: 1 });
+```
+
+- `pan` : -1 (gauche) .. 1 (droite) ; `distance` : 0 (proche) .. 1 (lointain) → atténuation + passe-bas + plus de réverbération ; `volume` : multiplicateur.
+- Sons : `ui_click`, `ui_hover` (très doux, limité à 1 / 60 ms), `select_unit`, `deploy_place`, `hit_impact`, `unit_death`, `unit_rout`, `attack_clash`, `arrow_volley`, `general_duel`, `horn_turn_start`, `drum_roll_initiative`, `gong`, `victory_fanfare`, `defeat`, `ping`, `notification`.
+- Chaque son a 1 à 4 variantes et un léger désaccord aléatoire (anti-répétition). Polyphonie limitée par son et globalement (la plus ancienne voix est coupée en fondu).
+
+### Boucles de déplacement
+
+```js
+const id = audio.startLoop('move_march', { pan, distance });   // ou 'move_gallop', 'chariot_rumble'
+audio.updateLoop(id, { pan, distance, volume, rate });          // pendant le déplacement
+audio.stopLoop(id);                                              // fondu de 0,6 s (paramètre optionnel)
+```
+
+## Musique générative
+
+```js
+audio.setMusic('menu' | 'deploy' | 'calm' | 'battle' | 'victory' | 'defeat' | 'off');
+audio.setIntensity(0..1);   // en 'battle' : densité des taiko, tempo (84 → 110 bpm), ostinato pipa
+```
+
+Fondus enchaînés entre états (2 à 4 s). `victory` et `defeat` commencent par un court motif puis continuent calmement. Instruments : guzheng / pipa / guqin (Karplus-Strong), harmoniques de guqin, dizi (souffle + vibrato), taiko. Gammes pentatoniques (modes gong, zhi, yu, jue). `setIntensity` peut être appelé souvent : la valeur est lissée mesure par mesure.
+
+Suggestion de branchement : `deploy` en phase de déploiement, `battle` pendant la bataille avec `setIntensity` ∝ nombre d'unités au contact, `victory`/`defeat` à la fin (en plus de `victory_fanfare`/`defeat` en SFX si souhaité).
+
+## Ambiances
+
+```js
+audio.setAmbience({
+  timeOfDay: 0..24,          // oiseaux le jour (chœur à l'aube), grillons + hibou la nuit
+  nearWater: 0..1,           // rivière
+  nearForest: 0..1,          // bruissement des feuilles, oiseaux, hibou
+  nearVillage: 0..1,         // murmures, marteau lointain, poules (rares)
+  cameraHeight,              // unités monde (plage par défaut 3..150 = distance d'orbite de world.js)
+  waterPan, forestPan, villagePan,   // -1..1, optionnel : direction de la source
+  enabled: true | false,
+});
+```
+
+- Peut être appelé à chaque frame : les valeurs sont stockées, puis appliquées en douceur (~1 s) par un minuteur interne de 100 ms.
+- L'ambiance démarre au premier appel de `setAmbience` (sauf `enabled: false`).
+- Caméra haute → plus de vent, sons du sol atténués et filtrés.
+
+## Rendu hors-ligne / tests
+
+`renderOffline(seconds, setup, { volumes, seed, timeline })` (export de `index.js`) rend la même chaîne (bus, réverbération, limiteur) dans un `OfflineAudioContext` et renvoie un `AudioBuffer`. `analyze.js` fournit `metrics(buffer)` (crête, RMS, DC, écrêtage, centroïde, planéité, ratio harmonique, raccord de boucle). Bouton « Lancer l'analyse » sur la page de démo, ou `await kbAnalyse()` dans la console.
+
+## Architecture
+
+| Fichier | Rôle |
+|---|---|
+| `index.js` | API publique `createAudio`, réglages, minuteur, `renderOffline` |
+| `engine.js` | bus musique / SFX / ambiance, réverbération à convolution, compresseur + saturation douce (plafond ≈ -1,3 dBFS), voix, boucles |
+| `bank.js` | pré-rendu des recettes via `OfflineAudioContext` (hors thread principal), normalisation, raccord des boucles |
+| `recipes.js`, `kit.js` | recettes de synthèse (bruit filtré, modal, Karplus-Strong, cuivres, tambours…) |
+| `music.js` | séquenceur génératif par mesure |
+| `ambience.js` | lits sonores en boucle + événements poissoniens |
+| `dsp.js`, `analyze.js` | utilitaires DSP et mesures |
