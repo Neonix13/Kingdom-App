@@ -96,14 +96,32 @@ export function createGameUI({ world, container, bridge, getView }) {
   function applyHour() {
     if (settings.hour === 'auto') {
       const st = bridge.state;
-      const turn = st?.turn || 1;
-      const manche = st?.manche || 1;
-      const h = 8 + ((turn - 1) * 1.6 + (manche - 1) * 0.3) % 13;
-      if (Math.abs(world.hour - h) > 0.05) world.commitTimeOfDay(Math.min(20.4, h));
+      let h;
+      if (st && typeof st.timeOfDay === 'number') h = st.timeOfDay;
+      else h = 8 + (((st?.turn || 1) - 1) * 1.6 + ((st?.manche || 1) - 1) * 0.3) % 13;
+      if (Math.abs(world.hour - h) > 0.05) animateHour(h);
     } else {
       const h = parseFloat(settings.hour);
       if (Math.abs(world.hour - h) > 0.05) world.commitTimeOfDay(h);
     }
+  }
+  // Smoothly sweep the sun to a new hour (wrapping forward through the night)
+  let hourAnim = null;
+  function animateHour(target) {
+    let from = world.hour;
+    let to = target;
+    if (to < from - 0.05) to += 24;
+    if (to - from > 12) { world.commitTimeOfDay(target); return; }
+    hourAnim = { from, to, t: 0, dur: Math.min(3, 0.6 + (to - from) * 0.4) };
+  }
+  function updateHour(dt) {
+    if (!hourAnim) return;
+    hourAnim.t += dt / hourAnim.dur;
+    const k = Math.min(1, hourAnim.t);
+    const e = k * k * (3 - 2 * k);
+    const h = (hourAnim.from + (hourAnim.to - hourAnim.from) * e) % 24;
+    if (k >= 1) { world.commitTimeOfDay(h); hourAnim = null; }
+    else world.previewTimeOfDay(h);
   }
   apply();
 
@@ -253,7 +271,7 @@ export function createGameUI({ world, container, bridge, getView }) {
 
   return {
     settings,
-    update(dt) { update(dt); updateFloats(dt); },
+    update(dt) { update(dt); updateFloats(dt); updateHour(dt); },
     floatText,
     showAttackTip,
     applyHour,

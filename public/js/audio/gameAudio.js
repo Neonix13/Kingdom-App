@@ -102,6 +102,7 @@ export function attachGameAudio(bridge) {
       case 'combat_result': {
         const log = data.combatLog || data;
         if (log.abilityUsed) { audio.play('gong', { volume: 0.7 }); break; }
+        if (log.duel) { audio.play('drum_roll_initiative', { volume: 0.8 }); if (!(window.view3d && window.view3d.active)) audio.play('general_duel'); break; }
         const tgt = unitById(log.targetId);
         const sp = spatial(tgt?.q, tgt?.r);
         audio.play(log.ranged ? 'arrow_volley' : 'attack_clash', sp);
@@ -111,6 +112,8 @@ export function attachGameAudio(bridge) {
         break;
       }
       case 'units_fled': audio.play('unit_rout'); break;
+      case 'ambush': { const sp = spatial(data.q, data.r); audio.play('attack_clash', sp); setTimeout(() => audio.play('hit_impact', sp), 300); break; }
+      case 'objective_captured': audio.play('gong', { ...spatial(data.q, data.r), volume: 0.6 }); break;
       case 'ping': audio.play('ping', spatial(data.q, data.r)); break;
       case 'chat_message': if (data.authorId !== bridge.myId) audio.play('notification', { volume: 0.5 }); break;
       case 'game_over': {

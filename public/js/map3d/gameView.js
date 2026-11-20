@@ -17,6 +17,9 @@ const PLATE_CSS = `
 .u3-plate.enemy { border-color:rgba(160,160,220,0.5); }
 .u3-plate.moved { opacity:.62; }
 .u3-plate.fleeing { border-color:#ff6020; }
+.u3-plate.concealed { border-style:dashed; border-color:#7fb07a; }
+.u3-plate.concealed::after { content:'◐'; color:#9fd09a; font-size:10px; margin-left:1px; }
+.u3-plate.stunned::after { content:'✶'; color:#ffcf40; font-size:11px; margin-left:1px; }
 .u3-plate img.tok { width:17px; height:17px; border-radius:50%; object-fit:cover; border:2px solid var(--pc); }
 .u3-plate img.st { width:13px; height:13px; opacity:.9; }
 .u3-bars { display:flex; flex-direction:column; gap:2px; }
@@ -157,6 +160,8 @@ export async function mountGameView(bridge, { container }) {
     el.classList.toggle('enemy', !u.isMine);
     el.classList.toggle('moved', !!(u.hasMoved && u.isMine));
     el.classList.toggle('fleeing', !!u.isFleeing);
+    el.classList.toggle('concealed', !!u.concealed);
+    el.classList.toggle('stunned', !!u.stunned);
     return el;
   }
 
@@ -198,6 +203,11 @@ export async function mountGameView(bridge, { container }) {
     if (mc) outlines.push({ keys: bridge.motivateTiles, center: hexKey(mc.q, mc.r), color: 'rgba(80,180,255,0.95)', width: 0.12 });
     world.layers.setOverlay({ fills, outlines });
 
+    if (st && Array.isArray(st.objectives)) {
+      const owners = {};
+      for (const o of st.objectives) if (o.owner) owners[o.id ?? hexKey(o.q, o.r)] = bridge.getPlayerColor(o.owner);
+      world.objectives.setOwners(owners);
+    }
     shownUnits = currentUnits().filter((u) => u.q != null);
     world.layers.setOccupied(new Set(shownUnits.map((u) => hexKey(u.q, u.r))));
     if (units3d) {
@@ -316,6 +326,39 @@ export async function mountGameView(bridge, { container }) {
   }
   world.frameHooks.push(frame);
 
+  // General duel: close camera, alternating strikes per exchange, damage per round
+  function stageDuel(log) {
+    const d = log.duel;
+    const a = shownUnits.find((u) => u.id === d.attackerId) || shownUnits.find((u) => u.id === log.attackerId);
+    const b = shownUnits.find((u) => u.id === d.defenderId) || shownUnits.find((u) => u.id === log.targetId);
+    if (!a || !b) return;
+    const pa = anchorOf(a).clone(), pb = anchorOf(b).clone();
+    const mid = pa.clone().lerp(pb, 0.5);
+    mid.y = world.groundHeight(mid.x, mid.z);
+    if (ui.staging()) {
+      const dir = pb.clone().sub(pa).setY(0).normalize();
+      const side = new THREE.Vector3(-dir.z, 0, dir.x);
+      world.flyTo(mid.clone().addScaledVector(side, 5.5).add(new THREE.Vector3(0, 3.2, 0)), mid.clone().setY(mid.y + 0.4), 1.0);
+    }
+    ui.floatText(mid.clone().setY(mid.y + 1.6), 'DUEL', 'kill', 0.3);
+    (d.rounds || []).forEach((r, i) => {
+      const t = 1.1 + i * 1.15;
+      setTimeout(() => {
+        if (r.attacker == null) { ui.floatText(mid.clone().setY(mid.y + 1.1), 'Parade', 'miss'); return; }
+        const striker = r.attacker === a.id ? a : b;
+        const victim = striker === a ? b : a;
+        if (units3d) { units3d.playAttack(striker.id, victim.id, { ranged: false }); units3d.playHit(victim.id, { delay: 0.35 }); }
+        if (window.gameAudio) window.gameAudio.play('general_duel');
+        ui.floatText(anchorOf(victim).clone(), r.dmg ? `-${r.dmg}` : 'Paré', r.dmg ? '' : 'miss', 0.35);
+      }, t * 1000);
+    });
+    const end = 1.1 + (d.rounds || []).length * 1.15 + 0.4;
+    setTimeout(() => {
+      const w = shownUnits.find((u) => u.id === d.winnerId);
+      if (w) ui.floatText(anchorOf(w).clone().setY(anchorOf(w).y + 0.4), `${w.name} l'emporte`, 'kill');
+    }, end * 1000);
+  }
+
   view = {
     active: false,
     world,
@@ -325,7 +368,9 @@ export async function mountGameView(bridge, { container }) {
       if (!view.active) return;
       if (event === 'combat_result') {
         const log = data.combatLog || data;
-        if (log && log.attackerId != null && log.targetId != null) {
+        if (log && log.duel && log.attackerId != null && log.targetId != null) {
+          stageDuel(log);
+        } else if (log && log.attackerId != null && log.targetId != null) {
           const att = shownUnits.find((u) => u.id === log.attackerId);
           const tgt = shownUnits.find((u) => u.id === log.targetId);
           let impact = log.ranged ? 0.9 : 0.45;
@@ -351,6 +396,17 @@ export async function mountGameView(bridge, { container }) {
           }
           if (att && log.counterDmgReceived) ui.floatText(anchorOf(att).clone(), `-${log.counterDmgReceived}`, '', impact + 0.6);
         }
+      } else if (event === 'ambush') {
+        world.layers.addPing(data.q, data.r, '#ff3020');
+        const u = shownUnits.find((x) => x.id === data.unitId);
+        const p = world.hexToWorld(data.q, data.r);
+        ui.floatText(new THREE.Vector3(p.x, world.groundHeight(p.x, p.z) + 0.8, p.z), 'Embuscade !', 'kill');
+        if (u && units3d) units3d.playHit(u.id, { delay: 0.1 });
+        if (ui.staging()) world.focusHex(data.q, data.r, 0.7);
+      } else if (event === 'objective_captured') {
+        world.layers.addPing(data.q, data.r, data.owner ? bridge.getPlayerColor(data.owner) : '#ffd700');
+        const p = world.hexToWorld(data.q, data.r);
+        ui.floatText(new THREE.Vector3(p.x, world.groundHeight(p.x, p.z) + 1.9, p.z), `${data.name || 'Objectif'} capturé`, 'kill');
       } else if (event === 'ping') {
         world.layers.addPing(data.q, data.r, data.color || '#ffd700');
       }
