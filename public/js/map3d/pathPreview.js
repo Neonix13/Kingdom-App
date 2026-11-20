@@ -94,3 +94,70 @@ export function createPathPreview(world) {
 
   return { showPath, showAttack, clear, update };
 }
+
+// Planned orders (simultaneous mode): one chevron trail per move, an arc per attack, all in the player's colour
+export function createOrdersLayer(world) {
+  const { scene, groundHeight, hexToWorld } = world;
+  const MAX = 512;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute([
+    -0.09, 0, -0.08, 0, 0, 0.05, 0.09, 0, -0.08,
+    0.09, 0, -0.08, 0, 0, 0.05, 0, 0, 0.1,
+    -0.09, 0, -0.08, 0, 0, 0.1, 0, 0, 0.05,
+  ], 3));
+  const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, depthWrite: false, fog: false, toneMapped: false, side: THREE.DoubleSide });
+  const chev = new THREE.InstancedMesh(geo, mat, MAX);
+  chev.count = 0;
+  chev.frustumCulled = false;
+  chev.renderOrder = 8;
+  scene.add(chev);
+  const arcMat = new THREE.MeshBasicMaterial({ color: 0xff5030, transparent: true, opacity: 0.8, depthWrite: false, fog: false, toneMapped: false });
+  const arcs = [];
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3();
+  let lastSig = '';
+
+  function clearArcs() { for (const a of arcs) { scene.remove(a); a.geometry.dispose(); } arcs.length = 0; }
+
+  function show(orders, color, anchorOf) {
+    const sig = JSON.stringify(orders || []) + color;
+    if (sig === lastSig) return;
+    lastSig = sig;
+    mat.color.set(color || '#ffd25a');
+    clearArcs();
+    let n = 0;
+    for (const o of orders || []) {
+      if (o.path && o.path.length > 1) {
+        const pts = o.path.map(([hq, hr]) => { const c = hexToWorld(hq, hr); return new THREE.Vector3(c.x, 0, c.z); });
+        const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal', 0.3);
+        const len = curve.getLength();
+        const cnt = Math.max(2, Math.floor(len / 0.36));
+        for (let i = 1; i <= cnt && n < MAX; i++) {
+          const t = Math.min(0.999, i / cnt);
+          const pt = curve.getPointAt(t), tan = curve.getTangentAt(t);
+          q.setFromAxisAngle(up, Math.atan2(tan.x, tan.z));
+          p.set(pt.x, groundHeight(pt.x, pt.z) + 0.07, pt.z);
+          m.compose(p, q, one);
+          chev.setMatrixAt(n++, m);
+        }
+      }
+      if (o.target && o.target.q != null && (o.type === 'attack' || o.type === 'charge')) {
+        const from = o.path && o.path.length ? o.path[o.path.length - 1] : null;
+        const src = from ? hexToWorld(from[0], from[1]) : null;
+        const tgt = hexToWorld(o.target.q, o.target.r);
+        const a = src ? new THREE.Vector3(src.x, groundHeight(src.x, src.z) + 0.4, src.z) : (anchorOf && anchorOf(o.unitId));
+        if (!a) continue;
+        const b = new THREE.Vector3(tgt.x, groundHeight(tgt.x, tgt.z) + 0.4, tgt.z);
+        const mid = a.clone().lerp(b, 0.5);
+        mid.y += Math.max(0.5, a.distanceTo(b) * (o.ranged ? 0.35 : 0.15));
+        const arc = new THREE.Mesh(new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(a, mid, b), 24, 0.028, 5, false), arcMat);
+        arc.renderOrder = 8;
+        scene.add(arc);
+        arcs.push(arc);
+      }
+    }
+    chev.count = n;
+    chev.instanceMatrix.needsUpdate = true;
+  }
+  function clear() { show([], null); }
+  return { show, clear };
+}

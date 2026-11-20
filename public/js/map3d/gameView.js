@@ -1,5 +1,5 @@
 import { createWorld } from './world.js';
-import { createPathPreview } from './pathPreview.js';
+import { createPathPreview, createOrdersLayer } from './pathPreview.js';
 import { createGameUI } from './gameUI.js';
 
 const PLATE_CSS = `
@@ -83,6 +83,7 @@ export async function mountGameView(bridge, { container }) {
   }
 
   const preview = createPathPreview(world);
+  const ordersLayer = createOrdersLayer(world);
   let view = null;
   const ui = createGameUI({ world, container, bridge, getView: () => view });
 
@@ -209,6 +210,8 @@ export async function mountGameView(bridge, { container }) {
       world.objectives.setOwners(owners);
     }
     shownUnits = currentUnits().filter((u) => u.q != null);
+    if (bridge.simultaneous && !bridge.playback) ordersLayer.show(bridge.plannedOrders || [], bridge.getPlayerColor(bridge.myId), (id) => { const u = shownUnits.find((x) => x.id === id); return u ? anchorOf(u).clone().setY(anchorOf(u).y - 0.3) : null; });
+    else ordersLayer.clear();
     world.layers.setOccupied(new Set(shownUnits.map((u) => hexKey(u.q, u.r))));
     if (units3d) {
       units3d.sync(shownUnits);
@@ -326,6 +329,7 @@ export async function mountGameView(bridge, { container }) {
   }
   world.frameHooks.push(frame);
 
+  let lastStageCam = 0;
   // General duel: close camera, alternating strikes per exchange, damage per round
   function stageDuel(log) {
     const d = log.duel;
@@ -379,7 +383,10 @@ export async function mountGameView(bridge, { container }) {
             if (typeof r === 'number') impact = r;
             units3d.playHit(log.targetId, { delay: impact });
           }
-          if (att && tgt && ui.staging()) {
+          const now = performance.now();
+          const allowCam = !data.playback || now - lastStageCam > 2500;
+          if (att && tgt && ui.staging() && allowCam) {
+            lastStageCam = now;
             const a = anchorOf(att).clone(), b = anchorOf(tgt).clone();
             const mid = a.clone().lerp(b, 0.5);
             mid.y = world.groundHeight(mid.x, mid.z);
