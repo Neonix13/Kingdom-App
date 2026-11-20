@@ -80,6 +80,7 @@ const world = await createWorld({
   canvas,
   container: document.body,
   persistKey: 'map3d',
+  mapId: params.get('map') || 'default',
   intro: !params.has('nointro'),
   quality: params.has('q') ? parseInt(params.get('q'), 10) || 0 : null,
   onProgress: (pct, text) => {

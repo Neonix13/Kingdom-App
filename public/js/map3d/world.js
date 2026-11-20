@@ -22,12 +22,6 @@ const RIVERBED_HEIGHT = -0.15;
 const STREAM_DEPTH = 0.3;
 const sqrt3 = Math.sqrt(3);
 
-// Map image calibration (must match hexGrid.js / game.js)
-const MAP_HEX_SIZE = 101.5;
-const MAP_ORIG_X = 137;
-const MAP_ORIG_Y = 190;
-const MAP_IMG_W = 8800;
-const MAP_IMG_H = 7200;
 
 
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
@@ -39,12 +33,14 @@ async function setProgress(pct, text) {
 installHeightFog(0.5, 0.05);
 
 await setProgress(5, 'Fetching terrain data...');
-const [terrainData, heightData, segmentData, decor] = await Promise.all([
-  fetch('/data/terrain.json').then(r => r.json()),
-  fetch('/data/height.json').then(r => r.json()),
-  fetch('/data/segments.json').then(r => r.json()),
-  fetch('/data/decor.json').then(r => (r.ok ? r.json() : {})).catch(() => ({})),
-]);
+const mapDoc = opts.map || await fetch(`/api/maps/${encodeURIComponent(opts.mapId || 'default')}`).then(r => {
+  if (!r.ok) throw new Error('Carte introuvable');
+  return r.json();
+});
+const terrainData = mapDoc.terrain || {};
+const heightData = mapDoc.height || {};
+const segmentData = mapDoc.segments || {};
+const decor = mapDoc.decor || {};
 const segSet = new Map();
 for (const [segKey, segType] of Object.entries(segmentData)) segSet.set(segKey, segType);
 function getSegType(q1, r1, q2, r2) {
@@ -55,19 +51,9 @@ await setProgress(12, 'Processing hex grid...');
 
 // --- Hex set (same bounds logic as game.js) ---
 const allHexes = new Map();
-const S = sqrt3;
-const qMin = Math.floor(-MAP_ORIG_X / (MAP_HEX_SIZE * 1.5)) - 1;
-const qMax = Math.ceil((MAP_IMG_W - MAP_ORIG_X) / (MAP_HEX_SIZE * 1.5)) + 1;
-for (let q = qMin; q <= qMax; q++) {
-  const rMin = Math.floor((-MAP_ORIG_Y - MAP_HEX_SIZE * S / 2 * q) / (MAP_HEX_SIZE * S)) - 1;
-  const rMax = Math.ceil((MAP_IMG_H - MAP_ORIG_Y - MAP_HEX_SIZE * S / 2 * q) / (MAP_HEX_SIZE * S)) + 1;
-  for (let r = rMin; r <= rMax; r++) {
-    const imgX = MAP_HEX_SIZE * 1.5 * q + MAP_ORIG_X;
-    const imgY = MAP_HEX_SIZE * (S / 2 * q + S * r) + MAP_ORIG_Y;
-    if (imgX < 0 || imgX > MAP_IMG_W || imgY < 0 || imgY > MAP_IMG_H) continue;
-    const key = `${q},${r}`;
-    allHexes.set(key, { q, r, terrain: terrainData[key] || 'plain', height: heightData[key] || 0 });
-  }
+for (const key of Object.keys(heightData)) {
+  const [q, r] = key.split(',').map(Number);
+  allHexes.set(key, { q, r, terrain: terrainData[key] || 'plain', height: heightData[key] || 0 });
 }
 
 // --- Hex math (flat-top) ---

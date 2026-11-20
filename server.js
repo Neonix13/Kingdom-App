@@ -14,6 +14,9 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 app.use(connectLivereload());
+app.use(express.json({ limit: '5mb' }));
+require('./server/admin').mountAdmin(app);
+require('./server/mapRoutes').mountMapRoutes(app);
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/simulation/results', express.static(path.join(__dirname, 'simulation/results')));
 
