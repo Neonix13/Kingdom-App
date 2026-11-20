@@ -9,7 +9,9 @@ Référence des règles telles qu'elles sont appliquées par le serveur. Les val
 3. **Déploiement** : chacun place ses unités dans sa zone de départ (jamais sur une rivière), le général compris, puis clique « Prêt ». Les positions adverses ne sont pas visibles.
 4. **Bataille** : tours successifs jusqu'à la victoire (§9).
 
-## 2. Tours, manches et initiative
+Deux modes de tour (réglage de l'hôte) : **séquentiel** (initiative, §2, décrit ci-dessous) et **simultané** (ordres secrets donnés en même temps puis résolus ensemble, case par case) — voir [mode-simultane.md](mode-simultane.md). Toutes les autres règles (déplacement, combat, nuit, vision, duels, objectifs, victoire) sont communes.
+
+## 2. Tours, manches et initiative (mode séquentiel)
 
 - Un **tour** est un passage de tous les joueurs ; chaque joueur y joue une **manche**.
 - Au début de chaque tour, l'**initiative** est relancée : Stratégie du général + D20 (égalité : le plus haut D20). L'ordre de jeu suit ce total, du plus grand au plus petit.
@@ -146,11 +148,13 @@ Quand un général attaque un général ennemi au corps à corps, c'est un **due
 
 | Paramètre | Valeurs | Défaut |
 |---|---|---|
-| Carte, budget, mode | — | défaut, 2500, séquentiel |
+| Carte, budget, mode (séquentiel / simultané) | — | défaut, 2500, séquentiel |
 | Tours par demi-journée | 5 – 20 | 12 |
 | Nombre de tours maximum | 0 (illimité) – 200 | 0 |
 | Points de victoire pour gagner | 0 (désactivé) – 1000 | 0 |
-| Minuteur de manche | 0 (aucun) ou 15 – 600 s | 0 |
+| Minuteur de manche (séquentiel) | 0 (aucun) ou 15 – 600 s | 0 |
+| Minuteur de planification (simultané) | 0 (aucun) ou 15 – 600 s | 90 |
+| Points de commandement (simultané) | 0 (2 + ⌈Stratégie / 3⌉) ou 1 – 50 | 0 |
 | Vision des spectateurs | complète / différée / aucune | complète |
 
 ## 13. Fin de bataille

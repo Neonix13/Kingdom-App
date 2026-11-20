@@ -81,8 +81,9 @@ Entrant `{action, roomCode?, ...}` — sortant `{event, ...}` ; erreurs `{event:
 
 - Session : `create_room {playerName, mapId?}`, `join_room {roomCode, playerName, spectator?}`, `rejoin_game {roomCode, playerId, token}`, `leave_room`, `get_state`, `tick` (toutes les 15 s), `list_maps`.
   Réponses : `session {roomCode, playerId, token, role}` (seul message contenant le jeton, envoyé à son seul propriétaire), `room_created`, `room_joined`, `session_replaced`, `maps_list {maps, modes}`, `pong`.
-- Lobby (hôte) : `set_map {mapId}`, `set_budget`, `set_mode` (seul `sequential` disponible), `start_game` ; tous : `set_player_color {color:#rrggbb}` (unique), `select_general`.
+- Lobby (hôte) : `set_map {mapId}`, `set_budget`, `set_mode` (`sequential` | `simultaneous`), `start_game` ; tous : `set_player_color {color:#rrggbb}` (unique), `select_general`.
   `room_update` contient `mapId`, `mapName`, `mode`, `players[{id,name,color,generalId,isReady,connected}]`, `spectators`.
+- Mode simultané : `set_orders`, `commit_orders`, `cancel_commit` ; événements `planning_start`, `commit_status`, `orders_update`, `resolution`, `planning_timeout` (détail en tête de `game/turns/simultaneous.js`, règles dans `docs/mode-simultane.md`).
 - Jeu : actions inchangées (`submit_army`, `place_unit`, `deployment_ready`, `move_unit`, `attack_unit`, `defend_choice {choice: rien|counter|absorb}`, `rotate_facing`, `change_stance`, `motivate_unit`, `use_ability {targetId?}`, `end_turn`, `chat_message`, `ping`).
 - Nouveaux événements : `presence {players, spectators}`, `player_disconnected`, `player_reconnected`, `player_left {reason: left|timeout|abandon}`, `player_joined`, `spectator_joined`, `turn_auto_ended`, `chat_history`, `deployment_ready_update.readyIds`, `defense_request.seconds/expiresAt`.
 - `game_state` : `mapId`, `mode`, `turnDeadline`, `players[].connected`, `spectators` ; **plus de `heightData`** (lire la carte). Spectateurs : `isSpectator: true`, toutes les unités, `visibleHexes` = toute la carte, `myUnits: []`.
