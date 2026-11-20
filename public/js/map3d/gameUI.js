@@ -33,7 +33,7 @@ body.v3-photo #v3-photo-bar { display:flex; }
 `;
 
 const CAM_CODES = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Equal', 'Minus', 'NumpadAdd', 'NumpadSubtract']);
-const DEFAULTS = { quality: 'auto', grid: 0.16, plates: 'auto', hour: 'auto', camSpeed: 1, staging: true, combatCard: 'full', followPlayback: true };
+const DEFAULTS = { quality: 'auto', grid: 0.16, plates: 'auto', hour: 'auto', camSpeed: 1, staging: true, combatCard: 'full', followPlayback: true, dice: true };
 
 export function createGameUI({ world, container, bridge, getView }) {
   const style = document.createElement('style');
@@ -68,6 +68,7 @@ export function createGameUI({ world, container, bridge, getView }) {
     <label>Mise en scène des combats <input type="checkbox" data-k="staging"></label>
     <label>Fiche de combat <select data-k="combatCard"><option value="full">Grande</option><option value="small">Petite</option><option value="off">Aucune</option></select></label>
     <label>Suivre la résolution <input type="checkbox" data-k="followPlayback"></label>
+    <label>Dés 3D <input type="checkbox" data-k="dice"></label>
     <div class="row"><button data-act="photo">Mode photo (P)</button><button data-act="top">Vue du dessus (T)</button></div>
     <div class="hint">Clic gauche : sélection · glisser : déplacer la vue · clic droit glissé : pivoter · molette : zoom<br>
     ZQSD / WASD / flèches : déplacer · A/E : pivoter · Espace : centrer sur l’unité · Échap : désélectionner</div>`;
@@ -278,6 +279,7 @@ export function createGameUI({ world, container, bridge, getView }) {
     platesMode() { return settings.plates; },
     staging() { return !!settings.staging; },
     followPlayback() { return settings.followPlayback !== false; },
+    dice() { return settings.dice !== false; },
     hide(on) { gear.style.display = on ? 'none' : ''; sep.style.display = on ? 'none' : ''; if (on) { panel.classList.remove('open'); setPhoto(false); } },
   };
 }

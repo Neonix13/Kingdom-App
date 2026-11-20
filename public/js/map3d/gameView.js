@@ -2,6 +2,7 @@ import { createWorld } from './world.js';
 import { createPathPreview, createOrdersLayer } from './pathPreview.js';
 import { createMapEditsLayer } from './mapEdits3d.js';
 import { createGameUI } from './gameUI.js';
+import { createDice3d } from './dice3d.js';
 import { KANJI } from '../hud/battleHud.js';
 
 const PLATE_CSS = `
@@ -93,6 +94,7 @@ export async function mountGameView(bridge, { container }) {
   editsLayer.update(bridge.mapEdits, baseMap().seg, baseMap().ter);
   let view = null;
   const ui = createGameUI({ world, container, bridge, getView: () => view });
+  const dice = createDice3d(world);
 
   // --- Input: click vs drag, hover, context menu ---
   let down = null;
@@ -242,6 +244,12 @@ export async function mountGameView(bridge, { container }) {
     return { x: p0.x + (p1.x - p0.x) * k, z: p0.z + (p1.z - p0.z) * k, heading: Math.atan2(p1.x - p0.x, p1.z - p0.z) };
   }
 
+  function diceAt(log) {
+    const a = log && shownUnits.find((u) => u.id === log.attackerId), b = log && shownUnits.find((u) => u.id === log.targetId);
+    if (!a || !b) return null;
+    const p = anchorOf(a).clone().lerp(anchorOf(b), 0.5);
+    return p.setY(world.groundHeight(p.x, p.z));
+  }
   const _v = new THREE.Vector3();
   function anchorOf(u) {
     if (units3d) {
@@ -410,6 +418,8 @@ export async function mountGameView(bridge, { container }) {
     pingHex(q, r, color) { world.layers.addPing(q, r, color); },
     onEvent(event, data) {
       if (!view.active) return;
+      dice.enabled = ui.dice();
+      dice.onEvent(event, data, { colorOf: (id) => bridge.getPlayerColor(id), at: diceAt(data && (data.combatLog || data)) });
       if (event === 'playback_tick') {
         followPts = [];
         clearTimeout(followTimer);
