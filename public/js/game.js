@@ -83,14 +83,37 @@ const SEGMENT_COLORS_MAP = {
 // Propriétés locales pour les vérifications de mouvement côté client
 const SEGMENT_DEFS_CLIENT = {
   river:            { name:'Rivière',         vitesse:-1,  vitesse_fixe:null, infranchissable:false, infranchissable_cavalerie:false, attack_cac:-2, attack_tir:0, defense_cac:0, defense_tir:0, puissance_cac:0, puissance_tir:0, special:null },
-  cliff:            { name:'Falaise',         vitesse:0,   vitesse_fixe:3,    infranchissable:false, infranchissable_cavalerie:true,  attack_cac:-5, attack_tir:0, defense_cac:0, defense_tir:0, puissance_cac:0, puissance_tir:0, special:null },
+  cliff:            { name:'Falaise',         vitesse:0,   vitesse_fixe:3,    infranchissable:false, infranchissable_cavalerie:true,  attack_cac:-5, attack_tir:0, defense_cac:0, defense_tir:0, puissance_cac:0, puissance_tir:0, special:'Infranchissable (sauf par une échelle)' },
   bridge:           { name:'Pont',            vitesse:0,   vitesse_fixe:null, infranchissable:false, infranchissable_cavalerie:false, attack_cac:0,  attack_tir:0, defense_cac:2, defense_tir:2, puissance_cac:0, puissance_tir:0, special:null },
   passerelle:       { name:'Passerelle',      vitesse:0,   vitesse_fixe:null, infranchissable:false, infranchissable_cavalerie:false, attack_cac:0,  attack_tir:0, defense_cac:-1, defense_tir:-1, puissance_cac:0, puissance_tir:0, special:'Effondrement 1/4' },
   barriere:         { name:'Barrière',        vitesse:-1,  vitesse_fixe:null, infranchissable:false, infranchissable_cavalerie:false, attack_cac:0,  attack_tir:0, defense_cac:2, defense_tir:2, puissance_cac:0, puissance_tir:0, special:null },
   chevaux_de_frise: { name:'Chevaux de frise',vitesse:0,   vitesse_fixe:null, infranchissable:false, infranchissable_cavalerie:false, attack_cac:0,  attack_tir:0, defense_cac:4, defense_tir:4, puissance_cac:0, puissance_tir:0, special:'+5 puissance vs cavalerie' },
   mur:              { name:'Mur',             vitesse:0,   vitesse_fixe:null, infranchissable:true,  infranchissable_cavalerie:false, attack_cac:0,  attack_tir:0, defense_cac:0, defense_tir:0, puissance_cac:0, puissance_tir:0, special:null },
-  echelle:          { name:'Échelle',         vitesse:-2,  vitesse_fixe:null, infranchissable:false, infranchissable_cavalerie:true,  attack_cac:-6, attack_tir:0, defense_cac:0, defense_tir:0, puissance_cac:0, puissance_tir:0, special:null },
+  echelle:          { name:'Échelle',         vitesse:-2,  vitesse_fixe:null, infranchissable:false, infranchissable_cavalerie:true,  attack_cac:-6, attack_tir:0, defense_cac:0, defense_tir:0, puissance_cac:0, puissance_tir:0, special:'Infanterie et généraux seulement, coût 3' },
 };
+
+// Movement: same rules and table as the server (public/js/rules.js, table sent in game_state.movementRules)
+function movementTable() {
+  return gameState?.movementRules || KBRules.movementTable(SEGMENT_DEFS_CLIENT);
+}
+
+function clientReachable(unit) {
+  const maxSpeed = unit.speedRemaining != null ? unit.speedRemaining : unit.speed;
+  const occupied = new Set((gameState?.units || []).map(u => `${u.q},${u.r}`));
+  return KBRules.reachable(movementTable(), {
+    start: { q: unit.q, r: unit.r },
+    maxCost: maxSpeed,
+    mounted: KBRules.isMounted(unit),
+    hexAt: (k) => (k in mapHeight ? { terrain: terrainData[k] || 'plain', height: mapHeight[k] || 0 } : null),
+    blocked: (k) => occupied.has(k) || (!!gameState && !gameState.visibleHexes.has(k)),
+    segAt: (a, b, c, d) => segmentData[segmentEdgeKey(a, b, c, d)] || null,
+  });
+}
+
+function fmtSpeed(v) {
+  if (v == null) return '—';
+  return Number.isInteger(v) ? String(v) : (Math.round(v * 10) / 10).toString().replace('.', ',');
+}
 
 function segmentEdgeKey(q1, r1, q2, r2) {
   if (q1 < q2 || (q1 === q2 && r1 < r2)) return `${q1},${r1}|${q2},${r2}`;
@@ -130,9 +153,9 @@ treeImage.onload = () => render();
 
 // Stance icons
 const stanceIcons = {};
-const stanceList = ['marche','combat','charge','percee','defense_combat','defense_distance'];
+const stanceList = ['marche','combat','charge','percee','defense_combat','defense_distance', ...Object.keys(KBRules.RULES.extraStances)];
 const stanceIconFiles = { marche:'marche', combat:'combat', charge:'charge', percee:'percee', defense_combat:'def_charge', defense_distance:'def_eparse' };
-const stanceNames = { marche:'Marche', combat:'Combat', charge:'Charge', percee:'Percée', defense_combat:'Déf. combat', defense_distance:'Déf. distance' };
+const stanceNames = { marche:'Marche', combat:'Combat', charge:'Charge', percee:'Percée', defense_combat:'Déf. combat', defense_distance:'Déf. distance', ...Object.fromEntries(Object.entries(KBRules.RULES.extraStances).map(([k, v]) => [k, v.name])) };
 const TERRAINS_DATA = {
   plain:    { name:'Plaines',    vitesse:0,  attack_cac:0,  attack_tir:0,  defense_cac:0,  defense_tir:0,  puissance_cac:0,  puissance_tir:0,  intimidation_cac:0,  intimidation_tir:0,  esquive_cac:0,  esquive_tir:0,  precision_cac:0,  precision_tir:0,  armure:0,  moral_tour:0 },
   forest:   { name:'Forêts',    vitesse:-1, attack_cac:-1, attack_tir:-2, defense_cac:+2, defense_tir:+2, puissance_cac:-1, puissance_tir:-2, intimidation_cac:+1, intimidation_tir:+1, esquive_cac:+2, esquive_tir:+2, precision_cac:-1, precision_tir:-2, armure:+1, moral_tour:0 },
@@ -149,7 +172,27 @@ const STANCES_DATA = {
   defense_combat:   { vitesse:-1, attack_cac:-2, attack_tir:-1, defense_cac:+4, defense_tir:-2, puissance_cac:-1, puissance_tir:-2, intimidation_cac:-2, intimidation_tir:+1, esquive_cac:+1, esquive_tir:-1, precision_cac:0, precision_tir:-2, armure:+2, moral_tour:0 },
   defense_distance: { vitesse:0,  attack_cac:-3, attack_tir:0,  defense_cac:-3, defense_tir:0,  puissance_cac:-2, puissance_tir:-1, intimidation_cac:-2, intimidation_tir:-1, esquive_cac:+2, esquive_tir:+4, precision_cac:-2, precision_tir:-1, armure:+1, moral_tour:0 },
 };
+Object.assign(STANCES_DATA, KBRules.RULES.extraStances);
+
+// Balance data (data/balance/*.json): /api/balance on the local server, else the tables frozen for the battle
+// (game_state.balanceTables, sent at battle start and on resync). The hardcoded copies above are the fallback.
+function applyBalanceTables(t) {
+  if (!t) return;
+  for (const [k, v] of Object.entries(t.terrains || {})) TERRAINS_DATA[k] = { ...(TERRAINS_DATA[k] || {}), ...v };
+  for (const [k, v] of Object.entries(t.segments || {})) {
+    const special = SEGMENT_DEFS_CLIENT[k]?.special;
+    SEGMENT_DEFS_CLIENT[k] = { ...(SEGMENT_DEFS_CLIENT[k] || {}), ...v, special: special !== undefined ? special : v.special };
+  }
+  for (const [k, v] of Object.entries(t.stances || {})) {
+    STANCES_DATA[k] = { ...(STANCES_DATA[k] || {}), ...v };
+    if (v.name && !stanceNames[k]) stanceNames[k] = v.name;
+  }
+  if (selectedUnit) showUnitDetail(selectedUnit);
+}
+
+fetch('/api/balance').then(r => (r.ok ? r.json() : null)).then((d) => { if (d && d.tables && !gameState?.balanceTables) applyBalanceTables(d.tables); }).catch(() => {});
 for (const s of stanceList) {
+  if (!stanceIconFiles[s]) continue;
   const img = new Image();
   img.src = `/assets/icons/${stanceIconFiles[s]}.svg`;
   img.onload = () => render();
@@ -545,6 +588,8 @@ function render() {
   // Arbres par dessus les unités
   drawForestTrees(ctx);
 
+  if (gameState) drawObjectives(ctx);
+
   // Overlays de terrain (si activé) — par dessus les arbres
   if (showTerrain) {
     for (const [key, terrain] of Object.entries(terrainData)) {
@@ -589,6 +634,39 @@ function render() {
   }
 
   ctx.restore();
+
+  if (gameState?.isNight && gameState.phase === 'battle') {
+    ctx.fillStyle = 'rgba(8,16,48,0.32)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+}
+
+function drawObjectives(ctx) {
+  for (const o of gameState.objectives || []) {
+    const { x, y } = hexToPixel(o.q, o.r);
+    const color = o.owner ? getPlayerColor(o.owner) : '#d8c9a0';
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = HEX_SIZE * 0.08;
+    ctx.setLineDash([HEX_SIZE * 0.15, HEX_SIZE * 0.1]);
+    ctx.beginPath();
+    ctx.arc(x, y, HEX_SIZE * 0.8, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#3b2a1a';
+    ctx.fillRect(x + HEX_SIZE * 0.45, y - HEX_SIZE * 0.75, HEX_SIZE * 0.05, HEX_SIZE * 0.7);
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x + HEX_SIZE * 0.5, y - HEX_SIZE * 0.75);
+    ctx.lineTo(x + HEX_SIZE * 0.85, y - HEX_SIZE * 0.62);
+    ctx.lineTo(x + HEX_SIZE * 0.5, y - HEX_SIZE * 0.5);
+    ctx.fill();
+    ctx.font = `bold ${Math.round(HEX_SIZE * 0.22)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff';
+    ctx.fillText(`${o.name} (${o.points})`, x, y + HEX_SIZE * 0.95);
+    ctx.restore();
+  }
 }
 
 function getGeneralIdForUnit(unit) {
@@ -651,6 +729,16 @@ function drawUnit(ctx, x, y, unit, playerId, isSelected = false) {
   const rotAngle = FACING_ANGLES[getAnimatedFacing(unit)];
 
   ctx.save();
+
+  if (unit.isMine && unit.concealed) {
+    ctx.beginPath();
+    ctx.arc(x, y, HEX_SIZE * 0.98, 0, Math.PI * 2);
+    ctx.setLineDash([HEX_SIZE * 0.12, HEX_SIZE * 0.1]);
+    ctx.strokeStyle = 'rgba(140,220,140,0.9)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
 
   // Selection ring
   if (isSelected) {
@@ -1039,59 +1127,9 @@ function selectUnit(unit) {
   render();
 }
 
-function terrainMoveCost(key) {
-  const t = terrainData[key] || 'plain';
-  const costs = { plain: 1, road: 1, forest: 2, river: 2, building: 1, bridge: 1 };
-  return costs[t] ?? 1;
-}
-
 function computeMovableTiles(unit) {
-  const maxSpeed = unit.speedRemaining != null ? unit.speedRemaining : unit.speed;
-  const isCavalry = unit.category === 'Chevaux' || unit.category === 'Chars';
-  const dist = new Map();
-  const queue = [{ q: unit.q, r: unit.r, cost: 0 }];
-  const dirs = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
-  dist.set(`${unit.q},${unit.r}`, 0);
-
-  while (queue.length > 0) {
-    queue.sort((a, b) => a.cost - b.cost);
-    const { q, r, cost } = queue.shift();
-    if (cost > dist.get(`${q},${r}`)) continue;
-    if (cost >= maxSpeed) continue;
-    for (const [dq, dr] of dirs) {
-      const nq = q + dq, nr = r + dr;
-      const key = `${nq},${nr}`;
-      if (gameState && !gameState.visibleHexes.has(key)) continue;
-      const occupant = gameState?.units.find(u => u.q === nq && u.r === nr);
-      if (occupant) continue;
-
-      // Segment check
-      const edgeK = segmentEdgeKey(q, r, nq, nr);
-      const segType = segmentData[edgeK];
-      const segDef = segType ? SEGMENT_DEFS_CLIENT[segType] : null;
-      if (segDef) {
-        if (segDef.infranchissable) continue;
-        if (segDef.infranchissable_cavalerie && isCavalry) continue;
-      }
-
-      const srcKey = `${q},${r}`;
-      let stepCost = terrainMoveCost(srcKey);
-      if (segDef) {
-        if (segDef.vitesse_fixe != null) {
-          stepCost = segDef.vitesse_fixe;
-        } else {
-          stepCost += Math.max(0, -(segDef.vitesse || 0));
-        }
-      }
-      const newCost = cost + stepCost;
-      if (newCost > maxSpeed) continue;
-      if (!dist.has(key) || newCost < dist.get(key)) {
-        dist.set(key, newCost);
-        movableTiles.add(key);
-        queue.push({ q: nq, r: nr, cost: newCost });
-      }
-    }
-  }
+  const { dist } = clientReachable(unit);
+  for (const k of dist.keys()) movableTiles.add(k);
   movableTiles.delete(`${unit.q},${unit.r}`);
 }
 
@@ -1182,7 +1220,7 @@ function updateActionButtons() {
   const canMove = hasUnit && isMyTurn && !isFleeing && (selectedUnit.speedRemaining > 0);
   const canAttack = hasUnit && isMyTurn && !selectedUnit.hasAttacked && !isFleeing;
   const isGeneral = hasUnit && selectedUnit.isGeneral;
-  const canAbility = isGeneral && isMyTurn && !selectedUnit.hasUsedAbility && selectedUnit.abilityCooldown === 0;
+  const canAbility = isGeneral && isMyTurn && !!selectedUnit.activeAbility && !selectedUnit.hasUsedAbility && !(selectedUnit.abilityCooldown > 0);
   const canMotivate = isGeneral && isMyTurn && !selectedUnit.hasAttacked;
 
   document.getElementById('btn-move').style.display = canMove ? 'block' : 'none';
@@ -1193,7 +1231,7 @@ function updateActionButtons() {
   const deployDisplay = (mode === 'deploy') ? 'block' : 'none';
   document.getElementById('btn-end-turn-global').style.display = endDisplay;
   document.getElementById('btn-end-turn-center').style.display = endDisplay;
-  const noActionsLeft = isMyTurn && gameState?.units.filter(u => u.playerId === myId).every(u => u.speedRemaining <= 0);
+  const noActionsLeft = isMyTurn && gameState?.actionsLeft === 0;
   const btnCenter = document.getElementById('btn-end-turn-center');
   if (noActionsLeft) btnCenter.classList.add('pulse'); else btnCenter.classList.remove('pulse');
   document.getElementById('btn-deploy-ready-global').style.display = deployDisplay;
@@ -1240,7 +1278,7 @@ function showUnitDetail(unit) {
     statRows.push(`<div class="stat-row" style="cursor:default" title="${label}: base ${base}${suffix||''}${sDelta!==0?`, posture ${sDelta>0?'+':''}${sDelta}`:''}${tDelta!==0?`, terrain ${tDelta>0?'+':''}${tDelta}`:''}"><span>${label}</span>${valueHtml}</div>`);
   }
 
-  const speedLabel = unit.speedRemaining != null ? `${unit.speedRemaining}/${unit.speed}` : `${unit.speed}`;
+  const speedLabel = unit.speedRemaining != null ? `${fmtSpeed(unit.speedRemaining)}/${unit.speed}` : `${unit.speed}`;
   const stanceLabel = unit.stance ? (stanceNames[unit.stance] || unit.stance) : '—';
 
   statRows.push(`<div class="stat-row"><span>Vitalité</span><span>${unit.vitality}/${unit.maxVitality}</span></div>`);
@@ -1259,6 +1297,8 @@ function showUnitDetail(unit) {
   statRows.push(`<div class="stat-row"><span>Vitesse</span><span>${speedLabel}</span></div>`);
   if (unit.range > 1) statRows.push(`<div class="stat-row"><span>Portée</span><span>${unit.range} cases</span></div>`);
   if (unit.visionRange > 0) statRows.push(`<div class="stat-row"><span>Vision</span><span>${unit.visionRange} cases</span></div>`);
+  if (unit.isMine && unit.concealed) statRows.push(`<div class="stat-row" style="color:#8cdc8c"><span>Embuscade</span><span>cachée</span></div>`);
+  if (unit.stunnedUntilRound != null && gameState && unit.stunnedUntilRound >= gameState.turn) statRows.push(`<div class="stat-row" style="color:#e08080"><span>Duel perdu</span><span>sonné</span></div>`);
   if (!unit.isGeneral) {
     statRows.push(`<div class="stat-row"><span>Posture</span><span>${stanceLabel}</span></div>`);
     statRows.push(`<div class="stat-row" style="color:#a89060;font-size:0.8em"><span>Terrain</span><span>${terrainName}</span></div>`);
@@ -1515,8 +1555,14 @@ function renderTurnOrder(turnOrder, initiativeRolls, currentPlayerId) {
   }
 }
 
-function endTurn() {
+function endTurn(confirmed = false) {
   if (gameState?.currentPlayerId !== myId) return;
+  if (!confirmed && gameState.actionsLeft > 0) {
+    document.getElementById('confirm-end-msg').textContent = `${gameState.actionsLeft} unité${gameState.actionsLeft > 1 ? 's peuvent' : ' peut'} encore agir.`;
+    document.getElementById('overlay-confirm-end').style.display = 'flex';
+    return;
+  }
+  document.getElementById('overlay-confirm-end').style.display = 'none';
   wsSend('end_turn', { roomCode });
   selectedUnit = null;
   movableTiles.clear();
@@ -1533,8 +1579,138 @@ function motivateAll() {
 }
 
 function useAbility() {
-  if (!selectedUnit || !selectedUnit.isGeneral) return;
-  wsSend('use_ability', { roomCode });
+  if (!selectedUnit || !selectedUnit.isGeneral || !selectedUnit.activeAbility) return;
+  const ability = selectedUnit.activeAbility;
+  if (ability.target !== 'enemy_army') { wsSend('use_ability', { roomCode }); return; }
+  const enemies = (gameState?.players || []).filter(p => p.id !== myId && !p.isEliminated);
+  if (enemies.length === 1) { wsSend('use_ability', { roomCode, targetId: enemies[0].id }); return; }
+  const box = document.getElementById('ability-targets');
+  document.getElementById('ability-target-title').textContent = ability.name;
+  box.innerHTML = '';
+  for (const p of enemies) {
+    const b = document.createElement('button');
+    b.className = 'btn';
+    b.style.cssText = `border:2px solid ${p.color};background:#1a0f04;color:#e0c080;padding:8px 14px`;
+    b.textContent = p.name;
+    b.onclick = () => { closeAbilityTarget(); wsSend('use_ability', { roomCode, targetId: p.id }); };
+    box.appendChild(b);
+  }
+  document.getElementById('overlay-ability-target').style.display = 'flex';
+}
+
+function closeAbilityTarget() {
+  document.getElementById('overlay-ability-target').style.display = 'none';
+}
+
+// ---- TOP BAR: time of day, scores, turn timer ----
+function renderTopInfo() {
+  const el = document.getElementById('top-time');
+  if (!el) return;
+  if (!gameState || gameState.timeOfDay == null) { el.textContent = ''; return; }
+  el.textContent = `${gameState.isNight ? '☾' : '☀'} Jour ${gameState.day || 1} · ${KBRules.formatHour(gameState.timeOfDay)}`;
+  el.style.color = gameState.isNight ? '#9fb4ff' : '#e8c060';
+  const sc = document.getElementById('top-scores');
+  const objs = gameState.objectives || [];
+  const vp = gameState.settings?.victoryPoints || 0;
+  if (sc) {
+    sc.innerHTML = objs.length || vp ? (gameState.players || []).map(p => `<span style="color:${p.color}">${escapeHtml(p.name)} ${gameState.scores?.[p.id] || 0}</span>`).join(' · ') + (vp ? ` <span class="text-muted">/ ${vp}</span>` : '') : '';
+  }
+  const mt = gameState.settings?.maxTurns;
+  document.getElementById('top-turn').textContent = `Tour ${gameState.turn}${mt ? '/' + mt : ''} · Manche ${gameState.manche || 1}`;
+}
+
+setInterval(() => {
+  const el = document.getElementById('top-timer');
+  if (!el) return;
+  const at = gameState?.phase === 'battle' ? gameState.turnEndsAt : null;
+  if (!at) { el.textContent = ''; return; }
+  const left = Math.max(0, Math.ceil((at - Date.now()) / 1000));
+  el.textContent = `⏱ ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+  el.style.color = left <= 10 ? '#ff6040' : '#c8960c';
+}, 500);
+
+// ---- RULES PANEL ----
+function toggleRules() {
+  const o = document.getElementById('overlay-rules');
+  if (o.style.display === 'flex') { o.style.display = 'none'; return; }
+  const R = KBRules.RULES;
+  const st = gameState?.settings || KBRules.defaultSettings();
+  const tc = R.movement.terrainCost;
+  const frac = (v) => (Math.abs(v - 1 / 3) < 1e-9 ? '1/3' : String(v));
+  document.getElementById('rules-content').innerHTML = `
+    <h3>Déplacement</h3>
+    <p>Coût pour quitter une case : plaine ${tc.plain}, route ${frac(tc.road)}, forêt ${tc.forest}, fleuve ${tc.river}, bâtiment ${tc.building}, pont ${tc.bridge}.
+    Montée : +${R.movement.slopeUpPerLevel} par niveau ; descente gratuite. Falaises et murs : infranchissables.
+    Échelle : infanterie et généraux uniquement, coût ${R.movement.ladder.cost} (jamais la cavalerie ni les chars). Rivière et barrière : +1.</p>
+    <h3>Jour et nuit</h3>
+    <p>La bataille commence à ${KBRules.formatHour(R.time.startHour)} ; ${st.turnsPerHalfDay} tours par demi-journée. Nuit de ${R.time.nightStartHour}h à ${R.time.dayStartHour}h :
+    vision ×${R.night.visionFactor} (min ${R.night.visionMin}), vitesse −${R.night.speedMalus}, attaque ${R.night.attackMod.cac} au corps à corps et ${R.night.attackMod.tir} au tir,
+    la posture Repos (et Défense de combat) récupère davantage de moral et de vitalité.</p>
+    <h3>Embuscades</h3>
+    <p>Une unité en forêt ou dans un bâtiment est invisible pour l'ennemi, même dans sa vision, sauf si une unité ennemie lui est adjacente,
+    si un espion ennemi est à ${R.concealment.spyDistance} cases ou moins, ou si elle a attaqué (révélée jusqu'à la fin de son prochain tour).
+    Un déplacement qui bute sur une unité cachée s'arrête net (plus de vitesse ce tour).</p>
+    <h3>Duels de généraux</h3>
+    <p>Un général qui attaque un général au corps à corps provoque un duel : ${R.duel.maxRounds} passes, chacun lance D20 + Force ; le plus haut frappe
+    (arme + écart − armure × ${R.duel.armorFactor}). Le vaincu (sauf s'il meurt) perd ${Math.round(R.duel.loserMoraleShock * 100)} % du moral de son armée et reste sonné un tour ;
+    les unités du vainqueur à ${R.duel.boostRadius} cases gagnent ${Math.round(R.duel.winnerMoraleBoost * 100)} % de moral.</p>
+    <h3>Objectifs et victoire</h3>
+    <p>Finir son tour sur un objectif le capture ; chaque objectif tenu rapporte ses points au début de chaque tour.
+    Victoire : dernier général en vie${st.victoryPoints ? `, ou ${st.victoryPoints} points` : ''}${st.maxTurns ? `, ou meilleur score après ${st.maxTurns} tours` : ''}.</p>
+    <h3>Tour de jeu</h3>
+    <p>Le tour se termine automatiquement quand plus aucune unité ne peut agir.${st.turnTimer ? ` Minuteur : ${st.turnTimer} s par tour.` : ''}</p>
+    <p class="text-muted" style="font-size:0.85em">Règles complètes : docs/regles.md</p>`;
+  o.style.display = 'flex';
+}
+
+// ---- END OF BATTLE: recap + replay ----
+let replayChunks = null;
+let replayAction = null;
+
+function showRecap(data) {
+  const recap = data.recap;
+  document.getElementById('gameover-msg').textContent = data.winnerName ? `${data.winnerName} remporte la bataille !` : 'Match nul !';
+  const reasons = { elimination: 'Général ennemi vaincu', points: 'Points de victoire atteints', max_turns: 'Limite de tours atteinte' };
+  const box = document.getElementById('recap-content');
+  if (!recap) { box.innerHTML = ''; }
+  else {
+    const rows = recap.players.map(p => `<tr><td style="color:${p.color}">${escapeHtml(p.name)}${p.id === recap.winnerId ? ' 🏆' : ''}</td><td>${p.damageDealt}</td><td>${p.damageTaken}</td><td>${p.kills}</td><td>${p.losses}</td><td>${p.captures}</td><td>${p.points}</td><td>${p.unitsAlive}/${p.unitsTotal}</td></tr>`).join('');
+    const units = recap.units.slice().sort((a, b) => b.damageDealt - a.damageDealt).map(u => {
+      const pl = recap.players.find(p => p.id === u.playerId);
+      return `<tr style="${u.alive ? '' : 'opacity:0.55'}"><td style="color:${pl?.color || '#ccc'}">${u.isGeneral ? '★ ' : ''}${escapeHtml(u.name)}</td><td>${u.damageDealt}</td><td>${u.damageTaken}</td><td>${u.kills}</td><td>${u.alive ? 'vivante' : u.fled ? 'en fuite' : 'détruite'}</td></tr>`;
+    }).join('');
+    box.innerHTML = `<div class="text-muted" style="margin-bottom:8px">${reasons[recap.endReason] || ''} · ${recap.turns} tours</div>
+      <table class="recap-table"><tr><th>Joueur</th><th>Dégâts infligés</th><th>Dégâts subis</th><th>Victimes</th><th>Pertes</th><th>Captures</th><th>Points</th><th>Unités</th></tr>${rows}</table>
+      <details style="margin-top:10px"><summary style="cursor:pointer;color:#c8960c">Détail par unité</summary>
+      <table class="recap-table"><tr><th>Unité</th><th>Infligés</th><th>Subis</th><th>Victimes</th><th>État</th></tr>${units}</table></details>`;
+  }
+  document.getElementById('btn-replay-view').style.display = recap && recap.replayAvailable ? '' : 'none';
+  document.getElementById('btn-replay-download').style.display = recap && recap.replayAvailable ? '' : 'none';
+  document.getElementById('overlay-gameover').style.display = 'flex';
+}
+
+function requestReplay(action) {
+  replayAction = action;
+  replayChunks = null;
+  wsSend('get_replay', { roomCode });
+}
+
+function onReplayChunk(data) {
+  if (!replayChunks || replayChunks.length !== data.total) replayChunks = new Array(data.total).fill(null);
+  replayChunks[data.index] = data.data;
+  if (replayChunks.some(c => c === null)) return;
+  const text = replayChunks.join('');
+  replayChunks = null;
+  if (replayAction === 'download') {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+    a.download = `replay_${roomCode || 'bataille'}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  } else {
+    try { localStorage.setItem('kb_last_replay', text); } catch (e) { notify('Replay trop volumineux pour le stockage local : téléchargez-le.'); return; }
+    window.open('/replay.html?local=1', '_blank');
+  }
 }
 
 function deploymentReady() {
@@ -1564,6 +1740,10 @@ function addCombatLog(log) {
   let text = '';
   if (log.abilityUsed) {
     text = `⚡ ${log.abilityUsed}: ${log.effects?.join(', ')}`;
+  } else if (log.duel) {
+    const w = log.duel.winnerId === log.attackerId ? log.attackerName : log.duel.winnerId === log.targetId ? log.targetName : null;
+    text = `⚔ Duel ${log.attackerName} / ${log.targetName} : ${w ? `${w} l'emporte` : 'indécis'}`;
+    if (log.generalKilled) text += ' ⚠ GÉNÉRAL TUÉ!';
   } else {
     text = `${log.attackerName} → ${log.targetName}: `;
     // Support both old format (damage) and new format (dmgReceived)
@@ -2079,6 +2259,28 @@ function cancelStanceChange() {
 function showCombatResult(log) {
   const el = document.getElementById('combat-result-box');
   if (!el) return;
+  if (log.abilityUsed) {
+    el.innerHTML = `⚡ <b>${escapeHtml(log.abilityUsed)}</b><br>${(log.effects || []).map(escapeHtml).join('<br>')}`;
+    el.style.display = 'block';
+    clearTimeout(window._combatResultTimer);
+    window._combatResultTimer = setTimeout(() => { el.style.display = 'none'; }, 5000);
+    return;
+  }
+  if (log.duel) {
+    const name = (id) => (id === log.attackerId ? log.attackerName : id === log.targetId ? log.targetName : 'Unité inconnue');
+    let html = `<b>⚔ Duel : ${escapeHtml(log.attackerName)} contre ${escapeHtml(log.targetName)}</b><br>`;
+    log.duel.rounds.forEach((rd, i) => {
+      html += `Passe ${i + 1} : ${rd.attackerRoll} contre ${rd.defenderRoll} → ${rd.attacker ? `${escapeHtml(name(rd.attacker))} frappe (${rd.dmg})` : 'parade'}<br>`;
+    });
+    html += log.duel.winnerId ? `<b style="color:#ffd700">${escapeHtml(name(log.duel.winnerId))} remporte le duel !</b>` : '<b>Duel indécis</b>';
+    if (log.generalKilled) html += `<br><span style="color:#f84">${escapeHtml(log.eliminatedPlayer || '')} perd son général !</span>`;
+    else if (log.duel.stunned) html += `<br><span style="color:#e0a060">Le vaincu est sonné, son armée vacille.</span>`;
+    el.innerHTML = html;
+    el.style.display = 'block';
+    clearTimeout(window._combatResultTimer);
+    window._combatResultTimer = setTimeout(() => { el.style.display = 'none'; }, 7000);
+    return;
+  }
   let html = `<b>${log.attackerName}</b> attaque <b>${log.targetName}</b><br>`;
   html += `Attaque : ${log.attackTotal} vs D20=${log.attackD20} → ${log.hit ? '<span style="color:#4f4">TOUCHÉ</span>' : '<span style="color:#f44">RATÉ</span>'}<br>`;
   if (log.hit) {
@@ -2273,12 +2475,15 @@ function wsDispatch(event, data) {
       myId = data.myId;
       isSpectator = !!data.isSpectator;
       if (data.phase !== 'deployment') { deployState = null; if (mode === 'deploy') setMode('select'); }
+      if (data.balanceTables) applyBalanceTables(data.balanceTables);
+      else if (gameState?.balanceTables) data.balanceTables = gameState.balanceTables;
       gameState = data;
       gameState.visibleHexes = new Set(data.visibleHexes);
+      renderTopInfo();
       renderSpectatorBar();
       if (data.phase === 'ended' && data.winner !== undefined) document.getElementById('btn-end-turn-center').style.display = 'none';
 
-      document.getElementById('top-turn').textContent = `Tour ${data.turn} · Manche ${data.manche || 1}`;
+      renderTopInfo();
       const currPlayer = data.players.find(p => p.id === data.currentPlayerId);
       document.getElementById('top-current-player').textContent =
         data.phase === 'deployment' ? 'Déploiement en cours' : data.currentPlayerId === myId ? '⚔️ Votre manche' : `Manche de : ${currPlayer?.name || '?'}`;
@@ -2347,7 +2552,10 @@ function wsDispatch(event, data) {
       if (gameState) {
         gameState.currentPlayerId = data.currentPlayerId;
         gameState.turn = data.turn;
+        if (data.timeOfDay != null) Object.assign(gameState, { timeOfDay: data.timeOfDay, isNight: data.isNight, day: data.day, turnEndsAt: data.turnEndsAt });
+        renderTopInfo();
       }
+      document.getElementById('overlay-confirm-end').style.display = 'none';
       selectedUnit = null;
       movableTiles.clear();
       attackableTiles.clear();
@@ -2363,7 +2571,7 @@ function wsDispatch(event, data) {
       const log = data.combatLog || data;
       addCombatLog(log);
       showCombatResult(log);
-      addCombatHistory(log, gameState?.round || 1);
+      if (!log.abilityUsed) addCombatHistory(log, gameState?.turn || 1);
       break;
     }
     case 'defense_request': {
@@ -2389,9 +2597,31 @@ function wsDispatch(event, data) {
       break;
     }
     case 'game_over':
-      document.getElementById('gameover-msg').textContent =
-        data.winnerName ? `${data.winnerName} remporte la bataille !` : 'Match nul !';
-      document.getElementById('overlay-gameover').style.display = 'flex';
+      showRecap(data);
+      break;
+    case 'replay_chunk':
+      onReplayChunk(data);
+      break;
+    case 'ambush': {
+      const mine = data.byPlayerId === myId;
+      notify(mine ? 'Embuscade ! Une de vos unités cachées a surpris l\'ennemi.' : 'Embuscade ! Votre unité est tombée sur un ennemi caché.', mine ? 'success' : 'error');
+      activePings.push({ q: data.q, r: data.r, color: '#ff4020', startTime: performance.now() });
+      render();
+      break;
+    }
+    case 'objective_captured': {
+      const who = gameState?.players.find(p => p.id === data.owner);
+      notify(`${who?.name || '?'} s'empare de ${data.name}.`, data.owner === myId ? 'success' : 'info');
+      if (gameState) { const o = (gameState.objectives || []).find(x => x.id === data.objectiveId); if (o) o.owner = data.owner; }
+      activePings.push({ q: data.q, r: data.r, color: who?.color || '#ffd700', startTime: performance.now() });
+      render();
+      break;
+    }
+    case 'time_change':
+      notify(data.isNight ? `La nuit tombe (${KBRules.formatHour(data.timeOfDay)}) : vision et vitesse réduites.` : `Le jour se lève (${KBRules.formatHour(data.timeOfDay)}).`, 'info');
+      break;
+    case 'duel_challenge':
+      notify(`${data.attackerName} défie ${data.targetName} en duel !`, 'error');
       break;
     case 'deployment_ready_update': {
       if (!isSpectator) notify(`${data.readyCount}/${data.total} joueurs prêts…`, 'info');
@@ -2437,9 +2667,11 @@ function wsDispatch(event, data) {
     case 'player_left':
       notify(`${data.name} ${data.reason === 'abandon' ? 'a abandonné (absence prolongée)' : 'a quitté la partie'}.`, 'info');
       break;
-    case 'turn_auto_ended':
-      notify(`Tour de ${data.name} passé automatiquement (joueur absent).`, 'info');
+    case 'turn_auto_ended': {
+      const why = { no_actions: 'plus aucune action possible', timer: 'temps écoulé', absent: 'joueur absent' }[data.reason] || 'joueur absent';
+      notify(data.playerId === myId ? `Fin de votre tour (${why}).` : `Tour de ${data.name} terminé (${why}).`, 'info');
       break;
+    }
     case 'spectator_joined':
       notify(`${data.name} regarde la partie.`, 'info');
       break;
@@ -2509,32 +2741,10 @@ window.gameBridge = {
     if (!unit || unit.q == null) return null;
     const target = `${tq},${tr}`;
     if (!movableTiles.has(target)) return null;
-    const isCavalry = unit.category === 'Chevaux' || unit.category === 'Chars';
-    const dist = new Map([[`${unit.q},${unit.r}`, 0]]);
-    const prev = new Map();
-    const queue = [{ q: unit.q, r: unit.r, cost: 0 }];
-    const dirs = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
-    while (queue.length) {
-      queue.sort((a, b) => a.cost - b.cost);
-      const { q, r, cost } = queue.shift();
-      const k = `${q},${r}`;
-      if (k === target) break;
-      if (cost > dist.get(k)) continue;
-      for (const [dq, dr] of dirs) {
-        const nq = q + dq, nr = r + dr, nk = `${nq},${nr}`;
-        if (!movableTiles.has(nk)) continue;
-        const segType = segmentData[segmentEdgeKey(q, r, nq, nr)];
-        const segDef = segType ? SEGMENT_DEFS_CLIENT[segType] : null;
-        if (segDef && (segDef.infranchissable || (segDef.infranchissable_cavalerie && isCavalry))) continue;
-        let step = terrainMoveCost(k);
-        if (segDef) step = segDef.vitesse_fixe != null ? segDef.vitesse_fixe : step + Math.max(0, -(segDef.vitesse || 0));
-        const nc = cost + step;
-        if (!dist.has(nk) || nc < dist.get(nk)) { dist.set(nk, nc); prev.set(nk, k); queue.push({ q: nq, r: nr, cost: nc }); }
-      }
-    }
-    if (!prev.has(target)) return null;
-    const path = [];
-    for (let k = target; k; k = prev.get(k)) path.unshift(k.split(',').map(Number));
+    const { dist, prev } = clientReachable(unit);
+    const path = KBRules.pathFromPrev(prev, `${unit.q},${unit.r}`, target);
+    if (!path) return null;
+    path.unshift([unit.q, unit.r]);
     return { path, cost: dist.get(target) };
   },
   segmentAt(q1, r1, q2, r2) {

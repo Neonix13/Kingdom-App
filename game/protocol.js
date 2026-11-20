@@ -107,20 +107,22 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     return { event: 'room_update', ...room.getLobbyState() };
   }
 
-  function stateFor(room, r) {
+  // withTables: include the terrain / segment / stance tables frozen for this battle (start of battle, resync)
+  function stateFor(room, r, withTables = false) {
     const phase = room.phase;
     if (phase === 'lobby' || phase === 'army_building') return lobbyMessage(room);
-    if (r.role === 'spectator') return { event: 'game_state', ...room.getSpectatorState(r.member.id) };
+    const tables = withTables && room.balance ? { balanceTables: room.balance } : {};
+    if (r.role === 'spectator') return { event: 'game_state', ...room.getSpectatorState(r.member.id), ...tables };
     if (phase === 'deployment') {
       const ds = room.getDeploymentState(r.member.id);
       return ds && { event: 'deployment_state', ...ds };
     }
     const gs = room.getGameState(r.member.id);
-    return gs && { event: 'game_state', ...gs };
+    return gs && { event: 'game_state', ...gs, ...tables };
   }
 
-  function emitState(tx, to = 'all') {
-    emitBuild(tx, to, r => stateFor(tx.room, r));
+  function emitState(tx, to = 'all', withTables = false) {
+    emitBuild(tx, to, r => stateFor(tx.room, r, withTables));
   }
 
   function emitPresence(tx) {
@@ -382,7 +384,7 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     emit(tx, 'all', { event: 'initiative_rolled', rolls: room.initiativeRolls, turnOrder: room.turnOrder, turn: room.turn });
     startTurnTimer(tx);
     refreshTurnDeadline(tx);
-    emitState(tx);
+    emitState(tx, 'all', true);
   }
 
   function checkPhaseTransitions(tx) {
@@ -484,7 +486,7 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     reply(tx, connId, sessionMessage(room, member, role));
     reply(tx, connId, lobbyMessage(room));
     if (room.phase !== 'lobby' && room.phase !== 'army_building') {
-      reply(tx, connId, stateFor(room, found));
+      reply(tx, connId, stateFor(room, found, true));
     }
     if (room.phase === 'army_building' && role === 'player') {
       reply(tx, connId, { event: 'phase_change', phase: 'army_building', budget: room.budget, armySubmitted: !!member.isReady });

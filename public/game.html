@@ -238,6 +238,9 @@
         <span class="text-gold" style="font-weight:bold">KINGDOM BATTLEGROUND</span>
         <span id="top-turn" class="text-muted">Tour 1</span>
         <span id="top-current-player" style="color:#c8960c"></span>
+        <span id="top-time" title="Heure de la bataille"></span>
+        <span id="top-timer" title="Temps restant pour ce tour"></span>
+        <span id="top-scores" title="Points de victoire"></span>
         <span style="flex:1"></span>
         <span id="top-phase" class="text-muted"></span>
       </div>
@@ -254,6 +257,8 @@
         <button class="tool-btn" id="tool-ping" title="Ping (clic sur une case pour signaler)" onclick="togglePing()">&#128204;</button>
         <div class="tool-separator"></div>
         <button class="tool-btn" id="tool-3d" title="Vue 3D" onclick="toggleView3d()" style="font-size:11px;font-weight:700">3D</button>
+        <div class="tool-separator"></div>
+        <button class="tool-btn" id="tool-rules" title="Règles" onclick="toggleRules()" style="font-size:16px">&#128214;</button>
         <div class="tool-separator"></div>
         <!-- Groupe Grille -->
         <button class="tool-btn" id="tool-grid-group" title="Grille" onclick="toggleGridSubmenu()">&#35;</button>
@@ -415,16 +420,58 @@
   </div>
 
   <div class="overlay" id="overlay-gameover" style="display:none">
-    <div class="overlay-box" style="text-align:center">
+    <div class="overlay-box" style="text-align:center;max-width:860px;max-height:86vh;overflow-y:auto">
       <h2>Fin de Bataille</h2>
-      <div id="gameover-msg" style="font-size:1.3em;margin:20px 0;color:#c8960c"></div>
-      <button class="btn btn-primary" onclick="leaveGame()">Retour au menu</button>
+      <div id="gameover-msg" style="font-size:1.3em;margin:14px 0;color:#c8960c"></div>
+      <div id="recap-content" style="text-align:left;font-size:0.85em"></div>
+      <div style="display:flex;gap:8px;justify-content:center;margin-top:14px;flex-wrap:wrap">
+        <button class="btn btn-primary" id="btn-replay-view" onclick="requestReplay('view')">Voir le replay</button>
+        <button class="btn" id="btn-replay-download" onclick="requestReplay('download')" style="background:#1a0f04;border:1px solid #7a5820;color:#e0c080">Télécharger le replay</button>
+        <button class="btn" onclick="document.getElementById('overlay-gameover').style.display='none'" style="background:#1a0f04;border:1px solid #7a5820;color:#e0c080">Voir la carte</button>
+        <button class="btn btn-primary" onclick="leaveGame()">Retour au menu</button>
+      </div>
     </div>
   </div>
 
+  <div class="overlay" id="overlay-confirm-end" style="display:none">
+    <div class="overlay-box" style="min-width:320px;text-align:center">
+      <h3 style="color:#c8960c;margin:0 0 10px">Terminer le tour ?</h3>
+      <p id="confirm-end-msg" style="color:#a89060"></p>
+      <div style="display:flex;gap:10px;justify-content:center;margin-top:14px">
+        <button class="btn" onclick="document.getElementById('overlay-confirm-end').style.display='none'" style="background:#3a2408;border:1px solid #7a5820;color:#e0c080;padding:8px 18px">Continuer à jouer</button>
+        <button class="btn" onclick="endTurn(true)" style="background:#1a3a08;border:1px solid #4a8020;color:#a0e080;padding:8px 18px">Fin du tour</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="overlay-ability-target" style="display:none" onclick="if(event.target===this)closeAbilityTarget()">
+    <div class="overlay-box" style="min-width:320px;text-align:center">
+      <h3 style="color:#c8960c;margin:0 0 6px" id="ability-target-title"></h3>
+      <p style="color:#a89060;font-size:0.9em">Choisissez l'armée ennemie ciblée</p>
+      <div id="ability-targets" style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:10px"></div>
+      <button class="btn" onclick="closeAbilityTarget()" style="margin-top:12px;background:#3a2408;border:1px solid #7a5820;color:#e0c080">Annuler</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="overlay-rules" style="display:none" onclick="if(event.target===this)toggleRules()">
+    <div class="overlay-box" style="max-width:720px;max-height:84vh;overflow-y:auto;position:relative">
+      <button onclick="toggleRules()" style="position:absolute;top:8px;right:10px;background:none;border:none;color:#7a5820;font-size:18px;cursor:pointer">✕</button>
+      <h2 style="margin-top:0">Règles</h2>
+      <div id="rules-content" style="font-size:0.88em;line-height:1.55;color:#c8a060"></div>
+    </div>
+  </div>
+  <style>
+    #top-time, #top-timer, #top-scores { font-size:0.9em; white-space:nowrap; }
+    #rules-content h3 { color:#ffd700; font-size:1em; margin:12px 0 4px; }
+    .recap-table { width:100%; border-collapse:collapse; margin-top:6px; }
+    .recap-table th { color:#c8960c; font-weight:bold; padding:4px 6px; border-bottom:1px solid #3a2408; text-align:right; }
+    .recap-table td { padding:3px 6px; border-bottom:1px solid #1a0d04; text-align:right; color:#c8a060; }
+    .recap-table th:first-child, .recap-table td:first-child { text-align:left; }
+  </style>
+
   <script>
     if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-      window.WS_URL = 'ws://localhost:3000';
+      window.WS_URL = 'ws://' + location.host;
     } else {
       window.WS_URL = 'wss://czp9kaymr6.execute-api.eu-west-3.amazonaws.com/prod';
     }
@@ -434,6 +481,7 @@
   <div id="terrain-tooltip"></div>
   <script src="/js/hexGrid.js"></script>
   <script src="/js/net.js"></script>
+  <script src="/js/rules.js"></script>
   <script src="/js/game.js"></script>
   <script>document.getElementById('app-version').textContent = APP_VERSION;</script>
   <script type="module">
