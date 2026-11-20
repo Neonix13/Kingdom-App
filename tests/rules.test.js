@@ -128,7 +128,7 @@ test('nuit : attaque affaiblie, posture de repos renforcée', () => {
   put(room, s, 4, 2); put(room, e, 5, 2);
   room.turn = 11;
   const res = room._resolveCombat(s, e, true, 'rien');
-  assert.equal(res.breakdown.night, rules.RULES.night.attackMod.cac);
+  assert.equal(res.breakdown.modNuit, rules.RULES.night.attackMod.cac);
   s.stance = 'repos';
   s.morale = 10;
   room._applyTurnRegen(s);
@@ -264,7 +264,7 @@ test('capacité de Mou Bu : cible obligatoire (armée ennemie), effet appliqué 
   const s = troop(room, 'p0'); const e = troop(room, 'p1');
   put(room, s, 4, 2); put(room, e, 5, 2);
   const res = room._resolveCombat(s, e, true, 'rien');
-  assert.equal(res.breakdown.effectiveArmor, e.armor + (rules.getStance(e.stance).armure || 0) - 1);
+  assert.equal(res.breakdown.effectiveArmorDef, Math.max(0, e.armor + (rules.getStance(e.stance).armure || 0) - (res.breakdown.modAngle || 0) - 1));
 });
 
 test('récapitulatif et replay : statistiques par joueur et par unité, enregistrement compact', () => {
@@ -305,7 +305,7 @@ test('protocole : réglages de l\'hôte (lobby uniquement), exposés dans room_u
   await b.send('set_settings', { settings: { maxTurns: 10 } });
   assert.equal(b.last('error').code, 'not_host');
   await a.send('set_settings', { settings: { turnsPerHalfDay: 8, maxTurns: 30, victoryPoints: 15, turnTimer: 90, spectatorVision: 'delayed' } });
-  assert.deepEqual(b.last('room_update').settings, { turnsPerHalfDay: 8, maxTurns: 30, victoryPoints: 15, turnTimer: 90, spectatorVision: 'delayed', planningTimer: 90, commandPoints: 0 });
+  assert.deepEqual(b.last('room_update').settings, { turnsPerHalfDay: 8, maxTurns: 30, victoryPoints: 15, turnTimer: 90, spectatorVision: 'delayed', planningTimer: 90, commandPoints: 0, teamMode: false });
   await a.send('set_settings', { settings: { turnsPerHalfDay: 50 } });
   assert.equal(a.last('error').code, 'rejected');
 });
@@ -357,6 +357,7 @@ test('protocole : fin de tour automatique quand plus aucune unité ne peut agir,
   await first.send('rotate_facing', { unitId: gen.id, facing: 1 });
   await first.send('rotate_facing', { unitId: gen.id, facing: 2 });
   await first.send('rotate_facing', { unitId: gen.id, facing: 3 });
+  await first.send('rotate_facing', { unitId: gen.id, facing: 4 });
   if (first.session.playerId === room.players.find(p => p.generalId === 'ou_ki').id) await first.send('use_ability', {});
   const auto = first.all('turn_auto_ended').find(m => m.reason === 'no_actions');
   assert.ok(auto, 'tour terminé automatiquement');

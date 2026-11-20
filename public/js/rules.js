@@ -46,22 +46,32 @@
       terrains: ['forest', 'building'], // units here are hidden from enemies...
       revealDistance: 1,                // ...unless an enemy unit is adjacent
       spyTypeId: 'espion',
-      spyDistance: 2,                   // ...or an enemy spy is within 2 hexes
+      spyDistance: 4,                   // ...or an enemy spy is within 4 hexes (the spy sees inside forests up to 4 hexes)
       revealRounds: 1,                  // attacking reveals the unit until the end of its owner's next turn
+    },
+    // Vision (GameRoom.getVisibleHexes): range = general's Strategy (min 3), 2 inside a forest; forests block the view
+    // beyond forestSight hexes; +1 per level above the target hex (generals: +2 per level of their own hex, all directions)
+    vision: {
+      unitRange: 3,
+      forestRange: 2,
+      forestSight: 2,                   // forest hexes farther than this are not seen from outside
+      generalHeightFactor: 2,           // a general on high ground sees behind lower forests (not inside them)
+      spy: { range: 6, forestRange: 4, forestSight: 4 },
+      assassinHiddenBeyond: 4,          // assassins are invisible to enemies farther than 4 hexes (any terrain)
     },
     // Unit abilities (data/balance/units.json: bonusType + optional bonusValue / bonusRange / bonusCost; defaults below)
     abilities: {
-      moral_near_general: { value: 15, range: 2 },   // piétaille: +value morale per turn within range of its general
-      execute_low_hp: { value: 15 },                  // soldats: an enemy left at <= value % of its max vitality after a fight is destroyed
-      defend_ranged: {},                              // phalange: defence test against shooters; success = no vitality damage
-      anti_cavalry: { value: 3 },                     // lancier: +value attack and defence against horses and chariots
-      sabotage: { cost: 2 },                          // espion: destroys an adjacent infrastructure for cost speed
-      ambush: { range: 6, cost: 2 },                  // assassin: advantage on its first attack roll of the day; vanishes if no enemy within range
-      speed_free: { value: 1 },                       // cavalier léger: +value speed when no enemy is adjacent
-      charge_bonus: { value: 1 },                     // cavalier lourd: +value power and intimidation when charging
-      ranged_no_defense: {},                          // archers: the target makes no defence test (except a phalange)
+      moral_near_general: { value: 10, charismaDivisor: 5 }, // piétaille: +value morale per turn within (general Charisma / 5) hexes of its general
+      execute_low_hp: { value: 10 },                  // soldats: after its attack, an enemy under value % of its max vitality is executed
+      defend_ranged: { value: 20 },                   // phalange: +value armour against shots (may absorb, except against archers)
+      anti_cavalry: { value: 6, rangedArmor: 20 },    // lancier: +value power against horses and chariots (attack and riposte); +rangedArmor against shots
+      sabotage: { cost: 2 },                          // espion: (vision: RULES.vision.spy) destroys an adjacent infrastructure for cost speed
+      ambush: { range: 6, cost: 2 },                  // assassin: (invisible beyond RULES.vision.assassinHiddenBeyond) vanishes for the day if no enemy within range
+      speed_free: { value: 1, attackCost: 2 },        // cavalier léger: attacking costs attackCost speed and it may move again; +value speed when no enemy is adjacent
+      charge_bonus: { value: 50 },                    // cavalier lourd: value % of the morale damage it inflicts also hits the enemies adjacent to its target
+      ranged_no_defense: {},                          // archers: the target makes no defence test
       build: { cost: 2 },                             // bâtisseurs: build on / burn an adjacent edge or hex for cost speed
-      trample: {},                                    // char: strikes the unit behind its target too; drives through units
+      trample: {},                                    // char: drives through enemy units and strikes each one it crosses (no riposte)
       antiCavalryCategories: ['Chevaux', 'Chars'],
       // infrastructure an espion can destroy: segment -> what remains (null = nothing)
       sabotage_segments: { bridge: 'river', passerelle: 'river', barriere: null, chevaux_de_frise: null, echelle: 'cliff' },
@@ -75,8 +85,26 @@
         bruler: { label: 'Brûler', terrainFrom: ['forest'], terrainTo: 'plain' },
       },
     },
+    // Combat resolution (GameRoom._resolveCombat): each 5 vitality rolls one d20 against the effective attack;
+    // damage = successes × power × armour ratio, armour ratio = 1 - AR / (AR + armorK) with AR = (defender vitality / 5) × armour
     combat: {
-      maxArmorAbsorb: 0.75,  // armor (vitality x armor of the target) absorbs at most 75% of the damage dealt: a hit always hurts
+      diceDivisor: 5,
+      armorK: 100,
+      // angle of attack, from the defender's point of view and stance: index = attacker direction relative to the
+      // defender's facing (0 front, 1-2 front/back flank, 3 back...). +attack/power/intimidation for the attacker,
+      // -armour/defence/power/intimidation for the defender
+      angleMods: {
+        marche: [0, 2, 2, 4, 2, 2],
+        combat: [0, 0, 2, 4, 2, 0],
+        charge: [2, 2, 4, 4, 4, 2],
+        repos: [0, 2, 4, 4, 4, 2],
+        defense_combat: [0, 0, 0, 4, 0, 0],
+        defense_distance: [0, 2, 4, 4, 4, 2],
+      },
+      // generals: damage = (Force - d20 + base) × Power / powerDivisor × armour ratio / damageDivisor (÷2 more when absorbing);
+      // morale = (Charisma - d20 + base) × Intimidation / moraleDivisor (same d20)
+      general: { base: 80, powerDivisor: 5, damageDivisor: 2, moraleDivisor: 100 },
+      archerTypes: ['archer', 'archer_elite'],
     },
     duel: {
       maxRounds: 3,          // exchanges
@@ -98,6 +126,7 @@
       spectatorVision: { values: ['full', 'delayed', 'off'], default: 'full' },
       planningTimer: { min: 0, max: 600, default: 90 },    // simultaneous mode: seconds, 0 = off (else >= 15)
       commandPoints: { min: 0, max: 50, default: 0 },      // simultaneous mode: 0 = formula below, else fixed
+      teamMode: { default: false },                        // players under the same flag (nation) are allies
     },
     // Simultaneous mode (game/turns/simultaneous.js, game/rules/resolve.js)
     simultaneous: {
@@ -105,12 +134,11 @@
       maxTicks: 40,
       stanceCost: 2, facingCost: 1,                     // taken from the speed budget, as in sequential mode
       // Defender reaction in place of the defense prompt (rien | counter | absorb); generals: counter
-      stanceReaction: { marche: 'absorb', combat: 'counter', charge: 'counter', percee: 'absorb', defense_combat: 'counter', defense_distance: 'absorb', repos: 'rien' },
+      stanceReaction: { marche: 'absorb', combat: 'counter', charge: 'counter', defense_combat: 'counter', defense_distance: 'absorb', repos: 'rien' },
       marchMovingReaction: 'rien',                      // a unit in Marche caught while it moved this turn does not defend
       charge: { minHexes: 2, attack: 2, power: 3 },     // first melee after >= 2 hexes, with a Charge order or in Charge stance
       antiCharge: { lancierTypeId: 'lancier', attackMalus: 2 }, // against spearmen the bonus becomes a malus; Def. combat cancels it
       reactionFireStance: 'defense_distance',           // shooters in this stance fire once at the first enemy entering range
-      breakthroughStance: 'percee',                     // may keep moving one hex after winning a melee
       playback: { tickMs: 700, combatMs: 1300, minMs: 1500 },  // estimated playback duration (next planning starts after it)
     },
   };
@@ -213,9 +241,9 @@
     return (Math.abs(q1 - q2) + Math.abs(q1 + r1 - q2 - r2) + Math.abs(r1 - r2)) / 2;
   }
 
-  // Attack range from a hex at height hFrom on a target at height hTo: +1 per level above the target
+  // Attack range from a hex at height hFrom on a target at height hTo: +1 per level above the target, -1 per level below (min 1)
   function attackRange(range, hFrom, hTo) {
-    return (range || 1) + Math.max(0, (hFrom || 0) - (hTo || 0));
+    return Math.max(1, (range || 1) + ((hFrom || 0) - (hTo || 0)));
   }
 
   // Ability of a unit: { type, value, range, cost } (unit fields first, then the unit type table, then RULES defaults)
@@ -334,6 +362,7 @@
       spectatorVision: s.spectatorVision.default,
       planningTimer: s.planningTimer.default,
       commandPoints: s.commandPoints.default,
+      teamMode: s.teamMode.default,
     };
   }
 
@@ -354,6 +383,10 @@
       || intField('turnTimer', (v) => v === 0 || v >= 15)
       || intField('planningTimer', (v) => v === 0 || v >= 15) || intField('commandPoints');
     if (bad) return { settings: current, error: bad };
+    if ('teamMode' in patch) {
+      if (typeof patch.teamMode !== 'boolean') return { settings: current, error: 'teamMode' };
+      out.teamMode = patch.teamMode;
+    }
     if ('spectatorVision' in patch) {
       if (s.spectatorVision.values.indexOf(patch.spectatorVision) === -1) return { settings: current, error: 'spectatorVision' };
       out.spectatorVision = patch.spectatorVision;

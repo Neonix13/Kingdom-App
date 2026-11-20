@@ -90,50 +90,7 @@ function findPath(hexMap, unitMap, q1, r1, q2, r2, maxSpeed, playerId, unit, seg
 // Coût terrain pour le déploiement : base radiale + léger modificateur terrain
 // La distance au centre est le facteur dominant → forme circulaire
 // Le modificateur terrain est faible → légère préférence plaines/routes
-const TERRAIN_DEPLOY_MOD = { road: -2, plain: 0, building: 1, forest: 4, river: 999 };
-const DEPLOY_RADIAL_SCALE = 10; // poids de la distance au centre
-const DEPLOY_CENTER_EXCLUSION = 3;
 const DEPLOY_INTER_ZONE_EXCLUSION = 8;
-const DEPLOY_BORDER_EXCLUSION = 12;
-
-// Expansion radiale depuis un centre de déploiement.
-// Priorité = distance_hexagonale_au_centre × SCALE + modificateur_terrain
-// → forme proche d'un cercle, avec préférence légère pour plaines/routes
-function _deployZoneDijkstra(centerQ, centerR, maxTiles, forbiddenKeys, td, sd) {
-  const DIRS = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
-  const visited = new Set();
-  const tiles = [];
-  const heap = [{ q: centerQ, r: centerR, priority: 0 }];
-
-  while (heap.length && tiles.length < maxTiles) {
-    heap.sort((a, b) => a.priority - b.priority);
-    const { q, r } = heap.shift();
-    const key = `${q},${r}`;
-    if (visited.has(key)) continue;
-    const terrain = td[key] || 'plain';
-    if (terrain === 'river') continue;
-    if (forbiddenKeys && forbiddenKeys.has(key)) continue;
-    visited.add(key);
-    tiles.push({ q, r });
-    if (tiles.length >= maxTiles) break;
-
-    for (const [dq, dr] of DIRS) {
-      const nq = q + dq, nr = r + dr;
-      const nk = `${nq},${nr}`;
-      if (!td[nk] || visited.has(nk)) continue;
-      const edgeK = segmentEdgeKey(q, r, nq, nr);
-      const segType = sd[edgeK];
-      if (segType && rules.MOVE_TABLE.seg[segType]?.blocked) continue;
-      const nTerrain = td[nk] || 'plain';
-      if (nTerrain === 'river') continue;
-      const radialDist = hexDistance(nq, nr, centerQ, centerR);
-      const terrainMod = TERRAIN_DEPLOY_MOD[nTerrain] ?? 0;
-      const priority = radialDist * DEPLOY_RADIAL_SCALE + terrainMod;
-      heap.push({ q: nq, r: nr, priority });
-    }
-  }
-  return tiles;
-}
 
 function fixedZones(numPlayers, zones, td) {
   if (!Array.isArray(zones) || zones.length < numPlayers) return null;
@@ -160,90 +117,119 @@ function getStartingZones(numPlayers, mapRadius, budget, map = maps.getMap('defa
   const sd = getSegmentData(map);
   const fixed = fixedZones(numPlayers, map.zones, td);
   if (fixed) return fixed;
-  const maxTiles = Math.max(5, Math.floor((budget || 2500) / 1000) * 5);
-  // Random placement can occasionally squeeze a zone to nothing: retry, keep the best attempt
-  const wanted = Math.min(maxTiles, 8);
-  let best = null;
-  for (let attempt = 0; attempt < 40; attempt++) {
-    const zones = _randomZones(numPlayers, maxTiles, td, sd);
-    const size = Math.min(...zones.map(z => z.tiles.length));
-    if (!best || size > best.size) best = { zones, size };
-    if (size >= wanted) break;
-  }
-  return best.zones;
+  // Every player gets exactly maxTiles tiles (equal zones)
+  const maxTiles = Math.floor(4 * (budget || 2500) / 1000 + 2);
+  return _randomZones(numPlayers, maxTiles, td, sd);
 }
 
+// Tile scoring (lower = better): distance to the player's centre, x0.9 road, x1.2 forest/building/bridge, x1.3 river,
+// x1.2 per segment crossed on the shortest path, x4 too close to the map's battle centre, x5 too close to another zone;
+// then isolated tiles are penalised (x2) until the selection is stable.
 function _randomZones(numPlayers, maxTiles, td, sd) {
+  const allHexes = Object.entries(td).map(([key, terrain]) => { const [q, r] = key.split(',').map(Number); return { q, r, terrain }; });
+  const has = (k) => Object.prototype.hasOwnProperty.call(td, k);
+  const centerExclusion = 3 + numPlayers;
+  const borderExclusion = 15 + numPlayers;
 
-  const validHexes = [];
-  for (const [key, type] of Object.entries(td)) {
-    if (type === 'river' || type === 'forest') continue;
-    const [q, r] = key.split(',').map(Number);
-    validHexes.push({ q, r });
-  }
-
-  // Extrêmes de la carte pour estimer le bord
   let minQ = Infinity, maxQ = -Infinity, minR = Infinity, maxR = -Infinity;
-  for (const { q, r } of validHexes) {
+  for (const { q, r } of allHexes) {
     if (q < minQ) minQ = q; if (q > maxQ) maxQ = q;
     if (r < minR) minR = r; if (r > maxR) maxR = r;
   }
-
-  // Point central aléatoire loin des bords
-  const centerCandidates = validHexes.filter(({ q, r }) =>
-    q >= minQ + DEPLOY_BORDER_EXCLUSION && q <= maxQ - DEPLOY_BORDER_EXCLUSION &&
-    r >= minR + DEPLOY_BORDER_EXCLUSION && r <= maxR - DEPLOY_BORDER_EXCLUSION
-  );
+  const inside = ({ q, r }) => q >= minQ + borderExclusion && q <= maxQ - borderExclusion && r >= minR + borderExclusion && r <= maxR - borderExclusion;
+  const land = allHexes.filter(h => h.terrain !== 'river');
+  const centerCandidates = land.filter(inside);
   const centralHex = centerCandidates[Math.floor(Math.random() * centerCandidates.length)]
-    || validHexes[Math.floor(Math.random() * validHexes.length)];
+    || land[Math.floor(Math.random() * land.length)] || allHexes[0];
 
-  // Rayon du cercle de déploiement (augmente avec le nombre de joueurs)
-  const deployRadius = 10 + numPlayers * 4;
-
-  // Placer N centres équidistants sur le cercle autour du point central
+  // N centres evenly spaced on a circle around the battle centre
+  const deployRadius = 3 + numPlayers;
   const angleOffset = Math.random() * Math.PI * 2;
+  const pool = land.filter(inside).length ? land.filter(inside) : land;
+  const S = Math.sqrt(3);
   const playerCenters = [];
   for (let i = 0; i < numPlayers; i++) {
     const angle = angleOffset + i * (Math.PI * 2 / numPlayers);
-    const targetQ = centralHex.q + Math.round(Math.cos(angle) * deployRadius);
-    const targetR = centralHex.r + Math.round(Math.sin(angle) * deployRadius);
+    const targetQ = centralHex.q + Math.round(deployRadius * (2 / S) * Math.cos(angle));
+    const targetR = centralHex.r + Math.round(deployRadius * (Math.sin(angle) - Math.cos(angle) / S));
     let best = null, bestDist = Infinity;
-    for (const h of validHexes) {
+    for (const h of pool) {
       const d = hexDistance(h.q, h.r, targetQ, targetR);
       if (d < bestDist) { bestDist = d; best = h; }
     }
     playerCenters.push(best || { q: targetQ, r: targetR });
   }
 
-  // Tuiles interdites : trop proches du point central
-  const centralExcluded = new Set();
-  for (const { q, r } of validHexes) {
-    if (hexDistance(q, r, centralHex.q, centralHex.r) < DEPLOY_CENTER_EXCLUSION)
-      centralExcluded.add(`${q},${r}`);
-  }
+  const zoneTiles = playerCenters.map((center, pi) => {
+    const otherCenters = playerCenters.filter((_, i) => i !== pi);
+    // Pass 1: BFS steps from the centre
+    const stepsMap = new Map([[`${center.q},${center.r}`, 0]]);
+    let frontier = [center];
+    while (frontier.length) {
+      const next = [];
+      for (const { q, r } of frontier) {
+        const s = stepsMap.get(`${q},${r}`);
+        for (const [dq, dr] of DIRS) {
+          const nq = q + dq, nr = r + dr, nk = `${nq},${nr}`;
+          if (!has(nk) || stepsMap.has(nk)) continue;
+          stepsMap.set(nk, s + 1);
+          next.push({ q: nq, r: nr });
+        }
+      }
+      frontier = next;
+    }
+    // Pass 2: fewest segments crossed along a shortest path
+    const crossMap = new Map([[`${center.q},${center.r}`, 0]]);
+    frontier = [center];
+    while (frontier.length) {
+      const next = [], inNext = new Set();
+      for (const { q, r } of frontier) {
+        const k = `${q},${r}`, s = stepsMap.get(k), cross = crossMap.get(k) ?? 0;
+        for (const [dq, dr] of DIRS) {
+          const nq = q + dq, nr = r + dr, nk = `${nq},${nr}`;
+          if (!has(nk) || stepsMap.get(nk) !== s + 1) continue;
+          const newCross = cross + (sd[segmentEdgeKey(q, r, nq, nr)] ? 1 : 0);
+          if (!crossMap.has(nk) || newCross < crossMap.get(nk)) crossMap.set(nk, newCross);
+          if (!inNext.has(nk)) { inNext.add(nk); next.push({ q: nq, r: nr }); }
+        }
+      }
+      frontier = next;
+    }
+    const scored = [];
+    for (const { q, r, terrain } of allHexes) {
+      const key = `${q},${r}`;
+      const dx = 1.5 * (q - center.q);
+      const dy = S / 2 * q + S * r - S / 2 * center.q - S * center.r;
+      let score = (Math.sqrt(dx * dx + dy * dy) || 0.01) * (1 + (Math.random() - 0.5) * 0.3);
+      if (terrain === 'road') score *= 0.9;
+      else if (terrain === 'forest' || terrain === 'building' || terrain === 'bridge') score *= 1.2;
+      else if (terrain === 'river') score *= 1.3;
+      const cross = crossMap.get(key) ?? 0;
+      if (cross > 0) score *= Math.pow(1.2, cross);
+      if (hexDistance(q, r, centralHex.q, centralHex.r) < centerExclusion) score *= 4;
+      for (const other of otherCenters) {
+        if (hexDistance(q, r, other.q, other.r) < DEPLOY_INTER_ZONE_EXCLUSION) { score *= 5; break; }
+      }
+      scored.push({ q, r, score });
+    }
+    scored.sort((a, b) => a.score - b.score);
+    let selectedKeys = new Set(scored.slice(0, maxTiles).map(s => `${s.q},${s.r}`));
+    for (let iter = 0; iter < 20; iter++) {
+      const adjusted = scored.map(s => {
+        if (!selectedKeys.has(`${s.q},${s.r}`)) return s;
+        const isolated = !DIRS.some(([dq, dr]) => selectedKeys.has(`${s.q + dq},${s.r + dr}`));
+        return isolated ? { ...s, score: s.score * 2 } : s;
+      });
+      adjusted.sort((a, b) => a.score - b.score);
+      const newKeys = new Set(adjusted.slice(0, maxTiles).map(s => `${s.q},${s.r}`));
+      const changed = [...newKeys].some(k => !selectedKeys.has(k));
+      selectedKeys = newKeys;
+      if (!changed) break;
+    }
+    return [...selectedKeys].map(k => { const [q, r] = k.split(',').map(Number); return { q, r }; });
+  });
 
-  // Construire les zones (on demande 2x maxTiles pour avoir de la marge avant filtrage)
-  const zoneTiles = playerCenters.map(c =>
-    _deployZoneDijkstra(c.q, c.r, maxTiles * 2, centralExcluded, td, sd)
-  );
-
-  // Supprimer les tuiles trop proches d'une autre zone
-  const filtered = zoneTiles.map((tiles, pi) =>
-    tiles.filter(t =>
-      !zoneTiles.some((other, pj) => {
-        if (pj === pi) return false;
-        return other.some(ot => hexDistance(t.q, t.r, ot.q, ot.r) < DEPLOY_INTER_ZONE_EXCLUSION);
-      })
-    )
-  );
-
-  // Égaliser à la plus petite zone, tronquer à maxTiles
-  const minTiles = Math.min(maxTiles, ...filtered.map(t => t.length));
-  return playerCenters.map((c, i) => ({
-    q: c.q,
-    r: c.r,
-    tiles: filtered[i].slice(0, minTiles),
-  }));
+  return playerCenters.map((c, i) => ({ q: c.q, r: c.r, tiles: zoneTiles[i] }));
 }
 
 const DIRS = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];

@@ -180,9 +180,54 @@ function leaveRoom() {
 }
 
 function setBudget() {
-  const val = parseInt(document.getElementById('budget-input').value, 10);
-  if (isNaN(val) || val < 1000 || val > 100000) return notify('Budget entre 1000 et 100000 or.');
+  const raw = parseInt(document.getElementById('budget-input').value, 10);
+  if (isNaN(raw) || raw < 1000 || raw > 100000) return notify('Budget entre 1000 et 100000 or.');
+  const val = Math.round(raw / 100) * 100;
+  document.getElementById('budget-input').value = val;
   KBNet.send('set_budget', { budget: val });
+}
+
+// The host may still change the budget during army building (armies being built are re-checked on submit)
+function setBudgetFromArmy() {
+  const el = document.getElementById('army-budget-input');
+  const raw = parseInt(el.value, 10);
+  if (isNaN(raw) || raw < 1000 || raw > 100000) return notify('Budget entre 1000 et 100000 or.');
+  const val = Math.round(raw / 100) * 100;
+  el.value = val;
+  KBNet.send('set_budget', { budget: val });
+}
+
+function backToLobby() {
+  KBNet.send('back_to_lobby');
+}
+
+// ---- flags (nations): teammates under one flag in team mode; the flag sets the player's colour ----
+const FLAGS = [
+  { id: 'qin', name: 'Qin', k: '秦', file: 'Quin.webp' },
+  { id: 'zhao', name: 'Zhao', k: '趙', file: 'Zhao.webp' },
+  { id: 'wei', name: 'Wei', k: '魏', file: 'Wei.webp' },
+  { id: 'chu', name: 'Chu', k: '楚', file: 'Chu.webp' },
+  { id: 'yan', name: 'Yan', k: '燕', file: 'Yan.webp' },
+  { id: 'qi', name: 'Qi', k: '齊', file: 'Qi.webp' },
+  { id: 'han', name: 'Han', k: '韓', file: 'Han.webp' },
+];
+
+function flagImg(flagId, cls = 'ld-flag') {
+  const f = FLAGS.find(x => x.id === flagId);
+  if (!f) return `<span class="${cls} none" aria-hidden="true"></span>`;
+  return `<img class="${cls}" src="/assets/flag/${f.file}" alt="Drapeau ${escapeHtml(f.name)}" title="${escapeHtml(f.name)}">`;
+}
+
+function pickFlag(flagId) {
+  KBNet.send('set_player_flag', { flagId });
+}
+
+function setTeamMode(on) {
+  KBNet.send('set_option', { key: 'teamMode', value: !!on });
+}
+
+function toggleLobbyReady() {
+  KBNet.send('lobby_ready');
 }
 
 function setMap(mapId) {
@@ -267,7 +312,8 @@ function startTutorial() {
 
 function addBot() {
   const sel = document.getElementById('bot-difficulty');
-  KBNet.send('add_bot', { difficulty: sel ? sel.value : 'veteran' });
+  const flag = document.getElementById('bot-flag');
+  KBNet.send('add_bot', { difficulty: sel ? sel.value : 'veteran', flagId: flag && flag.value ? flag.value : undefined });
 }
 
 function removeBot(id) {
@@ -282,8 +328,13 @@ function renderBotControls(data) {
   if (!show) return;
   const prev = document.getElementById('bot-difficulty');
   const current = prev ? prev.value : 'veteran';
+  const prevFlag = document.getElementById('bot-flag');
+  const curFlag = prevFlag ? prevFlag.value : '';
+  const team = !!(data.settings && data.settings.teamMode);
+  const taken = new Set(data.players.map(p => p.flag).filter(Boolean));
   box.innerHTML = `<label for="bot-difficulty" class="ld-label" style="margin:0;align-self:center">IA</label>
     <select id="bot-difficulty">${BOT_DIFFICULTIES.map(d => `<option value="${d.id}"${d.id === current ? ' selected' : ''}>${d.name}</option>`).join('')}</select>
+    <select id="bot-flag" aria-label="Drapeau de l'IA"><option value="">Drapeau : auto</option>${FLAGS.map(f => `<option value="${f.id}"${f.id === curFlag ? ' selected' : ''}${!team && taken.has(f.id) ? ' disabled' : ''}>${f.k} ${f.name}</option>`).join('')}</select>
     <button class="ld-btn" onclick="addBot()">Ajouter une IA</button>`;
 }
 
@@ -502,18 +553,24 @@ function renderPlayerList(data) {
     const badge = bot ? `<span class="player-badge bot">IA · ${escapeHtml(bot.label)}</span>`
       : `<span class="player-badge${p.id === hostId ? ' host' : ''}">${p.id === hostId ? 'Hôte' : 'Joueur'}</span>`;
     const mine = p.id === myId && phase === 'lobby';
-    const swatches = mine ? `<div class="ld-swatches" role="group" aria-label="Votre couleur">${PLAYER_COLORS.map(c => {
-      const taken = usedColors.has(c.hex);
-      const active = c.hex === (selectedColor || '').toLowerCase();
-      return `<button class="color-swatch${active ? ' active' : ''}${taken ? ' taken' : ''}" style="background:${c.hex}" title="${c.name}${taken ? ' (prise)' : ''}"
-        aria-label="${c.name}${taken ? ' (prise)' : ''}" aria-pressed="${active}"${taken ? ' disabled' : ` onclick="pickColor('${c.hex}')"`}></button>`;
+    const team = !!(data.settings && data.settings.teamMode);
+    const takenFlags = new Set(players.filter(o => o.id !== myId).map(o => o.flag).filter(Boolean));
+    const swatches = mine ? `<div class="ld-flags" role="group" aria-label="Votre drapeau">${FLAGS.map(f => {
+      const taken = !team && takenFlags.has(f.id);
+      const active = f.id === p.flag;
+      return `<button class="ld-flag-btn${active ? ' active' : ''}${taken ? ' taken' : ''}" title="${f.name}${taken ? ' (pris)' : ''}"
+        aria-label="Drapeau ${f.name}${taken ? ' (pris)' : ''}" aria-pressed="${active}"${taken ? ' disabled' : ` onclick="pickFlag('${f.id}')"`}><img src="/assets/flag/${f.file}" alt=""><span class="ld-brush">${f.k}</span></button>`;
     }).join('')}</div>` : '';
     let statusText, ready = false;
     if (!p.connected) statusText = 'hors ligne';
-    else if (phase === 'army_building') { ready = p.isReady; statusText = p.isReady ? 'armée prête' : 'recrute…'; }
-    else { ready = !!p.generalId; statusText = p.generalId ? 'prêt' : 'choisit un général'; }
+    else if (phase === 'army_building') { ready = p.armySubmitted || p.isReady; statusText = ready ? 'armée prête' : 'recrute…'; }
+    else if (bot) { ready = !!p.generalId; statusText = 'prêt'; }
+    else if (!p.generalId) statusText = 'choisit un général';
+    else if (!p.flag) statusText = 'choisit un drapeau';
+    else { ready = !!p.isReady; statusText = p.isReady ? 'prêt' : 'se prépare'; }
     li.innerHTML = `
       <span class="ld-dot" style="background:${escapeHtml(color)}"></span>
+      ${flagImg(p.flag)}
       <span class="ld-pname">${escapeHtml(p.name)}${p.id === myId ? ' <em>(vous)</em>' : ''}</span>
       ${badge}
       <span class="ld-pgen">${escapeHtml(genName)}</span>
@@ -550,16 +607,28 @@ function renderSettings(data) {
   modeSel.value = data.mode || 'sequential';
   modeSel.disabled = !host;
   renderGameSettings(data, host);
+  const team = document.getElementById('set-teamMode');
+  if (team) { team.checked = !!(data.settings && data.settings.teamMode); team.disabled = !host; }
+  const me = data.players.find(p => p.id === myId);
+  const readyBtn = document.getElementById('lobby-ready-btn');
+  if (readyBtn) {
+    readyBtn.style.display = myRole === 'player' && me ? '' : 'none';
+    readyBtn.disabled = !me || !me.generalId || !me.flag;
+    readyBtn.textContent = me && me.isReady ? 'Prêt ✓ (annuler)' : 'Je suis prêt';
+    readyBtn.setAttribute('aria-pressed', me && me.isReady ? 'true' : 'false');
+    readyBtn.title = !me ? '' : !me.generalId ? 'Choisissez d\'abord un général' : !me.flag ? 'Choisissez d\'abord un drapeau' : 'La partie commence quand tous les joueurs sont prêts';
+  }
   document.getElementById('settings-hint').textContent = host ? 'Vous êtes l\'hôte : les paramètres s\'appliquent à tous.' : 'Seul l\'hôte peut modifier les paramètres.';
   const startBtn = document.getElementById('start-btn');
   startBtn.style.display = host ? '' : 'none';
   const missing = data.players.filter(p => !p.generalId).length;
+  const notReady = data.players.filter(p => !p.isBot && !p.isReady).length;
   startBtn.disabled = missing > 0;
   startBtn.setAttribute('aria-label', missing > 0 ? `Lancer la bataille (${missing} joueur(s) sans général)` : 'Lancer la bataille');
   document.getElementById('ld-start-label').textContent = 'Lancer';
   document.getElementById('ld-start-hint').textContent = host
-    ? (missing > 0 ? `${missing} joueur(s) sans général` : (data.players.length < 2 ? 'Ajoutez un joueur ou une IA.' : 'Tout le monde est prêt.'))
-    : (myRole === 'player' ? 'L\'hôte lancera la bataille.' : '');
+    ? (missing > 0 ? `${missing} joueur(s) sans général` : (data.players.length < 2 ? 'Ajoutez un joueur ou une IA.' : (notReady > 0 ? `${notReady} joueur(s) pas encore prêt(s) — vous pouvez lancer quand même.` : 'Tout le monde est prêt.')))
+    : (myRole === 'player' ? 'La bataille commence quand tous les joueurs sont prêts (ou quand l\'hôte la lance).' : '');
   const settingsBox = document.getElementById('ld-settings');
   if (!settingsBox.dataset.touched && (!host || window.matchMedia('(max-width: 640px)').matches)) settingsBox.open = false;
 }
@@ -660,6 +729,15 @@ function markArmySubmitted() {
 }
 
 function updateArmyWait(data) {
+  const host = data.hostId === myId;
+  const tools = document.getElementById('army-host-tools');
+  if (tools) {
+    tools.style.display = host ? '' : 'none';
+    const bi = document.getElementById('army-budget-input');
+    if (bi && document.activeElement !== bi) bi.value = data.budget;
+  }
+  const nations = document.getElementById('army-nations');
+  if (nations) nations.innerHTML = data.players.map(p => `<span class="ld-nation${p.armySubmitted || p.isReady ? ' ready' : ''}" title="${escapeHtml(p.name)}">${flagImg(p.flag)}<span>${escapeHtml(p.name)}</span></span>`).join('');
   const ready = data.players.filter(p => p.isReady).length;
   const txt = `${ready}/${data.players.length} armée(s) prête(s)`;
   document.getElementById('army-wait').textContent = armySubmitted ? `Armée confirmée — ${txt}` : txt;
@@ -692,6 +770,7 @@ function onRoomUpdate(data) {
   } else if (data.phase === 'army_building') {
     if (document.getElementById('screen-army').style.display !== 'block' && document.getElementById('screen-wait').style.display !== 'block') enterArmyBuilding(me && me.isReady ? { armySubmitted: true } : null);
     updateArmyWait(data);
+    if (document.getElementById('screen-army').style.display === 'block') updateBudgetDisplay();
   } else {
     goToGame();
   }
@@ -716,6 +795,7 @@ function lobbyDispatch(event, data) {
       break;
     case 'phase_change':
       if (data.budget !== undefined) budget = data.budget;
+      if (data.phase === 'lobby') { armySubmitted = false; show('screen-lobby'); }
       if (data.phase === 'army_building') enterArmyBuilding(data);
       else if (data.phase === 'deployment' || data.phase === 'battle') goToGame();
       break;

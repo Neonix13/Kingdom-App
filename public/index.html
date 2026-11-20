@@ -161,6 +161,10 @@
                 <input type="number" id="set-commandPoints" data-setting="commandPoints" value="0" min="0" max="50" step="1" onchange="setSetting(this)">
                 <div class="hint">Unités pouvant recevoir un ordre. 0 = 2 + Stratégie du général / 3.</div>
               </div>
+              <div class="input-group ld-check">
+                <label for="set-teamMode"><input type="checkbox" id="set-teamMode" onchange="setTeamMode(this.checked)"> Mode par équipe</label>
+                <div class="hint">Les joueurs sous le même drapeau sont alliés : pas d'attaque entre eux, victoire partagée.</div>
+              </div>
               <div class="input-group">
                 <label for="set-spectatorVision">Vision des spectateurs</label>
                 <select id="set-spectatorVision" data-setting="spectatorVision" onchange="setSetting(this)">
@@ -181,6 +185,7 @@
 
       <div class="ld-seal-row">
         <span class="ld-muted" id="ld-start-hint"></span>
+        <button class="ld-btn ld-ready-btn" id="lobby-ready-btn" onclick="toggleLobbyReady()" style="display:none" aria-pressed="false">Je suis prêt</button>
         <button class="ld-seal" id="start-btn" onclick="startGame()" style="display:none">
           <span class="ld-brush ld-seal-k" aria-hidden="true">戦</span>
           <span class="ld-seal-label" id="ld-start-label">Lancer</span>
@@ -209,6 +214,12 @@
         </div>
       </div>
       <div class="ld-seal-row">
+        <div class="ld-army-host" id="army-host-tools" style="display:none">
+          <label for="army-budget-input" class="ld-label">Budget</label>
+          <input type="number" id="army-budget-input" min="1000" max="100000" step="100" onchange="setBudgetFromArmy()">
+          <button class="ld-btn" onclick="backToLobby()">Retour au salon</button>
+        </div>
+        <div class="ld-nations" id="army-nations"></div>
         <span class="ld-muted" id="army-wait"></span>
         <button class="ld-seal" id="army-submit-btn" onclick="submitArmy()">
           <span class="ld-brush ld-seal-k" aria-hidden="true">戦</span>

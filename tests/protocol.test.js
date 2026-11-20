@@ -42,8 +42,7 @@ for (const roundTrip of [false, true]) {
 
     const { first, second } = await (async () => {
       const general = dsA.units.find(u => u.isGeneral);
-      await a.send('deployment_ready');
-      assert.equal(a.last('error').code, 'rejected');
+      assert.ok(dsA.units.every(u => u.q !== null), 'unités placées d\'office');
       await a.send('place_unit', { unitId: general.id, q: 0, r: 3 });
       await a.send('place_unit', { unitId: dsA.units.find(u => !u.isGeneral).id, q: 1, r: 3 });
       await a.send('place_unit', { unitId: general.id, q: 5, r: 3 });

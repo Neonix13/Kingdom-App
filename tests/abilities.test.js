@@ -38,81 +38,86 @@ function put(room, unit, q, r) {
 const unitOf = (room, pid, typeId) => room.getPlayer(pid).units.find(u => u.typeId === typeId);
 const seq = (...vals) => { let i = 0; return () => (i < vals.length ? vals[i++] : 0.5); };
 
-test('lanciers : +3 attaque contre la cavalerie, +3 défense quand elle les attaque', () => {
-  const room = arena(['lancier'], ['cavalier_lourd']);
-  const l = unitOf(room, 'p0', 'lancier'), c = unitOf(room, 'p1', 'cavalier_lourd');
+test('lanciers : +6 puissance contre la cavalerie et les chars (attaque et riposte), +20 armure contre les tirs', () => {
+  const room = arena(['lancier', 'archer'], ['cavalier_lourd', 'soldats']);
+  const l = unitOf(room, 'p0', 'lancier'), c = unitOf(room, 'p1', 'cavalier_lourd'), s = unitOf(room, 'p1', 'soldats');
   put(room, l, 3, 3); put(room, c, 4, 3);
   const r1 = room._resolveCombat(l, c, true, 'rien');
-  assert.equal(r1.breakdown.lancerAtk, 3);
-  assert.equal(r1.attackTotal, room._resolveCombat(l, { ...c, category: 'Infanterie' }, true, 'rien').attackTotal + 3);
+  assert.equal(r1.breakdown.lancierBonus, 6);
+  assert.equal(r1.breakdown.effectivePowerAtt, room._resolveCombat(l, { ...c, category: 'Infanterie' }, true, 'rien').breakdown.effectivePowerAtt + 6);
   assert.ok(r1.bonuses.some(b => b.type === 'anti_cavalry'));
   const r2 = room._resolveCombat(c, l, true, 'counter');
-  assert.equal(r2.breakdown.lancerDef, 3);
-  assert.equal(r2.breakdown.defTotal, room._resolveCombat(c, { ...l, bonusType: null, typeId: 'none' }, true, 'counter').breakdown.defTotal + 3);
+  assert.equal(r2.breakdown.lancierBonusDef, 6);
+  const a = unitOf(room, 'p0', 'archer');
+  put(room, a, 3, 5); put(room, l, 9, 7); put(room, s, 5, 5);
+  const shotLancier = room._resolveCombat(a, { ...l, q: 5, r: 4 }, false, 'rien');
+  assert.equal(shotLancier.breakdown.lancierRangedBonus, 20);
+  assert.equal(room._resolveCombat(a, s, false, 'rien').breakdown.lancierRangedBonus, 0);
 });
 
-test('cavalier lourd : +1 puissance et intimidation en charge seulement', () => {
-  const room = arena(['cavalier_lourd'], ['soldats']);
-  const c = unitOf(room, 'p0', 'cavalier_lourd'), s = unitOf(room, 'p1', 'soldats');
-  put(room, c, 3, 3); put(room, s, 4, 3);
-  c.stance = 'marche';
-  const calm = room._resolveCombat(c, s, true, 'rien');
-  c.stance = 'charge';
-  const charge = room._resolveCombat(c, s, true, 'rien');
-  assert.equal(charge.breakdown.charging, 1);
-  const st = room._getStanceMods(c), st0 = room._getStanceMods({ ...c, stance: 'marche' });
-  assert.equal(charge.breakdown.dieFaces - calm.breakdown.dieFaces, 1 + (st.puissance_cac || 0) - (st0.puissance_cac || 0));
-  assert.equal(room._resolveCombat(c, s, true, 'rien', { charge: 'bonus' }).breakdown.charging, 1);
+test('cavalier lourd : la moitié du moral infligé frappe aussi les ennemis voisins de sa cible', () => {
+  const room = arena(['cavalier_lourd'], ['soldats', 'pietaille']);
+  const c = unitOf(room, 'p0', 'cavalier_lourd'), s = unitOf(room, 'p1', 'soldats'), p = unitOf(room, 'p1', 'pietaille');
+  put(room, c, 3, 3); put(room, s, 4, 3); put(room, p, 5, 3);
+  room._random = () => 0;
+  const res = room._resolveCombat(c, s, true, 'rien');
+  assert.ok(res.moralDmg > 0);
+  const before = p.morale;
+  const log = room._applyCombat(c, s, true, 'rien', res, room.getPlayer('p0'), room.getPlayer('p1'));
+  assert.equal(before - p.morale, Math.floor(res.moralDmg * 50 / 100));
+  assert.ok(log.bonuses.some(b => b.type === 'charge_bonus'));
 });
 
-test('phalange : test de défense contre un tir, réussi = aucun dégât ; les autres cibles n\'en ont pas', () => {
+test('phalange : +20 armure contre les tirs, pas d\'encaissement contre les archers', () => {
   const room = arena(['archer'], ['phalange', 'soldats']);
   const a = unitOf(room, 'p0', 'archer'), ph = unitOf(room, 'p1', 'phalange'), so = unitOf(room, 'p1', 'soldats');
   put(room, a, 2, 3); put(room, ph, 4, 3); put(room, so, 4, 4);
-  room._random = () => 0;
   const r = room._resolveCombat(a, ph, false, 'absorb');
-  assert.equal(r.hit, true);
-  assert.equal(r.defenseSuccess, true);
-  assert.equal(r.dmgReceived, 0);
-  assert.ok(r.moralDmg > 0, 'le moral souffre quand même');
+  assert.equal(r.breakdown.phalangeBonus, 20);
+  assert.equal(r.breakdown.defenseChoice, 'rien', 'contre des archers la phalange n\'encaisse pas');
   assert.ok(r.bonuses.some(b => b.type === 'defend_ranged'));
   const r2 = room._resolveCombat(a, so, false, 'absorb');
-  assert.equal(r2.defenseRoll, null);
-  assert.ok(r2.dmgReceived > 0);
+  assert.equal(r2.breakdown.phalangeBonus, 0);
+  assert.equal(r2.breakdown.defReussite, null);
 });
 
-test('soldats : une unité laissée à 15 % de vitalité ou moins est achevée (jamais un général)', () => {
+test('soldats : après leur attaque, un ennemi sous 10 % de vitalité est exécuté (jamais un général, pas en riposte)', () => {
   const room = arena(['soldats'], ['pietaille']);
   const s = unitOf(room, 'p0', 'soldats'), p = unitOf(room, 'p1', 'pietaille');
   put(room, s, 3, 3); put(room, p, 4, 3);
-  p.vitality = Math.ceil(p.maxVitality * 0.15) + 1;
-  room._random = () => 0;
   const res = room._resolveCombat(s, p, true, 'rien');
-  assert.ok(res.dmgReceived >= 1);
+  res.dmgReceived = Math.max(1, res.dmgReceived || 1);
+  p.vitality = Math.floor(p.maxVitality * 0.1) - 1 + res.dmgReceived;
   const log = room._applyCombat(s, p, true, 'rien', res, room.getPlayer('p0'), room.getPlayer('p1'));
   assert.equal(log.targetKilled, true);
   assert.ok(log.bonuses.some(b => b.type === 'execute_low_hp'));
-  const g = room.getPlayer('p1').generalUnit;
+  const g = room.getPlayer('p1').units.find(u => u.isGeneral);
   put(room, g, 4, 3);
-  g.vitality = 2;
+  g.vitality = 3;
   const res2 = room._resolveCombat(s, g, true, 'rien');
   res2.dmgReceived = 1;
   const log2 = room._applyCombat(s, g, true, 'rien', res2, room.getPlayer('p0'), room.getPlayer('p1'));
   assert.ok(!(log2.bonuses || []).some(b => b.type === 'execute_low_hp'));
+  // riposte of soldiers: no execution
+  const room2 = arena(['pietaille'], ['soldats']);
+  const pa = unitOf(room2, 'p0', 'pietaille'), sd = unitOf(room2, 'p1', 'soldats');
+  put(room2, pa, 3, 3); put(room2, sd, 4, 3);
+  const r3 = room2._resolveCombat(pa, sd, true, 'counter');
+  r3.counterDmgReceived = 1; r3.dmgReceived = 0;
+  pa.vitality = Math.floor(pa.maxVitality * 0.1) - 1 + 1;
+  const log3 = room2._applyCombat(pa, sd, true, 'counter', r3, room2.getPlayer('p0'), room2.getPlayer('p1'));
+  assert.ok(!(log3.bonuses || []).some(b => b.type === 'execute_low_hp'));
 });
 
-test('assassin : avantage sur le premier jet d\'attaque du jour seulement', () => {
+test('assassin : invisible pour un ennemi qui n\'a aucune unité à 4 cases ou moins', () => {
   const room = arena(['assassin'], ['soldats']);
   const a = unitOf(room, 'p0', 'assassin'), s = unitOf(room, 'p1', 'soldats');
-  put(room, a, 3, 3); put(room, s, 4, 3);
-  room._random = seq(0.99, 0.0);
-  const r = room._resolveCombat(a, s, true, 'rien');
-  assert.deepEqual(r.breakdown.advantageRolls, [20, 1]);
-  assert.equal(r.attackD20, 1);
-  room._random = () => 0.5;
-  room._applyCombat(a, s, true, 'rien', r, room.getPlayer('p0'), room.getPlayer('p1'));
-  const r2 = room._resolveCombat(a, s, true, 'rien');
-  assert.equal(r2.breakdown.advantageRolls, null);
+  for (const u of room.getPlayer('p1').units) put(room, u, 9, 7 - room.getPlayer('p1').units.indexOf(u));
+  put(room, a, 3, 3);
+  put(room, s, 8, 3);
+  assert.equal(room.isConcealedFrom('p1', a), true, 'à 5 cases : invisible');
+  put(room, s, 7, 3);
+  assert.equal(room.isConcealedFrom('p1', a), false, 'à 4 cases : visible (en plaine)');
 });
 
 test('assassin : disparaît pour la journée si aucun ennemi à moins de 6 cases ; attaquer le révèle', () => {
@@ -126,7 +131,7 @@ test('assassin : disparaît pour la journée si aucun ennemi à moins de 6 cases
   assert.equal(a.speedRemaining, 2);
   assert.equal(room.isConcealedFrom('p1', a), true);
   assert.ok(room.vanish('p0', a.id).error, 'une fois par jour');
-  put(room, s, 6, 1);
+  put(room, s, 4, 1);
   assert.equal(room.isConcealedFrom('p1', a), true, 'reste caché même plus près');
   room._reveal(a);
   assert.equal(room.isConcealedFrom('p1', a), false);
@@ -135,6 +140,20 @@ test('assassin : disparaît pour la journée si aucun ennemi à moins de 6 cases
   put(b, a2, 1, 1); put(b, s2, 4, 1);
   a2.speedRemaining = 4;
   assert.ok(b.vanish('p0', a2.id).error);
+});
+
+test('cavalier léger : attaquer coûte 2 de vitesse et il peut encore se déplacer', () => {
+  const room = arena(['cavalier_leger'], ['soldats']);
+  const c = unitOf(room, 'p0', 'cavalier_leger'), s = unitOf(room, 'p1', 'soldats');
+  put(room, c, 3, 3); put(room, s, 4, 3);
+  room.turnOrder = ['p0', 'p1']; room.currentTurnIndex = 0;
+  c.speedRemaining = 6; c.turnSpeed = 6; c.hasAttacked = false; c.hasMoved = true;
+  const init = room.initiateCombat('p0', c.id, s.id);
+  assert.ok(init.pending, JSON.stringify(init));
+  assert.equal(c.speedRemaining, 4);
+  assert.ok(room.resolveAttack(init.attackId, 'rien').ok);
+  assert.equal(c.hasMoved, false);
+  assert.ok(room.moveUnit('p0', c.id, 2, 3).ok);
 });
 
 test('cavalier léger : +1 vitesse s\'il n\'est pas engagé', () => {
@@ -148,7 +167,7 @@ test('cavalier léger : +1 vitesse s\'il n\'est pas engagé', () => {
   assert.equal(free - c.speedRemaining, 1);
 });
 
-test('piétaille : +15 moral par tour près de son général', () => {
+test('piétaille : +10 moral par tour dans le rayon de Charisme / 5 de son général', () => {
   const room = arena(['pietaille'], ['soldats']);
   const p = unitOf(room, 'p0', 'pietaille'), g = room.getPlayer('p0').generalUnit;
   p.stance = 'marche';
@@ -159,7 +178,7 @@ test('piétaille : +15 moral par tour près de son général', () => {
   p.morale = 50;
   put(room, p, 8, 3);
   room._applyTurnRegen(p);
-  assert.equal(near - p.morale, 15);
+  assert.equal(near - p.morale, 10);
 });
 
 test('espion : sabote un pont (segment -> rivière), coûte 2 de vitesse, persiste après sauvegarde', () => {
@@ -202,32 +221,26 @@ test('bâtisseurs : chevaux de frise, pont sur une rivière, forêt brûlée (l\
   assert.equal(room._inCover(6, 1), false);
 });
 
-test('char : frappe aussi l\'ennemi aligné derrière sa cible, et traverse les unités visibles', () => {
+test('char : traverse les unités ennemies vues et frappe chacune (sans riposte), jamais sur une case occupée', () => {
   const room = arena(['char', 'soldats'], ['soldats', 'pietaille']);
   const c = unitOf(room, 'p0', 'char'), mine = unitOf(room, 'p0', 'soldats');
-  const t1 = unitOf(room, 'p1', 'soldats'), t2 = unitOf(room, 'p1', 'pietaille');
-  put(room, c, 2, 3); put(room, t1, 3, 3); put(room, t2, 4, 3);
-  room.currentPlayerId = 'p0';
-  c.speedRemaining = 5; c.turnSpeed = 5; c.hasAttacked = false;
-  assert.equal(room.trampleTarget(c, t1), t2);
-  const init = room.initiateCombat('p0', c.id, t1.id);
-  assert.ok(init.pending, JSON.stringify(init));
-  const res = room.resolveAttack(init.attackId, 'rien');
-  assert.ok(res.ok);
-  assert.equal(res.trample.length, 1);
-  assert.equal(res.trample[0].targetId, t2.id);
-  assert.equal(res.trample[0].combatLog.trample, true);
-
-  const r2 = arena(['char', 'soldats'], ['soldats']);
-  const c2 = unitOf(r2, 'p0', 'char'), m2 = unitOf(r2, 'p0', 'soldats');
-  put(r2, c2, 2, 2); put(r2, m2, 3, 2);
-  c2.speedRemaining = 5; c2.turnSpeed = 5;
-  const mv = r2.moveUnit('p0', c2.id, 4, 2);
+  const t1 = unitOf(room, 'p1', 'soldats');
+  put(room, c, 2, 3); put(room, t1, 3, 3);
+  room.turnOrder = ['p0', 'p1']; room.currentTurnIndex = 0;
+  c.speedRemaining = 5; c.turnSpeed = 5;
+  const v0 = t1.vitality;
+  const mv = room.moveUnit('p0', c.id, 4, 3);
   assert.ok(mv.ok, JSON.stringify(mv));
-  assert.deepEqual([c2.q, c2.r], [4, 2]);
-  assert.ok(r2.moveUnit('p0', c2.id, 3, 2).error, 'jamais sur une case occupée');
-  m2.speedRemaining = 2; m2.turnSpeed = 2;
-  put(r2, m2, 5, 4); put(r2, c2, 6, 4);
-  assert.ok(r2.moveUnit('p0', m2.id, 7, 4).error, 'les autres unités ne traversent pas');
-  void mine;
+  assert.deepEqual([c.q, c.r], [4, 3]);
+  assert.equal(mv.trampledAttacks.length, 1);
+  assert.equal(mv.trampledAttacks[0].targetId, t1.id);
+  assert.equal(mv.trampledAttacks[0].combatLog.trample, true);
+  assert.equal(mv.trampledAttacks[0].combatLog.counterDmgReceived, 0);
+  assert.ok(t1.vitality <= v0);
+  put(room, mine, 5, 3);
+  c.speedRemaining = 5;
+  assert.ok(room.moveUnit('p0', c.id, 5, 3).error, 'jamais sur une case occupée');
+  mine.speedRemaining = 2; mine.turnSpeed = 2;
+  put(room, mine, 5, 5); put(room, t1, 6, 5);
+  assert.ok(room.moveUnit('p0', mine.id, 7, 5).error, 'les autres unités ne traversent pas');
 });

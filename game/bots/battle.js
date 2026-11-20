@@ -40,9 +40,10 @@ function mods(room, unit, q, r) {
   return { st: unit.isGeneral ? {} : room._getStanceMods(unit), te: room._getTerrainMods(q, r) };
 }
 
-// Rough expectation of a strike (same formula as GameRoom._resolveCombat, averaged)
+// Rough expectation of a strike (same formula as GameRoom._resolveCombat, averaged; angle and courage ignored)
 function strike(world, a, t, fq, fr) {
   const room = world.room;
+  const C = RULES.combat;
   const ranged = hexDistance(fq, fr, t.q, t.r) > 1;
   const type = ranged ? 'tir' : 'cac';
   if (!ranged && a.isGeneral && t.isGeneral) {
@@ -56,12 +57,20 @@ function strike(world, a, t, fq, fr) {
   const night = world.night ? (RULES.night.attackMod[type] || 0) : 0;
   const atk = (a.isGeneral ? a.force : a.attack) + (A.st[`attack_${type}`] || 0) + (A.te[`attack_${type}`] || 0)
     - (D.st[`esquive_${type}`] || 0) - (D.te[`esquive_${type}`] || 0) + h + night;
-  const pHit = Math.max(0.05, Math.min(1, atk / 20));
-  const faces = Math.max(1, a.power + (A.st[`puissance_${type}`] || 0) + (A.te[`puissance_${type}`] || 0));
-  const raw = a.vitality * (faces + 1) / 2 * (1 + h / 10);
-  const absorb = Math.min(t.vitality * Math.max(0, t.armor + (D.st.armure || 0) + (D.te.armure || 0)), raw * RULES.combat.maxArmorAbsorb);
-  const dmg = Math.max(0, (raw - absorb) / 10);
-  return { pHit, dmg, expected: pHit * dmg, kill: dmg >= t.vitality, duel: false };
+  const pDie = Math.max(0, Math.min(1, atk / 20));
+  const ngoA = Math.max(1, Math.floor(a.vitality / C.diceDivisor)), ngoD = Math.max(1, Math.floor(t.vitality / C.diceDivisor));
+  const abD = room.ability(t);
+  const rangedArmor = ranged && abD ? (abD.type === 'defend_ranged' ? abD.value : abD.type === 'anti_cavalry' ? (RULES.abilities.anti_cavalry.rangedArmor || 0) : 0) : 0;
+  const ar = ngoD * Math.max(0, t.armor + (D.st.armure || 0) + (D.te.armure || 0) + rangedArmor);
+  const ratio = 1 - ar / (ar + C.armorK);
+  const abA = room.ability(a);
+  const lancer = abA && abA.type === 'anti_cavalry' && RULES.abilities.antiCavalryCategories.includes(t.category) ? abA.value : 0;
+  const power = Math.max(1, a.power + (A.st[`puissance_${type}`] || 0) + (A.te[`puissance_${type}`] || 0) + lancer);
+  let dmg;
+  if (a.isGeneral) dmg = (a.force - 10.5 + C.general.base) * a.power / C.general.powerDivisor * ratio / C.general.damageDivisor;
+  else dmg = ngoA * pDie * power * ratio;
+  const pHit = a.isGeneral ? 1 : 1 - Math.pow(1 - pDie, ngoA);
+  return { pHit, dmg, expected: dmg, kill: dmg >= t.vitality, duel: false };
 }
 
 function targetScore(world, profile, a, t, fq, fr) {

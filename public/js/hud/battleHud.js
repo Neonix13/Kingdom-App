@@ -288,7 +288,7 @@ export function mountBattleHud(bridge, view) {
     const { stats, terrainName } = effective(u);
     const fmtSpeed = window.fmtSpeed || ((x) => x);
     const meta = [];
-    if (!u.isMine && !deploying) meta.push('<span class="flag">ENNEMI</span>');
+    if (!u.isMine && !deploying) meta.push(u.isAlly ? '<span class="flag ok">ALLIÉ</span>' : '<span class="flag">ENNEMI</span>');
     meta.push(esc(u.isGeneral ? 'GÉNÉRAL' : (u.category || '').toUpperCase()));
     if (u.speed != null) meta.push(`VITESSE ${u.speedRemaining != null ? esc(fmtSpeed(u.speedRemaining)) + '/' : ''}${u.speed}`);
     if (!u.isGeneral && u.stance) meta.push(`POSTURE ${esc((names[u.stance] || u.stance).toUpperCase())}`);
@@ -539,9 +539,9 @@ export function mountBattleHud(bridge, view) {
       const hex = window.getHexUnderMouse ? window.getHexUnderMouse(e) : null;
       const key = hex ? `${hex.q},${hex.r}` : null;
       const tgt = key && sel && bridge.attackableTiles && bridge.attackableTiles.has(key)
-        ? (bridge.state?.units || []).find((u) => u.q === hex.q && u.r === hex.r && !u.isMine) : null;
+        ? (bridge.state?.units || []).find((u) => u.q === hex.q && u.r === hex.r && !u.isMine && !u.isAlly) : null;
       if (!tgt) { tip2d.style.display = 'none'; return; }
-      tip2d.innerHTML = attackTipHtml(sel, tgt, bridge.unitTypes);
+      tip2d.innerHTML = attackTipHtml(sel, tgt, bridge.unitTypes, bridge.approachAt ? bridge.approachAt(key) : null);
       tip2d.style.display = 'block';
       tip2d.style.left = Math.min(innerWidth - 250, e.clientX + 16) + 'px';
       tip2d.style.top = Math.max(8, Math.min(innerHeight - tip2d.offsetHeight - 8, e.clientY - 10)) + 'px';

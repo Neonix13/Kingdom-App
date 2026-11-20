@@ -155,7 +155,7 @@ export async function mountGameView(bridge, { container }) {
     const st = el.querySelector('img.st');
     const icon = u.stance && !u.isGeneral ? bridge.stanceIcons[u.stance] : null;
     if (icon && icon.src) { st.src = icon.src; st.style.display = ''; } else st.style.display = 'none';
-    el.classList.toggle('enemy', !u.isMine);
+    el.classList.toggle('enemy', !u.isMine && !u.isAlly);
     el.classList.toggle('moved', !!(u.hasMoved && u.isMine));
     el.classList.toggle('fleeing', !!u.isFleeing);
     el.classList.toggle('concealed', !!u.concealed);
@@ -269,7 +269,7 @@ export async function mountGameView(bridge, { container }) {
         const attackable = key && bridge.attackableTiles.has(key);
         const movable = key && bridge.movableTiles.has(key);
         const hu = valid && shownUnits.find((x) => x.q === valid.q && x.r === valid.r);
-        const outOfReach = sel && hu && !hu.isMine && !attackable && !bridge.simultaneous;
+        const outOfReach = sel && hu && !hu.isMine && !hu.isAlly && !attackable && !bridge.simultaneous;
         world.layers.setHover(valid, attackable ? '#ff6040' : movable ? '#a0ff70' : outOfReach ? '#8a8a8a' : '#ffd25a');
         if (units3d) units3d.setHovered(hu ? hu.id : null);
         for (const el of plateEls.values()) el.classList.toggle('hov', !!(hu && el._unit.id === hu.id));

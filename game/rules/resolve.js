@@ -59,7 +59,7 @@ function reactionOf(u, c) {
 function effectiveRange(room, a, t) {
   const hA = room.heightData[hexKey(a.q, a.r)] || 0;
   const hT = room.heightData[hexKey(t.q, t.r)] || 0;
-  return (a.range || 1) + Math.max(0, hA - hT);
+  return rules.attackRange(a.range, hA, hT);
 }
 
 function stepCost(room, u, q1, r1, q2, r2) {
@@ -137,7 +137,7 @@ function run(room, ordersByPlayer, seed) {
       lastSeen: null,
       ranged: o.type === 'attack' && (u.range || 1) > 1,
       reactor: false,
-      moved: 0, done: false, struck: false, fired: false, breakthrough: 0, chargeUsed: false,
+      moved: 0, done: false, struck: false, fired: false, chargeUsed: false,
       inRange: new Set(), reactQueue: [],
     });
   }
@@ -228,7 +228,7 @@ function run(room, ordersByPlayer, seed) {
   function enemiesInRange(c) {
     const out = new Set();
     for (const p of room.players) {
-      if (p.id === c.owner) continue;
+      if (room.areAllies(p.id, c.owner)) continue;
       for (const e of p.units) {
         if (e.q === null) continue;
         if (seen[c.owner].has(e.id) && hexDistance(c.u.q, c.u.r, e.q, e.r) <= effectiveRange(room, c.u, e)) out.add(e.id);
@@ -270,12 +270,6 @@ function run(room, ordersByPlayer, seed) {
   function resolveStrikes(strikes) {
     const snap = new Map();
     const frozen = (u) => { if (!snap.has(u.id)) snap.set(u.id, { ...u }); return snap.get(u.id); };
-    // chariots also strike the enemy right behind their target (no reaction from the trampled unit)
-    for (const s of [...strikes]) {
-      if (s.duel || hexDistance(s.a.q, s.a.r, s.t.q, s.t.r) !== 1) continue;
-      const u2 = room.trampleTarget(s.a, s.t);
-      if (u2 && !strikes.some(x => x.a === s.a && x.t === u2)) strikes.splice(strikes.indexOf(s) + 1, 0, { a: s.a, t: u2, kind: 'trample', trample: true });
-    }
     for (const s of strikes) { frozen(s.a); frozen(s.t); }
     const planned = strikes.map(s => {
       if (s.duel) return s;
@@ -313,13 +307,6 @@ function run(room, ordersByPlayer, seed) {
       }
       if (s.c) s.c.struck = true;
       if (s.c2) s.c2.struck = true;
-      // breakthrough: a unit in the Percée stance that wins its melee may move one more hex
-      const c = s.c;
-      if (c && s.isCac && !s.duel && a.stance === S.breakthroughStance && alive(room, a) && !a.isFleeing && c.o.type === 'move' && c.path.length
-        && (log.targetKilled || t.isFleeing || (log.dmgReceived || 0) > (log.counterDmgReceived || 0))) {
-        c.done = false;
-        c.breakthrough = 1;
-      }
     }
     return n;
   }
@@ -390,7 +377,7 @@ function run(room, ordersByPlayer, seed) {
     const out = [];
     for (const [dq, dr] of DIRS) {
       const occ = room.unitMap[hexKey(q + dq, r + dr)];
-      if (occ && occ.playerId !== c.owner && alive(room, occ)) out.push(occ);
+      if (occ && !room.areAllies(occ.playerId, c.owner) && alive(room, occ)) out.push(occ);
     }
     return out;
   }
@@ -457,13 +444,13 @@ function run(room, ordersByPlayer, seed) {
       for (const group of byHex.values()) {
         if (group.length < 2) continue;
         const owners = new Set(group.map(p => p.c.owner));
-        if (owners.size === 1) {
+        if (owners.size === 1 || group.every(p => room.areAllies(p.c.owner, group[0].c.owner))) {
           group.sort((a, b) => b.c.speed0 - a.c.speed0 || byId(a.c, b.c));
           for (const p of group.slice(1)) { p.ok = false; changed = true; }
         } else {
           for (const p of group) { p.ok = false; changed = true; }
           for (let i = 0; i < group.length; i++) for (let j = i + 1; j < group.length; j++) {
-            if (group[i].c.owner !== group[j].c.owner) addEncounter(group[i], group[j]);
+            if (!room.areAllies(group[i].c.owner, group[j].c.owner)) addEncounter(group[i], group[j]);
           }
         }
       }
@@ -473,7 +460,7 @@ function run(room, ordersByPlayer, seed) {
       for (const p of live) {
         const other = at.get(p.key);
         if (!other || other === p || !other.ok) continue;
-        if (other.key === hexKey(p.from[0], p.from[1]) && other.c.owner !== p.c.owner) {
+        if (other.key === hexKey(p.from[0], p.from[1]) && !room.areAllies(other.c.owner, p.c.owner)) {
           p.ok = false; other.ok = false; changed = true;
           addEncounter(p, other);
         }
@@ -486,7 +473,7 @@ function run(room, ordersByPlayer, seed) {
         const leaving = props.get(occ.id);
         if (leaving && leaving.ok) continue;
         p.ok = false; changed = true;
-        if (occ.playerId === p.c.owner) continue; // waits behind an ally
+        if (room.areAllies(occ.playerId, p.c.owner)) continue; // waits behind an ally
         if (!seen[p.c.owner].has(occ.id)) ambushes.push({ c: p.c, by: occ });
         else if (!engaged.has(p.c.u.id)) bumps.push({ c: p.c, t: occ });
       }
@@ -530,14 +517,8 @@ function run(room, ordersByPlayer, seed) {
       if (!fresh.length) continue;
       const hidden = fresh.find(e => !prevSeen[c.owner].has(e.id) && room._inCover(e.q, e.r));
       if (hidden) { ambush(c, hidden); continue; }
-      if (c.breakthrough > 0) { c.breakthrough--; continue; }
       if (c.o.type === 'move') {
         c.done = true;
-        // Percée: a unit in this stance stopped by contact attacks to force its way through
-        if (u.stance === S.breakthroughStance && !u.isGeneral && !c.struck) {
-          fresh.sort((x, y) => idNum(x.id) - idNum(y.id));
-          c.pushThrough = fresh[0].id;
-        }
         continue;
       }
       const tgt = targetUnit(c);
@@ -572,14 +553,6 @@ function run(room, ordersByPlayer, seed) {
       striking.add(c.u.id);
       if (c.u.isGeneral && occ.isGeneral) strikes.push({ a: c.u, t: occ, c, kind: 'melee', duel: true });
       else { const extra = chargeExtra(c, occ); strikes.push({ a: c.u, t: occ, c, kind: extra && extra.charge === 'bonus' ? 'charge' : 'melee', extra }); }
-    }
-    for (const c of ctls()) {
-      if (!c.pushThrough) continue;
-      const occ = room.findUnit(c.pushThrough);
-      c.pushThrough = null;
-      if (!occ || !alive(room, occ) || striking.has(c.u.id) || c.struck || c.u.isFleeing || hexDistance(c.u.q, c.u.r, occ.q, occ.r) > 1) continue;
-      striking.add(c.u.id);
-      strikes.push({ a: c.u, t: occ, c, kind: 'melee', extra: chargeExtra(c, occ) });
     }
     const pending = [];
     for (const c of ctls()) {

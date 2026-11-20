@@ -170,26 +170,25 @@ treeImage.onload = () => render();
 
 // Stance icons
 const stanceIcons = {};
-const stanceList = ['marche','combat','charge','percee','defense_combat','defense_distance', ...Object.keys(KBRules.RULES.extraStances)];
-const stanceIconFiles = { marche:'marche', combat:'combat', charge:'charge', percee:'percee', defense_combat:'def_charge', defense_distance:'def_eparse' };
-const stanceNames = { marche:'Marche', combat:'Combat', charge:'Charge', percee:'Percée', defense_combat:'Déf. combat', defense_distance:'Déf. distance', ...Object.fromEntries(Object.entries(KBRules.RULES.extraStances).map(([k, v]) => [k, v.name])) };
+const stanceList = ['marche','combat','charge','repos','defense_combat','defense_distance'];
+const stanceIconFiles = { marche:'marche', combat:'combat', charge:'charge', repos:'repos', defense_combat:'def_charge', defense_distance:'def_eparse' };
+const stanceNames = { marche:'Marche', combat:'Combat', charge:'Charge', repos:'Repos', defense_combat:'Déf. combat', defense_distance:'Déf. distance' };
 const TERRAINS_DATA = {
-  plain:    { name:'Plaines',    vitesse:0,  attack_cac:0,  attack_tir:0,  defense_cac:0,  defense_tir:0,  puissance_cac:0,  puissance_tir:0,  intimidation_cac:0,  intimidation_tir:0,  esquive_cac:0,  esquive_tir:0,  precision_cac:0,  precision_tir:0,  armure:0,  moral_tour:0 },
-  forest:   { name:'Forêts',    vitesse:-1, attack_cac:-1, attack_tir:-2, defense_cac:+2, defense_tir:+2, puissance_cac:-1, puissance_tir:-2, intimidation_cac:+1, intimidation_tir:+1, esquive_cac:+2, esquive_tir:+2, precision_cac:-1, precision_tir:-2, armure:+1, moral_tour:0 },
-  river:    { name:'Fleuves',   vitesse:-1, attack_cac:-3, attack_tir:-3, defense_cac:-3, defense_tir:-3, puissance_cac:-3, puissance_tir:-2, intimidation_cac:-2, intimidation_tir:+2, esquive_cac:-2, esquive_tir:-2, precision_cac:-2, precision_tir:-2, armure:-1, moral_tour:0 },
-  road:     { name:'Routes',    vitesse:+1, attack_cac:+2, attack_tir:+1, defense_cac:0,  defense_tir:-1, puissance_cac:+1, puissance_tir:+1, intimidation_cac:+1, intimidation_tir:+1, esquive_cac:-1, esquive_tir:-2, precision_cac:+2, precision_tir:+1, armure:0,  moral_tour:0 },
-  building: { name:'Bâtiments', vitesse:-1, attack_cac:-1, attack_tir:-3, defense_cac:+4, defense_tir:+2, puissance_cac:0,  puissance_tir:-1, intimidation_cac:0,  intimidation_tir:0,  esquive_cac:+2, esquive_tir:+4, precision_cac:+1, precision_tir:+1, armure:+2, moral_tour:0 },
-  bridge:   { name:'Ponts',     vitesse:-1, attack_cac:0,  attack_tir:+1, defense_cac:+2, defense_tir:+1, puissance_cac:-1, puissance_tir:0,  intimidation_cac:+1, intimidation_tir:0,  esquive_cac:+1, esquive_tir:-2, precision_cac:+1, precision_tir:+1, armure:0,  moral_tour:0 },
+  plain:    { name:'Plaines', vitesse:0, attack_cac:0, attack_tir:0, defense_cac:0, defense_tir:0, puissance_cac:0, puissance_tir:0, intimidation_cac:0, intimidation_tir:0, courage_cac:0, courage_tir:0, esquive_cac:0, esquive_tir:0, precision_cac:0, precision_tir:0, armure:0, armure_tour:0, moral_tour:0, vitalite_tour:0 },
+  forest:   { name:'Forêts', vitesse:-1, attack_cac:0, attack_tir:-1, defense_cac:2, defense_tir:2, puissance_cac:0, puissance_tir:-1, intimidation_cac:2, intimidation_tir:2, courage_cac:-1, courage_tir:-2, esquive_cac:1, esquive_tir:2, precision_cac:-1, precision_tir:-1, armure:1, armure_tour:0, moral_tour:0, vitalite_tour:0 },
+  river:    { name:'Fleuves', vitesse:-1, attack_cac:-3, attack_tir:-2, defense_cac:-3, defense_tir:-3, puissance_cac:-2, puissance_tir:-2, intimidation_cac:-2, intimidation_tir:-2, courage_cac:-2, courage_tir:-2, esquive_cac:-2, esquive_tir:-2, precision_cac:-2, precision_tir:-1, armure:-1, armure_tour:0, moral_tour:0, vitalite_tour:0 },
+  road:     { name:'Routes', vitesse:1, attack_cac:1, attack_tir:1, defense_cac:0, defense_tir:0, puissance_cac:1, puissance_tir:0, intimidation_cac:1, intimidation_tir:0, courage_cac:1, courage_tir:1, esquive_cac:-1, esquive_tir:-1, precision_cac:1, precision_tir:1, armure:0, armure_tour:0, moral_tour:0, vitalite_tour:0 },
+  building: { name:'Bâtiments', vitesse:-1, attack_cac:-1, attack_tir:-3, defense_cac:2, defense_tir:2, puissance_cac:0, puissance_tir:-1, intimidation_cac:1, intimidation_tir:2, courage_cac:1, courage_tir:1, esquive_cac:2, esquive_tir:4, precision_cac:-1, precision_tir:-1, armure:2, armure_tour:0, moral_tour:10, vitalite_tour:5 },
+  bridge:   { name:'Ponts', vitesse:0, attack_cac:0, attack_tir:1, defense_cac:1, defense_tir:1, puissance_cac:0, puissance_tir:0, intimidation_cac:1, intimidation_tir:0, courage_cac:0, courage_tir:-1, esquive_cac:1, esquive_tir:-1, precision_cac:0, precision_tir:1, armure:0, armure_tour:0, moral_tour:0, vitalite_tour:0 },
 };
 const STANCES_DATA = {
-  marche:           { vitesse:+1, attack_cac:-1, attack_tir:-2, defense_cac:-2, defense_tir:-1, puissance_cac:+1, puissance_tir:-1, intimidation_cac:0, intimidation_tir:0, esquive_cac:+1, esquive_tir:+2, precision_cac:0, precision_tir:-2, armure:-1, moral_tour:0 },
-  combat:           { vitesse:-1, attack_cac:+1, attack_tir:+1, defense_cac:+1, defense_tir:+1, puissance_cac:+2, puissance_tir:+2, intimidation_cac:+1, intimidation_tir:+1, esquive_cac:0, esquive_tir:0, precision_cac:+1, precision_tir:+2, armure:+1, moral_tour:0 },
-  charge:           { vitesse:+2, attack_cac:+3, attack_tir:-2, defense_cac:-1, defense_tir:-2, puissance_cac:+3, puissance_tir:-2, intimidation_cac:+2, intimidation_tir:-1, esquive_cac:+2, esquive_tir:+3, precision_cac:+3, precision_tir:-2, armure:0, moral_tour:-1 },
-  percee:           { vitesse:+1, attack_cac:+2, attack_tir:-2, defense_cac:-1, defense_tir:-2, puissance_cac:+2, puissance_tir:-2, intimidation_cac:0, intimidation_tir:0, esquive_cac:0, esquive_tir:+2, precision_cac:+2, precision_tir:-2, armure:0, moral_tour:0 },
-  defense_combat:   { vitesse:-1, attack_cac:-2, attack_tir:-1, defense_cac:+4, defense_tir:-2, puissance_cac:-1, puissance_tir:-2, intimidation_cac:-2, intimidation_tir:+1, esquive_cac:+1, esquive_tir:-1, precision_cac:0, precision_tir:-2, armure:+2, moral_tour:0 },
-  defense_distance: { vitesse:0,  attack_cac:-3, attack_tir:0,  defense_cac:-3, defense_tir:0,  puissance_cac:-2, puissance_tir:-1, intimidation_cac:-2, intimidation_tir:-1, esquive_cac:+2, esquive_tir:+4, precision_cac:-2, precision_tir:-1, armure:+1, moral_tour:0 },
+  marche:           { vitesse:1, attack_cac:-1, attack_tir:-2, defense_cac:-2, defense_tir:-1, puissance_cac:0, puissance_tir:-1, intimidation_cac:1, intimidation_tir:0, courage_cac:-1, courage_tir:-1, esquive_cac:0, esquive_tir:2, precision_cac:0, precision_tir:-2, armure:-1, armure_tour:0, moral_tour:0, vitalite_tour:0 },
+  combat:           { vitesse:0, attack_cac:0, attack_tir:0, defense_cac:0, defense_tir:0, puissance_cac:0, puissance_tir:0, intimidation_cac:0, intimidation_tir:0, courage_cac:0, courage_tir:0, esquive_cac:0, esquive_tir:0, precision_cac:0, precision_tir:0, armure:0, armure_tour:0, moral_tour:0, vitalite_tour:0 },
+  charge:           { vitesse:2, attack_cac:3, attack_tir:-2, defense_cac:-1, defense_tir:-2, puissance_cac:1, puissance_tir:-1, intimidation_cac:2, intimidation_tir:-1, courage_cac:1, courage_tir:1, esquive_cac:1, esquive_tir:3, precision_cac:2, precision_tir:-2, armure:0, armure_tour:0, moral_tour:-10, vitalite_tour:0 },
+  repos:            { vitesse:-1, attack_cac:-2, attack_tir:-2, defense_cac:-2, defense_tir:-2, puissance_cac:-2, puissance_tir:-1, intimidation_cac:-2, intimidation_tir:-1, courage_cac:-1, courage_tir:-1, esquive_cac:0, esquive_tir:-2, precision_cac:-1, precision_tir:-1, armure:0, armure_tour:1, moral_tour:10, vitalite_tour:5 },
+  defense_combat:   { vitesse:-1, attack_cac:-2, attack_tir:-1, defense_cac:3, defense_tir:-2, puissance_cac:-1, puissance_tir:0, intimidation_cac:0, intimidation_tir:1, courage_cac:1, courage_tir:-1, esquive_cac:1, esquive_tir:-1, precision_cac:0, precision_tir:-2, armure:1, armure_tour:0, moral_tour:0, vitalite_tour:0 },
+  defense_distance: { vitesse:0, attack_cac:-3, attack_tir:0, defense_cac:-2, defense_tir:0, puissance_cac:-2, puissance_tir:0, intimidation_cac:-2, intimidation_tir:-1, courage_cac:-1, courage_tir:1, esquive_cac:2, esquive_tir:4, precision_cac:-2, precision_tir:-1, armure:0, armure_tour:0, moral_tour:0, vitalite_tour:0 },
 };
-Object.assign(STANCES_DATA, KBRules.RULES.extraStances);
 
 // Balance data (data/balance/*.json): /api/balance on the local server, else the tables frozen for the battle
 // (game_state.balanceTables, sent at battle start and on resync). The hardcoded copies above are the fallback.
@@ -425,6 +424,7 @@ let hoveredHex = null;
 let movableTiles = new Set();
 let abilityTiles = new Map();   // hex key -> unit ability options (espion, bâtisseurs) in mode 'ability'
 let attackableTiles = new Set();
+let showWeakness = false; // friend's weak-sides overlay (2D)
 let approachAttacks = new Map(); // enemy hex -> { targetId, q, r, path }: out of range, reachable by moving first (one action)
 let rangeTiles = new Set();
 let rangeCenter = null;
@@ -607,6 +607,30 @@ function render() {
     ctx.strokeStyle = '#000'; ctx.lineWidth = Math.max(6, 5 / zoom); ctx.stroke();
     ctx.strokeStyle = outlineColor; ctx.lineWidth = Math.max(3, 2.5 / zoom); ctx.stroke();
     ctx.restore();
+  }
+
+  // Weak sides (friend's tool): each unit's open edges coloured by the angle-of-attack bonus an enemy would get there
+  // (green: front, orange: flank, red: back — RULES.combat.angleMods of its stance), edges shared with a friend excluded
+  if (showWeakness) {
+    const DIRS6 = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
+    const all = gameState?.units || [];
+    const angleMods = KBRules.RULES.combat.angleMods;
+    const sideOf = (u) => (u.isMine || u.isAlly ? 'friend' : u.playerId);
+    const posBySide = {};
+    for (const u of all) { if (u.q === null) continue; (posBySide[sideOf(u)] = posBySide[sideOf(u)] || new Set()).add(`${u.q},${u.r}`); }
+    for (const u of all) {
+      if (u.q === null || u.facing == null || u.isGeneral) continue;
+      const table = angleMods[u.stance] || angleMods.combat;
+      const mine = posBySide[sideOf(u)];
+      const colors = new Array(6).fill(null);
+      for (let dirIdx = 0; dirIdx < 6; dirIdx++) {
+        if (mine.has(`${u.q + DIRS6[dirIdx][0]},${u.r + DIRS6[dirIdx][1]}`)) continue;
+        const mod = table[(dirIdx - u.facing + 6) % 6] || 0;
+        colors[(6 - dirIdx) % 6] = mod >= 4 ? 'rgba(216,53,42,0.9)' : mod >= 2 ? 'rgba(232,150,40,0.9)' : 'rgba(60,170,80,0.85)';
+      }
+      const pos = getAnimatedPos(u) || hexToPixel(u.q, u.r);
+      drawHexWeakness(ctx, pos.x, pos.y, colors);
+    }
   }
 
   // Draw units
@@ -1109,7 +1133,7 @@ function handleHexClick(hex) {
 
     // Clic sur ennemi attaquable → attaquer (hors de portée : l'unité s'approche puis attaque, en une action)
     if (attackableTiles.has(key)) {
-      const target = gameState.units.find(u => u.q === hex.q && u.r === hex.r && !u.isMine);
+      const target = gameState.units.find(u => u.q === hex.q && u.r === hex.r && !u.isMine && !u.isAlly);
       if (target) {
         const a = approachAt(key);
         wsSend('attack_unit', a
@@ -1125,7 +1149,7 @@ function handleHexClick(hex) {
 
 
     // Ennemi visible mais hors d'atteinte ce tour : l'unité ne bouge pas
-    const foe = gameState?.units.find(u => u.q === hex.q && u.r === hex.r && !u.isMine);
+    const foe = gameState?.units.find(u => u.q === hex.q && u.r === hex.r && !u.isMine && !u.isAlly);
     if (foe && selectedUnit.isMine !== false && gameState.currentPlayerId === myId && !selectedUnit.hasAttacked && !selectedUnit.isFleeing) {
       notify(`${foe.name} est hors d'atteinte ce tour : ${selectedUnit.name} ne peut pas s'en approcher assez pour attaquer.`, 'info');
       return;
@@ -1237,7 +1261,7 @@ function computeAttackableTiles(unit) {
   let reach = null;
 
   for (const u of gameState.units) {
-    if (u.isMine) continue;
+    if (u.isMine || u.isAlly) continue;
     const dist = hexDistance(unit.q, unit.r, u.q, u.r);
     const hT = hd[`${u.q},${u.r}`] || 0;
     const effectiveRange = KBRules.attackRange(unit.range, hA, hT);
@@ -1564,6 +1588,13 @@ function toggleGridSubmenu() {
 function toggleTerrain() {
   showTerrain = !showTerrain;
   document.getElementById('tool-terrain').classList.toggle('active', showTerrain);
+  render();
+}
+
+function toggleWeakness() {
+  showWeakness = !showWeakness;
+  const b = document.getElementById('tool-weakness');
+  if (b) b.classList.toggle('active', showWeakness);
   render();
 }
 
@@ -2166,77 +2197,84 @@ function formatHistoryEntry({ log, round }) {
   const id = `h${historyCounter++}`;
   const b = log.breakdown || {};
   const hit = log.hit;
-  const defLabels = { none: 'Rien', counter: 'Contre-attaque', absorb: 'Encaisse' };
-  const stanceNames2 = { marche:'Marche', combat:'Combat', charge:'Charge', percee:'Percée', def_combat:'Déf. Combat', def_distance:'Déf. Distance' };
+  const defLabels = { rien: 'Aucune défense', none: 'Aucune défense', counter: 'Contre-attaque', absorb: 'Encaissement' };
+  const stanceNames2 = { marche: 'Marche', combat: 'Combat', charge: 'Charge', repos: 'Repos', defense_combat: 'Déf. combat', defense_distance: 'Déf. distance' };
+  const terrainNames = { plain: 'Plaines', forest: 'Forêt', river: 'Rivière', road: 'Route', building: 'Bâtiment', bridge: 'Pont' };
+  const aSt = stanceNames2[b.attackerStance] || b.attackerStance || '—';
+  const dSt = stanceNames2[b.defenderStance] || b.defenderStance || '—';
+  const aTe = terrainNames[b.attackerTerrain] || b.attackerTerrain || '—';
+  const dTe = terrainNames[b.defenderTerrain] || b.defenderTerrain || '—';
+  const attackerColor = gameState?.players?.find(p => p.id === log.attackerPlayerId)?.color;
+  const targetColor = gameState?.players?.find(p => p.id === log.targetPlayerId)?.color;
 
-  // Header line
-  const hitBadge = hit
-    ? `<span class="h-badge h-hit">TOUCHÉ</span>`
-    : `<span class="h-badge h-miss">RATÉ</span>`;
-  const header = `<div class="h-header" onclick="toggleHistory('${id}')">
+  const hitBadge = hit ? `<span class="h-badge h-hit">TOUCHÉ</span>` : `<span class="h-badge h-miss">RATÉ</span>`;
+  const header = `<div class="h-header" onclick="toggleHistory('${id}')"${attackerColor ? ` style="border-left:3px solid ${attackerColor}"` : ''}>
     <span class="h-arrow" id="arrow-${id}">▶</span>
-    <span class="h-title">T${round} — <b>${log.attackerName||'?'}</b> → <b>${log.targetName||'?'}</b></span>
+    <span class="h-title">T${round} — <b${attackerColor ? ` style="color:${attackerColor}"` : ''}>${log.attackerName || '?'}</b> → <b${targetColor ? ` style="color:${targetColor}"` : ''}>${log.targetName || '?'}</b></span>
+    ${log.trample ? `<span class="h-badge h-trample">PIÉTINEMENT</span>` : ''}
     ${hitBadge}
     ${log.targetKilled ? `<span class="h-badge h-dead">DÉTRUIT</span>` : ''}
     ${log.attackerKilled ? `<span class="h-badge h-dead">ATTAQUANT DÉTRUIT</span>` : ''}
   </div>`;
 
-  // Detail table
   const sign = n => n >= 0 ? `+${n}` : `${n}`;
-  const row = (label, val, cls='') => {
-    // Masquer les lignes dont la valeur est 0 ou +0
-    const raw = typeof val === 'number' ? val : (typeof val === 'string' ? parseFloat(val) : NaN);
-    if (!isNaN(raw) && raw === 0) return '';
-    const signed = typeof val === 'string' && val.startsWith('+') ? parseFloat(val) : NaN;
-    if (!isNaN(signed) && signed === 0) return '';
-    return `<tr class="${cls}"><td>${label}</td><td>${val}</td></tr>`;
-  };
-  const signRow = (label, n, cls='') => n === 0 ? '' : row(label, sign(n), cls);
+  const row = (label, val, cls = '') => (val === null || val === undefined || val === '') ? '' : `<tr class="${cls}"><td>${label}</td><td>${val}</td></tr>`;
+  const mods = (...list) => list.filter(([v]) => v).map(([v, l]) => `${sign(v)} ${l}`).join(', ');
+  const modRow = (label, ...list) => { const m = mods(...list); return m ? row(label, m) : ''; };
+  const pct = (x) => x == null ? '—' : `${Math.round(x * 100)} %`;
+  const general = b.generalD20 != null;
+  const generalDef = b.generalD20Def != null;
 
-  let table = `<div class="h-detail" id="${id}" style="display:none"><table class="h-table">
-    <tbody>
-    <tr class="h-section"><td colspan="2">ATTAQUE</td></tr>
-    ${row('Base attaque', b.attackBase ?? '—')}
-    ${signRow('Posture atq. ('+(stanceNames2[b.attackerStance]||b.attackerStance||'?')+')', b.stA_attack||0)}
-    ${signRow('Terrain atq. ('+(b.attackerTerrain||'?')+')', b.tA_attack||0)}
-    ${signRow('− Esquive posture déf.', -(b.stD_esquive||0))}
-    ${signRow('− Esquive terrain déf.', -(b.tD_esquive||0))}
-    ${row('= Total attaque', `<b>${b.attackTotal??'—'}</b> vs D20: <b>${b.attackD20??'—'}</b>`, hit?'h-hit-row':'h-miss-row')}`;
-
-  if (hit) {
-    table += `
-    <tr class="h-section"><td colspan="2">DÉGÂTS</td></tr>
-    ${row('Dés', `${b.diceCount??'?'} × D${b.dieFaces??'?'}`)}
-    ${row('Dégâts infligés', b.dmgInflicted??0)}
-    ${(b.armorAbsorb||0) > 0 ? row('Absorption (Vit×Arm, max 75 %)', `${b.armorAbsorb} (armure eff. ${b.effectiveArmor??'?'})`) : ''}
-    ${row('Dégâts reçus (÷10)', `<b>${log.dmgReceived??0}</b>`, 'h-hit-row')}
-    ${row('Vitalité restante cible', log.targetVitalityLeft??'—')}`;
+  let table = `<div class="h-detail" id="${id}" style="display:none"><table class="h-table"><tbody>
+    <tr class="h-section"><td colspan="2">ATTAQUE</td></tr>`;
+  if (general) {
+    table += row('Force − d20 + 80', `${b.attackBase} − ${b.generalD20} + 80 = <b>${b.generalAttValue}</b>`, 'h-hit-row');
+  } else {
+    table += row('Dés (1 par 5 de vitalité)', b.NGOAtt);
+    table += row('Attaque effective', `${b.attackBase} → <b>${b.attackEff}</b>`);
+    table += modRow('Modificateurs', [b.modAngle, b.angleName === 'dos' ? 'de dos' : 'de flanc'], [b.modAtkStance, aSt], [b.modAtkTerrain, aTe], [b.modEsquive, 'esquive'], [b.modHauteur, 'hauteur'], [b.modNuit, 'nuit'], [b.extraAttack, 'charge']);
+    table += row('Réussites (d20 ≤ attaque)', `<b>${b.attReussite} / ${b.NGOAtt}</b>`, hit ? 'h-hit-row' : 'h-miss-row');
   }
+  table += `<tr class="h-section"><td colspan="2">DÉGÂTS</td></tr>`;
+  table += row('Puissance', general ? `${b.basePowerAtt} (÷5, ÷2)` : `${b.basePowerAtt} → <b>${b.effectivePowerAtt}</b>`);
+  if (!general) table += modRow('Modificateurs puissance', [b.lancierBonus, 'lanciers'], [b.modPwrAtt, aSt], [b.modAngle, 'angle'], [b.extraPower, 'charge']);
+  table += row('Armure défenseur', `${b.baseArmorDef} → <b>${b.effectiveArmorDef}</b>`);
+  table += modRow('Modificateurs armure', [b.modArmorDefAngle, 'angle'], [b.modArmorDefStance, dSt], [b.modArmorDefTerrain, dTe], [b.phalangeBonus, 'phalange'], [b.lancierRangedBonus, 'lanciers']);
+  table += row('Ratio d\'armure', `${pct(b.ratARDef)} (dés ${b.NGODef} × armure)`);
+  table += row('Vitalité perdue', `<b>${log.dmgReceived ?? 0}</b>${log.defenseChoice === 'absorb' ? ' (÷2)' : ''}`, 'h-hit-row');
+  table += row('Vitalité restante cible', log.targetVitalityLeft ?? '—');
+  table += `<tr class="h-section"><td colspan="2">MORAL</td></tr>`;
+  table += row('Intimidation effective', b.effectiveIntimidation);
+  table += modRow('Modificateurs', [b.modIntimAtt, aSt], [b.modCourageDef, 'courage'], [b.modAngle, 'angle']);
+  table += row('Moral perdu', log.moralDmg ?? 0);
+  if (log.targetMoraleLeft != null) table += row('Moral restant cible', log.targetMoraleLeft);
 
-  if (log.moralDmg > 0 || log.targetMoraleLeft != null) {
-    table += `<tr class="h-section"><td colspan="2">MORAL</td></tr>`;
-    if (log.moralDmg > 0) table += row('Moral infligé (Vit×Intim.)', log.moralDmg);
-    if (log.targetMoraleLeft != null) table += row('Moral restant cible', log.targetMoraleLeft);
-  }
-
-  if (log.defenseChoice && log.defenseChoice !== 'none') {
-    const ds = log.defenseSuccess;
-    table += `<tr class="h-section"><td colspan="2">DÉFENSE — ${defLabels[log.defenseChoice]||log.defenseChoice}</td></tr>
-    ${row('Base défense', b.defBase??'—')}
-    ${signRow('Posture déf. ('+(stanceNames2[b.defenderStance]||b.defenderStance||'?')+')', b.stD_defense||0)}
-    ${signRow('Terrain déf. ('+(b.defenderTerrain||'?')+')', b.tD_defense||0)}
-    ${signRow('− Précision posture atq.', -(b.stA_precision||0))}
-    ${signRow('− Précision terrain atq.', -(b.tA_precision||0))}
-    ${row('= Total défense', `<b>${b.defTotal??'—'}</b> vs D20: <b>${log.defenseRoll??'—'}</b>`, ds?'h-hit-row':'h-miss-row')}`;
-    if (ds && log.counterDmgReceived > 0) {
-      table += row('Dégâts contre-attaque', `<b>${log.counterDmgReceived}</b>`, 'h-hit-row');
-      table += row('Vitalité restante atq.', log.attackerVitalityLeft??'—');
+  if (log.defenseChoice === 'counter' || log.defenseChoice === 'absorb') {
+    table += `<tr class="h-section"><td colspan="2">DÉFENSE — ${defLabels[log.defenseChoice]}</td></tr>`;
+    if (generalDef) {
+      table += row('Force − d20 + 80', `${b.defBase} − ${b.generalD20Def} + 80 = <b>${b.generalAttValueDef}</b>`);
+    } else {
+      table += row('Dés', b.NGODef);
+      table += row('Défense effective', `${b.defBase} → <b>${b.defEff}</b>`);
+      table += modRow('Modificateurs', [b.modDefAngle, 'angle'], [b.modDefStance, dSt], [b.modDefTerrain, dTe], [b.modPrecision, 'précision'], [b.modHauteurDef, 'hauteur']);
+      table += row('Réussites', `<b>${b.defReussite ?? 0} / ${b.NGODef}</b>`, log.defenseSuccess ? 'h-hit-row' : 'h-miss-row');
+      table += row('Puissance riposte', `${b.basePowerDef} → <b>${b.effectivePowerDef}</b>`);
     }
-    if (ds && log.counterMoralDmg > 0) table += row('Moral contre-attaque', log.counterMoralDmg);
+    table += row('Armure attaquant', `${b.baseArmorAtt} → <b>${b.effectiveArmorAtt}</b> · ratio ${pct(b.ratARAtt)}`);
+    if (log.counterDmgReceived > 0) {
+      table += row('Vitalité perdue (attaquant)', `<b>${log.counterDmgReceived}</b>`, 'h-hit-row');
+      table += row('Vitalité restante atq.', log.attackerVitalityLeft ?? '—');
+    }
+    if (log.counterMoralDmg > 0) table += row('Moral perdu (attaquant)', log.counterMoralDmg);
+  } else if (log.defenseChoice) {
+    table += `<tr class="h-section"><td colspan="2">${defLabels[log.defenseChoice] || log.defenseChoice}</td></tr>`;
+  }
+  if (log.bonuses && log.bonuses.length) {
+    table += `<tr class="h-section"><td colspan="2">CAPACITÉS</td></tr>`;
+    for (const bo of log.bonuses) table += `<tr><td colspan="2">${bo.text}</td></tr>`;
   }
 
   table += `</tbody></table></div>`;
-
   return `<div class="history-entry">${header}${table}</div>`;
 }
 
@@ -2478,9 +2516,11 @@ function showCombatResult(log) {
     return;
   }
   let html = `<b>${log.attackerName}</b> attaque <b>${log.targetName}</b><br>`;
-  html += `Attaque : ${log.attackTotal} vs D20=${log.attackD20} → ${log.hit ? '<span style="color:#4f4">TOUCHÉ</span>' : '<span style="color:#f44">RATÉ</span>'}<br>`;
+  const bk = log.breakdown || {};
+  const roll = bk.generalD20 != null ? `Force − d20 (${bk.generalD20}) + 80 = ${bk.generalAttValue}` : bk.NGOAtt != null ? `${bk.attReussite} réussites / ${bk.NGOAtt} dés` : '';
+  html += `Attaque${roll ? ` : ${roll}` : ''} → ${log.hit ? '<span style="color:#4f4">TOUCHÉ</span>' : '<span style="color:#f44">RATÉ</span>'}<br>`;
   if (log.hit) {
-    html += `Dégâts infligés : ${log.dmgInflicted} − armure ${log.armorAbsorb} = <b>${log.dmgReceived}</b><br>`;
+    html += `Vitalité −<b>${log.dmgReceived}</b>${bk.ratARDef != null ? ` (armure : ${Math.round(bk.ratARDef * 100)} % passent)` : ''}<br>`;
     html += `Moral −${log.moralDmg}<br>`;
   }
   if (log.defenseChoice && log.defenseChoice !== 'rien') {
@@ -2859,7 +2899,11 @@ function wsDispatch(event, data) {
       break;
     }
     case 'motivate_result':
-      if (data.success) {
+      if (data.critSuccess) {
+        notify(`Motivation critique ! (D20 = 1) → ${data.count} unité(s) retrouvent tout leur moral et cessent de fuir.`, 'success');
+      } else if (data.critFail) {
+        notify(`Motivation désastreuse (D20 = 20) : ${data.count} unité(s) perdent 20 de moral.`, 'error');
+      } else if (data.success) {
         notify(`Motivation réussie ! (Charisme ${data.charisma} ≥ D20 ${data.d20}) → ${data.count} unité(s) regagnent ${data.moralGain} moral.`, 'success');
       } else {
         notify(`Motivation échouée. (Charisme ${data.charisma} < D20 ${data.d20})`, 'info');

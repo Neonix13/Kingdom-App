@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Deploy Zone Debug</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: monospace; background: #1a1a2e; color: #eee; display: flex; flex-direction: column; height: 100vh; }
+    #toolbar { padding: 8px 12px; background: #16213e; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; border-bottom: 1px solid #333; font-size: 13px; }
+    #toolbar input[type=number], #toolbar select { background: #0f3460; border: 1px solid #444; color: #eee; padding: 3px 6px; border-radius: 3px; }
+    #toolbar input[type=number] { width: 80px; }
+    #toolbar button { background: #0f3460; border: 1px solid #555; color: #eee; padding: 4px 10px; border-radius: 3px; cursor: pointer; }
+    #toolbar button:hover { background: #1a4a80; }
+    #toolbar button.active { background: #1a6a30; border-color: #2ecc71; color: #fff; }
+    .sep { width: 1px; height: 20px; background: #444; }
+    #legend { display: flex; gap: 6px; align-items: center; }
+    .leg { width: 14px; height: 14px; border-radius: 2px; }
+    #info { color: #888; }
+    #canvas-wrap { flex: 1; position: relative; overflow: hidden; }
+    canvas { display: block; cursor: crosshair; }
+    #tooltip { position: absolute; background: rgba(0,0,0,0.88); border: 1px solid #555; border-radius: 4px; padding: 6px 10px; font-size: 12px; pointer-events: none; display: none; line-height: 1.7; z-index: 10; }
+    #statusbar { padding: 5px 12px; background: #16213e; font-size: 12px; color: #888; border-top: 1px solid #333; }
+  </style>
+</head>
+<body>
+<div id="toolbar">
+  <label>Budget : <input type="number" id="budget" value="2500" min="500" max="10000" step="500"></label>
+  <label>Joueurs : <input type="number" id="num-players" value="2" min="1" max="8" step="1" style="width:46px"></label>
+  <span>Tuiles/zone : <b id="tile-count">—</b></span>
+  <div class="sep"></div>
+  <div id="legend">
+    Score :
+    <div class="leg" style="background:#00cc44"></div><span>bas</span>
+    <div class="leg" style="background:#ffcc00"></div><span>moyen</span>
+    <div class="leg" style="background:#ff2200"></div><span>haut</span>
+  </div>
+  <div class="sep"></div>
+  <label>Grille : <select id="view-player"><option value="-1">Tous</option></select></label>
+  <div class="sep"></div>
+  <button id="btn-retirer">Re-tirer</button>
+  <div class="sep"></div>
+  <span id="info" style="color:#888">Clic gauche : poser centre carte · Clic droit : retirer · Clic molette : déplacer · Molette : zoom</span>
+  <button id="btn-reset">Réinitialiser</button>
+</div>
+<div id="canvas-wrap">
+  <canvas id="canvas"></canvas>
+  <div id="tooltip"></div>
+</div>
+<div id="statusbar" id="statusbar">Chargement...</div>
+
+<script>
+const MAP_HEX_SIZE = 101.5;
+const MAP_ORIG_X   = 137;
+const MAP_ORIG_Y   = 190;
+const MAP_IMG_W    = 8800;
+const MAP_IMG_H    = 7200;
+const HEX_SIZE     = 28;
+
+let DEPLOY_CENTER_EXCLUSION = 5; // recalculé : 3+N
+const DEPLOY_INTER_ZONE_EXCLUSION = 8;
+
+const DIRS_6 = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
+
+const PLAYER_COLORS = ['#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6','#1abc9c','#e67e22','#607d8b'];
+
+const TERRAIN_COLORS = {
+  plain:    '#c8b97a',
+  forest:   '#2d6e1e',
+  river:    '#2878dc',
+  building: '#8c6438',
+  road:     '#c8aa50',
+  bridge:   '#dc8c1e',
+};
+
+// (conservé pour compatibilité éventuelle)
+const SEGMENT_INFRANCHISSABLE = new Set(['mur']);
+
+const SEGMENT_COLORS = {
+  river:            '#4a90d9',
+  cliff:            '#aa8855',
+  bridge:           '#dc8c1e',
+  passerelle:       '#c8a020',
+  barriere:         '#e67e22',
+  chevaux_de_frise: '#e74c3c',
+  mur:              '#222222',
+  echelle:          '#9b59b6',
+};
+
+const SEGMENT_WIDTHS = { mur: 6, cliff: 5, barriere: 4, chevaux_de_frise: 4, echelle: 4, river: 4, bridge: 4, passerelle: 4 };
+
+function segmentEdgePixels(q1, r1, q2, r2, size) {
+  const { x: cx, y: cy } = hexToPixel(q1, r1);
+  const dq = q2 - q1, dr = r2 - r1;
+  const dirIdx = DIRS_6.findIndex(([ddq, ddr]) => ddq === dq && ddr === dr);
+  if (dirIdx < 0) return null;
+  const c1 = (6 - dirIdx) % 6;
+  const c2 = (7 - dirIdx) % 6;
+  return [
+    { x: cx + size * Math.cos(Math.PI / 3 * c1), y: cy + size * Math.sin(Math.PI / 3 * c1) },
+    { x: cx + size * Math.cos(Math.PI / 3 * c2), y: cy + size * Math.sin(Math.PI / 3 * c2) },
+  ];
+}
+
+let terrainData = {};
+let segmentData = {};
+let allHexes    = [];
+let hexIndex    = {};  // key -> hex
+let mapCenter    = null;  // {q, r} — centre de carte (exclusion ×4)
+let mapMinQ = 0, mapMaxQ = 0, mapMinR = 0, mapMaxR = 0;
+let MAP_BORDER_EXCLUSION = 15; // recalculé : 13+N
+let centers      = [];    // [{q,r}] — centres joueurs (auto-calculés)
+let scoreData    = null;
+let viewPlayer   = -1;    // -1 = tous, sinon index joueur
+let angleOffset  = Math.random() * Math.PI * 2;
+
+let camX = 0, camY = 0, zoom = 1;
+let isDragging = false, dragStart = null, camStart = null;
+let hoverHex = null;
+
+const canvas    = document.getElementById('canvas');
+const ctx       = canvas.getContext('2d');
+const tooltip   = document.getElementById('tooltip');
+const statusbar = document.getElementById('statusbar');
+
+// ── Hex math ──────────────────────────────────────────────────────────────────
+
+function hexToPixel(q, r) {
+  return {
+    x: HEX_SIZE * 1.5 * q,
+    y: HEX_SIZE * (Math.sqrt(3) / 2 * q + Math.sqrt(3) * r)
+  };
+}
+
+function pixelToHex(px, py) {
+  const q = (2 / 3 * px) / HEX_SIZE;
+  const r = (-1 / 3 * px + Math.sqrt(3) / 3 * py) / HEX_SIZE;
+  const s = -q - r;
+  let rq = Math.round(q), rr = Math.round(r), rs = Math.round(s);
+  const dq = Math.abs(rq - q), dr = Math.abs(rr - r), ds = Math.abs(rs - s);
+  if (dq > dr && dq > ds) rq = -rr - rs;
+  else if (dr > ds) rr = -rq - rs;
+  return { q: rq, r: rr };
+}
+
+function hexDist(q1, r1, q2, r2) {
+  return (Math.abs(q1-q2) + Math.abs(q1+r1-q2-r2) + Math.abs(r1-r2)) / 2;
+}
+
+function hexKey(q, r) { return `${q},${r}`; }
+
+function segEdgeKey(q1, r1, q2, r2) {
+  if (q1 < q2 || (q1 === q2 && r1 < r2)) return `${q1},${r1}|${q2},${r2}`;
+  return `${q2},${r2}|${q1},${r1}`;
+}
+
+// ── Map generation ────────────────────────────────────────────────────────────
+
+function generateHexes() {
+  const S = Math.sqrt(3);
+  const qMin = Math.floor(-MAP_ORIG_X / (MAP_HEX_SIZE * 1.5)) - 1;
+  const qMax = Math.ceil((MAP_IMG_W - MAP_ORIG_X) / (MAP_HEX_SIZE * 1.5)) + 1;
+  const seen = new Set();
+  const hexes = [];
+  for (let q = qMin; q <= qMax; q++) {
+    const rMin = Math.floor((-MAP_ORIG_Y - MAP_HEX_SIZE * S / 2 * q) / (MAP_HEX_SIZE * S)) - 1;
+    const rMax = Math.ceil((MAP_IMG_H - MAP_ORIG_Y - MAP_HEX_SIZE * S / 2 * q) / (MAP_HEX_SIZE * S)) + 1;
+    for (let r = rMin; r <= rMax; r++) {
+      const imgX = MAP_HEX_SIZE * 1.5 * q + MAP_ORIG_X;
+      const imgY = MAP_HEX_SIZE * (S / 2 * q + S * r) + MAP_ORIG_Y;
+      if (imgX >= 0 && imgX <= MAP_IMG_W && imgY >= 0 && imgY <= MAP_IMG_H) {
+        const k = hexKey(q, r);
+        if (!seen.has(k)) {
+          seen.add(k);
+          const terrain = terrainData[k] || 'plain';
+          hexes.push({ q, r, terrain });
+        }
+      }
+    }
+  }
+  return hexes;
+}
+
+// ── Scoring ───────────────────────────────────────────────────────────────────
+
+function terrainMult(terrain) {
+  if (terrain === 'road') return 0.9;
+  if (terrain === 'forest' || terrain === 'building' || terrain === 'bridge') return 1.2;
+  if (terrain === 'river') return 1.3;
+  return 1;
+}
+
+function minSegmentCrossings(center) {
+  const startKey = hexKey(center.q, center.r);
+
+  // Passe 1 : BFS — distance minimale (en pas) depuis le centre
+  const stepsMap = new Map([[startKey, 0]]);
+  let frontier = [{ q: center.q, r: center.r }];
+  while (frontier.length > 0) {
+    const next = [];
+    for (const { q, r } of frontier) {
+      const s = stepsMap.get(hexKey(q, r));
+      for (const [dq, dr] of DIRS_6) {
+        const nq = q + dq, nr = r + dr, nk = hexKey(nq, nr);
+        if (!hexIndex[nk] || stepsMap.has(nk)) continue;
+        stepsMap.set(nk, s + 1);
+        next.push({ q: nq, r: nr });
+      }
+    }
+    frontier = next;
+  }
+
+  // Passe 2 : segments traversés sur le chemin le plus court (DP en ordre BFS)
+  const crossMap = new Map([[startKey, 0]]);
+  frontier = [{ q: center.q, r: center.r }];
+  while (frontier.length > 0) {
+    const next = [], inNext = new Set();
+    for (const { q, r } of frontier) {
+      const k = hexKey(q, r), s = stepsMap.get(k), cross = crossMap.get(k) ?? 0;
+      for (const [dq, dr] of DIRS_6) {
+        const nq = q + dq, nr = r + dr, nk = hexKey(nq, nr);
+        if (!hexIndex[nk] || stepsMap.get(nk) !== s + 1) continue;
+        const segType = segmentData[segEdgeKey(q, r, nq, nr)];
+        const newCross = cross + (segType ? 1 : 0);
+        if (!crossMap.has(nk) || newCross < crossMap.get(nk)) crossMap.set(nk, newCross);
+        if (!inNext.has(nk)) { inNext.add(nk); next.push({ q: nq, r: nr }); }
+      }
+    }
+    frontier = next;
+  }
+
+  return crossMap;
+}
+
+function autoPlaceCenters() {
+  centers = [];
+  if (!mapCenter) return;
+  const numPlayers = parseInt(document.getElementById('num-players').value) || 2;
+  const deployRadius = 3 + numPlayers;
+  for (let i = 0; i < numPlayers; i++) {
+    const angle = angleOffset + i * (Math.PI * 2 / numPlayers);
+    const S = Math.sqrt(3);
+    const targetQ = mapCenter.q + Math.round(deployRadius * (2 / S) * Math.cos(angle));
+    const targetR = mapCenter.r + Math.round(deployRadius * (Math.sin(angle) - Math.cos(angle) / S));
+    let best = null, bestDist = Infinity;
+    for (const h of allHexes) {
+      const d = hexDist(h.q, h.r, targetQ, targetR);
+      if (d < bestDist) { bestDist = d; best = h; }
+    }
+    if (best) centers.push({ q: best.q, r: best.r });
+  }
+  // Mélange aléatoire de l'ordre des joueurs
+  for (let i = centers.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [centers[i], centers[j]] = [centers[j], centers[i]];
+  }
+}
+
+function computeScores() {
+  const numP = parseInt(document.getElementById('num-players').value || 2);
+  DEPLOY_CENTER_EXCLUSION = 3 + numP;
+  MAP_BORDER_EXCLUSION = 13 + numP;
+  if (centers.length === 0) {
+    scoreData = null;
+    document.getElementById('tile-count').textContent = '—';
+    statusbar.textContent = 'Placez le centre de carte pour générer les zones.';
+    return;
+  }
+
+  const budget = parseInt(document.getElementById('budget').value) || 2500;
+  const maxTiles = Math.floor(4 * budget / 1000 + 2);
+
+  const centQ = mapCenter ? mapCenter.q : null;
+  const centR = mapCenter ? mapCenter.r : null;
+
+  const crossMaps = centers.map(minSegmentCrossings);
+
+  const zoneTiles = centers.map((center, pi) => {
+    const otherCenters = centers.filter((_, i) => i !== pi);
+    const crossMap = crossMaps[pi];
+    const scored = [];
+
+    for (const h of allHexes) {
+      const k = hexKey(h.q, h.r);
+      const cp = hexToPixel(center.q, center.r), hp = hexToPixel(h.q, h.r);
+      const pxDist = Math.sqrt((hp.x - cp.x) ** 2 + (hp.y - cp.y) ** 2) / HEX_SIZE || 0.01;
+      let score = pxDist * (1 + (Math.random() - 0.5) * 0.3);
+      score *= terrainMult(h.terrain);
+      const cross = crossMap.get(k) ?? 0;
+      if (cross > 0) score *= Math.pow(1.2, cross);
+      if (centQ !== null && hexDist(h.q, h.r, centQ, centR) < DEPLOY_CENTER_EXCLUSION) score *= 4;
+      for (const other of otherCenters) {
+        if (hexDist(h.q, h.r, other.q, other.r) < DEPLOY_INTER_ZONE_EXCLUSION) { score *= 5; break; }
+      }
+      scored.push({ q: h.q, r: h.r, terrain: h.terrain, score });
+    }
+
+    scored.sort((a, b) => a.score - b.score);
+
+    // Raffinement itératif : ×2 si la tuile est isolée (aucun voisin dans la zone)
+    let selectedKeys = new Set(scored.slice(0, maxTiles).map(s => hexKey(s.q, s.r)));
+    for (let iter = 0; iter < 20; iter++) {
+      const adjusted = scored.map(s => {
+        const k = hexKey(s.q, s.r);
+        if (!selectedKeys.has(k)) return s;
+        const isolated = !DIRS_6.some(([dq, dr]) => selectedKeys.has(hexKey(s.q + dq, s.r + dr)));
+        return isolated ? { ...s, score: s.score * 2 } : s;
+      });
+      adjusted.sort((a, b) => a.score - b.score);
+      const newKeys = new Set(adjusted.slice(0, maxTiles).map(s => hexKey(s.q, s.r)));
+      const changed = [...newKeys].some(k => !selectedKeys.has(k));
+      selectedKeys = newKeys;
+      if (!changed) break;
+    }
+    const selected = scored.filter(s => selectedKeys.has(hexKey(s.q, s.r)));
+    const minScore = Math.min(...selected.map(s => s.score));
+    const maxScore = Math.max(...selected.map(s => s.score));
+    const tileSet  = selectedKeys;
+    const scoreMap = new Map(scored.map(s => [hexKey(s.q, s.r), s.score]));
+    return { center, tileSet, scoreMap, minScore, maxScore, tiles: selected };
+  });
+
+  scoreData = { zoneTiles, maxTiles, centQ, centR };
+
+  // (player-count supprimé du toolbar)
+  document.getElementById('tile-count').textContent = maxTiles;
+  const centInfo = centQ !== null ? `Centre carte: (${centQ}, ${centR})` : 'Pas de centre carte';
+  statusbar.textContent = `Budget: ${budget} | Tuiles/zone: ${maxTiles} | Joueurs: ${centers.length} | ${centInfo}`;
+
+  // Mise à jour dropdown joueurs
+  const sel = document.getElementById('view-player');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="-1">Tous</option>';
+  for (let i = 0; i < centers.length; i++) {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = `Joueur ${i + 1}`;
+    sel.appendChild(opt);
+  }
+  sel.value = (prev >= 0 && prev < centers.length) ? prev : -1;
+  viewPlayer = parseInt(sel.value);
+}
+
+// ── Rendering ─────────────────────────────────────────────────────────────────
+
+function scoreToColor(t) {
+  // t in [0,1] : 0=best(green), 1=worst(red)
+  if (t < 0.5) {
+    return `rgb(${Math.round(255 * t * 2)},204,0)`;
+  } else {
+    return `rgb(255,${Math.round(204 * (1 - (t - 0.5) * 2))},0)`;
+  }
+}
+
+function hexCornerPts(cx, cy, size) {
+  const pts = [];
+  for (let i = 0; i < 6; i++) {
+    const a = Math.PI / 180 * (60 * i);
+    pts.push({ x: cx + size * Math.cos(a), y: cy + size * Math.sin(a) });
+  }
+  return pts;
+}
+
+function pathHex(cx, cy, size) {
+  const pts = hexCornerPts(cx, cy, size);
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < 6; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.closePath();
+}
+
+function render() {
+  const wrap = document.getElementById('canvas-wrap');
+  canvas.width  = wrap.clientWidth;
+  canvas.height = wrap.clientHeight;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  ctx.translate(canvas.width / 2 + camX, canvas.height / 2 + camY);
+  ctx.scale(zoom, zoom);
+
+  const hk = hoverHex ? hexKey(hoverHex.q, hoverHex.r) : null;
+  const size = HEX_SIZE * 0.97;
+
+  for (const h of allHexes) {
+    const { x, y } = hexToPixel(h.q, h.r);
+    const k = hexKey(h.q, h.r);
+
+    // Terrain fill
+    ctx.globalAlpha = 1;
+    pathHex(x, y, size);
+    ctx.fillStyle = TERRAIN_COLORS[h.terrain] ?? TERRAIN_COLORS.plain;
+    ctx.fill();
+
+    if (scoreData) {
+      // Zone d'appartenance (priorité sur la proximité)
+      let ownerZone = null, ownerIdx = -1;
+      for (let i = 0; i < scoreData.zoneTiles.length; i++) {
+        if (scoreData.zoneTiles[i].tileSet.has(k)) { ownerZone = scoreData.zoneTiles[i]; ownerIdx = i; break; }
+      }
+      // Fallback : centre le plus proche pour les tuiles hors zone
+      let refZone = ownerZone;
+      if (!refZone) {
+        let bestDist = Infinity;
+        for (const z of scoreData.zoneTiles) {
+          const d = hexDist(h.q, h.r, z.center.q, z.center.r);
+          if (d < bestDist) { bestDist = d; refZone = z; }
+        }
+      }
+
+      // Heatmap : seulement sur les tuiles de la zone du joueur sélectionné
+      if (viewPlayer >= 0) {
+        const heatZone = scoreData.zoneTiles[viewPlayer];
+        if (heatZone && heatZone.tileSet.has(k)) {
+          const score = heatZone.scoreMap.get(k) ?? heatZone.maxScore;
+          const t = heatZone.maxScore > heatZone.minScore
+            ? Math.min(1, Math.max(0, (Math.log(score + 0.001) - Math.log(heatZone.minScore + 0.001)) / (Math.log(heatZone.maxScore + 0.001) - Math.log(heatZone.minScore + 0.001))))
+            : 0;
+          pathHex(x, y, size);
+          ctx.globalAlpha = 0.5;
+          ctx.fillStyle = scoreToColor(t);
+          ctx.fill();
+          ctx.globalAlpha = 1;
+        }
+      }
+
+      // Bordure + teinte de la zone
+      if (ownerIdx >= 0) {
+        pathHex(x, y, size);
+        ctx.globalAlpha = 0.22;
+        ctx.fillStyle = PLAYER_COLORS[ownerIdx % PLAYER_COLORS.length];
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = PLAYER_COLORS[ownerIdx % PLAYER_COLORS.length];
+        ctx.lineWidth = 2.5 / zoom;
+        ctx.stroke();
+      }
+    }
+
+    // Grid lines
+    pathHex(x, y, size);
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+    ctx.lineWidth = 0.5 / zoom;
+    ctx.stroke();
+
+    // Score label (seulement si un joueur spécifique est sélectionné)
+    if (scoreData && viewPlayer >= 0) {
+      const bestZone = scoreData.zoneTiles[viewPlayer];
+      if (bestZone) {
+        const score = bestZone.scoreMap.get(k);
+        if (score !== undefined) {
+          const fontSize = Math.max(5, 9 / zoom);
+          ctx.font = `${fontSize}px monospace`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = 'rgba(0,0,0,0.7)';
+          ctx.fillText(score < 100 ? score.toFixed(1) : Math.round(score), x + 0.5 / zoom, y + 0.5 / zoom);
+          ctx.fillStyle = '#fff';
+          ctx.fillText(score < 100 ? score.toFixed(1) : Math.round(score), x, y);
+        }
+      }
+    }
+
+    // Hover
+    if (k === hk) {
+      pathHex(x, y, size);
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // Centers
+  for (let i = 0; i < centers.length; i++) {
+    const { x, y } = hexToPixel(centers[i].q, centers[i].r);
+    const col = PLAYER_COLORS[i % PLAYER_COLORS.length];
+    const r = 9 / zoom;
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 3 / zoom;
+    ctx.beginPath();
+    ctx.moveTo(x - r, y - r); ctx.lineTo(x + r, y + r);
+    ctx.moveTo(x + r, y - r); ctx.lineTo(x - r, y + r);
+    ctx.stroke();
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 2 / zoom;
+    ctx.beginPath();
+    ctx.moveTo(x - r, y - r); ctx.lineTo(x + r, y + r);
+    ctx.moveTo(x + r, y - r); ctx.lineTo(x - r, y + r);
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${11 / zoom}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(i + 1, x, y + 14 / zoom);
+  }
+
+  // Map center marker + exclusion circle
+  if (mapCenter) {
+    const { x, y } = hexToPixel(mapCenter.q, mapCenter.r);
+    // Exclusion circle
+    ctx.strokeStyle = 'rgba(255,220,0,0.5)';
+    ctx.lineWidth = 1.5 / zoom;
+    ctx.setLineDash([4 / zoom, 4 / zoom]);
+    ctx.beginPath();
+    ctx.arc(x, y, DEPLOY_CENTER_EXCLUSION * HEX_SIZE * 2, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Diamond marker
+    const r = 10 / zoom;
+    ctx.fillStyle = '#ffe000';
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1.5 / zoom;
+    ctx.beginPath();
+    ctx.moveTo(x, y - r); ctx.lineTo(x + r, y);
+    ctx.lineTo(x, y + r); ctx.lineTo(x - r, y);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#000';
+    ctx.font = `bold ${9 / zoom}px monospace`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('C', x, y);
+  }
+
+  // Segments
+  for (const [edgeKey, segType] of Object.entries(segmentData)) {
+    const parts = edgeKey.split('|');
+    const [q1, r1] = parts[0].split(',').map(Number);
+    const [q2, r2] = parts[1].split(',').map(Number);
+    const pts = segmentEdgePixels(q1, r1, q2, r2, HEX_SIZE * 0.97);
+    if (!pts) continue;
+    const color = SEGMENT_COLORS[segType] ?? '#ffffff';
+    const lw = (SEGMENT_WIDTHS[segType] ?? 2) / zoom;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lw;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    ctx.lineTo(pts[1].x, pts[1].y);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+  requestAnimationFrame(render);
+}
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+
+function canvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
+
+function screenToWorld(sx, sy) {
+  return {
+    x: (sx - canvas.width / 2 - camX) / zoom,
+    y: (sy - canvas.height / 2 - camY) / zoom
+  };
+}
+
+canvas.addEventListener('mousemove', e => {
+  const { x, y } = canvasPos(e);
+  const w = screenToWorld(x, y);
+  hoverHex = pixelToHex(w.x, w.y);
+
+  const k = hexKey(hoverHex.q, hoverHex.r);
+  const h = hexIndex[k];
+  if (h) {
+    let html = `<b>(${hoverHex.q}, ${hoverHex.r})</b> — ${h.terrain}`;
+    if (scoreData) {
+      html += '<br>';
+      for (let i = 0; i < scoreData.zoneTiles.length; i++) {
+        const z = scoreData.zoneTiles[i];
+        const score = z.scoreMap.get(k);
+        if (score !== undefined) {
+          const inZone = z.tileSet.has(k);
+          html += `<span style="color:${PLAYER_COLORS[i]}">J${i+1}</span>: <b>${score.toFixed(2)}</b>${inZone ? ' ✓' : ''}  `;
+        }
+      }
+    }
+    tooltip.innerHTML = html;
+    tooltip.style.display = 'block';
+    tooltip.style.left = (x + 14) + 'px';
+    tooltip.style.top  = Math.max(4, y - 10) + 'px';
+  } else {
+    tooltip.style.display = 'none';
+  }
+
+  if (isDragging) {
+    camX = camStart.x + (e.clientX - dragStart.x);
+    camY = camStart.y + (e.clientY - dragStart.y);
+  }
+});
+
+canvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+
+canvas.addEventListener('mousedown', e => {
+  if (e.button === 1) {
+    e.preventDefault();
+    dragStart = { x: e.clientX, y: e.clientY };
+    camStart  = { x: camX, y: camY };
+    isDragging = true;
+    canvas.style.cursor = 'grabbing';
+    function onUp() {
+      window.removeEventListener('mouseup', onUp);
+      isDragging = false;
+      canvas.style.cursor = 'crosshair';
+    }
+    window.addEventListener('mouseup', onUp);
+    return;
+  }
+
+  if (e.button !== 0 && e.button !== 2) return;
+  const { x, y } = canvasPos(e);
+  const w = screenToWorld(x, y);
+  const hex = pixelToHex(w.x, w.y);
+  const k = hexKey(hex.q, hex.r);
+  const isValid = !!hexIndex[k];
+
+  if (e.button === 2) {
+    if (mapCenter) { mapCenter = null; centers = []; computeScores(); }
+    return;
+  }
+
+  dragStart = { x: e.clientX, y: e.clientY };
+  camStart  = { x: camX, y: camY };
+  isDragging = true;
+
+  function onUp(ev) {
+    window.removeEventListener('mouseup', onUp);
+    isDragging = false;
+    const dx = ev.clientX - dragStart.x, dy = ev.clientY - dragStart.y;
+    if (Math.abs(dx) < 5 && Math.abs(dy) < 5 && isValid) {
+      const tooClose = hex.q < mapMinQ + MAP_BORDER_EXCLUSION || hex.q > mapMaxQ - MAP_BORDER_EXCLUSION ||
+                       hex.r < mapMinR + MAP_BORDER_EXCLUSION || hex.r > mapMaxR - MAP_BORDER_EXCLUSION;
+      if (tooClose) { statusbar.textContent = `Trop proche du bord (minimum ${MAP_BORDER_EXCLUSION} cases).`; return; }
+      mapCenter = (mapCenter && mapCenter.q === hex.q && mapCenter.r === hex.r) ? null : { q: hex.q, r: hex.r };
+      autoPlaceCenters();
+      computeScores();
+    }
+  }
+  window.addEventListener('mouseup', onUp);
+});
+
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const { x, y } = canvasPos(e);
+  const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+  const wx = (x - canvas.width / 2 - camX) / zoom;
+  const wy = (y - canvas.height / 2 - camY) / zoom;
+  zoom = Math.max(0.2, Math.min(10, zoom * factor));
+  camX = x - canvas.width / 2 - wx * zoom;
+  camY = y - canvas.height / 2 - wy * zoom;
+}, { passive: false });
+
+document.getElementById('btn-reset').addEventListener('click', () => {
+  centers = [];
+  mapCenter = null;
+  scoreData = null;
+  viewPlayer = -1;
+  angleOffset = Math.random() * Math.PI * 2;
+  document.getElementById('tile-count').textContent = '—';
+  document.getElementById('view-player').innerHTML = '<option value="-1">Tous</option>';
+  statusbar.textContent = 'Réinitialisé.';
+});
+
+document.getElementById('btn-retirer').addEventListener('click', () => {
+  angleOffset = Math.random() * Math.PI * 2;
+  autoPlaceCenters();
+  computeScores();
+});
+
+document.getElementById('num-players').addEventListener('change', () => { autoPlaceCenters(); computeScores(); });
+
+document.getElementById('budget').addEventListener('change', computeScores);
+document.getElementById('view-player').addEventListener('change', e => { viewPlayer = parseInt(e.target.value); });
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+Promise.all([
+  fetch('/data/terrain.json').then(r => r.json()),
+  fetch('/data/segments.json').then(r => r.json()),
+]).then(([terrain, segments]) => {
+  terrainData  = terrain;
+  segmentData  = segments;
+  allHexes     = generateHexes();
+  for (const h of allHexes) hexIndex[hexKey(h.q, h.r)] = h;
+  mapMinQ = Math.min(...allHexes.map(h => h.q));
+  mapMaxQ = Math.max(...allHexes.map(h => h.q));
+  mapMinR = Math.min(...allHexes.map(h => h.r));
+  mapMaxR = Math.max(...allHexes.map(h => h.r));
+  statusbar.textContent = `${allHexes.length} cases chargées · Clic gauche pour placer un centre de zone.`;
+  render();
+});
+</script>
+</body>
+</html>

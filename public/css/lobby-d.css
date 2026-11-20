@@ -244,3 +244,23 @@ body.lobby-d { font-family: var(--ld-body); background: radial-gradient(ellipse 
   .lobby-d .ld-roster { gap: 14px; }
   .lobby-d .ld-gbtn .ld-face { width: 62px; height: 62px; }
 }
+
+/* flags (nations), lobby ready toggle, army-building host tools */
+.lobby-d .ld-flag { width: 22px; height: 22px; object-fit: cover; border-radius: 3px; border: 1px solid rgba(239, 232, 216, .35); flex-shrink: 0; }
+.lobby-d .ld-flag.none { display: inline-block; background: rgba(239, 232, 216, .08); border-style: dashed; }
+.lobby-d .ld-flags { display: flex; gap: 6px; flex-wrap: wrap; width: 100%; padding-left: 2px; }
+.lobby-d .ld-flag-btn { position: relative; width: 40px; height: 40px; padding: 0; border-radius: 6px; border: 2px solid transparent; background: rgba(239, 232, 216, .06); cursor: pointer; overflow: hidden; }
+.lobby-d .ld-flag-btn img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.lobby-d .ld-flag-btn .ld-brush { position: absolute; right: 2px; bottom: 0; font-size: 13px; color: #fff; text-shadow: 0 0 3px #000, 0 0 2px #000; }
+.lobby-d .ld-flag-btn:hover:not(:disabled) { border-color: rgba(239, 232, 216, .6); }
+.lobby-d .ld-flag-btn.active { border-color: var(--ld-red); box-shadow: 0 0 0 2px var(--ld-bg); }
+.lobby-d .ld-flag-btn.taken { opacity: .3; cursor: not-allowed; }
+.lobby-d .ld-check label { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.lobby-d .ld-check input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--ld-red); }
+.lobby-d .ld-ready-btn { min-height: 44px; }
+.lobby-d .ld-ready-btn[aria-pressed="true"] { background: #2a4a2a; border-color: #8fd18f; color: #fff; }
+.lobby-d .ld-army-host { display: flex; align-items: center; gap: 8px; }
+.lobby-d .ld-army-host input { width: 110px; min-height: 40px; }
+.lobby-d .ld-nations { display: flex; gap: 8px; flex-wrap: wrap; }
+.lobby-d .ld-nation { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border: 1px solid var(--ld-line); border-radius: 999px; font-size: 12px; color: var(--ld-muted); }
+.lobby-d .ld-nation.ready { border-color: #8fd18f; color: #cfeacf; }

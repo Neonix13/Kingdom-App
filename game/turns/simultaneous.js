@@ -145,6 +145,7 @@ function validateOrder(room, playerId, unit, raw) {
   if (order.type === 'attack' || order.type === 'charge') {
     const target = typeof raw.targetId === 'string' ? room.findUnit(raw.targetId) : null;
     if (!target || target.playerId === playerId || target.q === null || !room.canSee(playerId, target)) return { error: 'Cible introuvable.' };
+    if (room.areAllies(playerId, target.playerId)) return { error: 'Impossible d\'attaquer un allié.' };
     if (order.type === 'charge' && (unit.range || 1) > 1) return { error: 'Les tireurs ne chargent pas.' };
     order.targetId = target.id;
   } else if (order.type === 'motivate') {

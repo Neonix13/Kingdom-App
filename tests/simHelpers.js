@@ -21,6 +21,8 @@ function simRoom({ p0 = [{ typeId: 'soldats', count: 1 }], p1 = [{ typeId: 'sold
   room.startGame();
   assert.ok(room.submitArmy('p0', p0).ok);
   assert.ok(room.submitArmy('p1', p1).ok);
+  // mechanics tests: soldats keep a speed of 3 so that the scripted paths stay valid whatever the balance data says
+  for (const p of room.players) for (const u of p.units) if (u.typeId === 'soldats') u.speed = 3;
   room.startDeployment();
   for (const p of room.players) {
     const tiles = p.startingZone.tiles;

@@ -10,7 +10,7 @@ const { createMemoryStore } = require('./memoryStore');
 const ROOT = path.join(__dirname, '..');
 const MAX_MESSAGES_PER_SECOND = 40;
 
-function createServer({ livereload = false, config = {}, log = console } = {}) {
+function createServer({ livereload = false, config = {}, log = console, persistFile = null } = {}) {
   const app = express();
   const server = http.createServer(app);
   const wss = new WebSocket.Server({ server, maxPayload: 64 * 1024 });
@@ -32,12 +32,14 @@ function createServer({ livereload = false, config = {}, log = console } = {}) {
     if (fs.existsSync(path.join(ROOT, 'public/audio/music/manifest.json'))) return next();
     res.json({ format: 'kb-music-1', states: {} });
   });
-  app.use(express.static(path.join(ROOT, 'public')));
+  app.get('/data/stances.json', (req, res) => res.json(require('../game/data/stances')));
+  // no-store on scripts and styles while developing (livereload), so that a reload never runs stale code
+  app.use(express.static(path.join(ROOT, 'public'), livereload ? { etag: false, lastModified: false, setHeaders: (res, f) => { if (f.endsWith('.js') || f.endsWith('.css')) res.setHeader('Cache-Control', 'no-store'); } } : {}));
   app.use('/simulation/results', express.static(path.join(ROOT, 'simulation/results')));
 
   const connections = new Map();
   const timers = new Map();
-  const store = createMemoryStore();
+  const store = createMemoryStore({ persistFile, log });
 
   const transport = {
     async send(connId, msg) {
@@ -59,6 +61,8 @@ function createServer({ livereload = false, config = {}, log = console } = {}) {
   };
 
   const protocol = createProtocol({ store, transport, scheduler, config, log });
+  // Rooms restored from persistFile: let their timers (bots, deadlines) run again
+  for (const code of store.listRoomCodes()) scheduler.schedule(code, Date.now() + 1000);
 
   wss.on('connection', (ws) => {
     const connId = crypto.randomBytes(12).toString('base64url');
@@ -100,6 +104,7 @@ function createServer({ livereload = false, config = {}, log = console } = {}) {
     },
     close() {
       clearInterval(heartbeat);
+      if (store.stop) store.stop();
       for (const t of timers.values()) clearTimeout(t);
       for (const ws of wss.clients) ws.terminate();
       if (lrServer) lrServer.close();

@@ -38,6 +38,17 @@ const DEFAULTS = {
 };
 
 const PALETTE = ['#4a90d9', '#e05050', '#50c050', '#e0a030', '#a050d0', '#e07840', '#40c0c0', '#e050a0', '#ffffff'];
+// Flags (nations) chosen in the lobby; teammates under the same flag get colour variants of it
+const FLAG_VARIANTS = {
+  qin: ['#1a5fa8', '#4a8fd8', '#0a3578', '#5aaff8'],
+  zhao: ['#e07820', '#b05010', '#f0a040', '#804000'],
+  wei: ['#1a7a3a', '#3aaa5a', '#0a5020', '#6acc8a'],
+  chu: ['#20b8c8', '#1080a0', '#50d8e8', '#008878'],
+  yan: ['#c8b84a', '#a89030', '#e8d870', '#786820'],
+  qi: ['#e8e8e8', '#b8b8b8', '#f8f8f8', '#d0d0d0'],
+  han: ['#9060c0', '#7040a0', '#b080e0', '#502080'],
+};
+const KINGDOM_FLAG = { QIN: 'qin', ZHAO: 'zhao', WEI: 'wei', CHU: 'chu', YAN: 'yan', QI: 'qi', HAN: 'han' };
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const DEFENSE_CHOICES = ['rien', 'counter', 'absorb'];
 
@@ -244,6 +255,29 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     room.hostId = next ? next.id : null;
   }
 
+  function setFlag(room, player, flagId) {
+    const teammates = room.players.filter(p => p !== player && p.flag === flagId).length;
+    player.flag = flagId;
+    player.color = FLAG_VARIANTS[flagId][Math.min(teammates, FLAG_VARIANTS[flagId].length - 1)];
+  }
+
+  // Players without a flag get one at the start: their general's kingdom when free (team mode: always), else any free flag
+  function assignFlags(room) {
+    const team = room.options.teamMode;
+    for (const p of room.players) {
+      if (p.flag) continue;
+      const gd = GENERALS.find(g => g.id === p.generalId);
+      const pref = gd ? KINGDOM_FLAG[String(gd.kingdom || '').split('/')[0]] : null;
+      const taken = new Set(room.players.filter(o => o.flag).map(o => o.flag));
+      const flag = pref && (team || !taken.has(pref)) ? pref : Object.keys(FLAG_VARIANTS).find(f => !taken.has(f));
+      if (flag) {
+        const color = p.color;
+        setFlag(room, p, flag);
+        if (color && !team && !room.players.some(o => o !== p && (o.color || '').toLowerCase() === color.toLowerCase())) p.color = color;
+      }
+    }
+  }
+
   function freeColor(room) {
     const used = new Set(room.players.map(p => (p.color || '').toLowerCase()));
     return PALETTE.find(c => !used.has(c)) || PALETTE[room.players.length % PALETTE.length];
@@ -360,9 +394,8 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     });
   }
 
-  function combatFlow(tx, pending, resolved, witnesses, trampleWitnesses) {
+  function combatFlow(tx, pending, resolved, witnesses) {
     emitCombatResult(tx, pending, resolved.combatLog, witnesses);
-    for (const t of resolved.trample || []) emitCombatResult(tx, t, t.combatLog, trampleWitnesses || {});
     settleFlow(tx);
     autoEndFlow(tx);
     emitState(tx);
@@ -372,15 +405,9 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     const room = tx.room;
     const pending = room.pendingAttacks[attackId];
     const witnesses = pending ? combatWitnesses(room, pending) : {};
-    let trampleWitnesses = null;
-    if (pending && !pending.duel) {
-      const a = room.findUnit(pending.attackerId), t = room.findUnit(pending.targetId);
-      const u2 = a && t ? room.trampleTarget(a, t) : null;
-      if (u2) trampleWitnesses = combatWitnesses(room, { attackerId: a.id, targetId: u2.id, attackerPlayerId: pending.attackerPlayerId, targetPlayerId: u2.playerId });
-    }
     const resolved = room.resolveAttack(attackId, choice);
     tx.dirty = true;
-    if (resolved.ok) combatFlow(tx, pending, resolved, witnesses, trampleWitnesses);
+    if (resolved.ok) combatFlow(tx, pending, resolved, witnesses);
     else emitState(tx);
     return resolved;
   }
@@ -770,8 +797,9 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
 
   H.set_budget = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
     requireHost(tx, connId);
-    requirePhase(tx, 'lobby');
-    tx.room.budget = v.int(typeof data.budget === 'number' ? Math.round(data.budget) : data.budget, 1000, 100000, 'invalid_budget', 'Budget invalide (1000 à 100000).');
+    requirePhase(tx, 'lobby', 'army_building');
+    const b = v.int(typeof data.budget === 'number' ? Math.round(data.budget) : data.budget, 1000, 100000, 'invalid_budget', 'Budget invalide (1000 à 100000).');
+    tx.room.budget = Math.max(1000, Math.round(b / 100) * 100);
     tx.dirty = true;
     emit(tx, 'all', lobbyMessage(tx.room));
   });
@@ -812,6 +840,56 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     emit(tx, 'all', lobbyMessage(tx.room));
   });
 
+  H.set_player_flag = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    const p = requirePlayer(tx, connId);
+    requirePhase(tx, 'lobby');
+    const flagId = v.oneOf(data.flagId, Object.keys(FLAG_VARIANTS), 'invalid_flag', 'Drapeau inconnu.');
+    if (!tx.room.options.teamMode && tx.room.players.some(o => o !== p && o.flag === flagId)) fail('flag_taken', 'Ce drapeau est déjà pris.');
+    setFlag(tx.room, p, flagId);
+    tx.dirty = true;
+    emit(tx, 'all', lobbyMessage(tx.room));
+  });
+
+  // set_option { key, value }: lobby options of the host (teamMode)
+  H.set_option = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    requireHost(tx, connId);
+    requirePhase(tx, 'lobby');
+    if (data.key !== 'teamMode') fail('invalid_option', 'Option inconnue.');
+    engine(tx.room.setSettings({ teamMode: !!data.value }));
+    tx.dirty = true;
+    emit(tx, 'all', lobbyMessage(tx.room));
+  });
+
+  // lobby_ready: a player toggles "ready" (general + flag chosen); when every human is ready the game starts
+  H.lobby_ready = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    const p = requirePlayer(tx, connId);
+    requirePhase(tx, 'lobby');
+    const room = tx.room;
+    if (!p.generalId) fail('general_missing', 'Choisissez un général avant de vous préparer.');
+    if (!p.flag) fail('flag_missing', 'Choisissez un drapeau avant de vous préparer.');
+    p.isReady = !p.isReady;
+    tx.dirty = true;
+    const humans = room.players.filter(x => !x.isBot);
+    if (humans.length && humans.every(x => x.isReady) && room.players.every(x => x.generalId)) {
+      assignFlags(room);
+      room.startGame();
+      emit(tx, 'all', { event: 'phase_change', phase: 'army_building', budget: room.budget, mapId: room.mapId });
+    }
+    emit(tx, 'all', lobbyMessage(room));
+  });
+
+  // back_to_lobby: the host goes back from army building (armies are cleared)
+  H.back_to_lobby = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    requireHost(tx, connId);
+    requirePhase(tx, 'army_building');
+    const room = tx.room;
+    room.phase = 'lobby';
+    for (const p of room.players) { p.units = []; p.generalUnit = null; p.armySubmitted = false; p.isReady = !!p.isBot; }
+    tx.dirty = true;
+    emit(tx, 'all', { event: 'phase_change', phase: 'lobby', mapId: room.mapId });
+    emit(tx, 'all', lobbyMessage(room));
+  });
+
   H.select_general = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
     const p = requirePlayer(tx, connId);
     requirePhase(tx, 'lobby');
@@ -829,6 +907,7 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     const room = tx.room;
     if (room.players.length < 1) fail('not_enough_players', 'Il faut au moins 1 joueur.');
     if (room.players.some(p => !p.generalId)) fail('generals_missing', 'Tous les joueurs doivent choisir un général.');
+    assignFlags(room);
     room.startGame();
     tx.dirty = true;
     emit(tx, 'all', { event: 'phase_change', phase: 'army_building', budget: room.budget, mapId: room.mapId });
@@ -845,15 +924,21 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     const difficulty = data.difficulty == null ? 'veteran' : v.oneOf(data.difficulty, bots.DIFFICULTIES, 'invalid_difficulty', 'Difficulté inconnue.');
     const generalId = data.generalId == null || data.generalId === '' ? null : v.id(data.generalId, 'invalid_general', 'Général inconnu.');
     const { bot } = engine(bots.addBot(room, { id: randomId('b_'), difficulty, generalId, color: freeColor(room) }));
+    if (data.flagId != null && data.flagId !== '') {
+      const flagId = v.oneOf(data.flagId, Object.keys(FLAG_VARIANTS), 'invalid_flag', 'Drapeau inconnu.');
+      if (room.options.teamMode || !room.players.some(o => o !== bot && o.flag === flagId)) setFlag(room, bot, flagId);
+    }
     tx.dirty = true;
     emit(tx, 'all', { event: 'player_joined', playerId: bot.id, name: bot.name, isBot: true });
     emit(tx, 'all', lobbyMessage(room));
   });
 
+  H.add_ai = (connId, data) => H.add_bot(connId, data);
+
   H.remove_bot = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
     requireHost(tx, connId);
     requirePhase(tx, 'lobby');
-    const bot = tx.room.getPlayer(v.id(data.playerId));
+    const bot = tx.room.getPlayer(v.id(data.playerId != null ? data.playerId : data.botId));
     if (!bot || !bot.isBot) fail('bot_not_found', 'IA introuvable.');
     tx.dirty = true;
     removePlayerFlow(tx, bot, 'left');
@@ -870,6 +955,7 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
       const host = room.getPlayer(room.hostId);
       host.generalId = generalId || GENERALS[crypto.randomInt(GENERALS.length)].id;
       engine(bots.addBot(room, { id: randomId('b_'), difficulty, color: freeColor(room) }));
+      assignFlags(room);
       room.startGame();
       tx.dirty = true;
       emit(tx, 'all', { event: 'phase_change', phase: 'army_building', budget: room.budget, mapId: room.mapId });
@@ -946,9 +1032,14 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
 
   H.move_unit = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
     const p = requireTurn(tx, connId);
-    const result = engine(tx.room.moveUnit(p.id, v.id(data.unitId), v.int(data.targetQ, -10000, 10000), v.int(data.targetR, -10000, 10000)));
+    const room = tx.room;
+    const result = engine(room.moveUnit(p.id, v.id(data.unitId), v.int(data.targetQ, -10000, 10000), v.int(data.targetR, -10000, 10000)));
     tx.dirty = true;
     emitMoveAnim(tx, p, result);
+    if (result.trampledAttacks && result.trampledAttacks.length) {
+      for (const t of result.trampledAttacks) emitCombatResult(tx, t, t.combatLog, combatWitnesses(room, t));
+      settleFlow(tx);
+    }
     autoEndFlow(tx);
     emitState(tx);
   });
@@ -963,6 +1054,7 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
       const both = engine(room.moveAndAttack(p.id, v.id(data.attackerId), v.id(data.targetId), v.int(data.approachQ, -10000, 10000), v.int(data.approachR, -10000, 10000)));
       tx.dirty = true;
       if (both.move) emitMoveAnim(tx, p, both.move);
+      if (both.move && both.move.trampledAttacks) for (const t of both.move.trampledAttacks) emitCombatResult(tx, t, t.combatLog, combatWitnesses(room, t));
       if (!both.attack || both.attack.error) {
         if (both.attack && both.attack.error) reply(tx, connId, { event: 'error', code: 'attack_failed', message: both.attack.error });
         autoEndFlow(tx);
@@ -978,6 +1070,13 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     if (pending.duel) {
       emit(tx, [result.targetPlayerId], { event: 'duel_challenge', attackId: result.attackId, attackerName: result.attackerName, targetName: result.targetName });
       resolvePending(tx, result.attackId, 'duel');
+      return;
+    }
+    const target = room.findUnit(result.targetId || pending.targetId);
+    const targetAb = target ? room.ability(target) : null;
+    const canDefend = !pending.isRanged || (targetAb && targetAb.type === 'defend_ranged' && !RULES.combat.archerTypes.includes(pending.attackerTypeId));
+    if (!canDefend) {
+      resolvePending(tx, result.attackId, 'rien');
       return;
     }
     pending.expiresAt = tx.t + cfg.defenseMs;
@@ -1053,6 +1152,16 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     const p = requireTurn(tx, connId);
     const kind = v.oneOf(data.kind, Object.keys(RULES.abilities.build_kinds), 'invalid_kind', 'Construction inconnue.');
     engine(tx.room.build(p.id, v.id(data.unitId), v.int(data.q, -10000, 10000), v.int(data.r, -10000, 10000), kind));
+    tx.dirty = true;
+    roomEventsFlow(tx);
+    autoEndFlow(tx);
+    emitState(tx);
+  });
+
+  // Friend's build_segment { unitId, neighborQ, neighborR }: ladder on a cliff, chevaux de frise on an empty edge
+  H.build_segment = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    const p = requireTurn(tx, connId);
+    engine(tx.room.buildSegment(p.id, v.id(data.unitId), v.int(data.neighborQ, -10000, 10000), v.int(data.neighborR, -10000, 10000)));
     tx.dirty = true;
     roomEventsFlow(tx);
     autoEndFlow(tx);

@@ -54,5 +54,5 @@ test('spectateur en lobby puis passage au déploiement', async () => {
   assert.equal(spec.last('game_state').phase, 'deployment');
   const ds = a.last('deployment_state');
   await a.send('place_unit', { unitId: ds.units[0].id, q: ds.startingZone.tiles[0].q, r: ds.startingZone.tiles[0].r });
-  assert.equal(spec.last('game_state').units.length, 1, 'le spectateur voit le placement');
+  assert.equal(spec.last('game_state').units.length, 2, 'le spectateur voit le placement (unités placées d\'office)');
 });

@@ -171,7 +171,7 @@ function buildWorld(room, playerId) {
   const vis = room.getVisibleHexes(playerId);
   const enemies = [];
   for (const p of room.players) {
-    if (p.id === playerId || p.isEliminated) continue;
+    if (p.id === playerId || p.isEliminated || room.areAllies(playerId, p.id)) continue;
     for (const u of p.units) {
       if (u.q === null) continue;
       if (room.canSee(playerId, u, u.q, u.r, vis)) enemies.push(u);

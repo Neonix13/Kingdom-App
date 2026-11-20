@@ -261,7 +261,8 @@ export function createGameUI({ world, container, bridge, getView }) {
   function showAttackTip(att, tgt, e) {
     if (!att || !tgt || !e) { tip.style.display = 'none'; return; }
     const rect = container.getBoundingClientRect();
-    tip.innerHTML = attackTipHtml(att, tgt, window.gameBridge && window.gameBridge.unitTypes);
+    const ap = window.gameBridge && window.gameBridge.approachAt ? window.gameBridge.approachAt(`${tgt.q},${tgt.r}`) : null;
+    tip.innerHTML = attackTipHtml(att, tgt, window.gameBridge && window.gameBridge.unitTypes, ap);
     tip.style.display = 'block';
     tip.style.left = Math.min(rect.width - 240, e.clientX - rect.left + 16) + 'px';
     tip.style.top = Math.max(8, e.clientY - rect.top - 10) + 'px';

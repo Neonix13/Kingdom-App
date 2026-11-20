@@ -116,6 +116,7 @@ test('eau : une unité qui n\'a encore rien dépensé peut toujours faire un pas
   const { me } = sides(room);
   const general = me.units.find(u => u.isGeneral);
   room.isNight = () => true;
+  general.speed = 3;
   teleport(room, general, 8, 6);
   assert.equal(room.hexMap['8,6'].terrain, 'river');
   assert.equal(general.speedRemaining, 1, 'vitesse 3, rivière −1, nuit −1');

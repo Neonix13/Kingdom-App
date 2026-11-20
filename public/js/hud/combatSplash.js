@@ -46,10 +46,12 @@ export function createCombatSplash({ bridge, portrait, kanji, isActive }) {
   function normalBody(log, A, T) {
     const verdict = log.targetKilled ? 'DÉTRUIT' : log.hit ? 'TOUCHÉ' : 'RATÉ';
     const rows = [];
-    if (log.attackTotal != null && log.attackD20 != null) rows.push(['Jet d\'attaque', `Attaque <b>${log.attackTotal}</b> contre dé <b>${log.attackD20}</b> (d20)`]);
     const b = log.breakdown || {};
-    if (log.hit && log.dmgInflicted != null) rows.push(['Dégâts', `${log.dmgInflicted} bruts · armure −${log.armorAbsorb ?? 0}`]);
-    if (b.defTotal != null && log.defenseRoll != null) rows.push(['Défense', `Défense <b>${b.defTotal}</b> contre dé <b>${log.defenseRoll}</b> (d20)`]);
+    if (b.generalD20 != null) rows.push(['Jet du général', `Force ${b.attackBase} − dé <b>${b.generalD20}</b> + 80 = <b>${b.generalAttValue}</b>`]);
+    else if (b.NGOAtt != null) rows.push(['Jet d\'attaque', `<b>${b.attReussite}</b> réussites sur ${b.NGOAtt} dés (d20 ≤ ${b.attackEff})${b.angleName ? ` · attaque ${b.angleName === 'dos' ? 'de dos' : 'de flanc'}` : ''}`]);
+    if (log.hit && b.ratARDef != null) rows.push(['Dégâts', `puissance ${b.effectivePowerAtt ?? b.basePowerAtt} · armure ${b.effectiveArmorDef} (ratio ${Math.round(b.ratARDef * 100)} %)`]);
+    if (b.defReussite != null && b.NGODef != null) rows.push(['Défense', `<b>${b.defReussite}</b> réussites sur ${b.NGODef} dés (d20 ≤ ${b.defEff})`]);
+    else if (b.generalD20Def != null) rows.push(['Riposte du général', `Force ${b.defBase} − dé <b>${b.generalD20Def}</b> + 80 = <b>${b.generalAttValueDef}</b>`]);
     const lines = [];
     if (log.hit) {
       const parts = [`−${log.dmgReceived ?? 0} vitalité`];

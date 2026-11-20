@@ -19,5 +19,9 @@
     "express": "^4.18.2",
     "livereload": "^0.10.3",
     "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "chart.js": "^4.5.1",
+    "chartjs-node-canvas": "^5.0.0"
   }
 }

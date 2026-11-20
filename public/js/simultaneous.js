@@ -55,7 +55,7 @@
   }
 
   function reach(unit, budget) {
-    const enemies = new Set((gameState?.units || []).filter(u => !u.isMine).map(u => `${u.q},${u.r}`));
+    const enemies = new Set((gameState?.units || []).filter(u => !u.isMine && !u.isAlly).map(u => `${u.q},${u.r}`));
     return KBRules.reachable(movementTable(), {
       start: { q: unit.q, r: unit.r }, maxCost: budget, mounted: KBRules.isMounted(unit),
       minStep: budget === unit.speedRemaining && KBRules.hasFullSpeed(unit),
@@ -76,7 +76,7 @@
     const { dist } = reach(unit, budgetFor(unit));
     for (const k of dist.keys()) movableTiles.add(k);
     movableTiles.delete(`${unit.q},${unit.r}`);
-    for (const e of gameState.units) if (!e.isMine) attackableTiles.add(`${e.q},${e.r}`);
+    for (const e of gameState.units) if (!e.isMine && !e.isAlly) attackableTiles.add(`${e.q},${e.r}`);
     if (unit.range > 1) computeRangeTiles(unit);
     if (unit.isGeneral) computeMotivateTiles(unit);
   }
@@ -144,7 +144,7 @@
     if (!canPlan()) { if (unitAt) showUnitDetail(unitAt); return; }
     if (selectedUnit) {
       const sel = myUnit(selectedUnit.id) || selectedUnit;
-      if (unitAt && !unitAt.isMine) {
+      if (unitAt && !unitAt.isMine && !unitAt.isAlly) {
         const type = st.tool === 'charge' ? 'charge' : 'attack';
         if (type === 'charge' && sel.range > 1) { notify('Les tireurs ne chargent pas.', 'info'); return; }
         const patch = { type, targetId: unitAt.id, path: undefined };
@@ -480,7 +480,7 @@
     } else if (selectedUnit && hoveredHex && canPlan()) {
       // hover preview of an attack: approach (melee follows the target, shooters walk to their firing position)
       const sel = myUnit(selectedUnit.id);
-      const tgt = (gameState.units || []).find(u => !u.isMine && u.q === hoveredHex.q && u.r === hoveredHex.r);
+      const tgt = (gameState.units || []).find(u => !u.isMine && !u.isAlly && u.q === hoveredHex.q && u.r === hoveredHex.r);
       const a = sel && tgt && approachTo(sel, tgt);
       if (a && a.path.length > 1) {
         ctx.globalAlpha = 0.6;

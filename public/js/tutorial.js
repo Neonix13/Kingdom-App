@@ -74,7 +74,7 @@
     },
     {
       id: 'stance', title: 'Les postures',
-      text: () => 'Marche (+1 vitesse), Combat, Charge, Percée, Défenses, Repos… Changer coûte <b>2 de vitesse</b> et vaut pour les tours suivants.<br>Sélectionnez une unité qui a encore de la vitesse (vos <b>Archers</b> par exemple) et choisissez une posture dans la rangée de postures de la fiche.',
+      text: () => 'Marche (+1 vitesse), Combat, Charge, Repos, Défenses… Changer coûte <b>2 de vitesse</b> et vaut pour les tours suivants.<br>Sélectionnez une unité qui a encore de la vitesse (vos <b>Archers</b> par exemple) et choisissez une posture dans la rangée de postures de la fiche.',
       highlight: ['#stance-panel'], hexes: () => [unitOf('archer')],
       done: (f) => f.stance,
     },

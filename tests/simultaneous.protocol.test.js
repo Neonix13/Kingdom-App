@@ -54,9 +54,9 @@ for (const roundTrip of [false, true]) {
     const ps = a.last('planning_start');
     assert.equal(ps.turn, 1);
     assert.equal(ps.endsAt, ps.startsAt + 30000);
-    assert.equal(ps.commandPoints.max, 8);
+    assert.equal(ps.commandPoints.max, 2 + Math.ceil(require('../game/data/generals').find(g => g.id === 'ou_ki').strategy / 3));
     assert.deepEqual(gsA.planning.myOrders, {});
-    assert.equal(gsA.planning.commandPoints.max, 8);
+    assert.equal(gsA.planning.commandPoints.max, ps.commandPoints.max);
     const aIds = gsA.myUnits.map(u => u.id);
     assert.ok(!gsB.units.some(u => aIds.includes(u.id)), 'armées hors de vue au départ');
 
@@ -67,10 +67,10 @@ for (const roundTrip of [false, true]) {
 
     // orders: only the sender hears about them
     b.clear();
-    await a.send('set_orders', { orders: { [a1.id]: { type: 'move', path: step(a1, 3) }, [a2.id]: { type: 'hold', stance: 'combat' } } });
+    await a.send('set_orders', { orders: { [a1.id]: { type: 'move', path: step(a1, 2) }, [a2.id]: { type: 'hold', stance: 'defense_combat' } } });
     const ou = a.last('orders_update');
     assert.equal(ou.commandPoints.used, 2);
-    assert.equal(ou.orders[a1.id].path.length, 3);
+    assert.equal(ou.orders[a1.id].path.length, 2);
     await a.send('set_orders', { orders: { [a1.id]: { type: 'move', path: step(a1, 9) } } });
     assert.equal(a.last('error').code, 'rejected');
     await a.send('commit_orders');
@@ -101,17 +101,17 @@ for (const roundTrip of [false, true]) {
     assert.equal(rA.seed, rB.seed);
     assert.ok(Number.isInteger(rA.seed));
     const movesA = rA.ticks.flatMap(t => t.events).filter(e => e.k === 'move' && e.u === a1.id);
-    assert.equal(movesA.length, 3);
+    assert.equal(movesA.length, 2);
     assert.deepEqual(rA.start.units.filter(u => u.isMine).map(u => u.id).sort(), aIds.slice().sort());
     const textB = JSON.stringify(b2.messages);
     for (const id of aIds) assert.ok(!textB.includes(`"${id}"`), `aucune trace de ${id} chez B`);
     const fullMoves = rS.ticks.flatMap(t => t.events).filter(e => e.k === 'move');
-    assert.equal(fullMoves.length, 5, 'le spectateur (vision complète) voit tout');
+    assert.equal(fullMoves.length, 4, 'le spectateur (vision complète) voit tout');
     const gs2 = a.last('game_state');
     assert.equal(gs2.turn, 2);
     assert.deepEqual(gs2.planning.myOrders, {});
-    assert.equal(gs2.myUnits.find(u => u.id === a1.id).q, a1.q + 3);
-    assert.equal(gs2.myUnits.find(u => u.id === a2.id).stance, 'combat');
+    assert.equal(gs2.myUnits.find(u => u.id === a1.id).q, a1.q + 2);
+    assert.equal(gs2.myUnits.find(u => u.id === a2.id).stance, 'defense_combat');
     const ps2 = a.last('planning_start');
     assert.equal(ps2.turn, 2);
     assert.equal(ps2.startsAt, h.clock.now() + rA.durationMs, 'le minuteur démarre après la lecture');
@@ -132,13 +132,13 @@ for (const roundTrip of [false, true]) {
 
     // the planning timer resolves the turn with the orders given so far
     const [, ] = troops(gs2);
-    await a3.send('set_orders', { orders: { [a1.id]: { type: 'move', path: step({ q: a1.q + 3, r: a1.r }, 1) } } });
+    await a3.send('set_orders', { orders: { [a1.id]: { type: 'move', path: step({ q: a1.q + 2, r: a1.r }, 1) } } });
     h.clock.set(ps2.endsAt + 1);
     await h.protocol.tick(aSession.roomCode);
     assert.ok(a3.last('planning_timeout'));
     assert.equal(a3.last('resolution').turn, 2);
     assert.equal(a3.last('game_state').turn, 3);
-    assert.equal(a3.last('game_state').myUnits.find(u => u.id === a1.id).q, a1.q + 4);
+    assert.equal(a3.last('game_state').myUnits.find(u => u.id === a1.id).q, a1.q + 3);
 
     // an absent player counts as ready after absentTurnMs
     await b2.close();

@@ -111,7 +111,7 @@ test('simultané : attaque de mêlée — approche puis frappe ; réaction du d�
 
 test('simultané : une unité en Marche qui a bougé ne se défend pas', () => {
   const { room, A, B, T } = setup();
-  put(room, A[0], 5, 4); put(room, B[0], 8, 4);
+  put(room, A[0], 5, 4); put(room, B[0], 8, 4, { stance: 'marche' });
   order(room, 'p0', { [A[0].id]: { type: 'attack', targetId: B[0].id } });
   order(room, 'p1', { [B[0].id]: { type: 'move', path: [[8, 5]] } });
   const res = T.resolve(room, 7);
@@ -250,17 +250,19 @@ test('simultané : déterminisme — même salle, mêmes ordres, même graine �
 
 test('simultané : points de commandement, validation des ordres', () => {
   const { room, A, B, T } = setup({ p0: [{ typeId: 'soldats', count: 2 }, { typeId: 'archer', count: 1 }] });
-  assert.equal(T.commandPoints(room, 'p0'), 2 + Math.ceil(16 / 3), 'Ou Ki : 2 + ⌈16/3⌉');
-  assert.equal(T.commandPoints(room, 'p1'), 2 + Math.ceil(12 / 3));
+  const GENERALS = require('../game/data/generals');
+  const strat = (id) => GENERALS.find(g => g.id === id).strategy;
+  assert.equal(T.commandPoints(room, 'p0'), 2 + Math.ceil(strat('ou_ki') / 3), 'Ou Ki : 2 + ⌈Stratégie/3⌉');
+  assert.equal(T.commandPoints(room, 'p1'), 2 + Math.ceil(strat('mou_bu') / 3));
   put(room, A[0], 4, 4); put(room, A[1], 4, 5); put(room, A[2], 3, 4); put(room, B[0], 12, 8);
   room.settings.commandPoints = 1;
-  assert.match(T.setOrders(room, 'p0', { [A[0].id]: { type: 'hold', stance: 'combat' }, [A[1].id]: { type: 'move', path: [[5, 5]] } }).error, /commandement/);
+  assert.match(T.setOrders(room, 'p0', { [A[0].id]: { type: 'hold', stance: 'defense_combat' }, [A[1].id]: { type: 'move', path: [[5, 5]] } }).error, /commandement/);
   assert.ok(T.setOrders(room, 'p0', { [A[0].id]: { type: 'hold' } }).ok, 'tenir sans posture ne coûte rien');
   assert.deepEqual(room.sim.orders.p0, {});
   room.settings.commandPoints = 0;
   assert.match(T.setOrders(room, 'p0', { [A[0].id]: { type: 'move', path: [[5, 4], [6, 4], [7, 4], [8, 4]] } }).error, /trop long/);
   assert.match(T.setOrders(room, 'p0', { [A[0].id]: { type: 'move', path: [[5, 4], [7, 4]] } }).error, /Chemin invalide/);
-  assert.match(T.setOrders(room, 'p0', { [A[0].id]: { type: 'move', path: [[5, 4], [6, 4]], stance: 'combat' } }).error, /trop long/, 'la posture coûte 2');
+  assert.match(T.setOrders(room, 'p0', { [A[0].id]: { type: 'move', path: [[5, 4], [6, 4]], stance: 'defense_combat' } }).error, /trop long/, 'la posture coûte 2');
   assert.equal(T.setOrders(room, 'p0', { [A[0].id]: { type: 'attack', targetId: B[0].id } }).error, 'Cible introuvable.', 'cible invisible');
   assert.equal(T.setOrders(room, 'p0', { [A[0].id]: { type: 'attack', targetId: A[1].id } }).error, 'Cible introuvable.');
   assert.ok(T.setOrders(room, 'p0', { [B[0].id]: { type: 'hold', stance: 'combat' } }).error, 'unité adverse');
@@ -327,19 +329,14 @@ test('simultané : tir de réaction selon la posture prise ce tour (pas celle d\
   assert.equal(run('defense_distance', 'combat'), 0, 'posture quittée au tick 0 : ne réagit plus');
 });
 
-test('simultané : Percée — arrêtée au contact, l\'unité attaque et, si elle l\'emporte, poursuit d\'une case', () => {
+test('simultané : la posture Repos remplace la Percée (un déplacement arrêté au contact n\'attaque pas)', () => {
   const { room, A, B, T } = setup();
-  put(room, A[0], 4, 4, { stance: 'percee' }); put(room, B[0], 7, 3, { vitality: 1, morale: 1, stance: 'repos' });
-  A[0].speedRemaining = 4;
-  order(room, 'p0', { [A[0].id]: { type: 'move', path: [[5, 4], [6, 4], [7, 4], [8, 4]] } });
+  assert.match(T.setOrders(room, 'p0', { [A[0].id]: { type: 'hold', stance: 'percee' } }).error, /Posture/);
+  put(room, A[0], 4, 4); put(room, B[0], 7, 3, { stance: 'repos' });
+  order(room, 'p0', { [A[0].id]: { type: 'move', path: [[5, 4], [6, 4], [7, 4]] } });
   const res = T.resolve(room, 19);
-  const c = combats(res);
-  assert.equal(c.length, 1);
-  assert.equal(c[0].log.attackerId, A[0].id);
-  assert.equal(c[0].t, 2, 'frappe en arrivant au contact');
-  const moves = events(res).filter(e => e.k === 'move' && e.u === A[0].id);
-  assert.ok(moves.some(m => m.t === 3), 'repart au tick suivant après la mêlée gagnée');
-  assert.ok(A[0].q >= 7);
+  assert.equal(combats(res).length, 0);
+  assert.deepEqual(at(A[0]), [6, 4]);
 });
 
 test('simultané : capacités d\'unité en ordre (bâtisseurs, assassin) au début de la résolution ; char qui piétine', () => {
@@ -357,7 +354,7 @@ test('simultané : capacités d\'unité en ordre (bâtisseurs, assassin) au déb
   assert.equal(room.segmentData[segmentEdgeKey(2, 2, 3, 2)], 'barriere');
   assert.ok(events(res, 'p0').some(e => e.k === 'map_edit'));
   assert.equal(a.vanishedDay, room.dayNumber());
-  const tr = combats(res, 'p0').filter(e => e.log.trample);
-  assert.equal(tr.length, 1);
-  assert.equal(tr[0].log.targetId, B[1].id);
+  const hit = combats(res, 'p0').filter(e => e.log.attackerId === c.id);
+  assert.equal(hit.length, 1);
+  assert.equal(hit[0].log.targetId, B[0].id);
 });

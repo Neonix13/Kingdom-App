@@ -143,8 +143,20 @@ class GameRoom {
     const ab = this.ability(unit);
     if (!ab || ab.type !== type) return { error: 'Cette unité n\'a pas cette capacité.' };
     if (unit.isFleeing) return { error: 'Unité en fuite.' };
-    if (unit.speedRemaining < ab.cost) return { error: `Il faut ${ab.cost} de vitesse.` };
+    if (type === 'build') {
+      if (unit.hasAttacked) return { error: 'Cette unité a déjà agi ce tour.' };
+    } else if (unit.speedRemaining < ab.cost) return { error: `Il faut ${ab.cost} de vitesse.` };
     return { unit, ab };
+  }
+
+  // Friend's build_segment action: ladder on a cliff, chevaux de frise on an empty edge
+  buildSegment(playerId, unitId, q, r) {
+    const unit = this.getPlayer(playerId)?.units.find(u => u.id === unitId);
+    if (!unit || unit.q === null) return { error: 'Unité introuvable.' };
+    const seg = this.segmentData[segmentEdgeKey(unit.q, unit.r, q, r)] || null;
+    const kind = seg === 'cliff' ? 'echelle' : !seg ? 'chevaux_de_frise' : null;
+    if (!kind) return { error: 'Ce segment ne peut pas être construit ici.' };
+    return this.build(playerId, unitId, q, r, kind);
   }
 
   _neighbour(unit, q, r) {
@@ -242,15 +254,32 @@ class GameRoom {
   }
 
   publicPlayers() {
-    return this.players.map(p => ({
-      id: p.id,
-      name: p.name,
-      generalId: p.generalId,
-      isReady: !!p.isReady,
-      isEliminated: !!p.isEliminated,
-      connected: p.connected !== false,
-      color: p.color || '#4a90d9',
-    }));
+    return this.players.map(p => {
+      const gd = GENERALS.find(g => g.id === p.generalId);
+      return {
+        id: p.id,
+        name: p.name,
+        generalId: p.generalId,
+        generalName: gd ? gd.name : null,
+        isReady: !!p.isReady,
+        armySubmitted: !!p.armySubmitted,
+        isEliminated: !!p.isEliminated,
+        isBot: !!p.isBot,
+        connected: p.connected !== false,
+        color: p.color || '#4a90d9',
+        flag: p.flag || null,
+      };
+    });
+  }
+
+  // Team mode (lobby option): players under the same flag are allies (no attacks between them, shared victory)
+  get options() { return { teamMode: !!(this.settings && this.settings.teamMode) }; }
+
+  areAllies(aId, bId) {
+    if (aId === bId) return true;
+    if (!this.options.teamMode) return false;
+    const a = this.getPlayer(aId), b = this.getPlayer(bId);
+    return !!(a && b && a.flag && a.flag === b.flag);
   }
 
   publicSpectators() {
@@ -270,6 +299,7 @@ class GameRoom {
       players: this.publicPlayers(),
       spectators: this.publicSpectators(),
       takenGenerals: this.players.filter(p => p.generalId).map(p => p.generalId),
+      options: this.options,
     };
   }
 
@@ -321,11 +351,11 @@ class GameRoom {
       force: generalData.force,
       strategy: generalData.strategy,
       charisma: generalData.charisma,
-      power: generalData.weapon.damage,
+      power: generalData.power != null ? generalData.power : (generalData.weapon.damage || 5),
       armor: generalData.armor,
       maxArmor: generalData.armor,
-      intimidation: Math.floor(generalData.charisma / 2),
-      speed: 3,
+      intimidation: generalData.intimidation != null ? generalData.intimidation : Math.floor(generalData.charisma / 2),
+      speed: 4,
       range: 1,
       visionRange: generalData.strategy, // 1 hex = 100m
       hasMoved: false,
@@ -349,6 +379,7 @@ class GameRoom {
     player.units = [generalUnit, ...units];
     player.generalUnit = generalUnit;
     player.isReady = true;
+    player.armySubmitted = true;
 
     return { ok: true };
   }
@@ -385,7 +416,7 @@ class GameRoom {
       bonusValue: data.bonusValue ?? null,
       bonusRange: data.bonusRange ?? null,
       bonusCost: data.bonusCost ?? null,
-      stance: 'marche',
+      stance: 'combat',
       speedRemaining: 0,
       isFleeing: false,
       facing: 5,
@@ -403,6 +434,29 @@ class GameRoom {
       p.startingZone = zones[i];
       p.isReady = false;
     });
+    this.players.forEach(p => this._autoDeployPlayer(p));
+  }
+
+  _autoDeployPlayer(player) {
+    const zone = player.startingZone;
+    if (!zone || !zone.tiles) return;
+    const taken = new Set();
+    for (const p of this.players) for (const u of p.units) if (u.q !== null) taken.add(hexKey(u.q, u.r));
+    const free = zone.tiles
+      .filter(t => { const k = hexKey(t.q, t.r); return this.hexMap[k] && this.hexMap[k].terrain !== 'river' && !taken.has(k); })
+      .sort(() => this._random() - 0.5);
+    const enemies = this.players.filter(p => p.id !== player.id && p.startingZone).map(p => p.startingZone);
+    const bq = enemies.length ? Math.round(enemies.reduce((s, z) => s + z.q, 0) / enemies.length) : 0;
+    const br = enemies.length ? Math.round(enemies.reduce((s, z) => s + z.r, 0) / enemies.length) : 0;
+    const ordered = [...player.units.filter(u => u.isGeneral), ...player.units.filter(u => !u.isGeneral)];
+    for (const unit of ordered) {
+      if (unit.q !== null) continue;
+      const tile = free.shift();
+      if (!tile) break;
+      unit.q = tile.q;
+      unit.r = tile.r;
+      unit.facing = hexFacing(tile.q, tile.r, bq, br);
+    }
   }
 
   getDeploymentState(playerId) {
@@ -482,14 +536,21 @@ class GameRoom {
     if (terrain === 'river') return { error: 'Impossible de se déployer sur la rivière.' };
 
     // Check if occupied
+    const unit = player.units.find(u => u.id === unitId);
+    if (!unit) return { error: 'Unité introuvable.' };
     for (const p of this.players) {
+      if (p === player) continue;
       for (const u of p.units) {
         if (u.q === q && u.r === r) return { error: 'Case déjà occupée.' };
       }
     }
-
-    const unit = player.units.find(u => u.id === unitId);
-    if (!unit) return { error: 'Unité introuvable.' };
+    // Units start placed (auto-deployment): dropping a unit on one of ours swaps their places
+    const other = player.units.find(u => u !== unit && u.q === q && u.r === r);
+    if (other) {
+      other.q = unit.q;
+      other.r = unit.r;
+      if (unit.facing != null && other.q !== null) other.facing = unit.facing;
+    }
 
     unit.q = q;
     unit.r = r;
@@ -661,25 +722,38 @@ class GameRoom {
     return this.turns.canAct(this, playerId);
   }
 
-  // Compute visible hexes for a player
+  // Compute visible hexes for a player (an eliminated player watches with the vision of every player still alive)
   getVisibleHexes(playerId) {
     const player = this.getPlayer(playerId);
     if (!player) return new Set();
-    const visible = new Set();
+    if (player.isEliminated && this.phase === 'battle') {
+      const all = new Set();
+      for (const p of this.players) if (!p.isEliminated) for (const k of this._visibleHexesOf(p)) all.add(k);
+      return all;
+    }
+    return this._visibleHexesOf(player);
+  }
 
+  // RULES.vision: range = Strategy (min 3), 2 inside a forest, spies 6 / 4; forests hide what lies beyond forestSight
+  // hexes (spies: 4); +1 per level above the target, generals +2 per level of their own hex and they see behind
+  // (not inside) lower forests; impassable segments except cliffs block the view
+  _visibleHexesOf(player) {
+    const V = RULES.vision;
+    const visible = new Set();
     const sd = this.segmentData;
     const night = this.phase === 'battle' && this.isNight();
     const DIRS = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
     for (const unit of player.units) {
       if (unit.q === null) continue;
-      const unitTerrain = this.terrainData[hexKey(unit.q, unit.r)] || 'plain';
-      const inForest = unitTerrain === 'forest';
-      let baseRange = inForest ? 2 : Math.max(3, unit.visionRange);
+      const inForest = (this.terrainData[hexKey(unit.q, unit.r)] || 'plain') === 'forest';
+      const spy = unit.typeId === V.spyTypeId || unit.typeId === RULES.concealment.spyTypeId;
+      let baseRange = spy ? (inForest ? V.spy.forestRange : V.spy.range) : (inForest ? V.forestRange : Math.max(V.unitRange, unit.visionRange || 0));
       if (night) baseRange = Math.max(RULES.night.visionMin, Math.floor(baseRange * RULES.night.visionFactor));
+      const forestSight = spy ? V.spy.forestSight : V.forestSight;
       const myHeight = this.heightData[hexKey(unit.q, unit.r)] || 0;
-      const maxRange = baseRange + myHeight; // portée max possible (cible au niveau 0)
-      // BFS bloqué par segments infranchissables
-      const visited = new Map(); // key -> distance
+      const heightBonus = unit.isGeneral ? myHeight * V.generalHeightFactor : myHeight;
+      const maxRange = baseRange + heightBonus;
+      const visited = new Map();
       const queue = [{ q: unit.q, r: unit.r, d: 0 }];
       visited.set(hexKey(unit.q, unit.r), 0);
       while (queue.length) {
@@ -687,9 +761,11 @@ class GameRoom {
         const key = hexKey(q, r);
         if (!this.hexMap[key]) continue;
         const targetHeight = this.heightData[key] || 0;
-        const effectiveRange = baseRange + Math.max(0, myHeight - targetHeight);
-        if (!inForest && this.terrainData[key] === 'forest' && d > 2) continue;
-        if (d <= effectiveRange) visible.add(key);
+        const effectiveRange = unit.isGeneral ? baseRange + heightBonus : baseRange + Math.max(0, myHeight - targetHeight);
+        const isForest = this.terrainData[key] === 'forest';
+        const lowerForest = isForest && targetHeight < myHeight;
+        if (!inForest && isForest && d > forestSight && !(unit.isGeneral && lowerForest)) continue;
+        if (d <= effectiveRange && !(unit.isGeneral && lowerForest && d > forestSight)) visible.add(key);
         if (d >= maxRange) continue;
         for (const [dq, dr] of DIRS) {
           const nq = q + dq, nr = r + dr;
@@ -697,7 +773,7 @@ class GameRoom {
           if (visited.has(nk)) continue;
           const edgeK = segmentEdgeKey(q, r, nq, nr);
           const segDef = sd[edgeK] ? this._segments()[sd[edgeK]] : null;
-          if (segDef?.infranchissable) { visited.set(nk, maxRange + 1); continue; }
+          if (segDef?.infranchissable && sd[edgeK] !== 'cliff') { visited.set(nk, maxRange + 1); continue; }
           visited.set(nk, d + 1);
           queue.push({ q: nq, r: nr, d: d + 1 });
         }
@@ -717,6 +793,8 @@ class GameRoom {
 
   // Hidden from this viewer at (q, r)? Cover terrain, not revealed, no viewer unit adjacent / spy within range
   isConcealedFrom(viewerId, unit, q = unit.q, r = unit.r) {
+    if (unit.playerId && this.areAllies(viewerId, unit.playerId)) return false;
+    if (this._assassinHidden(viewerId, unit, q, r)) return true;
     if ((!this._inCover(q, r) && !this._vanished(unit)) || this._isRevealed(unit)) return false;
     if (this.activeEffects.some(e => e.type === 'reveal_hidden' && e.targetPlayerId === viewerId)) return false;
     const viewer = this.getPlayer(viewerId);
@@ -737,6 +815,16 @@ class GameRoom {
     const visible = vis || this.getVisibleHexes(viewerId);
     if (!visible.has(hexKey(q, r))) return false;
     return !this.isConcealedFrom(viewerId, unit, q, r);
+  }
+
+  // Assassin: invisible to an enemy with no unit within RULES.vision.assassinHiddenBeyond hexes (any terrain)
+  _assassinHidden(viewerId, unit, q = unit.q, r = unit.r) {
+    const ab = this.ability(unit);
+    if (!ab || ab.type !== 'ambush') return false;
+    const viewer = this.getPlayer(viewerId);
+    if (!viewer || viewer.isEliminated) return false;
+    const lim = RULES.vision.assassinHiddenBeyond;
+    return viewer.units.every(v => v.q === null || hexDistance(v.q, v.r, q, r) > lim);
   }
 
   _reveal(unit, rounds = RULES.concealment.revealRounds) {
@@ -845,8 +933,8 @@ class GameRoom {
         if (u.q === null) continue;
         if (p.id === playerId) {
           visibleUnits.push({ ...u, isMine: true, playerId: p.id, concealed: concealedOf(u) });
-        } else if (this.canSee(playerId, u, u.q, u.r, visibleHexes)) {
-          visibleUnits.push({ ...u, isMine: false, playerId: p.id });
+        } else if (player.isEliminated || this.canSee(playerId, u, u.q, u.r, visibleHexes)) {
+          visibleUnits.push({ ...u, isMine: false, isAlly: this.areAllies(playerId, p.id), playerId: p.id });
         }
       }
     }
@@ -855,6 +943,8 @@ class GameRoom {
     return {
       ...this._commonState(),
       myId: playerId,
+      isSpectator: !!player.isEliminated,
+      teamMode: this.options.teamMode,
       generalData: general,
       visibleHexes: Array.from(visibleHexes),
       units: visibleUnits,
@@ -879,11 +969,12 @@ class GameRoom {
       const occ = this.unitMap[k];
       return !!occ && this.canSee(playerId, occ, occ.q, occ.r, vis);
     };
-    // Chariots drive through the units they can see, but never stop on one
+    // Chariots drive through the enemy units they can see (striking each one), but never stop on one
     const ab = this.ability(unit);
     const drive = !!ab && ab.type === 'trample';
+    const crossable = (k) => { const occ = this.unitMap[k]; return blocked(k) && !this.areAllies(playerId, occ.playerId); };
     if (drive && blocked(hexKey(targetQ, targetR))) return { error: 'Case occupée.' };
-    const found = findPathCost(this.hexMap, this.unitMap, unit.q, unit.r, targetQ, targetR, unit.speedRemaining, unit, this.segmentData, blocked, this.moveTable(), rules.hasFullSpeed(unit), drive ? blocked : null);
+    const found = findPathCost(this.hexMap, this.unitMap, unit.q, unit.r, targetQ, targetR, unit.speedRemaining, unit, this.segmentData, blocked, this.moveTable(), rules.hasFullSpeed(unit), drive ? crossable : null);
     if (found === null) return { error: 'Chemin inaccessible.' };
 
     const fromQ = unit.q, fromR = unit.r;
@@ -891,7 +982,7 @@ class GameRoom {
     let ambush = null;
     const stop = path.findIndex(([q, r]) => {
       const occ = this.unitMap[hexKey(q, r)];
-      return !!occ && !(drive && blocked(hexKey(q, r)));
+      return !!occ && !(drive && crossable(hexKey(q, r)));
     });
     if (stop !== -1) {
       const occ = this.unitMap[hexKey(path[stop][0], path[stop][1])];
@@ -926,7 +1017,21 @@ class GameRoom {
     }
     this._record('move', { u: unit.id, path: [[fromQ, fromR], ...path], ambush: ambush ? ambush.byUnitId : undefined });
 
-    return { ok: true, unitId: unit.id, fromQ, fromR, path, ambush };
+    // Trample: the chariot strikes every enemy unit it drove through (no riposte)
+    const trampledAttacks = [];
+    if (drive) {
+      for (let i = 0; i < path.length - 1 && unit.vitality > 0; i++) {
+        const occ = this.unitMap[hexKey(path[i][0], path[i][1])];
+        if (!occ || occ === unit || this.areAllies(playerId, occ.playerId)) continue;
+        const tP = this.getPlayer(occ.playerId);
+        const res = this._resolveCombat(unit, occ, true, 'rien');
+        const log = this._applyCombat(unit, occ, true, 'rien', res, player, tP);
+        log.trample = true;
+        trampledAttacks.push({ combatLog: log, attackerPlayerId: playerId, targetPlayerId: occ.playerId, attackerId: unit.id, targetId: occ.id });
+      }
+    }
+
+    return { ok: true, unitId: unit.id, fromQ, fromR, path, ambush, trampledAttacks };
   }
 
   _pathCost(unit, fromQ, fromR, path) {
@@ -986,8 +1091,11 @@ class GameRoom {
     if (vr !== 0) unit.vitality = Math.max(0, Math.min(unit.maxVitality, unit.vitality + vr));
     const ab = this.ability(unit);
     if (ab && ab.type === 'moral_near_general' && !unit.isFleeing) {
-      const g = this.getPlayer(unit.playerId)?.generalUnit;
-      if (g && g.q !== null && hexDistance(g.q, g.r, unit.q, unit.r) <= ab.range) unit.morale = Math.min(unit.maxMorale, unit.morale + ab.value);
+      const owner = this.getPlayer(unit.playerId);
+      const g = owner && owner.units.find(u => u.isGeneral);
+      const gd = owner && GENERALS.find(x => x.id === owner.generalId);
+      const radius = Math.floor((gd ? gd.charisma : 10) / (RULES.abilities.moral_near_general.charismaDivisor || 5));
+      if (g && g.q !== null && hexDistance(g.q, g.r, unit.q, unit.r) <= radius) unit.morale = Math.min(unit.maxMorale, unit.morale + ab.value);
     }
   }
 
@@ -1015,7 +1123,19 @@ class GameRoom {
       const scale = (dist + speed) / dist;
       const targetQ = Math.round(c.q + (unit.q - c.q) * scale);
       const targetR = Math.round(c.r + (unit.r - c.r) * scale);
-      if (!this.hexMap[hexKey(targetQ, targetR)]) {
+      if (this.hexMap[hexKey(targetQ, targetR)] && this.unitMap[hexKey(targetQ, targetR)]) {
+        const away = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]].map(([dq, dr]) => [unit.q + dq, unit.r + dr])
+          .sort((a, b) => hexDistance(c.q, c.r, b[0], b[1]) - hexDistance(c.q, c.r, a[0], a[1]));
+        for (const [nq, nr] of away) {
+          const nk = hexKey(nq, nr);
+          if (this.hexMap[nk] && !this.unitMap[nk]) {
+            delete this.unitMap[hexKey(unit.q, unit.r)];
+            unit.q = nq; unit.r = nr;
+            this.unitMap[nk] = unit;
+            break;
+          }
+        }
+      } else if (!this.hexMap[hexKey(targetQ, targetR)]) {
         // Outside map - unit has fled
         player.units = player.units.filter(u => u.id !== unit.id);
         delete this.unitMap[hexKey(unit.q, unit.r)];
@@ -1078,10 +1198,17 @@ class GameRoom {
     if (targets.length === 0) return { error: 'Aucune unité à portée.' };
 
     const d20 = Math.floor(this._random() * 20) + 1;
-    const success = charisma >= d20;
-    const moralGain = success ? (general.intimidation || 5) : 0;
-    if (success) {
-      for (const t of targets) {
+    const critSuccess = d20 === 1;
+    const critFail = d20 === 20;
+    const success = critSuccess || (!critFail && charisma >= d20);
+    const moralGain = critSuccess ? null : success ? Math.max(1, charisma - d20) * 10 : 0;
+    for (const t of targets) {
+      if (critFail) {
+        t.morale = Math.max(0, t.morale - 20);
+      } else if (critSuccess) {
+        t.morale = t.maxMorale;
+        t.isFleeing = false;
+      } else if (success) {
         t.morale = Math.min(t.maxMorale, t.morale + moralGain);
         if (t.isFleeing && t.morale > 0) t.isFleeing = false;
       }
@@ -1093,7 +1220,7 @@ class GameRoom {
     general.hasAttacked = true;
     this._record('motivate', { u: general.id, success, count: targets.length });
 
-    return { ok: true, success, charisma, d20, range, moralGain, count: targets.length };
+    return { ok: true, success, critSuccess, critFail, charisma, d20, range, moralGain, count: targets.length };
   }
 
   // Attack from a distance in one action: walk to (q, r), then strike. Everything is checked before the unit moves,
@@ -1132,6 +1259,7 @@ class GameRoom {
       if (u) { targetPlayer = p; target = u; break; }
     }
     if (!target || target.q === null || !this.canSee(playerId, target)) return { error: 'Cible introuvable.' };
+    if (this.areAllies(playerId, targetPlayer.id)) return { error: 'Impossible d\'attaquer un allié.' };
 
     const dist = hexDistance(attacker.q, attacker.r, target.q, target.r);
     const hA = this.heightData[hexKey(attacker.q, attacker.r)] || 0;
@@ -1139,9 +1267,10 @@ class GameRoom {
     const effectiveRange = rules.attackRange(attacker.range, hA, hT);
     if (dist > effectiveRange) return { error: `Cible hors de portée (distance: ${dist}, portée: ${effectiveRange}).` };
 
-    // Deduct speed (all remaining, min 1)
-    const speedCost = Math.max(1, attacker.speedRemaining);
-    attacker.speedRemaining = Math.max(0, attacker.speedRemaining - speedCost);
+    // Deduct speed (all remaining, min 1 — cavalier léger: a fixed cost, it may move again afterwards)
+    const abA = this.ability(attacker);
+    const speedCost = abA && abA.type === 'speed_free' && RULES.abilities.speed_free.attackCost ? RULES.abilities.speed_free.attackCost : Math.max(1, attacker.speedRemaining);
+    attacker.speedRemaining = Math.max(0, rules.snap(attacker.speedRemaining - speedCost));
     attacker.hasAttacked = true;
     this._reveal(attacker);
 
@@ -1152,10 +1281,10 @@ class GameRoom {
       attackerPlayerId: playerId, attackerId, targetPlayerId: targetPlayer.id, targetId, dist,
       attackerName: attacker.name, targetName: target.name,
       attackerQ: attacker.q, attackerR: attacker.r, targetQ: target.q, targetR: target.r,
-      isRanged: dist > 1, targetTypeId: target.typeId, duel,
+      isRanged: dist > 1, targetTypeId: target.typeId, attackerTypeId: attacker.typeId, duel,
     };
 
-    return { pending: true, attackId, duel, targetPlayerId: targetPlayer.id, attackerName: attacker.name, targetName: target.name, targetQ: target.q, targetR: target.r, isRanged: dist > 1, targetTypeId: target.typeId };
+    return { pending: true, attackId, duel, targetPlayerId: targetPlayer.id, attackerName: attacker.name, targetName: target.name, targetQ: target.q, targetR: target.r, isRanged: dist > 1, targetTypeId: target.typeId, attackerTypeId: attacker.typeId };
   }
 
   resolveAttack(attackId, defenseChoice) {
@@ -1184,28 +1313,12 @@ class GameRoom {
       if (isCac) this._reveal(target);
     }
 
-    const second = isCac ? this.trampleTarget(attacker, target) : null;
     const result = this._resolveCombat(attacker, target, isCac, defenseChoice);
     const combatLog = this._applyCombat(attacker, target, isCac, defenseChoice, result, attackerPlayer, targetPlayer);
-    const trample = [];
-    if (second && attacker.vitality > 0 && !attacker.isFleeing && this.findUnit(second.id)) {
-      const sP = this.getPlayer(second.playerId);
-      const r2 = this._resolveCombat(attacker, second, true, 'rien');
-      const log2 = this._applyCombat(attacker, second, true, 'rien', r2, attackerPlayer, sP);
-      log2.trample = true;
-      trample.push({ combatLog: log2, attackerPlayerId: attackerPlayer.id, targetPlayerId: sP.id, attackerId: attacker.id, targetId: second.id });
-    }
-    return { ok: true, combatLog, trample };
-  }
-
-  // Char: the enemy unit right behind its (adjacent) target, in line with it, is struck too
-  trampleTarget(attacker, target) {
-    const ab = this.ability(attacker);
-    if (!ab || ab.type !== 'trample' || !target || hexDistance(attacker.q, attacker.r, target.q, target.r) !== 1) return null;
-    const bq = 2 * target.q - attacker.q, br = 2 * target.r - attacker.r;
-    const u = this.unitMap[hexKey(bq, br)];
-    if (!u || u.playerId === attacker.playerId || u.q === null || !this.canSee(attacker.playerId, u)) return null;
-    return u;
+    // Cavalier léger: may move again after its attack
+    const abA = this.ability(attacker);
+    if (attacker.vitality > 0 && abA && abA.type === 'speed_free') attacker.hasMoved = false;
+    return { ok: true, combatLog, trample: [] };
   }
 
   // Applies a computed combat result (damage, morale, rout, stats, deaths, replay); returns the combat log
@@ -1231,27 +1344,39 @@ class GameRoom {
       if (attacker.morale <= 0 && !attacker.isFleeing) { attacker.stance = 'marche'; attacker.isFleeing = true; }
     }
     const bonuses = [...(result.bonuses || [])];
-    if (result.advantage) attacker.ambushDay = this.dayNumber();
-    // Soldats: an enemy left at or below the threshold after the fight is finished off (never a general)
-    const executeBy = (killer, victim, side) => {
-      const ab = this.ability(killer);
-      if (!ab || ab.type !== 'execute_low_hp' || victim.isGeneral || killer.vitality <= 0 || victim.vitality <= 0) return;
-      if (victim.vitality <= Math.ceil(victim.maxVitality * ab.value / 100)) {
-        victim.vitality = 0;
-        bonuses.push({ side, type: 'execute_low_hp', text: 'Soldats : unité achevée' });
+    // Soldats: after their attack, an enemy under the threshold is executed (never a general)
+    const abA = this.ability(attacker);
+    if (abA && abA.type === 'execute_low_hp' && !target.isGeneral && target.vitality > 0 && target.vitality < target.maxVitality * abA.value / 100) {
+      target.vitality = 0;
+      bonuses.push({ side: 'attacker', type: 'execute_low_hp', text: 'Soldats : unité exécutée' });
+    }
+    // Cavalier lourd: part of the morale damage also hits the enemy units next to its target
+    if (abA && abA.type === 'charge_bonus' && result.moralDmg > 0) {
+      const spill = Math.floor(result.moralDmg * abA.value / 100);
+      let hit = 0;
+      if (spill > 0) {
+        for (const [dq, dr] of [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]]) {
+          const adj = this.unitMap[hexKey(target.q + dq, target.r + dr)];
+          if (!adj || adj === target || adj.isGeneral || this.areAllies(attacker.playerId, adj.playerId)) continue;
+          adj.morale = Math.max(0, adj.morale - spill);
+          if (adj.morale <= 0 && !adj.isFleeing) { adj.stance = 'marche'; adj.isFleeing = true; }
+          hit++;
+        }
       }
-    };
-    executeBy(attacker, target, 'attacker');
-    if (result.counterDmgReceived > 0) executeBy(target, attacker, 'target');
+      if (hit) bonuses.push({ side: 'attacker', type: 'charge_bonus', text: `Cavalier lourd : −${spill} moral à ${hit} unité${hit > 1 ? 's' : ''} voisine${hit > 1 ? 's' : ''}` });
+    }
+    attacker.damageDealt = (attacker.damageDealt || 0) + Math.max(0, tVitBefore - target.vitality);
+    if (result.counterDmgReceived > 0) target.damageDealt = (target.damageDealt || 0) + Math.max(0, aVitBefore - attacker.vitality);
 
     const combatLog = {
       attackerId, targetId, ranged: !isCac,
       attackerName: attacker.name, targetName: target.name,
+      attackerPlayerId: attackerPlayer.id, targetPlayerId: targetPlayer.id, defenderPlayerId: targetPlayer.id,
+      turn: this.turn, manche: this.manche,
       defenseChoice,
-      attackTotal: result.attackTotal, attackD20: result.attackD20, hit: result.hit,
-      dmgInflicted: result.dmgInflicted, armorAbsorb: result.armorAbsorb, dmgReceived: result.dmgReceived,
+      hit: result.hit, dmgReceived: result.dmgReceived,
       moralDmg: result.moralDmg,
-      defenseRoll: result.defenseRoll, defenseSuccess: result.defenseSuccess,
+      defenseSuccess: result.defenseSuccess,
       counterDmgReceived: result.counterDmgReceived, counterMoralDmg: result.counterMoralDmg,
       targetVitalityLeft: target.vitality, targetMoraleLeft: target.morale,
       attackerVitalityLeft: attacker.vitality,
@@ -1373,30 +1498,20 @@ class GameRoom {
     return segType ? (this._segments()[segType] || null) : null;
   }
 
+  // Combat resolution (RULES.combat). NGO = vitality / 5 dice; each d20 <= the effective attack is a success;
+  // damage = successes × power × armour ratio (1 - AR / (AR + 100), AR = defender NGO × armour); morale = successes × intimidation.
+  // Generals: (Force - d20 + 80) × Power / 5 × ratio / 2 and (Charisma - d20 + 80) × Intimidation / 100.
+  // Angle of attack (defender stance + facing), courage, segments, night, effects, abilities.
   // extra (simultaneous mode): { attack, power } added to the attacker (charge bonus / malus)
   _resolveCombat(attacker, target, isCac, defenseChoice, extra = null) {
+    const C = RULES.combat;
     const type = isCac ? 'cac' : 'tir';
     const stA = attacker.isGeneral ? {} : this._getStanceMods(attacker);
     const stD = target.isGeneral ? {} : this._getStanceMods(target);
     const tA = this._getTerrainMods(attacker.q, attacker.r);
     const tD = this._getTerrainMods(target.q, target.r);
-    // Segment on the edge between attacker and target (only for adjacent melee)
     const segDef = isCac ? this._getSegmentDef(attacker.q, attacker.r, target.q, target.r) : null;
-
-    // Unit abilities (rules.RULES.abilities): lanciers vs horses/chariots, heavy cavalry charge, assassin advantage
-    const abA = this.ability(attacker), abD = this.ability(target);
-    const antiCav = RULES.abilities.antiCavalryCategories;
-    const bonuses = [];
-    const lancerAtk = isCac && abA && abA.type === 'anti_cavalry' && antiCav.includes(target.category) ? abA.value : 0;
-    const lancerDef = isCac && abD && abD.type === 'anti_cavalry' && antiCav.includes(attacker.category) ? abD.value : 0;
-    const charging = isCac && abA && abA.type === 'charge_bonus' && (attacker.stance === 'charge' || (extra && extra.charge === 'bonus')) ? abA.value : 0;
-    const advantage = !!(abA && abA.type === 'ambush' && attacker.ambushDay !== this.dayNumber());
-    if (lancerAtk) bonuses.push({ side: 'attacker', type: 'anti_cavalry', text: `Lanciers : +${lancerAtk} attaque contre la cavalerie` });
-    if (lancerDef) bonuses.push({ side: 'target', type: 'anti_cavalry', text: `Lanciers : +${lancerDef} défense contre la cavalerie` });
-    if (charging) bonuses.push({ side: 'attacker', type: 'charge_bonus', text: `Charge lourde : +${charging} puissance et intimidation` });
-    if (advantage) bonuses.push({ side: 'attacker', type: 'ambush', text: 'Assassin : avantage (meilleur de 2 dés)' });
-
-    // Bonus/malus de hauteur
+    const seg = (k) => (segDef ? (segDef[k] || 0) : 0);
     const hA = this.heightData[hexKey(attacker.q, attacker.r)] || 0;
     const hD = this.heightData[hexKey(target.q, target.r)] || 0;
     const heightDiff = hA - hD;
@@ -1405,135 +1520,167 @@ class GameRoom {
     const powerD = this._effectValue('power_boost', target.playerId);
     const armorRedA = this._effectValue('armor_reduction', attacker.playerId);
     const armorRedD = this._effectValue('armor_reduction', target.playerId);
-
-    // Attack effective (généraux utilisent force comme base d'attaque)
-    const attackBase = attacker.isGeneral ? attacker.force : attacker.attack;
     const extraAttack = extra ? (extra.attack || 0) : 0;
     const extraPower = extra ? (extra.power || 0) : 0;
-    const attackTotal = attackBase + extraAttack + lancerAtk
-      + (stA[`attack_${type}`] || 0) + (tA[`attack_${type}`] || 0) + (segDef ? (segDef[`attack_${type}`] || 0) : 0)
+
+    // Unit abilities: lanciers vs horses / chariots, phalange and lanciers against shots
+    const abA = this.ability(attacker), abD = this.ability(target);
+    const antiCav = RULES.abilities.antiCavalryCategories;
+    const bonuses = [];
+    const lancierBonus = abA && abA.type === 'anti_cavalry' && antiCav.includes(target.category) ? abA.value : 0;
+    const lancierBonusDef = abD && abD.type === 'anti_cavalry' && antiCav.includes(attacker.category) ? abD.value : 0;
+    const phalangeBonus = !isCac && abD && abD.type === 'defend_ranged' ? abD.value : 0;
+    const lancierRangedBonus = !isCac && abD && abD.type === 'anti_cavalry' ? (RULES.abilities.anti_cavalry.rangedArmor || 0) : 0;
+    if (lancierBonus) bonuses.push({ side: 'attacker', type: 'anti_cavalry', text: `Lanciers : +${lancierBonus} puissance contre la cavalerie` });
+    if (phalangeBonus) bonuses.push({ side: 'target', type: 'defend_ranged', text: `Phalange : +${phalangeBonus} armure contre les tirs` });
+    if (lancierRangedBonus) bonuses.push({ side: 'target', type: 'anti_cavalry', text: `Lanciers : +${lancierRangedBonus} armure contre les tirs` });
+
+    // Angle of attack, from the defender's point of view (its stance and facing)
+    const attackerDir = hexFacing(target.q, target.r, attacker.q, attacker.r);
+    const angleOffset = (attackerDir - (target.facing || 0) + 6) % 6;
+    const angleTable = C.angleMods[target.stance] || C.angleMods.combat;
+    const angleMod = target.isGeneral ? 0 : (angleTable[angleOffset] || 0);
+    const angleName = angleMod >= 4 ? 'dos' : angleMod >= 2 ? 'flanc' : null;
+    if (angleName) bonuses.push({ side: 'attacker', type: 'angle', text: angleName === 'dos' ? `Attaque de dos : +${angleMod}` : `Attaque de flanc : +${angleMod}` });
+
+    const NGOAtt = Math.max(1, Math.floor(attacker.vitality / C.diceDivisor));
+    const NGODef = Math.max(1, Math.floor(target.vitality / C.diceDivisor));
+    const ratio = (ar) => 1 - ar / (ar + C.armorK);
+    const G = C.general;
+
+    // Attack
+    const attackBase = attacker.isGeneral ? attacker.force : attacker.attack;
+    const attackEff = attackBase + extraAttack
+      + (stA[`attack_${type}`] || 0) + (tA[`attack_${type}`] || 0) + seg(`attack_${type}`)
       - (stD[`esquive_${type}`] || 0) - (tD[`esquive_${type}`] || 0)
-      + heightDiff + nightMod;
-    let attackD20 = Math.floor(this._random() * 20) + 1;
-    let advantageRolls = null;
-    if (advantage) {
-      const second = Math.floor(this._random() * 20) + 1;
-      advantageRolls = [attackD20, second];
-      attackD20 = Math.min(attackD20, second);
+      + heightDiff + angleMod + nightMod;
+    let attReussite = 0, generalD20 = null, generalAttValue = null;
+    if (attacker.isGeneral) {
+      generalD20 = Math.floor(this._random() * 20) + 1;
+      generalAttValue = attacker.force - generalD20 + G.base;
+    } else {
+      for (let i = 0; i < NGOAtt; i++) if (Math.floor(this._random() * 20) + 1 <= attackEff) attReussite++;
     }
-    const hit = attackTotal >= attackD20;
+    const hit = attacker.isGeneral ? true : attReussite > 0;
 
-    // Damage inflicted: N dé X where N=attacker.vitality, X=effective power
-    let dmgInflicted = 0;
-    if (hit) {
-      const dieFaces = Math.max(1, attacker.power + extraPower + charging + powerA + (stA[`puissance_${type}`] || 0) + (tA[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0));
-      for (let i = 0; i < attacker.vitality; i++) {
-        dmgInflicted += Math.floor(this._random() * dieFaces) + 1;
-      }
+    // Defender armour ratio (the angle lowers the defender's armour)
+    const effectiveArmorDef = Math.max(0, target.armor + (stD.armure || 0) + (tD.armure || 0) + phalangeBonus + lancierRangedBonus + seg(`defense_armure_${type}`) - angleMod - armorRedD);
+    const ARDef = NGODef * effectiveArmorDef;
+    const ratARDef = ratio(ARDef);
+
+    // Damage
+    const effectivePowerAtt = Math.max(1, attacker.power + powerA + extraPower + (stA[`puissance_${type}`] || 0) + (tA[`puissance_${type}`] || 0) + seg(`puissance_${type}`) + lancierBonus + angleMod);
+    let degatsUnitaire = effectivePowerAtt * ratARDef;
+    let dmgReceived;
+    if (attacker.isGeneral) {
+      dmgReceived = Math.round(generalAttValue * (attacker.power + powerA) / G.powerDivisor * ratARDef / G.damageDivisor);
+      degatsUnitaire = (attacker.power + powerA) / G.powerDivisor * ratARDef / G.damageDivisor;
+    } else {
+      dmgReceived = Math.round(attReussite * degatsUnitaire);
     }
 
-    // Multiplicateur de hauteur sur les dégâts : (1 + heightDiff / 10)
-    if (hit) dmgInflicted = Math.round(dmgInflicted * (1 + heightDiff / 10));
+    // Morale damage (the defender's courage lowers the intimidation)
+    const effectiveIntimidation = attacker.intimidation + (stA[`intimidation_${type}`] || 0) + (tA[`intimidation_${type}`] || 0) + seg(`intimidation_${type}`)
+      - (stD[`courage_${type}`] || 0) - (tD[`courage_${type}`] || 0) + angleMod;
+    let moralDmg;
+    if (attacker.isGeneral) moralDmg = Math.max(0, Math.round((attacker.charisma - generalD20 + G.base) * effectiveIntimidation / G.moraleDivisor));
+    else moralDmg = Math.max(0, attReussite * effectiveIntimidation);
 
-    // Armor absorption: Vitalite_def × Armure_def_effective
-    const effectiveArmor = Math.max(0, target.armor + (stD.armure || 0) + (tD.armure || 0) - armorRedD);
-    const armorAbsorb = Math.min(target.vitality * effectiveArmor, Math.floor(dmgInflicted * RULES.combat.maxArmorAbsorb));
-    let dmgReceived = Math.max(0, Math.floor((dmgInflicted - armorAbsorb) / 10));
-
-    // Intimidation → moral damage
-    const effectiveIntimidation = attacker.intimidation + charging + (stA[`intimidation_${type}`] || 0) + (tA[`intimidation_${type}`] || 0);
-    let moralDmg = Math.max(0, Math.floor(attacker.vitality * effectiveIntimidation / 10));
-
-    // Defense choice — ranged attacks: no defence test (archers), except a phalange (defend_ranged) which may test
-    const shieldWall = !isCac && !!abD && abD.type === 'defend_ranged';
-    if (!isCac) defenseChoice = shieldWall && (defenseChoice === 'absorb' || defenseChoice === 'counter') ? 'absorb' : 'rien';
-
-    let defenseRoll = null, defenseSuccess = false;
-    let counterDmgReceived = 0, counterMoralDmg = 0;
-
-    if (defenseChoice === 'counter' || defenseChoice === 'absorb') {
-      // Généraux utilisent force comme base de défense
-      const defBase = target.isGeneral ? target.force : target.defense;
-      const defTotal = defBase + lancerDef
-        + (stD[`defense_${type}`] || 0) + (tD[`defense_${type}`] || 0) + (segDef ? (segDef[`defense_${type}`] || 0) : 0)
+    // Defence — against a shot only a phalange may absorb, and never against archers
+    if (!isCac) {
+      const canAbsorb = !!abD && abD.type === 'defend_ranged' && !C.archerTypes.includes(attacker.typeId);
+      defenseChoice = canAbsorb && (defenseChoice === 'absorb' || defenseChoice === 'counter') ? 'absorb' : 'rien';
+    }
+    const defends = defenseChoice === 'counter' || defenseChoice === 'absorb';
+    const isAbsorb = defenseChoice === 'absorb';
+    let defReussite = 0, defenseSuccess = false, counterDmgReceived = 0, counterMoralDmg = 0;
+    let defBase = null, defEff = null, effectiveArmorAtt = null, ARAtt = null, ratARAtt = null, effectivePowerDef = null, counterIntimidation = null;
+    let generalD20Def = null, generalAttValueDef = null;
+    if (defends) {
+      defBase = target.isGeneral ? target.force : target.defense;
+      defEff = defBase
+        + (stD[`defense_${type}`] || 0) + (tD[`defense_${type}`] || 0) + seg(`defense_${type}`)
         - (stA[`precision_${type}`] || 0) - (tA[`precision_${type}`] || 0)
-        - heightDiff;
-      defenseRoll = Math.floor(this._random() * 20) + 1;
-      defenseSuccess = defTotal >= defenseRoll;
-
-      if (defenseSuccess && shieldWall) {
-        dmgReceived = 0; // the phalange ignores the shooters' power: no vitality loss (morale still suffers)
-        bonuses.push({ side: 'target', type: 'defend_ranged', text: 'Phalange : boucliers levés, aucun dégât' });
-      } else if (defenseSuccess) {
-        const counterDieFaces = Math.max(1, target.power + powerD + (stD[`puissance_${type}`] || 0) + (tD[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0));
-        let counterRaw = 0;
-        for (let i = 0; i < target.vitality; i++) {
-          counterRaw += Math.floor(this._random() * counterDieFaces) + 1;
-        }
-        const atkArmor = Math.max(0, attacker.armor + (stA.armure || 0) + (tA.armure || 0) - armorRedA);
-        const atkArmorAbsorb = Math.min(attacker.vitality * atkArmor, Math.floor(counterRaw * RULES.combat.maxArmorAbsorb));
-        const rawCounter = Math.max(0, Math.round((counterRaw - atkArmorAbsorb) * (1 + (hD - hA) / 10)));
-        const effectiveCounterIntimidation = target.intimidation + (stD[`intimidation_${type}`] || 0) + (tD[`intimidation_${type}`] || 0);
-        const rawMoral = Math.max(0, Math.floor(target.vitality * effectiveCounterIntimidation / 10));
-
-        if (defenseChoice === 'absorb') {
-          dmgReceived = Math.ceil(dmgReceived / 2);
-          moralDmg = Math.ceil(moralDmg / 2);
-          // Ranged absorb (phalange): no counter damage
-          if (isCac) {
-            counterDmgReceived = Math.ceil(rawCounter / 2);
-            counterMoralDmg = Math.ceil(rawMoral / 2);
-          }
-        } else {
-          counterDmgReceived = rawCounter;
-          counterMoralDmg = rawMoral;
-        }
+        - heightDiff - angleMod;
+      effectiveArmorAtt = Math.max(0, attacker.armor + (stA.armure || 0) + (tA.armure || 0) + seg(`armure_${type}`) + angleMod - armorRedA);
+      ARAtt = NGOAtt * effectiveArmorAtt;
+      ratARAtt = ratio(ARAtt);
+      counterIntimidation = target.intimidation + (stD[`intimidation_${type}`] || 0) + (tD[`intimidation_${type}`] || 0) + seg(`defense_intimidation_${type}`)
+        - (stA[`courage_${type}`] || 0) - (tA[`courage_${type}`] || 0) - angleMod;
+      effectivePowerDef = Math.max(1, target.power + powerD + (stD[`puissance_${type}`] || 0) + (tD[`puissance_${type}`] || 0) + seg(`defense_puissance_${type}`) + lancierBonusDef - angleMod);
+      if (lancierBonusDef) bonuses.push({ side: 'target', type: 'anti_cavalry', text: `Lanciers : +${lancierBonusDef} puissance contre la cavalerie` });
+      if (target.isGeneral) {
+        generalD20Def = Math.floor(this._random() * 20) + 1;
+        generalAttValueDef = target.force - generalD20Def + G.base;
+        defenseSuccess = true;
+        counterDmgReceived = Math.round(generalAttValueDef * (target.power + powerD) / G.powerDivisor * ratARAtt / (G.damageDivisor * (isAbsorb ? 2 : 1)));
+        const rawCounterMoral = Math.round((target.charisma - generalD20Def + G.base) * counterIntimidation / G.moraleDivisor);
+        counterMoralDmg = Math.max(0, isAbsorb ? Math.round(rawCounterMoral / 2) : rawCounterMoral);
+      } else {
+        for (let i = 0; i < NGODef; i++) if (Math.floor(this._random() * 20) + 1 <= defEff) defReussite++;
+        defenseSuccess = defReussite > 0;
+        counterDmgReceived = Math.round(defReussite * effectivePowerDef * ratARAtt / (isAbsorb ? 2 : 1));
+        counterMoralDmg = Math.max(0, isAbsorb ? Math.round(defReussite * counterIntimidation / 2) : defReussite * counterIntimidation);
+      }
+      if (!isCac) { counterDmgReceived = 0; counterMoralDmg = 0; }
+      if (isAbsorb) {
+        dmgReceived = Math.ceil(dmgReceived / 2);
+        moralDmg = Math.ceil(moralDmg / 2);
       }
     }
 
-    // Breakdown details for history
     const breakdown = {
-      attackBase,
-      stA_attack: stA[`attack_${type}`] || 0,
-      tA_attack:  tA[`attack_${type}`] || 0,
-      stD_esquive: stD[`esquive_${type}`] || 0,
-      tD_esquive:  tD[`esquive_${type}`] || 0,
-      attackTotal,
-      attackD20,
-      hit,
-      night: nightMod,
-      extraAttack, extraPower,
-      dieFaces: Math.max(1, attacker.power + extraPower + charging + powerA + (stA[`puissance_${type}`] || 0) + (tA[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0)),
-      diceCount: attacker.vitality,
-      dmgInflicted,
-      armorAbsorb,
-      effectiveArmor,
+      NGOAtt, NGODef,
+      attackBase, attackEff, attReussite,
+      generalD20, generalAttValue, generalD20Def, generalAttValueDef,
+      modAngle: angleMod || null, angleName,
+      modAtkStance: (stA[`attack_${type}`] || 0) + seg(`attack_${type}`),
+      modAtkTerrain: (tA[`attack_${type}`] || 0),
+      modEsquive: -((stD[`esquive_${type}`] || 0) + (tD[`esquive_${type}`] || 0)),
+      modHauteur: heightDiff, modNuit: nightMod || null, extraAttack, extraPower,
+      effectiveArmorDef, ARDef, baseArmorDef: target.armor,
+      modArmorDefAngle: angleMod ? -angleMod : null,
+      modArmorDefStance: (stD.armure || 0),
+      phalangeBonus, lancierRangedBonus,
+      modArmorDefTerrain: (tD.armure || 0),
+      ratARDef: Math.round(ratARDef * 1000) / 1000,
+      effectivePowerAtt, basePowerAtt: attacker.power, lancierBonus,
+      modPwrAtt: (stA[`puissance_${type}`] || 0) + (tA[`puissance_${type}`] || 0) + seg(`puissance_${type}`),
+      degatsUnitaire: Math.round(degatsUnitaire * 100) / 100,
       dmgReceived,
+      defBase, defEff, defReussite: defends ? defReussite : null,
+      modDefAngle: defends ? (angleMod ? -angleMod : null) : null,
+      modDefStance: defends ? ((stD[`defense_${type}`] || 0) + seg(`defense_${type}`)) : null,
+      modDefTerrain: defends ? (tD[`defense_${type}`] || 0) : null,
+      modPrecision: defends ? -((stA[`precision_${type}`] || 0) + (tA[`precision_${type}`] || 0)) : null,
+      modHauteurDef: defends ? -heightDiff : null,
+      effectivePowerDef, basePowerDef: target.power,
+      lancierBonusDef: defends ? lancierBonusDef : null,
+      modPwrDef: defends ? ((stD[`puissance_${type}`] || 0) + (tD[`puissance_${type}`] || 0) + seg(`defense_puissance_${type}`)) : null,
+      effectiveArmorAtt, baseArmorAtt: attacker.armor,
+      modArmorAttStance: defends ? (stA.armure || 0) : null,
+      modArmorAttTerrain: defends ? (tA.armure || 0) : null,
+      ARAtt,
+      ratARAtt: ratARAtt !== null ? Math.round(ratARAtt * 1000) / 1000 : null,
+      counterDmgReceived, counterMoralDmg,
+      effectiveIntimidation,
+      modIntimAtt: (stA[`intimidation_${type}`] || 0) + (tA[`intimidation_${type}`] || 0),
+      modCourageDef: -((stD[`courage_${type}`] || 0) + (tD[`courage_${type}`] || 0)),
+      counterIntimidation,
+      modIntimDef: defends ? ((stD[`intimidation_${type}`] || 0) + (tD[`intimidation_${type}`] || 0)) : null,
+      modCourageAtt: defends ? -((stA[`courage_${type}`] || 0) + (tA[`courage_${type}`] || 0)) : null,
       moralDmg,
+      attackerCharisma: attacker.isGeneral ? attacker.charisma : null,
+      defenderCharisma: target.isGeneral ? target.charisma : null,
       defenseChoice,
-      defBase: (defenseChoice === 'counter' || defenseChoice === 'absorb') ? (target.isGeneral ? target.force : target.defense) : null,
-      stD_defense: (stD[`defense_${type}`] || 0),
-      tD_defense:  (tD[`defense_${type}`] || 0),
-      stA_precision: (stA[`precision_${type}`] || 0),
-      tA_precision:  (tA[`precision_${type}`] || 0),
-      defTotal: (defenseChoice === 'counter' || defenseChoice === 'absorb')
-        ? (target.isGeneral ? target.force : target.defense) + lancerDef + (stD[`defense_${type}`] || 0) + (tD[`defense_${type}`] || 0) + (segDef ? (segDef[`defense_${type}`] || 0) : 0) - (stA[`precision_${type}`] || 0) - (tA[`precision_${type}`] || 0)
-        : null,
-      defenseRoll,
-      defenseSuccess,
-      lancerAtk, lancerDef, charging, advantageRolls,
-      counterDmgReceived,
-      counterMoralDmg,
       attackerStance: attacker.stance,
       defenderStance: target.stance,
-      attackerTerrain: this.terrainData[hexKey(attacker.q, attacker.r)] || 'plaines',
-      defenderTerrain: this.terrainData[hexKey(target.q, target.r)] || 'plaines',
+      attackerTerrain: this.terrainData[hexKey(attacker.q, attacker.r)] || 'plain',
+      defenderTerrain: this.terrainData[hexKey(target.q, target.r)] || 'plain',
       segment: segDef ? segDef.name : null,
-      seg_attack: segDef ? (segDef[`attack_${type}`] || 0) : 0,
-      seg_defense: segDef ? (segDef[`defense_${type}`] || 0) : 0,
-      seg_puissance: segDef ? (segDef[`puissance_${type}`] || 0) : 0,
     };
-    return { attackTotal, attackD20, hit, dmgInflicted, armorAbsorb, dmgReceived, moralDmg, defenseRoll, defenseSuccess, counterDmgReceived, counterMoralDmg, breakdown, bonuses, advantage };
+
+    return { hit, dmgReceived, moralDmg, defenseSuccess, counterDmgReceived, counterMoralDmg, breakdown, bonuses };
   }
 
   useGeneralAbility(playerId, targetHex, targetId) {
@@ -1603,6 +1750,10 @@ class GameRoom {
   _checkVictory() {
     const alivePlayers = this.players.filter(p => !p.isEliminated);
     if (alivePlayers.length <= 1) this._endGame(alivePlayers.length === 1 ? alivePlayers[0].id : null, 'elimination');
+    else if (alivePlayers.every(p => this.areAllies(alivePlayers[0].id, p.id))) {
+      this.winningFlag = alivePlayers[0].flag;
+      this._endGame(alivePlayers[0].id, 'elimination');
+    }
   }
 
   _dropObjectives(playerId) {

@@ -56,7 +56,7 @@ test('submitArmy : validation avant toute création d\'unité', () => {
   assert.ok(room.submitArmy('p', [{ typeId: 'soldats', count: 1.5 }]).error);
   assert.ok(room.submitArmy('p', [{ typeId: 'toString', count: 1 }]).error);
   assert.ok(room.submitArmy('p', null).error);
-  assert.ok(room.submitArmy('p', [{ typeId: 'char', count: 2 }]).error, 'budget dépassé');
+  assert.ok(room.submitArmy('p', [{ typeId: 'char', count: 3 }]).error, 'budget dépassé');
   assert.equal(room.getPlayer('p').units.length, 0);
   assert.ok(room.submitArmy('p', [{ typeId: 'soldats', count: 2 }]).ok);
   assert.equal(room.getPlayer('p').units.length, 3);
@@ -124,21 +124,67 @@ test('déploiement : on ne voit pas les positions adverses', () => {
   room.startDeployment();
   const t = room.getPlayer('p1').startingZone.tiles[0];
   room.placeUnit('p1', room.getPlayer('p1').units[0].id, t.q, t.r);
-  assert.deepEqual(room.getDeploymentState('p0').occupiedHexes, {});
+  const occ = Object.values(room.getDeploymentState('p0').occupiedHexes);
+  assert.ok(occ.length > 0, 'ses propres unités sont placées d\'office');
+  assert.ok(occ.every(o => o.playerId === 'p0'));
 });
 
-test('armure : absorbe au plus RULES.combat.maxArmorAbsorb des dégâts (un coup qui touche blesse toujours)', () => {
+test('déploiement : toutes les unités sont placées d\'office dans la zone, et un placement sur une unité alliée échange les places', () => {
+  const room = new GameRoom('T', 'p0', { mapId: 'test-small' });
+  for (const [id, g] of [['p0', 'ou_ki'], ['p1', 'mou_bu']]) { room.addPlayer(id, id); room.getPlayer(id).generalId = g; }
+  room.startGame();
+  room.submitArmy('p0', [{ typeId: 'soldats', count: 2 }]);
+  room.submitArmy('p1', [{ typeId: 'soldats', count: 1 }]);
+  room.startDeployment();
+  const p0 = room.getPlayer('p0');
+  const zone = new Set(p0.startingZone.tiles.map(t => `${t.q},${t.r}`));
+  assert.ok(p0.units.every(u => u.q !== null && zone.has(`${u.q},${u.r}`)));
+  const [a, b] = p0.units;
+  const [aq, ar, bq, br] = [a.q, a.r, b.q, b.r];
+  assert.ok(room.placeUnit('p0', a.id, bq, br).ok);
+  assert.deepEqual([a.q, a.r, b.q, b.r], [bq, br, aq, ar]);
+});
+
+test('combat (NGO) : 1 dé par 5 de vitalité, dégâts = réussites × puissance × ratio d\'armure, moral = réussites × intimidation', () => {
   const { RULES } = require('../game/rules');
   const room = battleRoom();
   const a = room.getPlayer('p0').units.find(x => x.typeId === 'soldats');
   const t = room.getPlayer('p1').units.find(x => x.typeId === 'soldats');
-  a.attack = 99;
-  t.armor = 50;
+  a.attack = 99; // every die succeeds
+  a.stance = 'combat'; t.stance = 'combat';
+  a.q = 0; a.r = 0; t.q = 1; t.r = 0; t.facing = 3; // attacked from the front
+  room.terrainData['0,0'] = 'plain'; room.terrainData['1,0'] = 'plain';
+  room.heightData['0,0'] = 0; room.heightData['1,0'] = 0;
+  room.segmentData = {};
   const r = room._resolveCombat(a, t, true, 'rien');
-  assert.ok(r.hit);
-  assert.equal(r.armorAbsorb, Math.floor(r.dmgInflicted * RULES.combat.maxArmorAbsorb));
-  assert.equal(r.dmgReceived, Math.floor((r.dmgInflicted - r.armorAbsorb) / 10));
-  assert.ok(r.dmgReceived > 0);
+  const ngoA = Math.floor(a.vitality / RULES.combat.diceDivisor), ngoD = Math.floor(t.vitality / RULES.combat.diceDivisor);
+  assert.equal(r.breakdown.NGOAtt, ngoA);
+  assert.equal(r.breakdown.attReussite, ngoA);
+  const ar = ngoD * t.armor;
+  const ratio = 1 - ar / (ar + RULES.combat.armorK);
+  assert.equal(r.dmgReceived, Math.round(ngoA * a.power * ratio));
+  assert.equal(r.moralDmg, ngoA * a.intimidation);
+  assert.equal(r.counterDmgReceived, 0);
+});
+
+test('combat : courage du défenseur (posture) retranché de l\'intimidation, angle de dos +4', () => {
+  const room = battleRoom();
+  const a = room.getPlayer('p0').units.find(x => x.typeId === 'soldats');
+  const t = room.getPlayer('p1').units.find(x => x.typeId === 'soldats');
+  a.attack = 99; a.stance = 'combat';
+  a.q = 0; a.r = 0; t.q = 1; t.r = 0;
+  room.terrainData['0,0'] = 'plain'; room.terrainData['1,0'] = 'plain';
+  room.heightData['0,0'] = 0; room.heightData['1,0'] = 0;
+  room.segmentData = {};
+  t.stance = 'charge'; t.facing = 3; // facing the attacker: Charge courage_cac +1, front angle +2 (charge table)
+  const front = room._resolveCombat(a, t, true, 'rien');
+  assert.equal(front.breakdown.modCourageDef, -1);
+  assert.equal(front.breakdown.modAngle, 2);
+  assert.equal(front.breakdown.effectiveIntimidation, a.intimidation - 1 + 2);
+  t.stance = 'combat'; t.facing = 0; // attacker behind
+  const back = room._resolveCombat(a, t, true, 'rien');
+  assert.equal(back.breakdown.modAngle, 4);
+  assert.equal(back.breakdown.angleName, 'dos');
 });
 
 test('vitesse de début de tour : au moins 1 (une unité lente au repos ou en forêt peut toujours changer de posture)', () => {

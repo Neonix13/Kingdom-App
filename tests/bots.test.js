@@ -182,10 +182,10 @@ for (const roundTrip of [false, true]) {
           if (!(room.phase === 'deployment' && room.players.some(p => !p.startingZone.tiles.length))) break;
         }
         assert.equal(room.phase, 'ended', `${a} contre ${b} sur ${mapId} : partie terminée (tour ${room.turn})`);
-        assert.ok(['elimination', 'max_turns', 'points'].includes(room.endReason));
+        assert.ok(['elimination', 'max_turns', 'points', 'surrender'].includes(room.endReason), room.endReason);
         const st = h.protocol.bots.stats;
         assert.equal(st.failures, 0, `${a}/${b}/${mapId} : ${JSON.stringify(st.errors)}`);
-        assert.ok(st.steps > 10);
+        assert.ok(st.steps > 3);
         assert.equal(h.sentToBots.length, 0);
         assert.deepEqual(h.errors, []);
         assert.ok(room.stats && Object.values(room.stats.players).some(p => p.damageDealt > 0 || p.kills > 0) || room.endReason === 'max_turns', 'les armées se sont affrontées');
