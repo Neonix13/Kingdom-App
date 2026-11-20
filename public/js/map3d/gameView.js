@@ -1,31 +1,34 @@
 import { createWorld } from './world.js';
 import { createPathPreview, createOrdersLayer } from './pathPreview.js';
 import { createGameUI } from './gameUI.js';
+import { KANJI } from '../hud/battleHud.js';
 
 const PLATE_CSS = `
 #view3d-canvas { position:absolute; inset:0; width:100%; height:100%; display:block; z-index:1; outline:none; touch-action:none; }
 #view3d-plates { position:absolute; inset:0; pointer-events:none; z-index:2; overflow:hidden; }
-.u3-plate { position:absolute; left:0; top:0; display:flex; align-items:center; gap:3px;
-  padding:1px 4px 1px 1px; border-radius:11px; background:rgba(14,9,4,0.72); border:1px solid rgba(200,150,40,0.4);
-  pointer-events:auto; cursor:pointer; white-space:nowrap; font:600 10px 'Segoe UI',system-ui,sans-serif; color:#e8d5a0;
+.u3-plate { position:absolute; left:0; top:0; display:flex; align-items:center; gap:4px; padding:1px 5px 1px 0;
+  background:#000; border:2px solid #fff; box-shadow:0 0 0 1.5px #000, 2px 2px 0 1.5px rgba(0,0,0,.45);
+  pointer-events:auto; cursor:pointer; white-space:nowrap; font:900 10px 'Zen Kaku Gothic New','Segoe UI',system-ui,sans-serif; color:#fff;
   will-change:transform; }
+.u3-plate .k { display:flex; align-items:center; justify-content:center; width:21px; height:21px; margin-left:-1px; background:var(--pc); color:#fff;
+  font:400 15px 'Yuji Boku','Zen Old Mincho',serif; line-height:1; text-shadow:0 0 2px #000, 0 0 1px #000; }
 .u3-plate .u3-name { display:none; }
 .u3-plate.sel .u3-name, .u3-plate.hov .u3-name, #view3d-plates.names .u3-name { display:block; }
-.u3-plate.hov { z-index:5; border-color:#e8c060; }
-.u3-plate.sel { z-index:6; }
-.u3-plate.sel { border-color:#ffd700; box-shadow:0 0 6px rgba(255,215,0,.6); }
-.u3-plate.enemy { border-color:rgba(160,160,220,0.5); }
-.u3-plate.moved { opacity:.62; }
-.u3-plate.fleeing { border-color:#ff6020; }
-.u3-plate.concealed { border-style:dashed; border-color:#7fb07a; }
-.u3-plate.concealed::after { content:'◐'; color:#9fd09a; font-size:10px; margin-left:1px; }
-.u3-plate.stunned::after { content:'✶'; color:#ffcf40; font-size:11px; margin-left:1px; }
-.u3-plate img.tok { width:17px; height:17px; border-radius:50%; object-fit:cover; border:2px solid var(--pc); }
-.u3-plate img.st { width:13px; height:13px; opacity:.9; }
+.u3-plate.hov { z-index:5; background:#222; }
+.u3-plate.sel { z-index:6; border-color:#D8352A; box-shadow:0 0 0 1.5px #000, 0 0 0 4px #D8352A; }
+.u3-plate.moved { opacity:.6; }
+.u3-plate.fleeing { border-color:#D8352A; animation:u3-flee .8s steps(2) infinite; }
+@keyframes u3-flee { 50% { border-color:#fff; } }
+.u3-plate.concealed { border-style:dashed; }
+.u3-plate.concealed::after, .u3-plate.stunned::after { font:400 12px 'Yuji Boku','Zen Old Mincho',serif; margin-left:1px; }
+.u3-plate.concealed::after { content:'伏'; color:#9fd09a; }
+.u3-plate.stunned::after { content:'暈'; color:#ffcf40; }
+.u3-plate img.st { width:13px; height:13px; filter:brightness(0) invert(1); opacity:.95; }
 .u3-bars { display:flex; flex-direction:column; gap:2px; }
-.u3-bar { width:30px; height:3px; background:#1a0a04; border-radius:2px; overflow:hidden; }
+.u3-bar { width:32px; height:4px; background:#444; overflow:hidden; }
+.u3-bar.mo { height:2px; }
 .u3-bar > i { display:block; height:100%; }
-.u3-name { max-width:70px; overflow:hidden; text-overflow:ellipsis; }
+.u3-name { max-width:78px; overflow:hidden; text-overflow:ellipsis; line-height:1.1; }
 #view3d-loading { position:absolute; inset:0; z-index:3; display:flex; flex-direction:column; align-items:center; justify-content:center;
   background:rgba(10,6,4,0.92); color:#d9bf78; font:12px 'Segoe UI',system-ui,sans-serif; letter-spacing:2px; transition:opacity .6s; }
 #view3d-loading .bar { width:260px; height:2px; background:rgba(217,191,120,.15); margin-top:12px; }
@@ -116,21 +119,12 @@ export async function mountGameView(bridge, { container }) {
 
   // --- Unit plates (HTML overlays following the formations) ---
   const plateEls = new Map();
-  function tokenSrc(u) {
-    if (u.isGeneral) {
-      const gid = bridge.getGeneralIdForUnit(u);
-      const img = gid ? bridge.generalTokenImages[gid] : null;
-      return img && img.src ? img.src : '';
-    }
-    const img = u.typeId ? bridge.unitTokenImages[u.typeId] : null;
-    return img && img.src ? img.src : '';
-  }
   function plateFor(u) {
     let el = plateEls.get(u.id);
     if (!el) {
       el = document.createElement('div');
       el.className = 'u3-plate';
-      el.innerHTML = '<img class="tok"><div class="u3-bars"><div class="u3-name"></div><div class="u3-bar hp"><i></i></div><div class="u3-bar mo"><i></i></div></div><img class="st">';
+      el.innerHTML = '<b class="k"></b><div class="u3-bars"><div class="u3-name"></div><div class="u3-bar hp"><i></i></div><div class="u3-bar mo"><i></i></div></div><img class="st">';
       el.addEventListener('click', (ev) => { ev.stopPropagation(); const cur = el._unit; if (cur && cur.q != null) bridge.click({ q: cur.q, r: cur.r }); });
       el.addEventListener('dblclick', (ev) => { ev.stopPropagation(); const cur = el._unit; if (cur && cur.q != null) bridge.doubleClick({ q: cur.q, r: cur.r }); });
       el.addEventListener('contextmenu', (ev) => { ev.preventDefault(); const cur = el._unit; if (cur) bridge.contextMenu({ q: cur.q, r: cur.r }, ev.clientX, ev.clientY); });
@@ -140,20 +134,19 @@ export async function mountGameView(bridge, { container }) {
     el._unit = u;
     const color = bridge.getPlayerColor(u.playerId);
     el.style.setProperty('--pc', color);
-    const tok = el.querySelector('img.tok');
-    const src = tokenSrc(u);
-    if (src && tok.getAttribute('src') !== src) tok.setAttribute('src', src);
-    tok.style.display = src ? '' : 'none';
+    const kj = u.isGeneral ? '将' : (KANJI[u.typeId] || '兵');
+    const kEl = el.firstChild;
+    if (kEl.textContent !== kj) kEl.textContent = kj;
     el.querySelector('.u3-name').textContent = u.name || '';
     const hp = Math.max(0, Math.min(1, (u.vitality ?? 1) / (u.maxVitality || 1)));
     const hpBar = el.querySelector('.hp > i');
     hpBar.style.width = (hp * 100).toFixed(0) + '%';
-    hpBar.style.background = hp > 0.5 ? '#2a8c2a' : hp > 0.25 ? '#c8960c' : '#a02020';
+    hpBar.style.background = hp > 0.35 ? '#fff' : '#D8352A';
     const moBar = el.querySelector('.mo');
     if (u.maxMorale) {
       moBar.style.display = '';
       moBar.firstChild.style.width = (Math.max(0, Math.min(1, u.morale / u.maxMorale)) * 100).toFixed(0) + '%';
-      moBar.firstChild.style.background = '#3a78c8';
+      moBar.firstChild.style.background = '#9db4d8';
     } else moBar.style.display = 'none';
     const st = el.querySelector('img.st');
     const icon = u.stance && !u.isGeneral ? bridge.stanceIcons[u.stance] : null;
@@ -343,6 +336,26 @@ export async function mountGameView(bridge, { container }) {
   world.frameHooks.push(frame);
 
   let lastStageCam = 0;
+  // Simultaneous playback: keep the hexes where something happens in this tick on screen
+  let followPts = null, followTimer = null;
+  function followAction(pts) {
+    if (!pts.length || performance.now() - lastStageCam < 300) return;
+    const w = canvas.clientWidth, h = canvas.clientHeight, m = 0.18;
+    const center = new THREE.Vector3();
+    let off = false;
+    for (const [q, r] of pts) {
+      const p = world.hexToWorld(q, r);
+      const v = new THREE.Vector3(p.x, world.groundHeight(p.x, p.z), p.z);
+      center.add(v);
+      const sp = world.projectToScreen(v);
+      if (!sp.visible || sp.x < w * m || sp.x > w * (1 - m) || sp.y < h * m || sp.y > h * (1 - m)) off = true;
+    }
+    if (!off) return;
+    center.divideScalar(pts.length);
+    const camOff = world.camera.position.clone().sub(world.controls.target);
+    if (camOff.length() > 26) camOff.setLength(26);
+    world.flyTo(center.clone().add(camOff), center, 0.7);
+  }
   // General duel: close camera, alternating strikes per exchange, damage per round
   function stageDuel(log) {
     const d = log.duel;
@@ -391,8 +404,16 @@ export async function mountGameView(bridge, { container }) {
     pingHex(q, r, color) { world.layers.addPing(q, r, color); },
     onEvent(event, data) {
       if (!view.active) return;
+      if (event === 'playback_tick') {
+        followPts = [];
+        clearTimeout(followTimer);
+        followTimer = setTimeout(() => { const pts = followPts || []; followPts = null; if (ui.followPlayback()) followAction(pts); }, 0);
+      } else if (event === 'unit_move_anim' && data.playback && followPts && data.path && data.path.length) {
+        followPts.push(data.path[data.path.length - 1]);
+      }
       if (event === 'combat_result') {
         const log = data.combatLog || data;
+        if (data.playback && followPts && log) for (const id of [log.attackerId, log.targetId]) { const u = id != null && shownUnits.find((x) => x.id === id); if (u && u.q != null) followPts.push([u.q, u.r]); }
         if (log && log.duel && log.attackerId != null && log.targetId != null) {
           stageDuel(log);
         } else if (log && log.attackerId != null && log.targetId != null) {
