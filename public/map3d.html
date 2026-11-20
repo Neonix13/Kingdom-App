@@ -79,6 +79,7 @@ import { createWaterMaterial } from './js/map3d/water.js';
 import * as VEG from './js/map3d/vegetation.js';
 import { createPost, QualityGovernor } from './js/map3d/post.js';
 import { createCloudLayer } from './js/map3d/clouds.js';
+import { createStars, createMoon, createFireflies, createLightPools } from './js/map3d/night.js';
 
 // --- Constants ---
 const HEX_SIZE = 1.0;
@@ -209,8 +210,8 @@ controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, R
 
 const intro = { active: false, t: 0, dur: 5.5, from: null, to: null };
 const DEFAULT_VIEW = {
-  px: BCX + 30, py: 30, pz: BCZ + 34,
-  tx: BCX + 4, ty: 1, tz: BCZ + 4,
+  px: BCX + 41, py: 17, pz: BCZ + 41,
+  tx: BCX + 7, ty: 2, tz: BCZ + 3,
 };
 function applyView(v) {
   camera.position.set(v.px, v.py, v.pz);
@@ -936,6 +937,10 @@ sky.material.fragmentShader = sky.material.fragmentShader
 scene.add(sky);
 const clouds = createCloudLayer();
 scene.add(clouds);
+const stars = createStars();
+const moon = createMoon();
+scene.add(stars, moon);
+const MOON_DIR = new THREE.Vector3(-0.75, 0.42, 0.5).normalize();
 const skyU = sky.material.uniforms;
 skyU.turbidity.value = 4.5;
 skyU.rayleigh.value = 1.4;
@@ -993,6 +998,8 @@ const KEY_SUN = new THREE.Color(0xffe6c2), GOLD_SUN = new THREE.Color(0xffb56b),
 const NIGHT_FOG = new THREE.Color(0x1a2333), DAY_FOG = FOG_COLOR.clone(), GOLD_FOG = new THREE.Color(0xd8c3a8);
 const waterMats = [];
 const lanternMats = [];
+const windowMats = [];
+const nightFx = [];
 const timeState = { hour: 16.2, night: 0 };
 function setTimeOfDay(hour, { env = true } = {}) {
   timeState.hour = hour;
@@ -1009,19 +1016,19 @@ function setTimeOfDay(hour, { env = true } = {}) {
   timeState.night = night;
   const sunCol = KEY_SUN.clone().lerp(GOLD_SUN, golden).lerp(DUSK_SUN, smoothstep(0.75, 1, golden));
   const lightDir = realSun.clone();
-  if (night > 0) lightDir.lerp(new THREE.Vector3(-0.4, 0.75, 0.3).normalize(), night).normalize();
+  if (night > 0) lightDir.lerp(MOON_DIR, night).normalize();
   if (lightDir.y < 0.06) lightDir.setY(0.06).normalize();
   sunDir.copy(lightDir);
   sunLight.color.copy(sunCol).lerp(new THREE.Color(0x8fb0ff), night);
-  sunLight.intensity = lerp(3.3, 1.9, golden) * (1 - night) + 0.45 * night;
-  hemiLight.intensity = lerp(0.35, 0.28, golden) * (1 - night) + 0.12 * night;
+  sunLight.intensity = lerp(3.3, 1.9, golden) * (1 - night) + 0.75 * night;
+  hemiLight.intensity = lerp(0.35, 0.28, golden) * (1 - night) + 0.22 * night;
   hemiLight.color.set(0xb8d0f0).lerp(new THREE.Color(0x3a4a70), night);
 
   const fog = DAY_FOG.clone().lerp(GOLD_FOG, golden * 0.85).lerp(NIGHT_FOG, night);
   scene.fog.color.copy(fog);
   scene.background.copy(fog);
   skyU.uHorizonColor.value.copy(fog);
-  renderer.toneMappingExposure = lerp(1.0, 1.08, golden) * (1 - night) + 1.25 * night;
+  renderer.toneMappingExposure = lerp(1.0, 1.08, golden) * (1 - night) + 1.45 * night;
   skyU.rayleigh.value = lerp(1.4, 2.4, golden);
   skyU.turbidity.value = lerp(4.5, 7, golden);
 
@@ -1034,6 +1041,15 @@ function setTimeOfDay(hour, { env = true } = {}) {
   }
   const glow = smoothstep(0.25, 0.95, Math.max(night, golden * 0.4 - 0.1));
   for (const m of lanternMats) m.emissiveIntensity = 7 * glow;
+  for (const m of windowMats) m.emissiveIntensity = 3.2 * glow;
+  const starA = smoothstep(0.35, 1, night);
+  stars.material.uniforms.uNight.value = starA;
+  birds.visible = night < 0.5;
+  moon.material.opacity = starA;
+  for (const fx of nightFx) {
+    if (fx.material.uniforms.uNight) fx.material.uniforms.uNight.value = starA;
+    if (fx.material.uniforms.uGlow) fx.material.uniforms.uGlow.value = glow;
+  }
   G.uCloudStrength.value = 0.38 * (1 - night);
   G.uCloudShift.value.set(sunDir.x, sunDir.z).multiplyScalar(1 / Math.max(sunDir.y, 0.2));
   const cu = clouds.material.uniforms;
@@ -1323,7 +1339,8 @@ const lanternSpots = [];
     clusters.push(cluster);
   }
 
-  const wallGeos = [], roofGeos = [];
+  const wallGeos = [], roofGeos = [], windowGeos = [];
+  const winRng = makeRng(2024);
   for (const cluster of clusters) {
     const clusterSet = new Set(cluster.map(h => `${h.q},${h.r}`));
 
@@ -1366,6 +1383,19 @@ const lanternSpots = [];
         geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
         geo.setIndex(indices);
         wallGeos.push(geo);
+        if (winRng() < 0.75) {
+          const ww = 0.15, wh = 0.13, wy = baseY + 0.36;
+          const t = 0.35 + winRng() * 0.3;
+          const cx = c0.x + edgeDx * t + nx * (halfT + 0.004), cz = c0.z + edgeDz * t + nz * (halfT + 0.004);
+          const ex = edgeDx / edgeLen * ww / 2, ez = edgeDz / edgeLen * ww / 2;
+          const wg = new THREE.BufferGeometry();
+          wg.setAttribute('position', new THREE.Float32BufferAttribute([
+            cx - ex, wy - wh / 2, cz - ez, cx + ex, wy - wh / 2, cz + ez, cx + ex, wy + wh / 2, cz + ez, cx - ex, wy + wh / 2, cz - ez,
+          ], 3));
+          wg.setAttribute('normal', new THREE.Float32BufferAttribute([nx, 0, nz, nx, 0, nz, nx, 0, nz, nx, 0, nz], 3));
+          wg.setIndex([0, 1, 2, 0, 2, 3, 0, 2, 1, 0, 3, 2]);
+          windowGeos.push(wg);
+        }
       }
     }
 
@@ -1491,6 +1521,11 @@ const lanternSpots = [];
         waterwheels.push(spin);
       }
     }
+  }
+  if (windowGeos.length) {
+    const wm = new THREE.MeshStandardMaterial({ color: 0x24170c, emissive: 0xffa24a, emissiveIntensity: 0, roughness: 0.8 });
+    windowMats.push(wm);
+    scene.add(new THREE.Mesh(mergeGeometries(windowGeos), wm));
   }
   const walls = new THREE.Mesh(mergeGeometries(wallGeos), compoundWallMat);
   walls.castShadow = walls.receiveShadow = true;
@@ -1628,6 +1663,28 @@ if (lanternSpots.length) {
   vegGroup.add(VEG.instanced(new THREE.SphereGeometry(0.055, 8, 6), m, lanternSpots.map(p => ({ x: p.x, y: p.y, z: p.z, s: 1 }))));
 }
 
+{
+  const pools = lanternSpots.map(p => ({ x: p.x, y: groundHeight(p.x, p.z) + 0.05, z: p.z, r: 1.4 }));
+  for (const s of smokeSources) pools.push({ x: s.x, y: groundHeight(s.x, s.z) + 0.05, z: s.z, r: 3.2 });
+  const poolMesh = createLightPools(pools);
+  scene.add(poolMesh);
+  nightFx.push(poolMesh);
+  const flies = [];
+  const frng = makeRng(31337);
+  for (const hex of hexesByType.forest || []) {
+    const edge = HEX_DIRS.some(([dq, dr]) => { const n = allHexes.get(`${hex.q + dq},${hex.r + dr}`); return n && n.terrain !== 'forest'; });
+    if (!edge) continue;
+    const wp = hexToWorld(hex.q, hex.r);
+    for (let i = 0; i < 4; i++) {
+      const x = wp.x + (frng() - 0.5) * 2.4, z = wp.z + (frng() - 0.5) * 2.4;
+      flies.push({ x, y: groundHeight(x, z) + 0.25 + frng() * 0.8, z, ph: frng() * 10 });
+    }
+  }
+  const fireflies = createFireflies(flies);
+  scene.add(fireflies);
+  nightFx.push(fireflies);
+}
+
 await setProgress(86, 'Breathing life...');
 
 // --- Chimney smoke ---
@@ -1761,6 +1818,8 @@ function applyQuality(l) {
   wheatMesh.visible = l.far;
   farTrees.visible = l.far;
   smokeMat.uniforms.uPx.value = window.innerHeight * l.dpr * 0.5;
+  stars.material.uniforms.uPx.value = l.dpr;
+  for (const fx of nightFx) if (fx.material.uniforms.uPx) fx.material.uniforms.uPx.value = window.innerHeight * l.dpr * 0.5;
 }
 const governor = new QualityGovernor(LEVELS, (l) => applyQuality(l));
 if (params.has('q')) {
@@ -1863,6 +1922,8 @@ function animate() {
   updateIntro(dt);
   controls.update();
   sky.position.copy(camera.position);
+  stars.position.copy(camera.position);
+  moon.position.copy(camera.position).addScaledVector(MOON_DIR, 800);
   clouds.position.set(camera.position.x, G.uCloudHeight.value, camera.position.z);
   const t0 = performance.now();
   if (usePost) post.composer.render(dt);
