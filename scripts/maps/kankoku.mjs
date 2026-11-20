@@ -1,5 +1,5 @@
 // Generates data/maps/kankoku.json — "Col de Kankoku": a pass closed by Qin's fortified gate.
-// West: Qin basin, fortress courtyard and the road to the capital. Centre: the gorge, the walls (wall-walk hexes two
+// West: Qin basin, fortress courtyard and the road to the capital. Centre: the pass, the walls (wall-walk hexes two
 // levels above the floor, cliffs on their outer face) and the double gate (barriers). East: the plain where the coalition
 // camps, crossed by a river (one bridge). North of the gorge: a plateau overlooking the walls. South: a forested
 // mountain trail around the fortress, crossing the wall line by a ladder (infantry only).
@@ -51,10 +51,10 @@ const setSeg = (a, b, t) => { segments[edgeKey(key(a.q, a.r), key(b.q, b.r))] = 
 const GATE_C = 24;
 const zc = (x) => 34.5 + 2.2 * Math.sin(x / 15) * smooth(40, 60, x);
 function halfWidth(x) {
-  if (x < 26) return lerp(12.5, 9, smooth(0, 26, x));
-  if (x < 36) return lerp(9, 4.6, smooth(26, 36, x));
-  if (x < 52) return lerp(4.6, 6.5, smooth(36, 52, x));
-  return lerp(6.5, 25, smooth(52, 74, x));
+  if (x < 26) return lerp(14, 12, smooth(0, 26, x));
+  if (x < 36) return lerp(12, 11.2, smooth(26, 36, x));
+  if (x < 52) return lerp(11.2, 16, smooth(36, 52, x));
+  return lerp(16, 30, smooth(52, 74, x));
 }
 function floorH(x, z) {
   if (x < 37) return 3;
@@ -74,17 +74,19 @@ for (const h of hexes.values()) {
   const fl = floorH(h.x, h.z);
   if (h.valley) h.h = fl;
   else {
-    const ridge = 1 - Math.abs(fbm(h.x * 0.07 + 3, h.z * 0.07) * 2 - 1);
-    h.h = Math.min(11, Math.round(fl + 1 + d * 0.5 + ridge * 3 + fbm(h.x * 0.2, h.z * 0.2) * 1.5));
+    // rising quickly off the floor then levelling out, with ridges and peaks so the massifs don't end in flat tables
+    const ridge = 1 - Math.abs(fbm(h.x * 0.09 + 3, h.z * 0.09) * 2 - 1);
+    const peaks = fbm(h.x * 0.23 + 9, h.z * 0.23 + 4);
+    h.h = Math.min(12, Math.round(fl + 0.5 + 4 * (1 - Math.exp(-d / 4)) + ridge * 3.6 + peaks * 3 - 1.2));
   }
 }
 
-// --- gorge cliffs: sheer walls between the floor and the massifs around the gate ---
+// --- gorge cliffs: rock faces between the floor and the massifs on both sides of the wall ---
 for (const h of hexes.values()) {
-  if (!h.valley || h.x < 28 || h.x > 49) continue;
+  if (!h.valley || h.x < 33 || h.x > 40) continue;
   for (const n of neighbors(h)) {
     if (n.valley) continue;
-    n.h = Math.max(n.h, h.h + 3);
+    n.h = Math.max(n.h, h.h + 2);
     cliffEdges.add(edgeKey(key(h.q, h.r), key(n.q, n.r)));
     setSeg(h, n, 'cliff');
   }
@@ -97,39 +99,52 @@ for (const h of hexes.values()) {
   if (h.x >= 39 && h.x <= 46.5 && dz > 1.2 && dz < 6.5) { h.h = 6; h.valley = false; fixed.add(key(h.q, h.r)); plateau.push(h); }
 }
 
-// --- wall line: ramparts, terrace, gate ---
+// --- wall line: ramparts across the whole valley and up the first slopes, a wide double gate and two posterns ---
+// Main gate: two adjacent gate hexes on the road; posterns: one gate hex each, halfway to the valley sides.
+const mainGates = [gate, at(GATE_C, gateJ + 1)];
+const valleyRows = [];
+for (let j = 0; j < H; j++) if (at(GATE_C, j).valley) valleyRows.push(j);
+const vTop = Math.min(...valleyRows), vBot = Math.max(...valleyRows);
+const posterns = [at(GATE_C, Math.round((vTop + gateJ) / 2) - 1), at(GATE_C, Math.round((vBot + gateJ + 1) / 2) + 1)];
+const gates = [...mainGates, ...posterns];
+const gateSet = new Set(gates.map((h) => key(h.q, h.r)));
+for (const g of gates) { g.h = gate.h; fixed.add(key(g.q, g.r)); }
 const ramparts = [];
+const SLOPE_RUN = 3;   // rampart hexes climbing each slope beyond the valley floor
 for (let j = 0; j < H; j++) {
   const h = at(GATE_C, j);
-  if (!h.valley || h === gate) continue;
-  h.h = gate.h + 2;
-  fixed.add(key(h.q, h.r));
-  ramparts.push(h);
+  if (gateSet.has(key(h.q, h.r))) continue;
+  if (h.valley) { h.h = gate.h + 2; fixed.add(key(h.q, h.r)); ramparts.push(h); continue; }
+  if (j >= vTop - SLOPE_RUN && j <= vBot + SLOPE_RUN) {
+    h.h = Math.max(h.h, gate.h + 2);
+    fixed.add(key(h.q, h.r));
+    ramparts.push(h);
+  }
 }
 const rampartSet = new Set(ramparts.map((h) => key(h.q, h.r)));
+const nearGate = (h) => neighbors(h).some((n) => gateSet.has(key(n.q, n.r)));
 for (const r of ramparts) for (const n of neighbors(r)) {
-  if (n.c === GATE_C - 1 && n.valley && n.j !== gateJ) { n.h = gate.h + 1; fixed.add(key(n.q, n.r)); n.terrace = true; }
+  if (n.c === GATE_C - 1 && n.valley && !nearGate(n)) { n.h = gate.h + 1; fixed.add(key(n.q, n.r)); n.terrace = true; }
 }
-fixed.add(key(gate.q, gate.r));
-gate.terrain = 'road';
+for (const g of mainGates) g.terrain = 'road';
 
-// continuous cliff line between column GATE_C and GATE_C + 1 (both massifs), gate = barriers
+// continuous cliff line between column GATE_C and GATE_C + 1 (both massifs), gates = barriers
 const line = [];
 for (const h of hexes.values()) {
   if (h.c !== GATE_C) continue;
   for (const n of neighbors(h)) if (n.c === GATE_C + 1) line.push([h, n]);
 }
 for (const [a, b] of line) { setSeg(a, b, 'cliff'); cliffEdges.add(edgeKey(key(a.q, a.r), key(b.q, b.r))); }
-for (const n of neighbors(gate)) {
-  if (n.c !== gate.c) { setSeg(gate, n, 'barriere'); n.terrain = 'road'; }
-  else { setSeg(gate, n, 'cliff'); cliffEdges.add(edgeKey(key(gate.q, gate.r), key(n.q, n.r))); }
+for (const g of gates) for (const n of neighbors(g)) {
+  if (n.c !== g.c) { setSeg(g, n, 'barriere'); if (mainGates.includes(g)) n.terrain = 'road'; }
+  else if (!gateSet.has(key(n.q, n.r))) { setSeg(g, n, 'cliff'); cliffEdges.add(edgeKey(key(g.q, g.r), key(n.q, n.r))); }
 }
 for (const r of ramparts) for (const n of neighbors(r)) {
-  if (n.c === GATE_C + 1) { cliffEdges.add(edgeKey(key(r.q, r.r), key(n.q, n.r))); }
+  if (n.c === GATE_C + 1 || n.c === GATE_C - 1) cliffEdges.add(edgeKey(key(r.q, r.r), key(n.q, n.r)));
 }
 
 // --- southern trail: east trailhead -> summit -> ladder over the wall line -> Qin basin ---
-const trailWaypoints = [[50, 29], [46, 31], [41, 33], [36, 34], [31, 34], [27, 33], [25, 32], [24, 32], [22, 31], [19, 28], [16, 24]];
+const trailWaypoints = [[37, 30], [34, 33], [30, 35], [27, 35], [25, 34], [24, 34], [22, 33], [19, 30], [16, 27]];
 const trail = [];
 function linePath(a, b) {
   const A = at(...a), B = at(...b);
@@ -151,8 +166,8 @@ function linePath(a, b) {
 for (let i = 0; i < trailWaypoints.length - 1; i++) {
   for (const h of linePath(trailWaypoints[i], trailWaypoints[i + 1])) if (!trail.includes(h)) trail.push(h);
 }
-const summitIdx = trail.findIndex((h) => h.c === 31);
-const startH = at(50, 29).h;
+const summitIdx = trail.findIndex((h) => h.c === 29);
+const startH = at(...trailWaypoints[0]).h;
 trail.forEach((h, i) => {
   let v;
   if (i <= summitIdx) v = Math.round(lerp(Math.min(startH, 3), 8, smooth(0, summitIdx, i)));
@@ -238,13 +253,15 @@ for (const h of hexes.values()) {
 }
 const props = [];
 const prop = (type, c, j, rot, label) => { const h = at(c, j); if (h) props.push({ type, q: h.q, r: h.r, ...(rot != null ? { rot } : {}), ...(label ? { label } : {}) }); };
-props.push({ type: 'porte', q: gate.q, r: gate.r, rot: 0 });
+for (const g of gates) props.push({ type: 'porte', q: g.q, r: g.r, rot: 0 });
+// towers on the wall: at both ends and every few hexes, never right next to a gate (its buttresses stand there)
 const rampSorted = [...ramparts].sort((a, b) => a.j - b.j);
-prop('tour', rampSorted[0].c, rampSorted[0].j);
-prop('tour', rampSorted[rampSorted.length - 1].c, rampSorted[rampSorted.length - 1].j);
-const north = rampSorted.filter((h) => h.j < gateJ), south = rampSorted.filter((h) => h.j > gateJ);
-if (north.length > 3) prop('tour', GATE_C, north[Math.floor(north.length / 2)].j);
-if (south.length > 3) prop('tour', GATE_C, south[Math.floor(south.length / 2)].j);
+let lastTower = -99;
+rampSorted.forEach((h, i) => {
+  const end = i === 0 || i === rampSorted.length - 1;
+  if (nearGate(h)) return;
+  if (end || h.j - lastTower >= 4) { prop('tour', h.c, h.j); lastTower = h.j; }
+});
 // Qin banners and camp behind the gate
 prop('banniere', GATE_C - 2, gateJ - 1, null, '秦');
 prop('banniere', GATE_C - 2, gateJ + 1, null, '秦');
@@ -281,7 +298,7 @@ for (let dj = -6; dj <= 6; dj++) {
 // --- deployment zones (order: Qin gate, coalition camp, coalition north, Qin rear) ---
 const zoneOf = (pred) => [...hexes.values()].filter((h) => h.valley && !['river', 'bridge'].includes(h.terrain) && pred(h)).map((h) => key(h.q, h.r));
 const zones = [
-  { name: 'Qin — forteresse', tiles: [...zoneOf((h) => h.c >= 17 && h.c <= 23 && Math.abs(h.z - zc(h.x)) <= 8), ...ramparts.map((h) => key(h.q, h.r))] },
+  { name: 'Qin — forteresse', tiles: [...zoneOf((h) => h.c >= 17 && h.c <= 23 && Math.abs(h.z - zc(h.x)) <= 9), ...ramparts.filter((h) => h.valley).map((h) => key(h.q, h.r))] },
   { name: 'Coalition — camp', tiles: zoneOf((h) => h.c >= 56 && h.c <= 62 && Math.abs(h.z - zc(h.x)) <= 7) },
   { name: 'Coalition — plaine nord', tiles: zoneOf((h) => h.c >= 47 && h.c <= 57 && h.z < zc(h.x) - 12 && h.z > zc(h.x) - 24) },
   { name: 'Qin — arrière', tiles: zoneOf((h) => h.c >= 2 && h.c <= 9 && Math.abs(h.z - zc(h.x)) <= 7) },
@@ -306,7 +323,7 @@ const map = {
   format: 2,
   id: 'kankoku',
   name: 'Col de Kankoku',
-  description: "Une passe étroite entre deux massifs, fermée par la grande porte fortifiée de Qin. À l'est, la plaine où campe la coalition, traversée par une rivière ; au nord, une hauteur domine les remparts ; au sud, un sentier de montagne contourne la forteresse à pied (échelle, infanterie seulement).",
+  description: "Une passe étroite entre deux massifs, barrée par la grande muraille de Qin, percée d'une porte double et de deux poternes. À l'est, la large plaine où campe la coalition, traversée par une rivière ; au nord, une hauteur domine les remparts ; au sud, un sentier de montagne contourne la forteresse à pied (échelle, infanterie seulement).",
   author: 'Kingdom Battleground',
   updatedAt: new Date().toISOString(),
   background: null,

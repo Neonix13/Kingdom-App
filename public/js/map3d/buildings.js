@@ -219,6 +219,7 @@ export function buildStructures(ctx) {
   const waterwheels = [];
   const smokeSources = [];
   const lanternSpots = [];
+  const windowSpots = [];
   const ck = (x, z) => `${Math.round(x * 1000)},${Math.round(z * 1000)}`;
   let towerSite = null;
 
@@ -493,6 +494,7 @@ export function buildStructures(ctx) {
             const p = at(t, fo + 0.004);
             const hx = e.x * ww / 2, hz = e.z * ww / 2;
             W.quad(V(p.x - hx, wy - wh / 2, p.z - hz), V(p.x + hx, wy - wh / 2, p.z + hz), V(p.x + hx, wy + wh / 2, p.z + hz), V(p.x - hx, wy + wh / 2, p.z - hz), COL.timber, 0);
+            windowSpots.push({ x: p.x, y: wy, z: p.z, nx: n.x, nz: n.z, w: ww });
             const ft = 0.025;
             seg(t - ww / 2 / len - ft, t + ww / 2 / len + ft, wy + wh / 2, wy + wh / 2 + ft, 0.13, 0, COL.timber, 3);
             seg(t - ww / 2 / len - ft, t + ww / 2 / len + ft, wy - wh / 2 - ft, wy - wh / 2, 0.13, 0, COL.timber, 3);
@@ -894,5 +896,5 @@ export function buildStructures(ctx) {
     vegGroup.add(VEG.instanced(new THREE.SphereGeometry(0.055, 8, 6), m, lanternSpots.map(p => ({ x: p.x, y: p.y, z: p.z, s: 1 }))));
   }
 
-  return { waterwheels, smokeSources, lanternSpots, decks };
+  return { waterwheels, smokeSources, lanternSpots, windowSpots, decks };
 }
