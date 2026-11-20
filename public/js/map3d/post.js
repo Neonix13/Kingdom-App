@@ -62,8 +62,10 @@ export function createPost(renderer, scene, camera) {
 // On vsync-capped displays headroom is invisible, so after a downgrade it periodically
 // probes one level up and backs off (exponentially) if the probe drops frames.
 export class QualityGovernor {
-  constructor(levels, apply, { budgetMs = 17.5, fastMs = 11.0 } = {}) {
+  constructor(levels, apply, { budgetMs = 17.5, fastMs = 11.0, measure = null } = {}) {
     this.levels = levels;
+    this.measure = measure;
+    this.costMs = 0;
     this.apply = apply;
     this.level = 0;
     this.budgetMs = budgetMs;
@@ -111,6 +113,16 @@ export class QualityGovernor {
     this.acc = 0; this.frames = 0; this.windowStart = now;
     if (this.locked || now < this.cooldownUntil) return;
     if (avg > this.budgetMs) {
+      // Distinguish real GPU/CPU load from an external frame cap (power saving, occluded window):
+      // time one fully synchronous frame; if it is cheap, the slowness is not ours.
+      if (this.measure) {
+        this.costMs = this.measure();
+        if (this.costMs < this.budgetMs * 0.6) {
+          this.slowWindows = 0;
+          if (this.level > 0 && this.costMs < this.budgetMs * 0.3 && now > this.blockUpUntil && ++this.okWindows >= 4) this.set(this.level - 1, now);
+          return;
+        }
+      }
       this.okWindows = 0;
       const need = this.probing ? 1 : 2;
       if (++this.slowWindows >= need && this.level < this.levels.length - 1) {
