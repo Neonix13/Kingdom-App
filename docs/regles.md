@@ -33,7 +33,7 @@ Deux modes de tour (réglage de l'hôte) : **séquentiel** (initiative, §2, dé
 
 ## 3. Déplacement
 
-La vitesse d'une unité est recalculée au début de chacune de ses manches : vitesse de base + modificateur de posture + modificateur du terrain occupé (−1 supplémentaire la nuit, minimum 1).
+La vitesse d'une unité est recalculée au début de chacune de ses manches : vitesse de base + modificateur de posture + modificateur du terrain occupé, au moins 1 (−1 supplémentaire la nuit, minimum 1). Une unité lente au Repos ou en Combat dans une forêt peut donc toujours changer de posture.
 
 Chaque pas coûte le **coût du terrain que l'on quitte** :
 
@@ -79,7 +79,7 @@ Changer de posture coûte 2 de vitesse (les généraux n'ont pas de posture). Ch
 **Portée** : 1 case (mêlée) ou la portée de l'unité (archers 3, archers d'élite 4), +1 par niveau de hauteur au-dessus de la cible. La cible doit être visible (§7).
 
 1. **Jet d'attaque** : D20 ≤ attaque + posture + terrain + segment − esquive de la cible + différence de hauteur (+ malus de nuit). Les généraux utilisent leur Force.
-2. **Dégâts** : (vitalité de l'attaquant) dés de (puissance effective), multipliés par 1 + hauteur/10, moins l'absorption de l'armure (vitalité × armure de la cible), divisés par 10.
+2. **Dégâts** : (vitalité de l'attaquant) dés de (puissance effective), multipliés par 1 + hauteur/10, moins l'absorption de l'armure (vitalité × armure de la cible, **au plus 75 % des dégâts** : un coup qui touche blesse toujours), divisés par 10.
 3. **Moral** : l'intimidation de l'attaquant fait perdre du moral ; à 0 de moral, l'unité **fuit** vers le bord de la carte (elle peut être remotivée).
 4. **Réponse du défenseur** (20 s pour choisir, sinon « Rien ») :
    - **Rien** : aucun jet.

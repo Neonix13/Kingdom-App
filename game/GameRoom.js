@@ -1227,7 +1227,7 @@ class GameRoom {
 
     // Armor absorption: Vitalite_def × Armure_def_effective
     const effectiveArmor = Math.max(0, target.armor + (stD.armure || 0) + (tD.armure || 0) - armorRedD);
-    const armorAbsorb = target.vitality * effectiveArmor;
+    const armorAbsorb = Math.min(target.vitality * effectiveArmor, Math.floor(dmgInflicted * RULES.combat.maxArmorAbsorb));
     let dmgReceived = Math.max(0, Math.floor((dmgInflicted - armorAbsorb) / 10));
 
     // Intimidation → moral damage
@@ -1263,7 +1263,7 @@ class GameRoom {
           counterRaw += Math.floor(this._random() * counterDieFaces) + 1;
         }
         const atkArmor = Math.max(0, attacker.armor + (stA.armure || 0) + (tA.armure || 0) - armorRedA);
-        const atkArmorAbsorb = attacker.vitality * atkArmor;
+        const atkArmorAbsorb = Math.min(attacker.vitality * atkArmor, Math.floor(counterRaw * RULES.combat.maxArmorAbsorb));
         const rawCounter = Math.max(0, Math.round((counterRaw - atkArmorAbsorb) * (1 + (hD - hA) / 10)));
         const effectiveCounterIntimidation = target.intimidation + (stD[`intimidation_${type}`] || 0) + (tD[`intimidation_${type}`] || 0);
         const rawMoral = Math.max(0, Math.floor(target.vitality * effectiveCounterIntimidation / 10));

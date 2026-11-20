@@ -2016,7 +2016,7 @@ function formatHistoryEntry({ log, round }) {
     <tr class="h-section"><td colspan="2">💥 DÉGÂTS</td></tr>
     ${row('Dés', `${b.diceCount??'?'} × D${b.dieFaces??'?'}`)}
     ${row('Dégâts infligés', b.dmgInflicted??0)}
-    ${(b.armorAbsorb||0) > 0 ? row('Absorption (Vit×Arm)', `${b.armorAbsorb} (armure eff. ${b.effectiveArmor??'?'})`) : ''}
+    ${(b.armorAbsorb||0) > 0 ? row('Absorption (Vit×Arm, max 75 %)', `${b.armorAbsorb} (armure eff. ${b.effectiveArmor??'?'})`) : ''}
     ${row('Dégâts reçus (÷10)', `<b>${log.dmgReceived??0}</b>`, 'h-hit-row')}
     ${row('Vitalité restante cible', log.targetVitalityLeft??'—')}`;
   }

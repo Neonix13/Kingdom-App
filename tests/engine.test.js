@@ -127,6 +127,20 @@ test('déploiement : on ne voit pas les positions adverses', () => {
   assert.deepEqual(room.getDeploymentState('p0').occupiedHexes, {});
 });
 
+test('armure : absorbe au plus RULES.combat.maxArmorAbsorb des dégâts (un coup qui touche blesse toujours)', () => {
+  const { RULES } = require('../game/rules');
+  const room = battleRoom();
+  const a = room.getPlayer('p0').units.find(x => x.typeId === 'soldats');
+  const t = room.getPlayer('p1').units.find(x => x.typeId === 'soldats');
+  a.attack = 99;
+  t.armor = 50;
+  const r = room._resolveCombat(a, t, true, 'rien');
+  assert.ok(r.hit);
+  assert.equal(r.armorAbsorb, Math.floor(r.dmgInflicted * RULES.combat.maxArmorAbsorb));
+  assert.equal(r.dmgReceived, Math.floor((r.dmgInflicted - r.armorAbsorb) / 10));
+  assert.ok(r.dmgReceived > 0);
+});
+
 test('vitesse de début de tour : au moins 1 (une unité lente au repos ou en forêt peut toujours changer de posture)', () => {
   const room = battleRoom();
   const u = room.getPlayer('p0').units.find(x => x.typeId === 'soldats');

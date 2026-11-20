@@ -58,7 +58,7 @@ function strike(world, a, t, fq, fr) {
   const pHit = Math.max(0.05, Math.min(1, atk / 20));
   const faces = Math.max(1, a.power + (A.st[`puissance_${type}`] || 0) + (A.te[`puissance_${type}`] || 0));
   const raw = a.vitality * (faces + 1) / 2 * (1 + h / 10);
-  const absorb = t.vitality * Math.max(0, t.armor + (D.st.armure || 0) + (D.te.armure || 0));
+  const absorb = Math.min(t.vitality * Math.max(0, t.armor + (D.st.armure || 0) + (D.te.armure || 0)), raw * RULES.combat.maxArmorAbsorb);
   const dmg = Math.max(0, (raw - absorb) / 10);
   return { pHit, dmg, expected: pHit * dmg, kill: dmg >= t.vitality, duel: false };
 }

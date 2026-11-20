@@ -49,6 +49,9 @@
       spyDistance: 2,                   // ...or an enemy spy is within 2 hexes
       revealRounds: 1,                  // attacking reveals the unit until the end of its owner's next turn
     },
+    combat: {
+      maxArmorAbsorb: 0.75,  // armor (vitality x armor of the target) absorbs at most 75% of the damage dealt: a hit always hurts
+    },
     duel: {
       maxRounds: 3,          // exchanges
       die: 20,               // each exchange: d20 + Force for both generals, the higher one strikes
