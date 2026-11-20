@@ -5,8 +5,8 @@ const UNKNOWN = 'Unité inconnue';
 function combatView(log, { seeAttacker, seeTarget, details }) {
   const out = { ...log };
   if (!details) delete out.breakdown;
-  if (!seeAttacker) Object.assign(out, { attackerId: null, attackerName: UNKNOWN, attackerVitalityLeft: null, attackerHidden: true });
-  if (!seeTarget) Object.assign(out, { targetId: null, targetName: UNKNOWN, targetVitalityLeft: null, targetMoraleLeft: null, targetHidden: true });
+  if (!seeAttacker) Object.assign(out, { attackerId: null, attackerName: UNKNOWN, attackerVitalityLeft: null, attackerStance: undefined, attackerHidden: true });
+  if (!seeTarget) Object.assign(out, { targetId: null, targetName: UNKNOWN, targetVitalityLeft: null, targetMoraleLeft: null, targetStance: undefined, targetHidden: true });
   if (log.duel) {
     const hide = (id) => ((id === log.attackerId && !seeAttacker) || (id === log.targetId && !seeTarget) ? null : id);
     out.duel = { ...log.duel, attackerId: hide(log.duel.attackerId), defenderId: hide(log.duel.defenderId), winnerId: hide(log.duel.winnerId), loserId: hide(log.duel.loserId), rounds: log.duel.rounds.map(rd => ({ ...rd, attacker: hide(rd.attacker) })) };

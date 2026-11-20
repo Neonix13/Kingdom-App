@@ -169,5 +169,5 @@ test('simultané : un tireur qui reçoit une cible hors de portée marche jusqu\
   const melee = units(room2, 'p0').troops[0];
   put(room2, melee, 2, 4);
   assert.ok(room2.turns.setOrders(room2, 'p0', { [melee.id]: { type: 'attack', targetId: units(room2, 'p1').troops[0].id, path: [[3, 4]] } }).ok);
-  assert.equal(room2.sim.orders.p0[melee.id].path, undefined, 'la mêlée suit sa cible, sans chemin imposé');
+  assert.deepEqual(room2.sim.orders.p0[melee.id].path, [[3, 4]], 'la mêlée suit d\'abord le chemin choisi, puis va au contact');
 });

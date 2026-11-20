@@ -1043,7 +1043,8 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
   H.move_unit = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
     const p = requireTurn(tx, connId);
     const room = tx.room;
-    const result = engine(room.moveUnit(p.id, v.id(data.unitId), v.int(data.targetQ, -10000, 10000), v.int(data.targetR, -10000, 10000)));
+    const route = data.path != null ? v.path(data.path) : null;
+    const result = engine(room.moveUnit(p.id, v.id(data.unitId), v.int(data.targetQ, -10000, 10000), v.int(data.targetR, -10000, 10000), route));
     tx.dirty = true;
     emitMoveAnim(tx, p, result);
     if (result.trampledAttacks && result.trampledAttacks.length) {
@@ -1054,14 +1055,16 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     emitState(tx);
   });
 
-  // attack_unit { attackerId, targetId, approachQ?, approachR? }: with an approach hex, the unit walks there and
+  // attack_unit { attackerId, targetId, approachQ?, approachR?, path? }: with an approach hex, the unit walks there
+  // (along path when the player chose the route) and
   // strikes in the same action (nothing happens if the target would not be in range from it)
   H.attack_unit = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
     const p = requireTurn(tx, connId);
     const room = tx.room;
     let result;
     if (data.approachQ != null || data.approachR != null) {
-      const both = engine(room.moveAndAttack(p.id, v.id(data.attackerId), v.id(data.targetId), v.int(data.approachQ, -10000, 10000), v.int(data.approachR, -10000, 10000)));
+      const route = data.path != null ? v.path(data.path) : null;
+      const both = engine(room.moveAndAttack(p.id, v.id(data.attackerId), v.id(data.targetId), v.int(data.approachQ, -10000, 10000), v.int(data.approachR, -10000, 10000), route));
       tx.dirty = true;
       if (both.move) emitMoveAnim(tx, p, both.move);
       if (both.move && both.move.trampledAttacks) for (const t of both.move.trampledAttacks) emitCombatResult(tx, t, t.combatLog, combatWitnesses(room, t));

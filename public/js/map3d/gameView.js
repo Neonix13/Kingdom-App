@@ -27,7 +27,8 @@ const PLATE_CSS = `
 .u3-plate.concealed::after, .u3-plate.stunned::after { font:400 12px 'Yuji Boku','Zen Old Mincho',serif; margin-left:1px; }
 .u3-plate.concealed::after { content:'伏'; color:#9fd09a; }
 .u3-plate.stunned::after { content:'暈'; color:#ffcf40; }
-.u3-plate img.st { width:13px; height:13px; filter:brightness(0) invert(1); opacity:.95; }
+.u3-plate .st { display:flex; align-items:center; justify-content:center; width:16px; height:16px; border:1.5px solid #fff; font:400 11px 'Yuji Boku','Zen Old Mincho',serif; line-height:1; color:#fff; }
+.u3-plate .st:empty { display:none; }
 .u3-bars { display:flex; flex-direction:column; gap:2px; }
 .u3-bar { width:32px; height:4px; background:#444; overflow:hidden; }
 .u3-bar.mo { height:2px; }
@@ -115,7 +116,7 @@ export async function mountGameView(bridge, { container }) {
     down = null;
     if (moved > 6 || !quick) return;
     const hex = world.pickHex(e.clientX, e.clientY);
-    if (b === 0) bridge.click(hex);
+    if (b === 0) { bridge.click(hex, { shiftKey: e.shiftKey }); lastMove = e; hovered = null; }
     else if (b === 2) bridge.contextMenu(hex, e.clientX, e.clientY);
   });
   canvas.addEventListener('dblclick', (e) => {
@@ -124,7 +125,8 @@ export async function mountGameView(bridge, { container }) {
   });
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   let lastMove = null;
-  canvas.addEventListener('pointermove', (e) => { lastMove = e; });
+  let lastPointer = null, routeSig = '';
+  canvas.addEventListener('pointermove', (e) => { lastMove = e; lastPointer = e; });
   canvas.addEventListener('pointerleave', () => { lastMove = null; hovered = null; bridge.hover(null); world.layers.setHover(null); preview.clear(); ui.showAttackTip(null); });
   let hovered = null;
 
@@ -135,7 +137,7 @@ export async function mountGameView(bridge, { container }) {
     if (!el) {
       el = document.createElement('div');
       el.className = 'u3-plate';
-      el.innerHTML = '<b class="k"></b><div class="u3-bars"><div class="u3-name"></div><div class="u3-bar hp"><i></i></div><div class="u3-bar mo"><i></i></div></div><img class="st">';
+      el.innerHTML = '<b class="k"></b><div class="u3-bars"><div class="u3-name"></div><div class="u3-bar hp"><i></i></div><div class="u3-bar mo"><i></i></div></div><b class="st"></b>';
       el.addEventListener('click', (ev) => { ev.stopPropagation(); const cur = el._unit; if (cur && cur.q != null) bridge.click({ q: cur.q, r: cur.r }); });
       el.addEventListener('dblclick', (ev) => { ev.stopPropagation(); const cur = el._unit; if (cur && cur.q != null) bridge.doubleClick({ q: cur.q, r: cur.r }); });
       el.addEventListener('contextmenu', (ev) => { ev.preventDefault(); const cur = el._unit; if (cur) bridge.contextMenu({ q: cur.q, r: cur.r }, ev.clientX, ev.clientY); });
@@ -159,9 +161,10 @@ export async function mountGameView(bridge, { container }) {
       moBar.firstChild.style.width = (Math.max(0, Math.min(1, u.morale / u.maxMorale)) * 100).toFixed(0) + '%';
       moBar.firstChild.style.background = '#9db4d8';
     } else moBar.style.display = 'none';
-    const st = el.querySelector('img.st');
-    const icon = u.stance && !u.isGeneral ? bridge.stanceIcons[u.stance] : null;
-    if (icon && icon.src) { st.src = icon.src; st.style.display = ''; } else st.style.display = 'none';
+    const st = el.querySelector('.st');
+    const sst = u.stance && !u.isGeneral && window.stanceStyle ? window.stanceStyle(u.stance) : null;
+    const stText = sst ? sst.k : '';
+    if (st.textContent !== stText) { st.textContent = stText; st.style.background = sst ? sst.c : ''; st.title = sst ? `Posture : ${sst.name}` : ''; }
     el.classList.toggle('enemy', !u.isMine && !u.isAlly);
     el.classList.toggle('moved', !!(u.hasMoved && u.isMine));
     el.classList.toggle('fleeing', !!u.isFleeing);
@@ -269,6 +272,10 @@ export async function mountGameView(bridge, { container }) {
   function frame(dt = 0.016) {
     if (!view.active) return;
     if (dirty) syncNow();
+    // route waypoints changed (Maj+clic, Échap...): markers and path preview follow
+    const wps = bridge.routeWaypoints || [];
+    const sig = `${bridge.selectedUnit ? bridge.selectedUnit.id : ''}|${wps.join(';')}`;
+    if (sig !== routeSig) { routeSig = sig; preview.showWaypoints(wps); hovered = null; lastMove = lastMove || lastPointer; }
     if (lastMove) {
       const e = lastMove;
       lastMove = null;

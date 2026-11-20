@@ -132,7 +132,7 @@ function run(room, ordersByPlayer, seed) {
     ctl.set(u.id, {
       u, o, owner: p.id,
       budget: u.speedRemaining || 0, speed0: u.speedRemaining || 0,
-      path: (o.type === 'move' || (o.type === 'attack' && (u.range || 1) > 1)) && Array.isArray(o.path) ? o.path.map(([q, r]) => [q, r]) : [],
+      path: (o.type === 'move' || o.type === 'attack' || o.type === 'charge') && Array.isArray(o.path) ? o.path.map(([q, r]) => [q, r]) : [],
       target: (o.type === 'attack' || o.type === 'charge') ? o.targetId : null,
       lastSeen: null,
       ranged: o.type === 'attack' && (u.range || 1) > 1,
@@ -366,8 +366,10 @@ function run(room, ordersByPlayer, seed) {
       const t = targetUnit(c);
       if (!t) { c.done = true; return null; }
       if (seen[c.owner].has(t.id)) c.lastSeen = [t.q, t.r];
+      if (c.lastSeen && hexDistance(u.q, u.r, c.lastSeen[0], c.lastSeen[1]) <= 1) return null;
+      // route chosen by the player: followed first (contact with the target stops it), then the unit closes in
+      if (c.path.length) return c.path[0];
       if (!c.lastSeen) return null;
-      if (hexDistance(u.q, u.r, c.lastSeen[0], c.lastSeen[1]) <= 1) return null;
       return approachStep(c, c.lastSeen[0], c.lastSeen[1]);
     }
     return null;
@@ -423,7 +425,11 @@ function run(room, ordersByPlayer, seed) {
       if (!step) continue;
       const cost = stepCost(room, c.u, c.u.q, c.u.r, step[0], step[1]);
       const minStep = c.moved === 0 && c.budget > 0 && c.budget === c.speed0; // nothing spent yet: one step is always allowed
-      if (!isFinite(cost) || (cost > c.budget + 1e-9 && !minStep)) { c.done = true; if (c.o.type === 'move') c.path = []; continue; }
+      if (!isFinite(cost) || (cost > c.budget + 1e-9 && !minStep)) {
+        // a melee attacker whose route no longer fits drops it and closes in directly on the next tick
+        if (!c.ranged && c.target && c.path.length && c.path[0] === step) { c.path = []; continue; }
+        c.done = true; if (c.o.type === 'move') c.path = []; continue;
+      }
       props.set(c.u.id, { c, from: [c.u.q, c.u.r], to: step, key: hexKey(step[0], step[1]), cost, ok: true });
     }
     const encounters = [];
