@@ -975,6 +975,7 @@ function handleHexClick(hex) {
 }
 
 function handleDeployClick(hex) {
+  if (deployState?.isReady) { notify('Vous êtes prêt : le déploiement est verrouillé.', 'info'); return; }
   // Clic sur une unité déjà placée → la reprendre
   const clickedUnit = deployState.units.find(u => u.q === hex.q && u.r === hex.r);
   if (clickedUnit) {
@@ -2395,6 +2396,7 @@ function wsDispatch(event, data) {
     case 'deployment_ready_update': {
       if (!isSpectator) notify(`${data.readyCount}/${data.total} joueurs prêts…`, 'info');
       const meReady = (data.readyIds || []).includes(myId);
+      if (deployState) deployState.isReady = meReady;
       setDeployReadyButtons(meReady ? `En attente… (${data.readyCount}/${data.total} prêts)` : `Prêt ! (${data.readyCount}/${data.total})`, meReady);
       break;
     }
