@@ -402,8 +402,7 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
   }
 
   // Resolution message for one recipient (also used on reconnection while the playback runs)
-  function resolutionMessage(room, r, t) {
-    const pb = room.sim && room.sim.playback;
+  function resolutionMessage(room, r, t, pb = room.sim && room.sim.playback) {
     if (!pb) return null;
     let view, start;
     if (r.role === 'spectator') {
@@ -422,8 +421,13 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     const res = room.turns.resolve(room, seed);
     tx.dirty = true;
     log.log && log.log(`[simultaneous] ${room.roomCode} tour ${res.turn} résolu (graine ${seed}, ${res.combats} combats)`);
+    // stored for reconnections during the playback: without the roll breakdowns (room size)
+    const slim = (view) => ({ ticks: view.ticks.map(tk => ({ t: tk.t, events: tk.events.map(e => (e.log && e.log.breakdown ? { ...e, log: { ...e.log, breakdown: undefined } } : e)) })) });
+    const stored = { views: Object.fromEntries(Object.entries(res.views).map(([id, view]) => [id, slim(view)])), full: slim(res.full) };
     room.sim.playback = { turn: res.turn, seed, startedAt: tx.t, endsAt: tx.t + res.durationMs, views: res.views, full: res.full, start: res.start, startAll: res.startAll };
-    emitBuild(tx, 'all', (r) => resolutionMessage(room, r, tx.t));
+    const live = room.sim.playback;
+    emitBuild(tx, 'all', (r) => resolutionMessage(room, r, tx.t, live));
+    room.sim.playback = { ...live, ...stored };
     if (room.phase === 'battle') {
       planningStartFlow(tx, tx.t + res.durationMs);
       room._recordKeyframe();
@@ -538,7 +542,8 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     if (room.phase === 'battle' && room.mode === 'simultaneous' && room.sim) {
       if (room.sim.planningEndsAt) times.push(room.sim.planningEndsAt);
       for (const p of room.players) {
-        if (!p.isEliminated && p.connected === false && p.disconnectedAt && !room.sim.committed[p.id]) times.push(p.disconnectedAt + cfg.absentTurnMs);
+        const at = room.turns.absentReadyAt(room, p, cfg.absentTurnMs);
+        if (at != null && at > now()) times.push(at);
       }
     }
     const dropMs = room.phase === 'lobby' ? cfg.lobbyDropMs
@@ -1017,6 +1022,7 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
   H.set_orders = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
     const p = requirePlanning(tx, connId);
     const room = tx.room;
+    if (data.turn != null && data.turn !== room.turn) fail('stale_turn', 'Ce tour est déjà résolu.');
     const res = engine(room.turns.setOrders(room, p.id, data.orders, data.replace === true));
     tx.dirty = true;
     reply(tx, connId, { event: 'orders_update', turn: room.turn, orders: res.orders, commandPoints: res.commandPoints, committed: !!room.sim.committed[p.id] });

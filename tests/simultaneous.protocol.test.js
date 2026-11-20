@@ -144,11 +144,30 @@ for (const roundTrip of [false, true]) {
     await b2.close();
     await a3.send('commit_orders');
     assert.equal(a3.last('game_state').turn, 3, 'B vient de partir : on l\'attend');
-    h.clock.advance(h.protocol.config.absentTurnMs + 1);
+    const startsAt = a3.last('planning_start').startsAt;
+    h.clock.set(Math.max(h.clock.now(), startsAt) + h.protocol.config.absentTurnMs - 10);
+    await h.protocol.tick(aSession.roomCode);
+    assert.equal(a3.last('game_state').turn, 3, 'l\'absence compte à partir du début de la planification');
+    h.clock.advance(20);
     await h.protocol.tick(aSession.roomCode);
     assert.equal(a3.last('game_state').turn, 4);
   });
 }
+
+test('mode simultané : tous absents → un seul tour résolu par délai d\'absence, pas de boucle', async () => {
+  const h = createHarness();
+  const { a, b } = await simBattle(h, { planningTimer: 0 });
+  const code = a.session.roomCode;
+  const watcher = h.client('w');
+  await watcher.send('join_room', { roomCode: code, playerName: 'W', spectator: true });
+  await a.close();
+  await b.close();
+  h.clock.advance(h.protocol.config.absentTurnMs + 1);
+  for (let i = 0; i < 3; i++) await h.protocol.tick(code);
+  const states = watcher.all('resolution');
+  assert.equal(states.length, 1, 'un tour, puis on attend de nouveau le délai d\'absence');
+  assert.equal(watcher.last('game_state').turn, 2);
+});
 
 test('mode simultané : un joueur qui abandonne ne bloque pas la résolution', async () => {
   const h = createHarness();

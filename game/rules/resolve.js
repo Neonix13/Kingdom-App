@@ -136,7 +136,7 @@ function run(room, ordersByPlayer, seed) {
       target: (o.type === 'attack' || o.type === 'charge') ? o.targetId : null,
       lastSeen: null,
       ranged: o.type === 'attack' && (u.range || 1) > 1,
-      reactor: (u.range || 1) > 1 && !u.isGeneral && (o.type === 'hold') && u.stance === S.reactionFireStance,
+      reactor: false,
       moved: 0, done: false, struck: false, fired: false, breakthrough: 0, chargeUsed: false,
       inRange: new Set(), reactQueue: [],
     });
@@ -184,8 +184,8 @@ function run(room, ordersByPlayer, seed) {
       if (o.ability && u.isGeneral) {
         const res = room.useGeneralAbility(c.owner, null, o.ability.targetId || null);
         if (res.ok) {
-          const ev = { k: 'ability', u: u.id, playerId: c.owner, name: res.combatLog.abilityUsed, effects: res.combatLog.effects, targetPlayerId: res.combatLog.targetPlayerId || null };
-          for (const id of recipients) send(id, ev);
+          const ev = { k: 'ability', playerId: c.owner, name: res.combatLog.abilityUsed, effects: res.combatLog.effects, targetPlayerId: res.combatLog.targetPlayerId || null };
+          for (const id of recipients) send(id, sees(id, u) ? { ...ev, u: u.id } : ev);
         }
       }
       if (o.type === 'motivate' && u.isGeneral) {
@@ -200,8 +200,12 @@ function run(room, ordersByPlayer, seed) {
       }
       if (o.type === 'hold') c.done = true;
     }
-    // shooters in reaction stance do not fire at enemies already in range at the start
-    for (const c of ctls()) if (c.reactor) c.inRange = enemiesInRange(c);
+    // shooters in the reaction stance (after this turn's stance changes) holding their ground; they do not fire
+    // at enemies already in range at the start
+    for (const c of ctls()) {
+      c.reactor = (c.u.range || 1) > 1 && !c.u.isGeneral && !c.u.isFleeing && c.o.type === 'hold' && c.u.stance === S.reactionFireStance;
+      if (c.reactor) c.inRange = enemiesInRange(c);
+    }
   }
   finishTick();
 
@@ -495,7 +499,15 @@ function run(room, ordersByPlayer, seed) {
       const hidden = fresh.find(e => !prevSeen[c.owner].has(e.id) && room._inCover(e.q, e.r));
       if (hidden) { ambush(c, hidden); continue; }
       if (c.breakthrough > 0) { c.breakthrough--; continue; }
-      if (c.o.type === 'move') { c.done = true; continue; }
+      if (c.o.type === 'move') {
+        c.done = true;
+        // Percée: a unit in this stance stopped by contact attacks to force its way through
+        if (u.stance === S.breakthroughStance && !u.isGeneral && !c.struck) {
+          fresh.sort((x, y) => idNum(x.id) - idNum(y.id));
+          c.pushThrough = fresh[0].id;
+        }
+        continue;
+      }
       const tgt = targetUnit(c);
       if (tgt && hexDistance(u.q, u.r, tgt.q, tgt.r) <= 1) continue;
       fresh.sort((x, y) => idNum(x.id) - idNum(y.id));
@@ -528,6 +540,14 @@ function run(room, ordersByPlayer, seed) {
       striking.add(c.u.id);
       if (c.u.isGeneral && occ.isGeneral) strikes.push({ a: c.u, t: occ, c, kind: 'melee', duel: true });
       else { const extra = chargeExtra(c, occ); strikes.push({ a: c.u, t: occ, c, kind: extra && extra.charge === 'bonus' ? 'charge' : 'melee', extra }); }
+    }
+    for (const c of ctls()) {
+      if (!c.pushThrough) continue;
+      const occ = room.findUnit(c.pushThrough);
+      c.pushThrough = null;
+      if (!occ || !alive(room, occ) || striking.has(c.u.id) || c.struck || c.u.isFleeing || hexDistance(c.u.q, c.u.r, occ.q, occ.r) > 1) continue;
+      striking.add(c.u.id);
+      strikes.push({ a: c.u, t: occ, c, kind: 'melee', extra: chargeExtra(c, occ) });
     }
     const pending = [];
     for (const c of ctls()) {

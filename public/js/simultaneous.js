@@ -82,7 +82,7 @@
   // ---------- orders ----------
   function setOrder(unitId, order) {
     if (!canPlan()) return;
-    send('set_orders', { orders: { [unitId]: order } });
+    send('set_orders', { orders: { [unitId]: order }, turn: gameState.turn });
   }
 
   function current(unit) { return st.orders[unit.id] || null; }

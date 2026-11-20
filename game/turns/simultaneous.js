@@ -6,7 +6,7 @@
 // default 90), settings.commandPoints (0 = 2 + ceil(Strategy / 3), else a fixed number of orders per turn).
 //
 // Actions (battle phase, players only):
-//   set_orders     { orders: { [unitId]: order | null }, replace?: bool }   replace = the whole set (default: merge, null clears)
+//   set_orders     { orders: { [unitId]: order | null }, replace?: bool, turn? }   replace = the whole set (default: merge, null clears)
 //                  order = { type: 'move', path: [[q, r], ...] (first step to destination, origin excluded) }
 //                        | { type: 'attack' | 'charge', targetId }     (target visible when ordered; shooters fire, melee units close in)
 //                        | { type: 'hold' } | { type: 'motivate' }     (motivate: generals)
@@ -179,10 +179,22 @@ const simultaneous = {
     return { ok: true };
   },
 
-  // Living players who have not committed (absent players count as ready after absentMs)
+  // When an absent (disconnected, uncommitted) player counts as ready: absentMs after the later of its
+  // disconnection and the start of this planning
+  absentReadyAt(room, p, absentMs) {
+    const sim = ensureSim(room);
+    if (p.isEliminated || p.connected !== false || !p.disconnectedAt || sim.committed[p.id]) return null;
+    return Math.max(p.disconnectedAt, sim.planningStartsAt || 0) + absentMs;
+  },
+
+  // Living players who have not committed (absent players count as ready, see absentReadyAt)
   waiting(room, now, absentMs) {
     const sim = ensureSim(room);
-    return alivePlayers(room).filter(p => !sim.committed[p.id] && !(p.connected === false && p.disconnectedAt && now - p.disconnectedAt >= absentMs)).map(p => p.id);
+    return alivePlayers(room).filter(p => {
+      if (sim.committed[p.id]) return false;
+      const at = simultaneous.absentReadyAt(room, p, absentMs);
+      return at == null || now < at;
+    }).map(p => p.id);
   },
 
   commitStatus(room) {

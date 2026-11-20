@@ -314,3 +314,30 @@ test('simultané : unités en fuite au tick 0, motivation', () => {
   assert.ok(t0.some(e => (e.k === 'fled' || e.k === 'flee') && e.u === B[0].id));
   assert.ok(res.views.p0.ticks[0].events.some(e => e.k === 'motivate' && e.u === gen.id && typeof e.d20 === 'number'));
 });
+
+test('simultané : tir de réaction selon la posture prise ce tour (pas celle d\'avant)', () => {
+  const run = (stance, ordered) => {
+    const { room, A, B, T } = setup({ p0: [{ typeId: 'archer', count: 1 }] });
+    put(room, A[0], 4, 4, { stance }); put(room, B[0], 8, 4);
+    if (ordered) order(room, 'p0', { [A[0].id]: { type: 'hold', stance: ordered } });
+    order(room, 'p1', { [B[0].id]: { type: 'move', path: [[7, 4], [6, 4]] } });
+    return combats(T.resolve(room, 18)).filter(e => e.kind === 'reaction').length;
+  };
+  assert.equal(run('marche', 'defense_distance'), 1, 'posture prise au tick 0 : réagit');
+  assert.equal(run('defense_distance', 'combat'), 0, 'posture quittée au tick 0 : ne réagit plus');
+});
+
+test('simultané : Percée — arrêtée au contact, l\'unité attaque et, si elle l\'emporte, poursuit d\'une case', () => {
+  const { room, A, B, T } = setup();
+  put(room, A[0], 4, 4, { stance: 'percee' }); put(room, B[0], 7, 3, { vitality: 1, morale: 1, stance: 'repos' });
+  A[0].speedRemaining = 4;
+  order(room, 'p0', { [A[0].id]: { type: 'move', path: [[5, 4], [6, 4], [7, 4], [8, 4]] } });
+  const res = T.resolve(room, 19);
+  const c = combats(res);
+  assert.equal(c.length, 1);
+  assert.equal(c[0].log.attackerId, A[0].id);
+  assert.equal(c[0].t, 2, 'frappe en arrivant au contact');
+  const moves = events(res).filter(e => e.k === 'move' && e.u === A[0].id);
+  assert.ok(moves.some(m => m.t === 3), 'repart au tick suivant après la mêlée gagnée');
+  assert.ok(A[0].q >= 7);
+});

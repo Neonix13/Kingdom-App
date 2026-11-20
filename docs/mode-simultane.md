@@ -8,7 +8,7 @@ Code : `game/turns/simultaneous.js` (contrôleur, protocole documenté en tête 
 
 1. **Planification** : chaque joueur sélectionne ses unités et leur donne des ordres. Les ordres ne sont jamais envoyés aux autres joueurs ni aux spectateurs.
 2. **Validation** : bouton « Ordres prêts » (on peut revenir en arrière avec « Modifier les ordres » tant que la résolution n'a pas commencé). Chacun voit qui a validé, jamais quoi.
-3. La résolution démarre quand **tous les joueurs en vie ont validé**, ou à l'expiration du **minuteur de planification** (les ordres déjà donnés sont exécutés, même non validés). Un joueur **déconnecté depuis 30 s** est considéré comme prêt (ses ordres déjà donnés s'appliquent, ses autres unités tiennent). Abandon après 10 min d'absence, comme en mode classique.
+3. La résolution démarre quand **tous les joueurs en vie ont validé**, ou à l'expiration du **minuteur de planification** (les ordres déjà donnés sont exécutés, même non validés). Un joueur **déconnecté depuis 30 s** (comptées à partir du début de la planification au plus tôt) est considéré comme prêt (ses ordres déjà donnés s'appliquent, ses autres unités tiennent). Abandon après 10 min d'absence, comme en mode classique.
 4. **Lecture** : chaque client rejoue la chronologie tick par tick (animation 2D/3D, combats), puis le tour suivant commence. Le minuteur du tour suivant ne démarre qu'à la fin de la durée estimée de la lecture.
 
 Il n'y a ni initiative ni manches : un tour = une planification + une résolution. L'heure avance d'un cran par tour (jour / nuit identiques au mode classique).
@@ -55,7 +55,7 @@ La résolution s'arrête au premier tick sans déplacement ni combat (40 ticks a
 
 - Une unité qui **arrive au contact** d'un ennemi visible s'arrête. Un simple déplacement n'attaque pas ; une unité qui avait un ordre d'attaque ou de charge frappe l'ennemi qui l'a arrêtée si ce n'est pas sa cible.
 - Une unité qui découvre ainsi un ennemi **caché** (forêt, bâtiment) tombe dans une **embuscade** : elle s'arrête, perd le reste de sa vitesse, et l'embusqué est révélé.
-- **Percée** : une unité en posture Percée qui remporte sa mêlée (cible détruite, en fuite, ou plus de dégâts infligés que reçus) peut continuer son déplacement d'une case en ignorant la zone de contrôle une fois.
+- **Percée** : une unité en posture Percée qui se déplace et est arrêtée par un contact **attaque** l'ennemi qui l'arrête ; si elle remporte la mêlée (cible détruite, en fuite, ou plus de dégâts infligés que reçus), elle poursuit son déplacement d'une case en ignorant la zone de contrôle une fois.
 
 ### Combats
 
