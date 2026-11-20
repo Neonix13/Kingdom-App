@@ -474,6 +474,15 @@ function resizeCanvas() {
   render();
 }
 window.addEventListener('resize', resizeCanvas);
+if (window.ResizeObserver) {
+  let lastW = 0, lastH = 0;
+  new ResizeObserver(() => {
+    const area = document.getElementById('canvas-area');
+    if (area.clientWidth === lastW && area.clientHeight === lastH) return;
+    lastW = area.clientWidth; lastH = area.clientHeight;
+    resizeCanvas();
+  }).observe(document.getElementById('canvas-area'));
+}
 
 // ---- RENDER ----
 function render() {
