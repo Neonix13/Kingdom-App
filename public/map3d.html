@@ -6,29 +6,39 @@
 <title>Kingdom Battleground — 3D Map</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; }
-  #canvas3d { display: block; width: 100vw; height: 100vh; }
+  body { overflow: hidden; background: #0b0d10; font-family: 'Segoe UI', system-ui, sans-serif; }
+  #canvas3d { display: block; width: 100vw; height: 100vh; outline: none; }
   #loading {
     position: fixed; inset: 0; display: flex; flex-direction: column;
     align-items: center; justify-content: center;
-    background: #0a0a0f; color: #c8b06a; z-index: 100;
-    transition: opacity 0.6s;
+    background: radial-gradient(ellipse at 50% 40%, #1b1a16 0%, #0a0a0c 70%);
+    color: #d9bf78; z-index: 100; transition: opacity 1.2s ease;
   }
   #loading.hidden { opacity: 0; pointer-events: none; }
-  #loading h1 { font-size: 28px; margin-bottom: 16px; letter-spacing: 2px; }
-  #loading .bar { width: 300px; height: 4px; background: #222; border-radius: 2px; }
-  #loading .bar-fill { height: 100%; background: #c8b06a; border-radius: 2px; transition: width 0.3s; }
+  #loading h1 { font-size: 30px; font-weight: 300; margin-bottom: 22px; letter-spacing: 9px; }
+  #loading .bar { width: 320px; height: 2px; background: rgba(217,191,120,0.15); }
+  #loading .bar-fill { height: 100%; background: linear-gradient(90deg, #8a7440, #f2d68e); transition: width 0.25s; }
+  #loading p { margin-top: 12px; font-size: 12px; letter-spacing: 2px; opacity: 0.55; }
   #hud {
-    position: fixed; top: 16px; left: 16px; color: #c8b06a;
-    font-size: 13px; background: rgba(10,10,15,0.7); padding: 10px 14px;
-    border-radius: 8px; border: 1px solid rgba(200,176,106,0.2);
-    pointer-events: none; line-height: 1.6;
+    position: fixed; top: 16px; left: 16px; color: #e3cf96;
+    font-size: 12px; background: rgba(12,12,16,0.55); padding: 12px 16px;
+    border-radius: 10px; border: 1px solid rgba(217,191,120,0.18);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    line-height: 1.7; user-select: none; transition: opacity 0.4s;
   }
+  #hud .title { font-size: 13px; letter-spacing: 3px; font-weight: 600; margin-bottom: 4px; }
+  #hud .stats { color: #bfb08a; font-variant-numeric: tabular-nums; }
+  #hud .keys { margin-top: 6px; color: #8e8670; font-size: 11px; }
+  #hud .keys b { color: #d9bf78; font-weight: 600; }
+  #hud label { display: flex; align-items: center; gap: 8px; margin-top: 6px; color: #bfb08a; }
+  #hud input[type=range] { width: 140px; accent-color: #d9bf78; }
   #controls {
     position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
-    color: #888; font-size: 12px; background: rgba(10,10,15,0.6);
-    padding: 8px 16px; border-radius: 6px; pointer-events: none;
+    color: #9a927c; font-size: 11px; background: rgba(12,12,16,0.45);
+    padding: 7px 16px; border-radius: 999px; pointer-events: none; letter-spacing: 0.5px;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); transition: opacity 0.4s;
   }
+  body.clean #hud, body.clean #controls { opacity: 0; pointer-events: none; }
 </style>
 </head>
 <body>
@@ -36,13 +46,18 @@
 <div id="loading">
   <h1>KINGDOM BATTLEGROUND</h1>
   <div class="bar"><div class="bar-fill" id="loadBar" style="width:0%"></div></div>
-  <p style="margin-top:10px;font-size:13px;opacity:0.6" id="loadText">Loading map data...</p>
+  <p id="loadText">Loading map data...</p>
 </div>
 
-<div id="hud"></div>
-<div id="controls">LMB drag: orbit &nbsp;|&nbsp; RMB drag: pan &nbsp;|&nbsp; Scroll: zoom &nbsp;|&nbsp; R: reset camera</div>
+<div id="hud">
+  <div class="title">KINGDOM · 3D MAP</div>
+  <div class="stats" id="stats"></div>
+  <label>Time of day <input type="range" id="tod" min="5.5" max="20.5" step="0.05" value="16.2"></label>
+  <div class="keys"><b>G</b> grid · <b>C</b> cinematic · <b>Q</b> quality · <b>H</b> hide UI · <b>R</b> reset</div>
+</div>
+<div id="controls">Left drag: orbit &nbsp;·&nbsp; Right drag: pan &nbsp;·&nbsp; Scroll: zoom</div>
 
-<canvas id="canvas3d"></canvas>
+<canvas id="canvas3d" tabindex="0"></canvas>
 
 <script type="importmap">
 {
@@ -56,13 +71,21 @@
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { Water } from 'three/addons/objects/Water.js';
 import { Sky } from 'three/addons/objects/Sky.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { makeNoise2D, makeRng, fbm2, ridged2, makeTileableNoiseData } from './js/map3d/noise.js';
+import { G, installHeightFog, patchLit } from './js/map3d/shaderPatches.js';
+import { createWaterMaterial } from './js/map3d/water.js';
+import * as VEG from './js/map3d/vegetation.js';
+import { createPost, QualityGovernor } from './js/map3d/post.js';
+import { createCloudLayer } from './js/map3d/clouds.js';
 
 // --- Constants ---
 const HEX_SIZE = 1.0;
 const HEX_HEIGHT_STEP = 1.0;
 const WATER_LEVEL = 0.35;
+const RIVERBED_HEIGHT = -0.15;
+const STREAM_DEPTH = 0.5;
 const sqrt3 = Math.sqrt(3);
 
 // Map image calibration (must match hexGrid.js / game.js)
@@ -72,41 +95,40 @@ const MAP_ORIG_Y = 190;
 const MAP_IMG_W = 8800;
 const MAP_IMG_H = 7200;
 
+const params = new URLSearchParams(location.search);
+
 // --- Loading ---
 const loadBar = document.getElementById('loadBar');
 const loadText = document.getElementById('loadText');
-function setProgress(pct, text) {
+const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
+async function setProgress(pct, text) {
   loadBar.style.width = pct + '%';
   if (text) loadText.textContent = text;
+  await nextFrame();
 }
 
-// --- Fetch map data ---
-setProgress(5, 'Fetching terrain data...');
-const [terrainData, heightData, segmentData] = await Promise.all([
+installHeightFog(0.5, 0.05);
+
+await setProgress(5, 'Fetching terrain data...');
+const [terrainData, heightData, segmentData, decor] = await Promise.all([
   fetch('/data/terrain.json').then(r => r.json()),
   fetch('/data/height.json').then(r => r.json()),
   fetch('/data/segments.json').then(r => r.json()),
+  fetch('/data/decor.json').then(r => (r.ok ? r.json() : {})).catch(() => ({})),
 ]);
-// Segment lookup (module-scope, used by terrain mesh + building code)
 const segSet = new Map();
-for (const [segKey, segType] of Object.entries(segmentData)) {
-  segSet.set(segKey, segType);
-}
+for (const [segKey, segType] of Object.entries(segmentData)) segSet.set(segKey, segType);
 function getSegType(q1, r1, q2, r2) {
   return segSet.get(`${q1},${r1}|${q2},${r2}`) || segSet.get(`${q2},${r2}|${q1},${r1}`) || null;
 }
 
-setProgress(20, 'Processing hex grid...');
+await setProgress(12, 'Processing hex grid...');
 
-// --- Build hex set using the same bounds logic as game.js ---
-// Only include hexes whose center falls within the map image
+// --- Hex set (same bounds logic as game.js) ---
 const allHexes = new Map();
 const S = sqrt3;
 const qMin = Math.floor(-MAP_ORIG_X / (MAP_HEX_SIZE * 1.5)) - 1;
 const qMax = Math.ceil((MAP_IMG_W - MAP_ORIG_X) / (MAP_HEX_SIZE * 1.5)) + 1;
-
-let minQ = Infinity, maxQ = -Infinity, minR = Infinity, maxR = -Infinity;
-
 for (let q = qMin; q <= qMax; q++) {
   const rMin = Math.floor((-MAP_ORIG_Y - MAP_HEX_SIZE * S / 2 * q) / (MAP_HEX_SIZE * S)) - 1;
   const rMax = Math.ceil((MAP_IMG_H - MAP_ORIG_Y - MAP_HEX_SIZE * S / 2 * q) / (MAP_HEX_SIZE * S)) + 1;
@@ -115,183 +137,109 @@ for (let q = qMin; q <= qMax; q++) {
     const imgY = MAP_HEX_SIZE * (S / 2 * q + S * r) + MAP_ORIG_Y;
     if (imgX < 0 || imgX > MAP_IMG_W || imgY < 0 || imgY > MAP_IMG_H) continue;
     const key = `${q},${r}`;
-    const terrain = terrainData[key] || 'plain';
-    const height = heightData[key] || 0;
-    allHexes.set(key, { q, r, terrain, height });
-    if (q < minQ) minQ = q; if (q > maxQ) maxQ = q;
-    if (r < minR) minR = r; if (r > maxR) maxR = r;
+    allHexes.set(key, { q, r, terrain: terrainData[key] || 'plain', height: heightData[key] || 0 });
   }
 }
-
-setProgress(30, 'Initializing renderer...');
-
-// --- Three.js setup ---
-const canvas = document.getElementById('canvas3d');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.1;
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-
-const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0xc4b98a, 0.003);
-renderer.setClearColor(0xc4b98a);
-
-// Compute map center
-const centerQ = (minQ + maxQ) / 2;
-const centerR = (minR + maxR) / 2;
-const centerPos = hexToWorld(centerQ, centerR);
-
-const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 800);
-
-const controls = new OrbitControls(camera, canvas);
-controls.enableDamping = true;
-controls.dampingFactor = 0.08;
-controls.maxPolarAngle = Math.PI / 2.15;
-controls.minDistance = 5;
-controls.maxDistance = 200;
-controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
-
-const savedCam = JSON.parse(localStorage.getItem('map3d_cam') || 'null');
-if (savedCam) {
-  camera.position.set(savedCam.px, savedCam.py, savedCam.pz);
-  controls.target.set(savedCam.tx, savedCam.ty, savedCam.tz);
-} else {
-  camera.position.set(centerPos.x + 25, 30, centerPos.z + 25);
-  controls.target.set(centerPos.x, 2, centerPos.z);
-}
-controls.update();
-
-controls.addEventListener('change', () => {
-  localStorage.setItem('map3d_cam', JSON.stringify({
-    px: camera.position.x, py: camera.position.y, pz: camera.position.z,
-    tx: controls.target.x, ty: controls.target.y, tz: controls.target.z,
-  }));
-});
 
 // --- Hex math (flat-top) ---
 function hexToWorld(q, r) {
-  const x = HEX_SIZE * (3 / 2 * q);
-  const z = HEX_SIZE * (sqrt3 / 2 * q + sqrt3 * r);
-  return { x, z };
+  return { x: HEX_SIZE * (3 / 2 * q), z: HEX_SIZE * (sqrt3 / 2 * q + sqrt3 * r) };
 }
-
-function getHexElevation(q, r) {
-  const key = `${q},${r}`;
-  const h = heightData[key] || 0;
-  return h * HEX_HEIGHT_STEP;
+function hexCorner(wx, wz, i) {
+  const a = (Math.PI / 3) * i;
+  return { x: wx + HEX_SIZE * Math.cos(a), z: wz + HEX_SIZE * Math.sin(a) };
 }
-
-// --- Hex prism geometry ---
-function createHexPrismGeometry(radius, topY, bottomY) {
-  const positions = [];
-  const normals = [];
-  const uvs = [];
-  const indices = [];
-
-  // Top face vertices (center + 6 corners)
-  const topCenter = [0, topY, 0];
-  const topCorners = [];
-  for (let i = 0; i < 6; i++) {
-    const angle = (Math.PI / 3) * i;
-    topCorners.push([
-      radius * Math.cos(angle),
-      topY,
-      radius * Math.sin(angle)
-    ]);
-  }
-
-  // Bottom corners
-  const botCorners = topCorners.map(c => [c[0], bottomY, c[2]]);
-
-  // -- Top face (fan from center) --
-  const vi = positions.length / 3;
-  positions.push(...topCenter);
-  normals.push(0, 1, 0);
-  uvs.push(0.5, 0.5);
-  for (let i = 0; i < 6; i++) {
-    positions.push(...topCorners[i]);
-    normals.push(0, 1, 0);
-    uvs.push(0.5 + 0.5 * Math.cos((Math.PI / 3) * i), 0.5 + 0.5 * Math.sin((Math.PI / 3) * i));
-  }
-  // Top face: CCW winding when viewed from above (+Y)
-  for (let i = 0; i < 6; i++) {
-    indices.push(vi, vi + 1 + ((i + 1) % 6), vi + 1 + i);
-  }
-
-  // -- Side faces (6 quads) --
-  for (let i = 0; i < 6; i++) {
-    const next = (i + 1) % 6;
-    const si = positions.length / 3;
-
-    // Normal for this side face (pointing outward)
-    const mx = (topCorners[i][0] + topCorners[next][0]) / 2;
-    const mz = (topCorners[i][2] + topCorners[next][2]) / 2;
-    const len = Math.sqrt(mx * mx + mz * mz) || 1;
-    const nx = mx / len, nz = mz / len;
-
-    positions.push(...topCorners[i]);    normals.push(nx, 0, nz); uvs.push(0, 1);
-    positions.push(...topCorners[next]); normals.push(nx, 0, nz); uvs.push(1, 1);
-    positions.push(...botCorners[next]); normals.push(nx, 0, nz); uvs.push(1, 0);
-    positions.push(...botCorners[i]);    normals.push(nx, 0, nz); uvs.push(0, 0);
-
-    // Winding: outward = toward (mx, mz) from center (0,0)
-    const dy = bottomY - topY; // negative
-    const fnx = -(topCorners[next][2] - topCorners[i][2]) * dy;
-    const fnz = (topCorners[next][0] - topCorners[i][0]) * dy;
-    if (mx * fnx + mz * fnz > 0) {
-      indices.push(si, si + 1, si + 2, si, si + 2, si + 3);
-    } else {
-      indices.push(si, si + 2, si + 1, si, si + 3, si + 2);
-    }
-  }
-
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-  geo.setIndex(indices);
-  return geo;
+function getCornerKey(x, z) {
+  return `${Math.round(x * 1000)},${Math.round(z * 1000)}`;
 }
+const smoothstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+const lerp = (a, b, t) => a + (b - a) * t;
 
-setProgress(40, 'Building terrain meshes...');
+// Real board bounds from hex positions
+let bx0 = Infinity, bx1 = -Infinity, bz0 = Infinity, bz1 = -Infinity;
+for (const h of allHexes.values()) {
+  const p = hexToWorld(h.q, h.r);
+  bx0 = Math.min(bx0, p.x - 1); bx1 = Math.max(bx1, p.x + 1);
+  bz0 = Math.min(bz0, p.z - sqrt3 / 2); bz1 = Math.max(bz1, p.z + sqrt3 / 2);
+}
+const BCX = (bx0 + bx1) / 2, BCZ = (bz0 + bz1) / 2;
 
-// --- Materials ---
-const terrainColors = {
-  plain:    { base: 0x7da648, variation: 0.12 },
-  forest:   { base: 0x3a6e28, variation: 0.08 },
-  river:    { base: 0x3a7cbd, variation: 0.05 },
-  road:     { base: 0xb09a72, variation: 0.06 },
-  building: { base: 0x9a8b78, variation: 0.04 },
-  bridge:   { base: 0x8a7b68, variation: 0.03 },
+const HEX_DIRS = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
+// Maps HEX_DIRS index → geometric edge index (edge between corner i and corner i+1)
+const DIR_TO_GEO_EDGE = [0, 5, 4, 3, 2, 1];
+// Corner i is shared with the neighbors across its two adjacent edges.
+const CORNER_NEIGHBORS = [
+  [[1, -1], [1, 0]],
+  [[1, 0], [0, 1]],
+  [[0, 1], [-1, 1]],
+  [[-1, 1], [-1, 0]],
+  [[-1, 0], [0, -1]],
+  [[0, -1], [1, -1]],
+];
+
+await setProgress(18, 'Initializing renderer...');
+
+// --- Renderer ---
+const canvas = document.getElementById('canvas3d');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, stencil: false, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.autoUpdate = false;
+const maxAniso = renderer.capabilities.getMaxAnisotropy();
+
+const scene = new THREE.Scene();
+const FOG_COLOR = new THREE.Color(0xbccad6);
+scene.fog = new THREE.FogExp2(FOG_COLOR.getHex(), 0.0034);
+scene.background = FOG_COLOR.clone();
+
+const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.3, 1400);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.dampingFactor = 0.07;
+controls.maxPolarAngle = Math.PI / 2.12;
+controls.minDistance = 3;
+controls.maxDistance = 150;
+controls.zoomSpeed = 1.1;
+controls.autoRotateSpeed = 0.35;
+controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+
+const intro = { active: false, t: 0, dur: 5.5, from: null, to: null };
+const DEFAULT_VIEW = {
+  px: BCX + 30, py: 30, pz: BCZ + 34,
+  tx: BCX + 4, ty: 1, tz: BCZ + 4,
 };
-
-function getTerrainColor(terrain, q, r) {
-  const info = terrainColors[terrain] || terrainColors.plain;
-  const color = new THREE.Color(info.base);
-  // Deterministic subtle variation per hex
-  const hash = Math.sin(q * 127.1 + r * 311.7) * 43758.5453;
-  const variation = (hash - Math.floor(hash)) * 2 - 1;
-  const hsl = {};
-  color.getHSL(hsl);
-  hsl.l = Math.max(0.05, Math.min(0.7, hsl.l + variation * info.variation));
-  hsl.h += variation * 0.015;
-  color.setHSL(hsl.h, hsl.s, hsl.l);
-  return color;
+function applyView(v) {
+  camera.position.set(v.px, v.py, v.pz);
+  controls.target.set(v.tx, v.ty, v.tz);
+  controls.update();
 }
+controls.addEventListener('change', () => {
+  const t = controls.target;
+  t.x = Math.min(bx1 + 8, Math.max(bx0 - 8, t.x));
+  t.z = Math.min(bz1 + 8, Math.max(bz0 - 8, t.z));
+  t.y = Math.min(12, Math.max(-1, t.y));
+  if (intro.active) return;
+  localStorage.setItem('map3d_cam', JSON.stringify({
+    px: camera.position.x, py: camera.position.y, pz: camera.position.z,
+    tx: t.x, ty: t.y, tz: t.z,
+  }));
+});
+applyView(JSON.parse(localStorage.getItem('map3d_cam') || 'null') || DEFAULT_VIEW);
 
-// Group hexes by type (used for trees, buildings, roads, bridges later)
-const hexesByType = {};
-for (const [key, hex] of allHexes) {
-  const t = hex.terrain;
-  if (!hexesByType[t]) hexesByType[t] = [];
-  hexesByType[t].push(hex);
-}
+// --- Shared noise texture ---
+const noiseTex = new THREE.DataTexture(makeTileableNoiseData(256), 256, 256, THREE.RGBAFormat);
+noiseTex.wrapS = noiseTex.wrapT = THREE.RepeatWrapping;
+noiseTex.magFilter = THREE.LinearFilter;
+noiseTex.minFilter = THREE.LinearMipmapLinearFilter;
+noiseTex.generateMipmaps = true;
+noiseTex.needsUpdate = true;
+G.uNoise.value = noiseTex;
 
-setProgress(50, 'Generating terrain mesh...');
-
+// --- Terrain textures ---
 const texLoader = new THREE.TextureLoader();
 const TERRAIN_TEX_PATHS = [
   'assets/textures/grass.png',
@@ -299,52 +247,200 @@ const TERRAIN_TEX_PATHS = [
   'assets/textures/dirt.png',
   'assets/textures/rock-ground.png',
   'assets/textures/cliff-rock.png',
+  'assets/textures/dry-grass.png',
 ];
 const terrainTextures = TERRAIN_TEX_PATHS.map(p => {
   const t = texLoader.load(p);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.colorSpace = THREE.SRGBColorSpace;
-  t.minFilter = THREE.LinearMipmapLinearFilter;
-  t.magFilter = THREE.LinearFilter;
+  t.anisotropy = maxAniso;
   return t;
 });
-
-const TERRAIN_INDEX = { plain: 0, forest: 1, road: 2, building: 3 };
 const TEX_UV_SCALE = 0.5;
 
-const INNER_RADIUS = HEX_SIZE;
-const HEX_DIRS = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
-// Maps HEX_DIRS index → geometric edge index (edge between corner i and corner i+1)
-const DIR_TO_GEO_EDGE = [0, 5, 4, 3, 2, 1];
+// --- Visual type per hex ---
+const fieldSet = new Set(decor.fields || []);
+function isWaterHex(h) { return h.terrain === 'river' || h.terrain === 'bridge'; }
+function visualType(h) {
+  if (isWaterHex(h)) return 'water';
+  if (h.terrain !== 'plain') return h.terrain;
+  if (fieldSet.has(`${h.q},${h.r}`)) return 'field';
+  if (h.height >= 5) return 'rocky';
+  if (h.height >= 3) return 'highland';
+  return 'plain';
+}
+const VT_STYLE = {
+  plain:    { color: 0x83a24c, tex: 0, variation: 0.03 },
+  forest:   { color: 0x5d7038, tex: 1, variation: 0.03 },
+  road:     { color: 0xa8916f, tex: 2, variation: 0.02 },
+  building: { color: 0x9a8b78, tex: 3, variation: 0.02 },
+  field:    { color: 0xe0bd62, tex: 5, variation: 0.025 },
+  highland: { color: 0xb8a070, tex: 5, variation: 0.03 },
+  rocky:    { color: 0x9f9483, tex: 3, variation: 0.03 },
+  water:    { color: 0x7a6a55, tex: 3, variation: 0.0 },
+};
+const vtypeOf = new Map();
+for (const [k, h] of allHexes) vtypeOf.set(k, visualType(h));
+const hexesByType = {};
+for (const h of allHexes.values()) (hexesByType[h.terrain] ||= []).push(h);
 
-// Corner-to-neighboring-hexes mapping for flat-top hex (q,r)
-// Corners at i*60°. Edge (corner i → corner i+1) faces a specific HEX_DIRS neighbor:
-//   edge(0→1)=HEX_DIRS[0]=[1,0]   edge(1→2)=HEX_DIRS[5]=[0,1]
-//   edge(2→3)=HEX_DIRS[4]=[-1,1]  edge(3→4)=HEX_DIRS[3]=[-1,0]
-//   edge(4→5)=HEX_DIRS[2]=[0,-1]  edge(5→0)=HEX_DIRS[1]=[1,-1]
-// Corner i is shared with the neighbors across its two adjacent edges.
-const CORNER_NEIGHBORS = [
-  [[1, -1], [1, 0]],   // corner 0 (0°):   edge(5→0)=[1,-1] & edge(0→1)=[1,0]
-  [[1, 0], [0, 1]],    // corner 1 (60°):  edge(0→1)=[1,0]  & edge(1→2)=[0,1]
-  [[0, 1], [-1, 1]],   // corner 2 (120°): edge(1→2)=[0,1]  & edge(2→3)=[-1,1]
-  [[-1, 1], [-1, 0]],  // corner 3 (180°): edge(2→3)=[-1,1] & edge(3→4)=[-1,0]
-  [[-1, 0], [0, -1]],  // corner 4 (240°): edge(3→4)=[-1,0] & edge(4→5)=[0,-1]
-  [[0, -1], [1, -1]],  // corner 5 (300°): edge(4→5)=[0,-1] & edge(5→0)=[1,-1]
-];
+function styleOf(h) { return VT_STYLE[vtypeOf.get(`${h.q},${h.r}`)] || VT_STYLE.plain; }
+function hexColor(h) {
+  const st = styleOf(h);
+  const color = new THREE.Color(st.color);
+  const hash = Math.sin(h.q * 127.1 + h.r * 311.7) * 43758.5453;
+  const v = (hash - Math.floor(hash)) * 2 - 1;
+  const hsl = {};
+  color.getHSL(hsl);
+  color.setHSL(hsl.h + v * 0.01, hsl.s, Math.max(0.05, Math.min(0.75, hsl.l + v * st.variation)));
+  return color;
+}
+const hexTex = (h) => styleOf(h).tex;
+const effH = (h) => (isWaterHex(h) ? RIVERBED_HEIGHT : h.height * HEX_HEIGHT_STEP);
 
-// --- Unified terrain mesh with inner-ring height transitions ---
+// --- Streams (river segments along hex edges), footbridges and compound gateways ---
+function edgeCorners(q1, r1, q2, r2) {
+  const d = HEX_DIRS.findIndex(([a, b]) => a === q2 - q1 && b === r2 - r1);
+  if (d < 0) return null;
+  const geo = DIR_TO_GEO_EDGE[d];
+  const c = hexToWorld(q1, r1);
+  return [hexCorner(c.x, c.z, geo), hexCorner(c.x, c.z, (geo + 1) % 6)];
+}
+function parseSeg(segKey) {
+  const [A, B] = segKey.split('|');
+  const [q1, r1] = A.split(',').map(Number);
+  const [q2, r2] = B.split(',').map(Number);
+  return { q1, r1, q2, r2 };
+}
+const streamEdges = [];
+const streamCornerKeys = new Set();
+const footbridges = [];
+const gateways = [];
+for (const [segKey, type] of Object.entries(segmentData)) {
+  if (type !== 'river' && type !== 'passerelle') continue;
+  const s = parseSeg(segKey);
+  const ec = edgeCorners(s.q1, s.r1, s.q2, s.r2);
+  if (!ec) continue;
+  const ha = allHexes.get(`${s.q1},${s.r1}`), hb = allHexes.get(`${s.q2},${s.r2}`);
+  if (type === 'passerelle' && ((ha && ha.terrain === 'building') || (hb && hb.terrain === 'building'))) {
+    gateways.push({ ...s, a: ec[0], b: ec[1] });
+    continue;
+  }
+  streamEdges.push({ ...s, a: ec[0], b: ec[1], type });
+  streamCornerKeys.add(getCornerKey(ec[0].x, ec[0].z));
+  streamCornerKeys.add(getCornerKey(ec[1].x, ec[1].z));
+  if (type === 'passerelle') footbridges.push({ ...s, a: ec[0], b: ec[1] });
+}
+
+await setProgress(25, 'Building terrain...');
+
+// --- Terrain material (shared by board and surroundings) ---
+const terrainUniforms = { uGrid: { value: 0.14 } };
+function makeTerrainMaterial({ grid = false, snow = false } = {}) {
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.93, metalness: 0.0, envMapIntensity: 0.6 });
+  patchLit(mat, {}, (shader) => {
+    for (let i = 0; i < terrainTextures.length; i++) shader.uniforms['uTex' + i] = { value: terrainTextures[i] };
+    shader.uniforms.uGrid = terrainUniforms.uGrid;
+    const defs = (grid ? '#define GRID\n' : '') + (snow ? '#define SNOW\n' : '');
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>
+      attribute vec3 terrainBlendIds;
+      attribute vec3 terrainBlendWeights;
+      varying vec3 vBlendIds;
+      varying vec3 vBlendWeights;
+      varying vec3 vWN;`);
+    shader.vertexShader = shader.vertexShader.replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>
+      vWN = normalize( mat3( modelMatrix ) * objectNormal );
+      vBlendIds = terrainBlendIds;
+      vBlendWeights = terrainBlendWeights;`);
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `${defs}#include <common>
+      uniform sampler2D uTex0, uTex1, uTex2, uTex3, uTex4, uTex5;
+      uniform float uGrid;
+      varying vec3 vBlendIds;
+      varying vec3 vBlendWeights;
+      varying vec3 vWN;
+      vec3 tSample( int idx, vec2 uv ) {
+        if ( idx <= 0 ) return texture2D( uTex0, uv ).rgb;
+        else if ( idx == 1 ) return texture2D( uTex1, uv ).rgb;
+        else if ( idx == 2 ) return texture2D( uTex2, uv ).rgb;
+        else if ( idx == 3 ) return texture2D( uTex3, uv ).rgb;
+        else if ( idx == 4 ) return texture2D( uTex4, uv ).rgb;
+        return texture2D( uTex5, uv ).rgb;
+      }
+      vec3 tLayer( int idx, vec2 uvA, vec2 uvB, float m ) {
+        return mix( tSample( idx, uvA ), tSample( idx, uvB ), m );
+      }
+      vec3 rockTriplanar( vec3 p, vec3 n ) {
+        vec3 bf = pow( abs( n ), vec3( 4.0 ) );
+        bf /= ( bf.x + bf.y + bf.z );
+        float sc = ${(TEX_UV_SCALE * 0.9).toFixed(3)};
+        return texture2D( uTex4, p.zy * sc ).rgb * bf.x + texture2D( uTex4, p.xz * sc ).rgb * bf.y + texture2D( uTex4, p.xy * sc ).rgb * bf.z;
+      }`);
+    shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+      {
+        vec3 wN = normalize( vWN );
+        vec2 uvA = vPWorld.xz * ${TEX_UV_SCALE.toFixed(3)};
+        vec2 uvB = mat2( 0.8, -0.6, 0.6, 0.8 ) * vPWorld.xz * ${(TEX_UV_SCALE * 0.31).toFixed(4)} + vec2( 0.31, 0.17 );
+        float m = 0.3 + 0.4 * texture2D( uNoise, vPWorld.xz * 0.021 ).a;
+        int id0 = int( vBlendIds.x + 0.5 );
+        int id1 = int( vBlendIds.y + 0.5 );
+        int id2 = int( vBlendIds.z + 0.5 );
+        vec3 tex = tLayer( id0, uvA, uvB, m ) * vBlendWeights.x;
+        if ( vBlendWeights.y > 0.001 ) tex += tLayer( id1, uvA, uvB, m ) * vBlendWeights.y;
+        if ( vBlendWeights.z > 0.001 ) tex += tLayer( id2, uvA, uvB, m ) * vBlendWeights.z;
+        float macro = texture2D( uNoise, vPWorld.xz * 0.011 ).g;
+        float micro = texture2D( uNoise, vPWorld.xz * 0.083 ).b;
+        vec3 albedo = diffuseColor.rgb * tex * 2.0;
+        albedo *= ( 0.8 + 0.4 * macro ) * ( 0.92 + 0.16 * micro );
+        float steep = smoothstep( 0.4, 0.68, 1.0 - wN.y );
+        if ( steep > 0.001 ) {
+          vec3 rock = rockTriplanar( vPWorld, wN ) * vec3( 0.95, 0.9, 0.84 ) * 1.6;
+          #ifdef SNOW
+            vec3 rockFar = rockTriplanar( vPWorld * 0.18, wN ) * vec3( 0.95, 0.9, 0.84 ) * 1.6;
+            rock = mix( rock, rockFar, smoothstep( 20.0, 70.0, distance( cameraPosition, vPWorld ) ) );
+            rock = mix( rock, vec3( dot( rock, vec3( 0.3, 0.55, 0.15 ) ) ) * vec3( 0.92, 0.95, 1.0 ), 0.6 );
+          #endif
+          rock *= 0.85 + 0.3 * macro;
+          albedo = mix( albedo, rock, steep );
+        }
+        #ifdef SNOW
+          float sn = texture2D( uNoise, vPWorld.xz * 0.027 ).r;
+          float snow = smoothstep( 27.0, 33.0, vPWorld.y + ( sn - 0.5 ) * 14.0 ) * ( 1.0 - smoothstep( 0.5, 0.8, 1.0 - wN.y ) );
+          albedo = mix( albedo, vec3( 0.86, 0.9, 0.96 ), snow );
+        #endif
+        #ifdef GRID
+          vec2 p = vPWorld.xz;
+          float qf = 2.0 / 3.0 * p.x;
+          float rf = -1.0 / 3.0 * p.x + 0.57735027 * p.y;
+          vec3 cu = vec3( qf, rf, -qf - rf );
+          vec3 rc = floor( cu + 0.5 );
+          vec3 dd = abs( rc - cu );
+          if ( dd.x > dd.y && dd.x > dd.z ) rc.x = -rc.y - rc.z;
+          else if ( dd.y > dd.z ) rc.y = -rc.x - rc.z;
+          vec2 hc = vec2( 1.5 * rc.x, 0.8660254 * rc.x + 1.7320508 * rc.y );
+          vec2 lp = p - hc;
+          float e = max( max( abs( dot( lp, vec2( 0.8660254, 0.5 ) ) ), abs( lp.y ) ), abs( dot( lp, vec2( -0.8660254, 0.5 ) ) ) );
+          float ed = 0.8660254 - e;
+          float fw = fwidth( ed );
+          float line = 1.0 - smoothstep( 0.008, 0.008 + fw * 1.5, ed );
+          float camD = distance( cameraPosition, vPWorld );
+          float gfade = uGrid * ( 1.0 - smoothstep( 60.0, 150.0, camD ) );
+          albedo = mix( albedo, vec3( 1.0, 0.96, 0.82 ) * 0.85, line * gfade );
+        #endif
+        diffuseColor.rgb = albedo;
+      }`);
+  }, `terrain:${grid}:${snow}`);
+  return mat;
+}
+
+// --- Unified board terrain mesh with inner-ring height transitions ---
+let boardGeo;
+const cornerHeights = new Map();
 {
-  const RIVERBED_HEIGHT = -0.15;
-  const WATER_COLOR = new THREE.Color(0x1a6e8a);
-  const RIVERBED_COLOR = new THREE.Color(0x5a5045);
-  const RIVERBED_TEX_INDEX = 3;
-
   const positions = [];
   const colors = [];
   const indices = [];
-  const uvs = [];
-  const tBlendIds = [];   // 3 terrain indices per vertex (vec3)
-  const tBlendWeights = []; // 3 blend weights per vertex (vec3)
+  const tBlendIds = [];
+  const tBlendWeights = [];
   const vertexMap = new Map();
   const centerMap = new Map();
 
@@ -352,173 +448,125 @@ const CORNER_NEIGHBORS = [
     const idx = positions.length / 3;
     positions.push(x, y, z);
     colors.push(color.r, color.g, color.b);
-    uvs.push(x * TEX_UV_SCALE, z * TEX_UV_SCALE);
-    if (blendIds) {
-      tBlendIds.push(blendIds[0], blendIds[1], blendIds[2]);
-      tBlendWeights.push(blendWeights[0], blendWeights[1], blendWeights[2]);
-    } else {
-      tBlendIds.push(0, 0, 0);
-      tBlendWeights.push(1, 0, 0);
-    }
+    tBlendIds.push(blendIds[0], blendIds[1], blendIds[2]);
+    tBlendWeights.push(blendWeights[0], blendWeights[1], blendWeights[2]);
     return idx;
   }
 
-  function getCornerKey(x, z) {
-    return `${Math.round(x * 1000)},${Math.round(z * 1000)}`;
-  }
-
-  // Step 1: Precompute per-edge transition widths (6 per hex)
-  // edgeTransition[i] = how much to pull inner vertex inward on edge i
-  // 0 = no transition (inner vertex at corner), higher = more slope room
+  // Step 1: per-edge transition widths
   const hexInfo = new Map();
-  function getEffectiveHeight(hex) {
-    const isWater = hex.terrain === 'river' || hex.terrain === 'bridge';
-    return isWater ? RIVERBED_HEIGHT : hex.height * HEX_HEIGHT_STEP;
-  }
   for (const [key, hex] of allHexes) {
     let needsRing = false;
     const edgeTransitions = [0, 0, 0, 0, 0, 0];
-    const hexH = getEffectiveHeight(hex);
-
+    const hexH = effH(hex);
     for (let i = 0; i < 6; i++) {
       const [dq, dr] = HEX_DIRS[i];
       const nq = hex.q + dq, nr = hex.r + dr;
       const neighbor = allHexes.get(`${nq},${nr}`);
       const geoEdge = DIR_TO_GEO_EDGE[i];
-
       if (!neighbor) {
         needsRing = true;
         edgeTransitions[geoEdge] = 0.55;
-      } else {
-        const nH = getEffectiveHeight(neighbor);
-        if (Math.abs(hexH - nH) > 0.01) {
-          needsRing = true;
-          const seg = getSegType(hex.q, hex.r, nq, nr);
-          if (seg === 'cliff') {
-            edgeTransitions[geoEdge] = 0.1;
-          } else {
-            edgeTransitions[geoEdge] = 0.7;
-          }
-        }
+      } else if (Math.abs(hexH - effH(neighbor)) > 0.01) {
+        needsRing = true;
+        edgeTransitions[geoEdge] = getSegType(hex.q, hex.r, nq, nr) === 'cliff' ? 0.1 : 0.7;
       }
     }
-
+    const wp = hexToWorld(hex.q, hex.r);
+    for (let c = 0; c < 6; c++) {
+      const cc = hexCorner(wp.x, wp.z, c);
+      if (!streamCornerKeys.has(getCornerKey(cc.x, cc.z))) continue;
+      needsRing = true;
+      edgeTransitions[(c + 5) % 6] = Math.max(edgeTransitions[(c + 5) % 6], 0.3);
+      edgeTransitions[c] = Math.max(edgeTransitions[c], 0.3);
+    }
     hexInfo.set(key, { needsRing, edgeTransitions });
   }
 
-  // Step 2: Create center vertices
+  // Step 2: center vertices
   for (const [key, hex] of allHexes) {
-    const isWater = hex.terrain === 'river' || hex.terrain === 'bridge';
-    const worldPos = hexToWorld(hex.q, hex.r);
-    const y = isWater ? RIVERBED_HEIGHT : hex.height * HEX_HEIGHT_STEP;
-    const color = isWater ? RIVERBED_COLOR.clone() : getTerrainColor(hex.terrain, hex.q, hex.r);
-    const ti = isWater ? RIVERBED_TEX_INDEX : (TERRAIN_INDEX[hex.terrain] !== undefined ? TERRAIN_INDEX[hex.terrain] : 0);
-    const vi = addVertex(worldPos.x, y, worldPos.z, color, [ti, ti, ti], [1, 0, 0]);
-    centerMap.set(key, vi);
+    const wp = hexToWorld(hex.q, hex.r);
+    const ti = hexTex(hex);
+    centerMap.set(key, addVertex(wp.x, effH(hex), wp.z, hexColor(hex), [ti, ti, ti], [1, 0, 0]));
   }
 
-  // Step 3: Create shared corner vertices with blended colors/heights
-  // (includes water neighbors in blending)
-  // Step 4: Create inner ring vertices + triangulation
+  // Step 3/4: shared corners + inner rings
+  const waterColor = new THREE.Color(VT_STYLE.water.color);
   for (const [key, hex] of allHexes) {
-    const isWater = hex.terrain === 'river' || hex.terrain === 'bridge';
     const centerIdx = centerMap.get(key);
-    const worldPos = hexToWorld(hex.q, hex.r);
-    const hexY = getEffectiveHeight(hex);
+    const wp = hexToWorld(hex.q, hex.r);
+    const hexY = effH(hex);
     const info = hexInfo.get(key);
+    const myColor = hexColor(hex);
+    const myTi = hexTex(hex);
 
     const cornerIndices = [];
     for (let i = 0; i < 6; i++) {
-      const angle = (Math.PI / 3) * i;
-      const cx = worldPos.x + INNER_RADIUS * Math.cos(angle);
-      const cz = worldPos.z + INNER_RADIUS * Math.sin(angle);
-      const cornerKey = getCornerKey(cx, cz);
+      const cc = hexCorner(wp.x, wp.z, i);
+      const cornerKey = getCornerKey(cc.x, cc.z);
+      if (vertexMap.has(cornerKey)) { cornerIndices.push(vertexMap.get(cornerKey)); continue; }
 
-      if (vertexMap.has(cornerKey)) {
-        cornerIndices.push(vertexMap.get(cornerKey));
-      } else {
-        const neighborOffsets = CORNER_NEIGHBORS[i];
-        const myColor = isWater ? RIVERBED_COLOR.clone() : getTerrainColor(hex.terrain, hex.q, hex.r);
-        const myTi = isWater ? RIVERBED_TEX_INDEX : (TERRAIN_INDEX[hex.terrain] !== undefined ? TERRAIN_INDEX[hex.terrain] : 0);
-        const blendColors = [myColor];
-        const cornerTerrains = [myTi];
-        let heightSum = hexY;
-        let heightCount = 1;
-
-        for (const [dq, dr] of neighborOffsets) {
-          const nKey = `${hex.q + dq},${hex.r + dr}`;
-          const neighbor = allHexes.get(nKey);
-          if (neighbor) {
-            const nIsWater = neighbor.terrain === 'river' || neighbor.terrain === 'bridge';
-            blendColors.push(nIsWater ? RIVERBED_COLOR.clone() : getTerrainColor(neighbor.terrain, neighbor.q, neighbor.r));
-            cornerTerrains.push(nIsWater ? RIVERBED_TEX_INDEX : (TERRAIN_INDEX[neighbor.terrain] !== undefined ? TERRAIN_INDEX[neighbor.terrain] : 0));
-            heightSum += getEffectiveHeight(neighbor);
-            heightCount++;
-          }
+      const neighborOffsets = CORNER_NEIGHBORS[i];
+      const blendColors = [myColor];
+      const cornerTerrains = [myTi];
+      let heightSum = hexY, heightCount = 1;
+      for (const [dq, dr] of neighborOffsets) {
+        const neighbor = allHexes.get(`${hex.q + dq},${hex.r + dr}`);
+        if (neighbor) {
+          blendColors.push(hexColor(neighbor));
+          cornerTerrains.push(hexTex(neighbor));
+          heightSum += effH(neighbor);
+          heightCount++;
         }
-
-        // Check if any of the 3 edges meeting at this corner are cliffs
-        let cornerIsCliff = false;
-        const [n0dq, n0dr] = neighborOffsets[0];
-        const [n1dq, n1dr] = neighborOffsets[1];
-        const n0q = hex.q + n0dq, n0r = hex.r + n0dr;
-        const n1q = hex.q + n1dq, n1r = hex.r + n1dr;
-        if (getSegType(hex.q, hex.r, n0q, n0r) === 'cliff') cornerIsCliff = true;
-        if (getSegType(hex.q, hex.r, n1q, n1r) === 'cliff') cornerIsCliff = true;
-        if (getSegType(n0q, n0r, n1q, n1r) === 'cliff') cornerIsCliff = true;
-
-        const cornerY = heightSum / heightCount;
-
-        let blended, bIds, bWts;
-        if (cornerIsCliff) {
-          blended = new THREE.Color(0.55, 0.5, 0.45);
-          bIds = [4, 4, 4];
-          bWts = [1, 0, 0];
-        } else {
-          blended = new THREE.Color(0, 0, 0);
-          for (const c of blendColors) {
-            blended.r += c.r; blended.g += c.g; blended.b += c.b;
-          }
-          blended.r /= blendColors.length;
-          blended.g /= blendColors.length;
-          blended.b /= blendColors.length;
-          const n = cornerTerrains.length;
-          const w = 1 / n;
-          bIds = [cornerTerrains[0], cornerTerrains[1 % n], cornerTerrains[2 % n]];
-          bWts = n === 1 ? [1, 0, 0] : n === 2 ? [0.5, 0.5, 0] : [w, w, w];
-        }
-
-        const vi = addVertex(cx, cornerY, cz, blended, bIds, bWts);
-        vertexMap.set(cornerKey, vi);
-        cornerIndices.push(vi);
       }
+      const [n0dq, n0dr] = neighborOffsets[0];
+      const [n1dq, n1dr] = neighborOffsets[1];
+      const n0q = hex.q + n0dq, n0r = hex.r + n0dr;
+      const n1q = hex.q + n1dq, n1r = hex.r + n1dr;
+      const cornerIsCliff = getSegType(hex.q, hex.r, n0q, n0r) === 'cliff'
+        || getSegType(hex.q, hex.r, n1q, n1r) === 'cliff'
+        || getSegType(n0q, n0r, n1q, n1r) === 'cliff';
+      const isStream = streamCornerKeys.has(cornerKey);
+      let cornerY = heightSum / heightCount;
+
+      let blended, bIds, bWts;
+      if (isStream) {
+        cornerY -= STREAM_DEPTH;
+        blended = waterColor.clone();
+        bIds = [3, 3, 3]; bWts = [1, 0, 0];
+      } else if (cornerIsCliff) {
+        blended = new THREE.Color(0.55, 0.5, 0.45);
+        bIds = [4, 4, 4]; bWts = [1, 0, 0];
+      } else {
+        blended = new THREE.Color(0, 0, 0);
+        for (const c of blendColors) { blended.r += c.r; blended.g += c.g; blended.b += c.b; }
+        blended.multiplyScalar(1 / blendColors.length);
+        const n = cornerTerrains.length;
+        const w = 1 / n;
+        bIds = [cornerTerrains[0], cornerTerrains[1 % n], cornerTerrains[2 % n]];
+        bWts = n === 1 ? [1, 0, 0] : n === 2 ? [0.5, 0.5, 0] : [w, w, w];
+      }
+      const vi = addVertex(cc.x, cornerY, cc.z, blended, bIds, bWts);
+      vertexMap.set(cornerKey, vi);
+      cornerHeights.set(cornerKey, cornerY);
+      cornerIndices.push(vi);
     }
 
     if (!info.needsRing) {
-      for (let i = 0; i < 6; i++) {
-        const next = (i + 1) % 6;
-        indices.push(centerIdx, cornerIndices[next], cornerIndices[i]);
-      }
+      for (let i = 0; i < 6; i++) indices.push(centerIdx, cornerIndices[(i + 1) % 6], cornerIndices[i]);
     } else {
-      const hexColor = isWater ? RIVERBED_COLOR.clone() : getTerrainColor(hex.terrain, hex.q, hex.r);
-      const hexTi = isWater ? RIVERBED_TEX_INDEX : (TERRAIN_INDEX[hex.terrain] !== undefined ? TERRAIN_INDEX[hex.terrain] : 0);
       const innerIndices = [];
       const et = info.edgeTransitions;
-
       for (let i = 0; i < 6; i++) {
-        const prevEdge = (i + 5) % 6;
-        const t = Math.max(et[prevEdge], et[i]);
-        const r = INNER_RADIUS * (1 - t);
+        const t = Math.max(et[(i + 5) % 6], et[i]);
+        const rr = HEX_SIZE * (1 - t);
         const angle = (Math.PI / 3) * i;
-        const ix = worldPos.x + r * Math.cos(angle);
-        const iz = worldPos.z + r * Math.sin(angle);
         const isCliff = t > 0 && t <= 0.15;
-        const bIds = isCliff ? [hexTi, 4, hexTi] : [hexTi, hexTi, hexTi];
+        const bIds = isCliff ? [myTi, 4, myTi] : [myTi, myTi, myTi];
         const bWts = isCliff ? [0.2, 0.8, 0] : [1, 0, 0];
-        const vtxColor = isCliff ? new THREE.Color(0.55, 0.5, 0.45) : hexColor.clone();
-        innerIndices.push(addVertex(ix, hexY, iz, vtxColor, bIds, bWts));
+        const vtxColor = isCliff ? new THREE.Color(0.55, 0.5, 0.45) : myColor.clone();
+        innerIndices.push(addVertex(wp.x + rr * Math.cos(angle), hexY, wp.z + rr * Math.sin(angle), vtxColor, bIds, bWts));
       }
-
       for (let i = 0; i < 6; i++) {
         const next = (i + 1) % 6;
         indices.push(centerIdx, innerIndices[next], innerIndices[i]);
@@ -528,251 +576,655 @@ const CORNER_NEIGHBORS = [
     }
   }
 
-  const terrainGeo = new THREE.BufferGeometry();
-  terrainGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  terrainGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  terrainGeo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-  terrainGeo.setAttribute('terrainBlendIds', new THREE.Float32BufferAttribute(new Float32Array(tBlendIds), 3));
-  terrainGeo.setAttribute('terrainBlendWeights', new THREE.Float32BufferAttribute(new Float32Array(tBlendWeights), 3));
-  terrainGeo.setIndex(indices);
-  terrainGeo.computeVertexNormals();
-  terrainGeo.computeBoundingSphere();
+  boardGeo = new THREE.BufferGeometry();
+  boardGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  boardGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  boardGeo.setAttribute('terrainBlendIds', new THREE.Float32BufferAttribute(tBlendIds, 3));
+  boardGeo.setAttribute('terrainBlendWeights', new THREE.Float32BufferAttribute(tBlendWeights, 3));
+  boardGeo.setIndex(indices);
+  boardGeo.computeVertexNormals();
+  boardGeo.computeBoundingSphere();
 
-  const terrainMat = new THREE.MeshStandardMaterial({
-    vertexColors: true,
-    roughness: 0.75,
-    metalness: 0.02,
-    flatShading: false,
-  });
-  terrainMat.userData.terrainTextures = terrainTextures;
-  terrainMat.onBeforeCompile = (shader) => {
-    shader.uniforms.uTex0 = { value: terrainTextures[0] };
-    shader.uniforms.uTex1 = { value: terrainTextures[1] };
-    shader.uniforms.uTex2 = { value: terrainTextures[2] };
-    shader.uniforms.uTex3 = { value: terrainTextures[3] };
-    shader.uniforms.uTex4 = { value: terrainTextures[4] };
-
-    shader.vertexShader = shader.vertexShader.replace(
-      '#include <common>',
-      `#include <common>
-       attribute vec3 terrainBlendIds;
-       attribute vec3 terrainBlendWeights;
-       varying vec3 vBlendIds;
-       varying vec3 vBlendWeights;
-       varying vec2 vWorldUv;
-       varying vec3 vWorldPos;`
-    );
-    shader.vertexShader = shader.vertexShader.replace(
-      '#include <begin_vertex>',
-      `#include <begin_vertex>
-       vBlendIds = terrainBlendIds;
-       vBlendWeights = terrainBlendWeights;
-       vec3 wp = (modelMatrix * vec4(position, 1.0)).xyz;
-       vWorldUv = wp.xz * ${TEX_UV_SCALE.toFixed(1)};
-       vWorldPos = wp;`
-    );
-
-    shader.fragmentShader = shader.fragmentShader.replace(
-      '#include <common>',
-      `#include <common>
-       uniform sampler2D uTex0, uTex1, uTex2, uTex3, uTex4;
-       varying vec3 vBlendIds;
-       varying vec3 vBlendWeights;
-       varying vec2 vWorldUv;
-       varying vec3 vWorldPos;
-       vec4 sampleTerrain(int idx, vec2 uv) {
-         if (idx <= 0) return texture2D(uTex0, uv);
-         else if (idx == 1) return texture2D(uTex1, uv);
-         else if (idx == 2) return texture2D(uTex2, uv);
-         else if (idx == 3) return texture2D(uTex3, uv);
-         else return texture2D(uTex4, uv);
-       }
-       vec4 sampleTerrainTriplanar(int idx, vec3 wPos, vec3 norm) {
-         float sc = ${TEX_UV_SCALE.toFixed(1)};
-         vec3 bf = abs(norm);
-         bf /= (bf.x + bf.y + bf.z);
-         vec4 xp = sampleTerrain(idx, wPos.zy * sc);
-         vec4 yp = sampleTerrain(idx, wPos.xz * sc);
-         vec4 zp = sampleTerrain(idx, wPos.xy * sc);
-         return xp * bf.x + yp * bf.y + zp * bf.z;
-       }`
-    );
-    shader.fragmentShader = shader.fragmentShader.replace(
-      '#include <color_fragment>',
-      `#include <color_fragment>
-       vec3 fNorm = normalize(vNormal);
-       float steepness = 1.0 - abs(fNorm.y);
-       vec4 t0, t1, t2;
-       int id0 = int(floor(vBlendIds.x + 0.5));
-       int id1 = int(floor(vBlendIds.y + 0.5));
-       int id2 = int(floor(vBlendIds.z + 0.5));
-       if (id0 == 4) { t0 = sampleTerrainTriplanar(4, vWorldPos, fNorm); }
-       else { t0 = sampleTerrain(id0, vWorldUv); }
-       if (id1 == 4) { t1 = sampleTerrainTriplanar(4, vWorldPos, fNorm); }
-       else { t1 = sampleTerrain(id1, vWorldUv); }
-       if (id2 == 4) { t2 = sampleTerrainTriplanar(4, vWorldPos, fNorm); }
-       else { t2 = sampleTerrain(id2, vWorldUv); }
-       vec3 blendedTex = t0.rgb * vBlendWeights.x + t1.rgb * vBlendWeights.y + t2.rgb * vBlendWeights.z;
-       diffuseColor.rgb *= blendedTex * 2.0;`
-    );
-  };
-
-  const terrainMesh = new THREE.Mesh(terrainGeo, terrainMat);
-  terrainMesh.castShadow = true;
-  terrainMesh.receiveShadow = true;
-  scene.add(terrainMesh);
+  const boardMesh = new THREE.Mesh(boardGeo, makeTerrainMaterial({ grid: true }));
+  boardMesh.castShadow = true;
+  boardMesh.receiveShadow = true;
+  scene.add(boardMesh);
 }
 
-setProgress(65, 'Adding trees...');
-
-// --- Trees for forest hexes ---
-const treeGroup = new THREE.Group();
-scene.add(treeGroup);
-
-function seededRandom(seed) {
-  let s = seed;
-  return function() {
-    s = (s * 16807 + 0) % 2147483647;
-    return (s - 1) / 2147483646;
-  };
+// --- Heightfields (CPU) ---
+function makeHF(x0, z0, w, h, res) {
+  const nx = Math.ceil(w / res) + 1, nz = Math.ceil(h / res) + 1;
+  return { x0, z0, res, nx, nz, data: new Float32Array(nx * nz).fill(NaN) };
+}
+function rasterize(hf, pos, idx) {
+  const { x0, z0, res, nx, nz, data } = hf;
+  for (let t = 0; t < idx.length; t += 3) {
+    const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
+    const ax = (pos[a] - x0) / res, az = (pos[a + 2] - z0) / res, ay = pos[a + 1];
+    const bxx = (pos[b] - x0) / res, bzz = (pos[b + 2] - z0) / res, by = pos[b + 1];
+    const cx = (pos[c] - x0) / res, cz = (pos[c + 2] - z0) / res, cy = pos[c + 1];
+    const den = (bzz - cz) * (ax - cx) + (cx - bxx) * (az - cz);
+    if (Math.abs(den) < 1e-12) continue;
+    const i0 = Math.max(0, Math.ceil(Math.min(ax, bxx, cx))), i1 = Math.min(nx - 1, Math.floor(Math.max(ax, bxx, cx)));
+    const j0 = Math.max(0, Math.ceil(Math.min(az, bzz, cz))), j1 = Math.min(nz - 1, Math.floor(Math.max(az, bzz, cz)));
+    for (let j = j0; j <= j1; j++) {
+      for (let i = i0; i <= i1; i++) {
+        const w1 = ((bzz - cz) * (i - cx) + (cx - bxx) * (j - cz)) / den;
+        const w2 = ((cz - az) * (i - cx) + (ax - cx) * (j - cz)) / den;
+        const w3 = 1 - w1 - w2;
+        if (w1 < -1e-5 || w2 < -1e-5 || w3 < -1e-5) continue;
+        data[j * nx + i] = w1 * ay + w2 * by + w3 * cy;
+      }
+    }
+  }
+}
+function sampleHF(hf, x, z) {
+  const fx = (x - hf.x0) / hf.res, fz = (z - hf.z0) / hf.res;
+  const i = Math.floor(fx), j = Math.floor(fz);
+  if (i < 0 || j < 0 || i >= hf.nx - 1 || j >= hf.nz - 1) return NaN;
+  const tx = fx - i, tz = fz - j, d = hf.data, n = hf.nx;
+  const a = d[j * n + i], b = d[j * n + i + 1], c = d[(j + 1) * n + i], e = d[(j + 1) * n + i + 1];
+  return (a * (1 - tx) + b * tx) * (1 - tz) + (c * (1 - tx) + e * tx) * tz;
 }
 
-const trunkGeo = new THREE.CylinderGeometry(0.03, 0.06, 1.2, 5);
-const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3520, roughness: 0.9 });
-const canopyGeos = [
-  new THREE.ConeGeometry(0.25, 0.6, 6),
-  new THREE.SphereGeometry(0.22, 6, 5),
-  new THREE.ConeGeometry(0.2, 0.7, 5),
-];
-const canopyMats = [
-  new THREE.MeshStandardMaterial({ color: 0x1e5a12, roughness: 0.8, flatShading: true }),
-  new THREE.MeshStandardMaterial({ color: 0x164a0c, roughness: 0.8, flatShading: true }),
-  new THREE.MeshStandardMaterial({ color: 0x246618, roughness: 0.8, flatShading: true }),
-];
+const boardHF = makeHF(bx0 - 1, bz0 - 1, bx1 - bx0 + 2, bz1 - bz0 + 2, 0.08);
+rasterize(boardHF, boardGeo.attributes.position.array, boardGeo.index.array);
+const boardHeight = (x, z) => sampleHF(boardHF, x, z);
 
-const forestHexes = hexesByType['forest'] || [];
-for (const hex of forestHexes) {
-  const rng = seededRandom(hex.q * 1000 + hex.r);
-  const treeCount = 3 + Math.floor(rng() * 4);
-  const worldPos = hexToWorld(hex.q, hex.r);
-  const baseY = hex.height * HEX_HEIGHT_STEP;
+await setProgress(35, 'Carving river valleys...');
 
-  for (let t = 0; t < treeCount; t++) {
-    const angle = rng() * Math.PI * 2;
-    const dist = rng() * HEX_SIZE * 0.55;
-    const tx = worldPos.x + Math.cos(angle) * dist;
-    const tz = worldPos.z + Math.sin(angle) * dist;
-    const scale = 0.6 + rng() * 0.8;
+// --- River exits → valley channels in the surroundings ---
+const channels = [];
+{
+  const keyOf = (h) => `${h.q},${h.r}`;
+  const edgeRiver = [];
+  for (const h of allHexes.values()) {
+    if (h.terrain !== 'river') continue;
+    if (HEX_DIRS.some(([dq, dr]) => !allHexes.has(`${h.q + dq},${h.r + dr}`))) edgeRiver.push(h);
+  }
+  const edgeSet = new Set(edgeRiver.map(keyOf));
+  const seen = new Set();
+  let seed = 900;
+  for (const h of edgeRiver) {
+    if (seen.has(keyOf(h))) continue;
+    const group = [];
+    const queue = [h];
+    seen.add(keyOf(h));
+    while (queue.length) {
+      const g = queue.shift();
+      group.push(g);
+      for (const [dq, dr] of HEX_DIRS) {
+        const k = `${g.q + dq},${g.r + dr}`;
+        if (edgeSet.has(k) && !seen.has(k)) { seen.add(k); queue.push(allHexes.get(k)); }
+      }
+    }
+    let sx = 0, sz = 0;
+    for (const g of group) { const p = hexToWorld(g.q, g.r); sx += p.x; sz += p.z; }
+    sx /= group.length; sz /= group.length;
+    const [, dx, dz] = [[sx - bx0, -1, 0], [bx1 - sx, 1, 0], [sz - bz0, 0, -1], [bz1 - sz, 0, 1]].sort((a, b) => a[0] - b[0])[0];
+    const n = makeNoise2D(seed++);
+    const pts = [[sx - dx * 2, sz - dz * 2]];
+    let x = sx, z = sz;
+    const base = Math.atan2(dz, dx);
+    for (let k = 0; k < 110; k++) {
+      const ang = base + n(k * 0.06, 0.37) * 0.85 * smoothstep(0, 6, k);
+      x += Math.cos(ang) * 3; z += Math.sin(ang) * 3;
+      pts.push([x, z]);
+    }
+    const segs = [];
+    for (let k = 0; k < pts.length - 1; k++) {
+      const [ax, az] = pts[k], [bx, bz] = pts[k + 1];
+      segs.push({ ax, az, bx, bz, w0: 0.9 + k * 0.03, w1: 0.9 + (k + 1) * 0.03 });
+    }
+    const chunks = [];
+    for (let k = 0; k < segs.length; k += 10) {
+      const part = segs.slice(k, k + 10);
+      let mnx = Infinity, mxx = -Infinity, mnz = Infinity, mxz = -Infinity;
+      for (const s of part) {
+        mnx = Math.min(mnx, s.ax, s.bx); mxx = Math.max(mxx, s.ax, s.bx);
+        mnz = Math.min(mnz, s.az, s.bz); mxz = Math.max(mxz, s.az, s.bz);
+      }
+      chunks.push({ segs: part, mnx: mnx - 60, mxx: mxx + 60, mnz: mnz - 60, mxz: mxz + 60 });
+    }
+    channels.push({ chunks });
+  }
+}
+function riverInfo(x, z) {
+  let best = Infinity, bw = 1;
+  for (const ch of channels) {
+    for (const c of ch.chunks) {
+      if (x < c.mnx || x > c.mxx || z < c.mnz || z > c.mxz) continue;
+      for (const s of c.segs) {
+        const vx = s.bx - s.ax, vz = s.bz - s.az;
+        const t = Math.max(0, Math.min(1, ((x - s.ax) * vx + (z - s.az) * vz) / (vx * vx + vz * vz)));
+        const dx = x - (s.ax + vx * t), dz = z - (s.az + vz * t);
+        const d = dx * dx + dz * dz;
+        if (d < best) { best = d; bw = s.w0 + (s.w1 - s.w0) * t; }
+      }
+    }
+  }
+  return best === Infinity ? null : { dist: Math.sqrt(best), w: bw };
+}
 
-    const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-    trunk.position.set(tx, baseY - 0.15 * scale, tz);
-    trunk.scale.setScalar(scale);
-    trunk.castShadow = true;
-    treeGroup.add(trunk);
+await setProgress(42, 'Raising mountains...');
 
-    const canopyType = Math.floor(rng() * canopyGeos.length);
-    const canopy = new THREE.Mesh(canopyGeos[canopyType], canopyMats[Math.floor(rng() * canopyMats.length)]);
-    canopy.position.set(tx, baseY + 0.35 * scale, tz);
-    canopy.scale.setScalar(scale);
-    canopy.rotation.y = rng() * Math.PI;
-    canopy.castShadow = true;
-    treeGroup.add(canopy);
+// --- Surrounding landscape ---
+const nHill = makeNoise2D(101), nMtn = makeNoise2D(202), nWarp = makeNoise2D(303), nDet = makeNoise2D(404), nForest = makeNoise2D(505);
+function edgeHeight(x, z) {
+  const clampX = (v) => Math.min(bx1 - 1.1, Math.max(bx0 + 1.1, v));
+  const clampZ = (v) => Math.min(bz1 - 1.1, Math.max(bz0 + 1.1, v));
+  const cx = clampX(x), cz = clampZ(z);
+  const alongX = cx === x;
+  let sum = 0, n = 0;
+  for (let k = -3; k <= 3; k++) {
+    const h = boardHeight(alongX ? clampX(cx + k * 0.9) : cx, alongX ? cz : clampZ(cz + k * 0.9));
+    if (!Number.isNaN(h)) { sum += h; n++; }
+  }
+  return n ? sum / n : 1;
+}
+function forestMask(x, z) {
+  return fbm2(nForest, x * 0.04, z * 0.04, 3) + fbm2(nForest, x * 0.15 + 50, z * 0.15, 2) * 0.25;
+}
+function surroundHeight(x, z) {
+  const dx = Math.max(0, bx0 - x, x - bx1), dz = Math.max(0, bz0 - z, z - bz1);
+  const d = Math.max(0.4, Math.hypot(dx, dz));
+  const edge = edgeHeight(x, z);
+  const wx = x + fbm2(nWarp, x * 0.008, z * 0.008, 3) * 30;
+  const wz = z + fbm2(nWarp, x * 0.008 + 17.3, z * 0.008 - 9.1, 3) * 30;
+  const hills = fbm2(nHill, wx * 0.028, wz * 0.028, 4);
+  const envl = fbm2(nHill, x * 0.004 + 3.1, z * 0.004 - 1.7, 3) * 0.5 + 0.5;
+  const mtn = Math.pow(ridged2(nMtn, wx * 0.0055, wz * 0.0055, 5), 1.25) * (40 + 48 * envl);
+  const det = fbm2(nDet, x * 0.18, z * 0.18, 3);
+  const t1 = smoothstep(0, 12, d);
+  const t2 = smoothstep(14, 110, d);
+  const riv = riverInfo(x, z);
+  const valley = riv ? smoothstep(riv.w + 1, riv.w + 40, riv.dist) : 1;
+  let h = edge
+    + t1 * (0.8 + hills * 1.6 + d * 0.03) * (0.35 + 0.65 * valley)
+    + Math.pow(t2, 1.5) * (mtn + hills * 8 + 4) * (0.2 + 0.8 * valley)
+    + det * 0.22 * t1;
+  if (riv) {
+    const s = smoothstep(riv.w * 0.5, riv.w + 2.2 + d * 0.015, riv.dist);
+    h = lerp(RIVERBED_HEIGHT - 0.25, h, s);
+  }
+  return h;
+}
+
+const SUR = { half: 380, n: 400, a: 0.25 };
+const SN = SUR.n + 1;
+const sAxis = new Float32Array(SN);
+for (let i = 0; i < SN; i++) { const u = i / SUR.n * 2 - 1; sAxis[i] = SUR.half * (SUR.a * u + (1 - SUR.a) * u * u * u); }
+let surGeo;
+{
+  const count = SN * SN;
+  const pos = new Float32Array(count * 3);
+  const col = new Float32Array(count * 3);
+  const bIds = new Float32Array(count * 3);
+  const bW = new Float32Array(count * 3);
+  const covered = new Uint8Array(count);
+  for (let j = 0; j < SN; j++) {
+    for (let i = 0; i < SN; i++) {
+      const k = j * SN + i;
+      const x = BCX + sAxis[i], z = BCZ + sAxis[j];
+      const bh = boardHeight(x, z);
+      let h;
+      if (!Number.isNaN(bh)) { h = bh - 0.06; covered[k] = 1; }
+      else h = surroundHeight(x, z);
+      pos[k * 3] = x; pos[k * 3 + 1] = h; pos[k * 3 + 2] = z;
+    }
+  }
+  const idx = [];
+  for (let j = 0; j < SUR.n; j++) {
+    for (let i = 0; i < SUR.n; i++) {
+      const a = j * SN + i, b = a + 1, c = a + SN, d = c + 1;
+      if (covered[a] && covered[b] && covered[c] && covered[d]) continue;
+      idx.push(a, c, b, b, c, d);
+    }
+  }
+  surGeo = new THREE.BufferGeometry();
+  surGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  surGeo.setIndex(idx);
+  surGeo.computeVertexNormals();
+  const nor = surGeo.attributes.normal.array;
+  const grassA = new THREE.Color(0x7c9a46), grassB = new THREE.Color(0x9da957), alpine = new THREE.Color(0x6d7f4a);
+  const c = new THREE.Color();
+  for (let k = 0; k < count; k++) {
+    const x = pos[k * 3], y = pos[k * 3 + 1], z = pos[k * 3 + 2];
+    const ny = nor[k * 3 + 1];
+    const fm = smoothstep(0.05, 0.3, forestMask(x, z)) * (1 - smoothstep(16, 26, y));
+    const rock = Math.min(1, smoothstep(14, 30, y) + smoothstep(0.82, 0.6, ny) * 0.7);
+    const tone = fbm2(nDet, x * 0.02, z * 0.02, 2) * 0.5 + 0.5;
+    c.copy(grassA).lerp(grassB, tone).lerp(alpine, smoothstep(6, 20, y));
+    col[k * 3] = c.r; col[k * 3 + 1] = c.g; col[k * 3 + 2] = c.b;
+    const wr = rock, wf = fm * (1 - rock), wg = Math.max(0, 1 - wr - wf);
+    const s = wg + wf + wr;
+    bIds[k * 3] = 0; bIds[k * 3 + 1] = 1; bIds[k * 3 + 2] = 3;
+    bW[k * 3] = wg / s; bW[k * 3 + 1] = wf / s; bW[k * 3 + 2] = wr / s;
+  }
+  surGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  surGeo.setAttribute('terrainBlendIds', new THREE.BufferAttribute(bIds, 3));
+  surGeo.setAttribute('terrainBlendWeights', new THREE.BufferAttribute(bW, 3));
+  surGeo.computeBoundingSphere();
+  const surMesh = new THREE.Mesh(surGeo, makeTerrainMaterial({ snow: true }));
+  surMesh.castShadow = true;
+  surMesh.receiveShadow = true;
+  scene.add(surMesh);
+}
+
+await setProgress(52, 'Baking heightfields...');
+
+// Coarse global heightfield (surroundings + board) and fine board heightfield: water depth + placement
+const COARSE_N = 2048;
+const coarseHF = makeHF(BCX - SUR.half, BCZ - SUR.half, SUR.half * 2, SUR.half * 2, (SUR.half * 2) / (COARSE_N - 1));
+rasterize(coarseHF, surGeo.attributes.position.array, surGeo.index.array);
+rasterize(coarseHF, boardGeo.attributes.position.array, boardGeo.index.array);
+for (let i = 0; i < boardHF.data.length; i++) {
+  if (Number.isNaN(boardHF.data[i])) {
+    const x = boardHF.x0 + (i % boardHF.nx) * boardHF.res, z = boardHF.z0 + Math.floor(i / boardHF.nx) * boardHF.res;
+    const v = sampleHF(coarseHF, x, z);
+    boardHF.data[i] = Number.isNaN(v) ? -3 : v;
+  }
+}
+const groundHeight = (x, z) => {
+  const b = sampleHF(boardHF, x, z);
+  if (!Number.isNaN(b)) return b;
+  const c = sampleHF(coarseHF, x, z);
+  return Number.isNaN(c) ? 0 : c;
+};
+function hfTexture(hf) {
+  const half = new Uint16Array(hf.data.length);
+  for (let i = 0; i < hf.data.length; i++) {
+    const v = hf.data[i];
+    half[i] = THREE.DataUtils.toHalfFloat(Number.isNaN(v) ? -3 : v);
+  }
+  const t = new THREE.DataTexture(half, hf.nx, hf.nz, THREE.RedFormat, THREE.HalfFloatType);
+  t.magFilter = THREE.LinearFilter;
+  t.minFilter = THREE.LinearFilter;
+  t.needsUpdate = true;
+  return t;
+}
+const fineTex = hfTexture(boardHF);
+const coarseTex = hfTexture(coarseHF);
+const fineBounds = new THREE.Vector4(boardHF.x0, boardHF.z0, (boardHF.nx - 1) * boardHF.res, (boardHF.nz - 1) * boardHF.res);
+const coarseBounds = new THREE.Vector4(coarseHF.x0, coarseHF.z0, (coarseHF.nx - 1) * coarseHF.res, (coarseHF.nz - 1) * coarseHF.res);
+
+await setProgress(58, 'Lighting the sky...');
+
+// --- Sky, sun, environment ---
+const sky = new Sky();
+sky.scale.setScalar(1000);
+sky.material.uniforms.uHorizonColor = { value: FOG_COLOR.clone() };
+sky.material.uniforms.uHorizonMix = { value: 1.0 };
+sky.material.fragmentShader = sky.material.fragmentShader
+  .replace('void main() {', 'uniform vec3 uHorizonColor;\nuniform float uHorizonMix;\nvoid main() {')
+  .replace('gl_FragColor = vec4( retColor, 1.0 );', `
+    float hz = 1.0 - smoothstep( -0.03, 0.22, direction.y );
+    retColor = mix( retColor, uHorizonColor, hz * hz * uHorizonMix );
+    gl_FragColor = vec4( retColor, 1.0 );`);
+scene.add(sky);
+const clouds = createCloudLayer();
+scene.add(clouds);
+const skyU = sky.material.uniforms;
+skyU.turbidity.value = 4.5;
+skyU.rayleigh.value = 1.4;
+skyU.mieCoefficient.value = 0.004;
+skyU.mieDirectionalG.value = 0.86;
+
+const sunDir = new THREE.Vector3(0.5, 0.5, 0.5).normalize();
+const sunLight = new THREE.DirectionalLight(0xffe2b8, 3.2);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.set(4096, 4096);
+sunLight.shadow.bias = -0.0004;
+sunLight.shadow.normalBias = 0.03;
+scene.add(sunLight, sunLight.target);
+const hemiLight = new THREE.HemisphereLight(0xb8d0f0, 0x4a4630, 0.35);
+scene.add(hemiLight);
+
+const pmrem = new THREE.PMREMGenerator(renderer);
+const envScene = new THREE.Scene();
+const envSky = new Sky();
+envSky.material = sky.material;
+envSky.scale.setScalar(50);
+envScene.add(envSky);
+const envGround = new THREE.Mesh(new THREE.CircleGeometry(40, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x3e4a2c }));
+envGround.position.y = -2;
+envScene.add(envGround);
+let envRT = null;
+
+// Light-space fit of the shadow frustum around the board
+const SHADOW_BOX = new THREE.Box3(new THREE.Vector3(bx0 - 18, -1, bz0 - 18), new THREE.Vector3(bx1 + 18, 10, bz1 + 18));
+function fitShadow() {
+  const center = SHADOW_BOX.getCenter(new THREE.Vector3());
+  sunLight.position.copy(center).addScaledVector(sunDir, 150);
+  sunLight.target.position.copy(center);
+  sunLight.target.updateMatrixWorld();
+  sunLight.updateMatrixWorld();
+  const view = new THREE.Matrix4().lookAt(sunLight.position, center, new THREE.Vector3(0, 1, 0));
+  view.setPosition(sunLight.position);
+  const inv = view.clone().invert();
+  const box = new THREE.Box3();
+  const v = new THREE.Vector3();
+  for (let i = 0; i < 8; i++) {
+    v.set(i & 1 ? SHADOW_BOX.max.x : SHADOW_BOX.min.x, i & 2 ? SHADOW_BOX.max.y : SHADOW_BOX.min.y, i & 4 ? SHADOW_BOX.max.z : SHADOW_BOX.min.z);
+    box.expandByPoint(v.applyMatrix4(inv));
+  }
+  const cam = sunLight.shadow.camera;
+  cam.left = box.min.x; cam.right = box.max.x;
+  cam.bottom = box.min.y; cam.top = box.max.y;
+  cam.near = Math.max(0.5, -box.max.z - 60);
+  cam.far = -box.min.z + 10;
+  cam.updateProjectionMatrix();
+  renderer.shadowMap.needsUpdate = true;
+}
+
+const KEY_SUN = new THREE.Color(0xffe6c2), GOLD_SUN = new THREE.Color(0xffb56b), DUSK_SUN = new THREE.Color(0xff8a4a);
+const NIGHT_FOG = new THREE.Color(0x1a2333), DAY_FOG = FOG_COLOR.clone(), GOLD_FOG = new THREE.Color(0xd8c3a8);
+const waterMats = [];
+const lanternMats = [];
+const timeState = { hour: 16.2, night: 0 };
+function setTimeOfDay(hour, { env = true } = {}) {
+  timeState.hour = hour;
+  const dayT = (hour - 6) / 12;
+  const elev = Math.sin(Math.PI * Math.min(1, Math.max(0, dayT))) * 58 - 4 + (dayT < 0 || dayT > 1 ? -10 * Math.min(1, Math.abs(dayT < 0 ? dayT : dayT - 1) * 8) : 0);
+  const az = 60 + dayT * 125;
+  const el = THREE.MathUtils.degToRad(Math.max(elev, -12));
+  const azr = THREE.MathUtils.degToRad(az);
+  const realSun = new THREE.Vector3(Math.cos(el) * Math.cos(azr), Math.sin(el), Math.cos(el) * Math.sin(azr)).normalize();
+  skyU.sunPosition.value.copy(realSun);
+
+  const golden = 1 - smoothstep(6, 26, elev);
+  const night = 1 - smoothstep(-6, 3, elev);
+  timeState.night = night;
+  const sunCol = KEY_SUN.clone().lerp(GOLD_SUN, golden).lerp(DUSK_SUN, smoothstep(0.75, 1, golden));
+  const lightDir = realSun.clone();
+  if (night > 0) lightDir.lerp(new THREE.Vector3(-0.4, 0.75, 0.3).normalize(), night).normalize();
+  if (lightDir.y < 0.06) lightDir.setY(0.06).normalize();
+  sunDir.copy(lightDir);
+  sunLight.color.copy(sunCol).lerp(new THREE.Color(0x8fb0ff), night);
+  sunLight.intensity = lerp(3.3, 1.9, golden) * (1 - night) + 0.45 * night;
+  hemiLight.intensity = lerp(0.35, 0.28, golden) * (1 - night) + 0.12 * night;
+  hemiLight.color.set(0xb8d0f0).lerp(new THREE.Color(0x3a4a70), night);
+
+  const fog = DAY_FOG.clone().lerp(GOLD_FOG, golden * 0.85).lerp(NIGHT_FOG, night);
+  scene.fog.color.copy(fog);
+  scene.background.copy(fog);
+  skyU.uHorizonColor.value.copy(fog);
+  renderer.toneMappingExposure = lerp(1.0, 1.08, golden) * (1 - night) + 1.25 * night;
+  skyU.rayleigh.value = lerp(1.4, 2.4, golden);
+  skyU.turbidity.value = lerp(4.5, 7, golden);
+
+  for (const m of waterMats) {
+    m.uniforms.uSunDir.value.copy(sunDir);
+    m.uniforms.uSunColor.value.copy(sunLight.color).multiplyScalar(1 - night * 0.7);
+    m.uniforms.uSkyHorizon.value.copy(fog);
+    m.uniforms.uSkyZenith.value.set(0x5a8fcc).lerp(new THREE.Color(0xd99a6a), golden * 0.5).lerp(new THREE.Color(0x0c1426), night);
+    m.uniforms.uLight.value = lerp(1.0, 0.85, golden) * (1 - night) + 0.25 * night;
+  }
+  const glow = smoothstep(0.25, 0.95, Math.max(night, golden * 0.4 - 0.1));
+  for (const m of lanternMats) m.emissiveIntensity = 7 * glow;
+  G.uCloudStrength.value = 0.38 * (1 - night);
+  G.uCloudShift.value.set(sunDir.x, sunDir.z).multiplyScalar(1 / Math.max(sunDir.y, 0.2));
+  const cu = clouds.material.uniforms;
+  cu.uLit.value.copy(sunLight.color).multiplyScalar(lerp(1.75, 1.35, golden) * (1 - night) + 0.08 * night).add(new THREE.Color(0.15, 0.17, 0.2));
+  cu.uShade.value.set(0x8c99ab).lerp(new THREE.Color(0xa07d72), golden * 0.6).multiplyScalar(1 - night * 0.85);
+  cu.uHorizon.value.copy(fog);
+
+  fitShadow();
+  if (env) {
+    if (envRT) envRT.dispose();
+    envRT = pmrem.fromScene(envScene, 0.02, 0.1, 200);
+    scene.environment = envRT.texture;
   }
 }
 
-setProgress(75, 'Adding water and sky...');
+await setProgress(62, 'Filling rivers...');
 
-// --- Water plane ---
-const waterGeo = new THREE.PlaneGeometry(600, 600);
-const water = new Water(waterGeo, {
-  textureWidth: 512,
-  textureHeight: 512,
-  waterNormals: new THREE.TextureLoader().load(
-    'https://threejs.org/examples/textures/waternormals.jpg',
-    (tex) => { tex.wrapS = tex.wrapT = THREE.RepeatWrapping; }
-  ),
-  sunDirection: new THREE.Vector3(),
-  sunColor: 0xffffff,
-  waterColor: 0x3333ff,
-  distortionScale: 0.4,
-  fog: scene.fog !== undefined,
-  alpha: 0.92,
-});
-water.rotation.x = -Math.PI / 2;
-water.position.y = WATER_LEVEL;
-water.material.uniforms['size'].value = 8.0;
+// --- Water ---
+const waterNormals = texLoader.load('https://threejs.org/examples/textures/waternormals.jpg');
+waterNormals.wrapS = waterNormals.wrapT = THREE.RepeatWrapping;
+const waterArgs = { fineTex, fineBounds, coarseTex, coarseBounds, normalTex: waterNormals, sunDir, sunColor: sunLight.color };
+const waterMat = createWaterMaterial(waterArgs);
+const water = new THREE.Mesh(new THREE.PlaneGeometry(SUR.half * 2, SUR.half * 2, 1, 1).rotateX(-Math.PI / 2), waterMat);
+water.position.set(BCX, WATER_LEVEL, BCZ);
+water.renderOrder = 1;
 scene.add(water);
+waterMats.push(waterMat);
 
-// Tinted water underlay — a solid colored plane below the water surface for richer color
-const waterUnderlayGeo = new THREE.PlaneGeometry(600, 600);
-const waterUnderlayMat = new THREE.MeshBasicMaterial({ color: 0x0e5a55 });
-const waterUnderlay = new THREE.Mesh(waterUnderlayGeo, waterUnderlayMat);
-waterUnderlay.rotation.x = -Math.PI / 2;
-waterUnderlay.position.y = WATER_LEVEL - 0.05;
-scene.add(waterUnderlay);
+// Stream ribbons along hex edges
+{
+  const pos = [], edge = [], idx = [];
+  const W = 0.21, RISE = 0.31;
+  const joints = new Map();
+  for (const se of streamEdges) {
+    const ka = getCornerKey(se.a.x, se.a.z), kb = getCornerKey(se.b.x, se.b.z);
+    const ya = cornerHeights.get(ka), yb = cornerHeights.get(kb);
+    if (ya === undefined || yb === undefined) continue;
+    const dx = se.b.x - se.a.x, dz = se.b.z - se.a.z;
+    const L = Math.hypot(dx, dz);
+    const px = -dz / L * W, pz = dx / L * W;
+    const base = pos.length / 3;
+    pos.push(se.a.x + px, ya + RISE, se.a.z + pz, se.a.x - px, ya + RISE, se.a.z - pz);
+    pos.push(se.b.x + px, yb + RISE, se.b.z + pz, se.b.x - px, yb + RISE, se.b.z - pz);
+    edge.push(1, -1, 1, -1);
+    idx.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
+    joints.set(ka, { x: se.a.x, z: se.a.z, y: ya + RISE });
+    joints.set(kb, { x: se.b.x, z: se.b.z, y: yb + RISE });
+  }
+  for (const j of joints.values()) {
+    const base = pos.length / 3;
+    pos.push(j.x, j.y - 0.002, j.z); edge.push(0);
+    for (let i = 0; i < 8; i++) {
+      const a = i / 8 * Math.PI * 2;
+      pos.push(j.x + Math.cos(a) * W, j.y - 0.002, j.z + Math.sin(a) * W);
+      edge.push(1);
+    }
+    for (let i = 0; i < 8; i++) idx.push(base, base + 1 + ((i + 1) % 8), base + 1 + i);
+  }
+  if (pos.length) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('edge', new THREE.Float32BufferAttribute(edge, 1));
+    g.setIndex(idx);
+    const ribbonMat = createWaterMaterial({ ...waterArgs, ribbon: true });
+    const ribbons = new THREE.Mesh(g, ribbonMat);
+    ribbons.renderOrder = 2;
+    scene.add(ribbons);
+    waterMats.push(ribbonMat);
+  }
+}
 
-// --- Sky ---
-const sky = new Sky();
-sky.scale.setScalar(450);
-scene.add(sky);
+await setProgress(68, 'Growing forests...');
 
-const skyUniforms = sky.material.uniforms;
-skyUniforms['turbidity'].value = 6;
-skyUniforms['rayleigh'].value = 1.5;
-skyUniforms['mieCoefficient'].value = 0.005;
-skyUniforms['mieDirectionalG'].value = 0.85;
+// --- Vegetation ---
+const vegMat = (opts, key) => patchLit(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0, envMapIntensity: 0.5 }), opts, null, key);
+const treeMatConifer = vegMat({ wind: true, windBend: 0.045, windFreq: 1.1, flutter: 0.004 }, 'conifer');
+const treeMatBroad = vegMat({ wind: true, windBend: 0.06, windFreq: 1.3, flutter: 0.008 }, 'broad');
+const bushMat = vegMat({ wind: true, windBend: 0.5, windFreq: 1.6 }, 'bush');
+const grassMat = vegMat({ wind: true, windBend: 9.0, windFreq: 2.1, fadeNear: 38, fadeFar: 62, noFlip: true }, 'grass');
+grassMat.side = THREE.DoubleSide;
+const wheatMat = vegMat({ wind: true, windBend: 5.0, windFreq: 1.8, fadeNear: 55, fadeFar: 85, noFlip: true }, 'wheat');
+wheatMat.side = THREE.DoubleSide;
+const rockMat = patchLit(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0, flatShading: true, envMapIntensity: 0.5 }), {}, null, 'rock');
 
-const sunPosition = new THREE.Vector3();
-const phi = THREE.MathUtils.degToRad(90 - 45);
-const theta = THREE.MathUtils.degToRad(200);
-sunPosition.setFromSphericalCoords(1, phi, theta);
-skyUniforms['sunPosition'].value.copy(sunPosition);
+const conifers = [[], []], broads = [[], []], farConifers = [], farBroads = [];
+const bushes = [], grass = [], wheat = [], rocks = [];
+const mul = (rng, r, g, b, amt = 0.25) => { const k = 1 + (rng() - 0.5) * amt; return new THREE.Color(r * k * (1 + (rng() - 0.5) * amt * 0.4), g * k, b * k * (1 + (rng() - 0.5) * amt * 0.6)); };
+const nPatch = makeNoise2D(606);
 
-// Update water sun direction
-water.material.uniforms['sunDirection'].value.copy(sunPosition).normalize();
+function randomInHex(cx, cz, rng, radius = 0.86) {
+  for (;;) {
+    const x = (rng() * 2 - 1) * radius, z = (rng() * 2 - 1) * radius;
+    if (Math.abs(z) <= radius * sqrt3 / 2 && Math.abs(x) * sqrt3 / 2 + Math.abs(z) / 2 <= radius * sqrt3 / 2) return [cx + x, cz + z];
+  }
+}
 
-setProgress(80, 'Setting up lighting...');
+// Forest hexes: dense mixed woodland
+for (const hex of hexesByType.forest || []) {
+  const rng = makeRng(hex.q * 7919 + hex.r * 104729 + 13);
+  const wp = hexToWorld(hex.q, hex.r);
+  const pts = [];
+  const target = 10 + Math.floor(rng() * 5);
+  for (let tries = 0; tries < 60 && pts.length < target; tries++) {
+    const [x, z] = randomInHex(wp.x, wp.z, rng, 0.98);
+    if (pts.some(([px, pz]) => (px - x) ** 2 + (pz - z) ** 2 < 0.29 * 0.29)) continue;
+    pts.push([x, z]);
+  }
+  const coniferBias = smoothstep(-0.35, 0.35, nPatch(wp.x * 0.06, wp.z * 0.06)) * 0.8 + 0.1;
+  for (const [x, z] of pts) {
+    const y = groundHeight(x, z) - 0.04;
+    const s = 0.75 + rng() * 0.55;
+    const ry = rng() * Math.PI * 2;
+    if (rng() < coniferBias) {
+      conifers[rng() < 0.6 ? 0 : 1].push({ x, y, z, s, sy: 0.9 + rng() * 0.35, ry, color: mul(rng, 0.92, 1.0, 0.9, 0.35) });
+    } else {
+      const autumn = rng() < 0.08;
+      broads[rng() < 0.5 ? 0 : 1].push({ x, y, z, s: s * 0.95, sy: 0.9 + rng() * 0.25, ry, color: autumn ? mul(rng, 1.5, 0.95, 0.4, 0.3) : mul(rng, 0.95, 1.0, 0.82, 0.35) });
+    }
+  }
+  for (let b = 0; b < 4; b++) {
+    const [x, z] = randomInHex(wp.x, wp.z, rng, 0.95);
+    bushes.push({ x, y: groundHeight(x, z) - 0.02, z, s: 0.6 + rng() * 0.7, ry: rng() * 6.28, color: mul(rng, 0.95, 1.0, 0.85, 0.3) });
+  }
+}
 
-// --- Lighting ---
-const ambientLight = new THREE.AmbientLight(0x8899aa, 0.45);
-scene.add(ambientLight);
+// Plains: grass tufts, occasional bush; fields: wheat; rocky hexes: boulders
+for (const [key, hex] of allHexes) {
+  const vt = vtypeOf.get(key);
+  const rng = makeRng(hex.q * 92821 + hex.r * 68917 + 7);
+  const wp = hexToWorld(hex.q, hex.r);
+  if (vt === 'plain' || vt === 'highland') {
+    const n = vt === 'plain' ? 22 : 12;
+    for (let i = 0; i < n; i++) {
+      const [x, z] = randomInHex(wp.x, wp.z, rng, 1.0);
+      const y = groundHeight(x, z);
+      if (y < WATER_LEVEL + 0.12) continue;
+      grass.push({ x, y: y - 0.01, z, s: 0.8 + rng() * 0.8, sy: 0.8 + rng() * 0.6, ry: rng() * 6.28, color: vt === 'plain' ? mul(rng, 1.0, 1.0, 0.9, 0.3) : mul(rng, 1.25, 1.05, 0.7, 0.2) });
+    }
+    if (rng() < 0.06) {
+      const [x, z] = randomInHex(wp.x, wp.z, rng, 0.7);
+      bushes.push({ x, y: groundHeight(x, z) - 0.02, z, s: 0.6 + rng() * 0.6, ry: rng() * 6.28, color: mul(rng, 1.0, 1.0, 0.85, 0.3) });
+    }
+  } else if (vt === 'field') {
+    const rowA = 0.6;
+    const ca = Math.cos(rowA), sa = Math.sin(rowA);
+    for (let u = -1.0; u <= 1.0; u += 0.16) {
+      for (let v = -1.0; v <= 1.0; v += 0.13) {
+        const lx = u * ca - v * sa + (rng() - 0.5) * 0.05, lz = u * sa + v * ca + (rng() - 0.5) * 0.05;
+        if (Math.abs(lz) > sqrt3 / 2 * 0.98 || Math.abs(lx) * sqrt3 / 2 + Math.abs(lz) / 2 > sqrt3 / 2 * 0.98) continue;
+        const x = wp.x + lx, z = wp.z + lz;
+        wheat.push({ x, y: groundHeight(x, z) - 0.01, z, s: 0.85 + rng() * 0.3, sy: 0.85 + rng() * 0.3, ry: rng() * 6.28, color: mul(rng, 1.0, 0.95, 0.85, 0.2) });
+      }
+    }
+  } else if (vt === 'rocky') {
+    const n = 2 + Math.floor(rng() * 3);
+    for (let i = 0; i < n; i++) {
+      const [x, z] = randomInHex(wp.x, wp.z, rng, 0.85);
+      rocks.push({ x, y: groundHeight(x, z) - 0.05, z, s: 0.25 + rng() * 0.35, sy: 0.7 + rng() * 0.6, ry: rng() * 6.28, rx: (rng() - 0.5) * 0.4, color: mul(rng, 1.05, 1.0, 0.92, 0.35) });
+    }
+    for (let i = 0; i < 8; i++) {
+      const [x, z] = randomInHex(wp.x, wp.z, rng, 1.0);
+      grass.push({ x, y: groundHeight(x, z) - 0.01, z, s: 0.7 + rng() * 0.5, ry: rng() * 6.28, color: mul(rng, 1.2, 1.05, 0.75, 0.2) });
+    }
+  }
+}
 
-const hemiLight = new THREE.HemisphereLight(0xaaccee, 0x556633, 0.6);
-scene.add(hemiLight);
+// Cliffs: craggy rocks embedded along cliff edges + scree at their foot
+for (const [segKey, type] of Object.entries(segmentData)) {
+  if (type !== 'cliff') continue;
+  const s = parseSeg(segKey);
+  const ha = allHexes.get(`${s.q1},${s.r1}`), hb = allHexes.get(`${s.q2},${s.r2}`);
+  const ec = edgeCorners(s.q1, s.r1, s.q2, s.r2);
+  if (!ha || !hb || !ec) continue;
+  const rng = makeRng(s.q1 * 31 + s.r1 * 17 + s.q2 * 13 + s.r2 * 7 + 1);
+  const [hi, lo] = effH(ha) >= effH(hb) ? [ha, hb] : [hb, ha];
+  const ph = hexToWorld(hi.q, hi.r), pl = hexToWorld(lo.q, lo.r);
+  const ox = (pl.x - ph.x) / sqrt3, oz = (pl.z - ph.z) / sqrt3;
+  const n = 3 + Math.floor(rng() * 2);
+  for (let i = 0; i < n; i++) {
+    const t = (i + 0.3 + rng() * 0.4) / n;
+    const ex = ec[0].x + (ec[1].x - ec[0].x) * t, ez = ec[0].z + (ec[1].z - ec[0].z) * t;
+    const off = (rng() - 0.3) * 0.12;
+    const x = ex + ox * off, z = ez + oz * off;
+    rocks.push({ x, y: lerp(effH(lo), effH(hi), 0.35 + rng() * 0.3), z, s: 0.32 + rng() * 0.25, sy: 1.1 + rng() * 0.8, ry: rng() * 6.28, rx: (rng() - 0.5) * 0.5, rz: (rng() - 0.5) * 0.5, color: mul(rng, 0.95, 0.92, 0.88, 0.35) });
+    if (rng() < 0.55) {
+      const d = 0.15 + rng() * 0.25;
+      const sx = ex + ox * d * 1.5, sz = ez + oz * d * 1.5;
+      rocks.push({ x: sx, y: groundHeight(sx, sz) - 0.04, z: sz, s: 0.1 + rng() * 0.12, sy: 0.7 + rng() * 0.4, ry: rng() * 6.28, color: mul(rng, 1.0, 0.97, 0.92, 0.3) });
+    }
+  }
+}
 
-const sunLight = new THREE.DirectionalLight(0xffeebb, 3.5);
-sunLight.position.set(
-  sunPosition.x * 60,
-  sunPosition.y * 60,
-  sunPosition.z * 60
-);
-sunLight.castShadow = true;
-sunLight.shadow.mapSize.width = 4096;
-sunLight.shadow.mapSize.height = 4096;
-sunLight.shadow.camera.near = 1;
-sunLight.shadow.camera.far = 200;
-const shadowSize = 80;
-sunLight.shadow.camera.left = -shadowSize;
-sunLight.shadow.camera.right = shadowSize;
-sunLight.shadow.camera.top = shadowSize;
-sunLight.shadow.camera.bottom = -shadowSize;
-sunLight.shadow.bias = -0.001;
-sunLight.target.position.set(centerPos.x, 0, centerPos.z);
-scene.add(sunLight);
-scene.add(sunLight.target);
+// Surroundings: forests on lower slopes (low-poly LOD), scattered boulders, meadow grass near the board
+{
+  const rng = makeRng(4242);
+  const step = 1.45;
+  for (let z = bz0 - 70; z <= bz1 + 70; z += step) {
+    for (let x = bx0 - 70; x <= bx1 + 70; x += step) {
+      const jx = x + (rng() - 0.5) * step, jz = z + (rng() - 0.5) * step;
+      const d = Math.hypot(Math.max(0, bx0 - jx, jx - bx1), Math.max(0, bz0 - jz, jz - bz1));
+      if (d < 1.2) continue;
+      const y = groundHeight(jx, jz);
+      if (y < WATER_LEVEL + 0.45 || y > 24) continue;
+      const fm = forestMask(jx, jz);
+      const e = 0.6;
+      const gx = groundHeight(jx + e, jz) - groundHeight(jx - e, jz), gz = groundHeight(jx, jz + e) - groundHeight(jx, jz - e);
+      const slope = Math.hypot(gx, gz) / (2 * e);
+      if (rng() < smoothstep(0.02, 0.28, fm) * (1 - smoothstep(0.8, 1.4, slope)) * 0.95) {
+        const s = 0.9 + rng() * 0.8;
+        const ry = rng() * 6.28;
+        const near = d < 6;
+        if (y > 9 || rng() < 0.65) {
+          const it = { x: jx, y: y - 0.08, z: jz, s, sy: 0.9 + rng() * 0.4, ry, color: mul(rng, 0.85, 0.95, 0.88, 0.35) };
+          (near ? conifers[rng() < 0.5 ? 0 : 1] : farConifers).push(it);
+        } else {
+          const it = { x: jx, y: y - 0.08, z: jz, s, sy: 0.9 + rng() * 0.3, ry, color: mul(rng, 1.0, 0.98, 0.8, 0.35) };
+          (near ? broads[rng() < 0.5 ? 0 : 1] : farBroads).push(it);
+        }
+      } else if (slope > 0.7 && rng() < 0.08) {
+        rocks.push({ x: jx, y: y - 0.1, z: jz, s: 0.4 + rng() * 0.9, sy: 0.6 + rng() * 0.5, ry: rng() * 6.28, color: mul(rng, 1.0, 0.97, 0.92, 0.3) });
+      } else if (d < 22 && rng() < 0.3) {
+        grass.push({ x: jx, y: y - 0.01, z: jz, s: 1.0 + rng() * 0.8, sy: 0.8 + rng() * 0.6, ry: rng() * 6.28, color: mul(rng, 1.0, 1.0, 0.9, 0.3) });
+      }
+    }
+  }
+}
 
-setProgress(85, 'Adding buildings...');
+const vegGroup = new THREE.Group();
+scene.add(vegGroup);
+[VEG.makeConiferGeometry(0), VEG.makeConiferGeometry(1)].forEach((g, i) => vegGroup.add(VEG.instanced(g, treeMatConifer, conifers[i], { castShadow: true })));
+[VEG.makeBroadleafGeometry(0), VEG.makeBroadleafGeometry(1)].forEach((g, i) => vegGroup.add(VEG.instanced(g, treeMatBroad, broads[i], { castShadow: true })));
+const farTrees = new THREE.Group();
+farTrees.add(VEG.instanced(VEG.makeConiferGeometry(0, 1), treeMatConifer, farConifers, { castShadow: true }));
+farTrees.add(VEG.instanced(VEG.makeBroadleafGeometry(0, 1), treeMatBroad, farBroads, { castShadow: true }));
+vegGroup.add(farTrees);
+vegGroup.add(VEG.instanced(VEG.makeBushGeometry(), bushMat, bushes, { castShadow: true }));
+vegGroup.add(VEG.instanced(VEG.makeRockGeometry(3), rockMat, rocks, { castShadow: true }));
+const grassMesh = VEG.instanced(VEG.makeGrassTuftGeometry(5), grassMat, grass);
+const wheatMesh = VEG.instanced(VEG.makeWheatGeometry(9), wheatMat, wheat);
+vegGroup.add(grassMesh, wheatMesh);
+
+await setProgress(78, 'Raising villages...');
 
 // --- Building compounds ---
-const buildingHexes = hexesByType['building'] || [];
+const woodMat = patchLit(new THREE.MeshStandardMaterial({ color: 0x6b4a2e, roughness: 0.85, flatShading: true }), {}, null, 'wood');
 const waterwheels = [];
+const smokeSources = [];
+const lanternSpots = [];
 {
   const WALL_HEIGHT = 0.7;
   const WALL_THICKNESS = 0.1;
-  const compoundWallMat = new THREE.MeshStandardMaterial({ color: 0x9a8a70, roughness: 0.8, flatShading: true });
-  const roofMat = new THREE.MeshStandardMaterial({ color: 0x8b4513, roughness: 0.6, flatShading: true });
+  const compoundWallMat = patchLit(new THREE.MeshStandardMaterial({ color: 0xa48f70, roughness: 0.9, flatShading: true }), {}, (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+      float course = smoothstep( 0.0, 0.08, abs( fract( vPWorld.y * 9.0 ) - 0.5 ) * 2.0 - 0.86 );
+      diffuseColor.rgb *= ( 0.86 + 0.28 * texture2D( uNoise, vPWorld.xz * 2.3 + vPWorld.y ).b ) * ( 1.0 - 0.18 * course );`);
+  }, 'wall');
+  const roofMat = patchLit(new THREE.MeshStandardMaterial({ color: 0x7c3f24, roughness: 0.7, flatShading: true }), {}, (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+      float rowL = abs( fract( vPWorld.y * 16.0 ) - 0.5 ) * 2.0;
+      diffuseColor.rgb *= ( 0.78 + 0.22 * smoothstep( 0.0, 0.5, rowL ) ) * ( 0.85 + 0.3 * texture2D( uNoise, vPWorld.xz * 3.1 ).b );`);
+  }, 'roof');
 
-  // Cluster detection via flood-fill
+  const buildingHexes = hexesByType.building || [];
   const buildingSet = new Set(buildingHexes.map(h => `${h.q},${h.r}`));
   const visited = new Set();
   const clusters = [];
@@ -787,169 +1239,108 @@ const waterwheels = [];
       cluster.push(h);
       for (const [dq, dr] of HEX_DIRS) {
         const nk = `${h.q + dq},${h.r + dr}`;
-        if (buildingSet.has(nk) && !visited.has(nk)) {
-          visited.add(nk);
-          queue.push(allHexes.get(nk));
-        }
+        if (buildingSet.has(nk) && !visited.has(nk)) { visited.add(nk); queue.push(allHexes.get(nk)); }
       }
     }
     clusters.push(cluster);
   }
 
-  // Helper: hex corner position (flat-top)
-  function hexCorner(wx, wz, i) {
-    const a = (Math.PI / 3) * i;
-    return { x: wx + HEX_SIZE * Math.cos(a), z: wz + HEX_SIZE * Math.sin(a) };
-  }
-
-  // For each cluster, build compound walls + houses
+  const wallGeos = [], roofGeos = [];
   for (const cluster of clusters) {
     const clusterSet = new Set(cluster.map(h => `${h.q},${h.r}`));
 
-    // Compound walls along "mur" edges
+    // Compound walls along "mur" edges (sunk into the ground)
     for (const hex of cluster) {
       const wp = hexToWorld(hex.q, hex.r);
       const baseY = hex.height * HEX_HEIGHT_STEP;
-
       for (let d = 0; d < 6; d++) {
         const [dq, dr] = HEX_DIRS[d];
-        const nq = hex.q + dq, nr = hex.r + dr;
-        const seg = getSegType(hex.q, hex.r, nq, nr);
-        if (seg !== 'mur') continue;
-
-        // Wall runs along the hex edge between corners geoEdge and geoEdge+1
+        if (getSegType(hex.q, hex.r, hex.q + dq, hex.r + dr) !== 'mur') continue;
         const geoEdge = DIR_TO_GEO_EDGE[d];
         const c0 = hexCorner(wp.x, wp.z, geoEdge);
         const c1 = hexCorner(wp.x, wp.z, (geoEdge + 1) % 6);
-
-        const edgeDx = c1.x - c0.x;
-        const edgeDz = c1.z - c0.z;
+        const edgeDx = c1.x - c0.x, edgeDz = c1.z - c0.z;
         const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDz * edgeDz);
-        // Normal pointing outward (toward neighbor)
-        const nx = edgeDz / edgeLen;
-        const nz = -edgeDx / edgeLen;
-
-        // Wall quad: 4 bottom + 4 top vertices (outer and inner faces)
+        const nx = edgeDz / edgeLen, nz = -edgeDx / edgeLen;
         const halfT = WALL_THICKNESS / 2;
-        const positions = [];
-        const normals = [];
-        const indices = [];
-
-        // Outer face (facing neighbor) — walls sink into ground
+        const positions = [], normals = [], indices = [];
         const wallBottom = baseY - 0.5;
-        const oi = 0;
         positions.push(c0.x + nx * halfT, wallBottom, c0.z + nz * halfT);
         positions.push(c1.x + nx * halfT, wallBottom, c1.z + nz * halfT);
         positions.push(c1.x + nx * halfT, baseY + WALL_HEIGHT, c1.z + nz * halfT);
         positions.push(c0.x + nx * halfT, baseY + WALL_HEIGHT, c0.z + nz * halfT);
         for (let v = 0; v < 4; v++) normals.push(nx, 0, nz);
-        indices.push(oi, oi + 1, oi + 2, oi, oi + 2, oi + 3);
-
-        // Inner face
-        const ii = 4;
+        indices.push(0, 1, 2, 0, 2, 3);
         positions.push(c0.x - nx * halfT, wallBottom, c0.z - nz * halfT);
         positions.push(c1.x - nx * halfT, wallBottom, c1.z - nz * halfT);
         positions.push(c1.x - nx * halfT, baseY + WALL_HEIGHT, c1.z - nz * halfT);
         positions.push(c0.x - nx * halfT, baseY + WALL_HEIGHT, c0.z - nz * halfT);
         for (let v = 0; v < 4; v++) normals.push(-nx, 0, -nz);
-        indices.push(ii, ii + 2, ii + 1, ii, ii + 3, ii + 2);
-
-        // Top face
-        const ti = 8;
+        indices.push(4, 6, 5, 4, 7, 6);
         positions.push(c0.x - nx * halfT, baseY + WALL_HEIGHT, c0.z - nz * halfT);
         positions.push(c1.x - nx * halfT, baseY + WALL_HEIGHT, c1.z - nz * halfT);
         positions.push(c1.x + nx * halfT, baseY + WALL_HEIGHT, c1.z + nz * halfT);
         positions.push(c0.x + nx * halfT, baseY + WALL_HEIGHT, c0.z + nz * halfT);
         for (let v = 0; v < 4; v++) normals.push(0, 1, 0);
-        indices.push(ti, ti + 1, ti + 2, ti, ti + 2, ti + 3);
-
+        indices.push(8, 9, 10, 8, 10, 11);
         const geo = new THREE.BufferGeometry();
         geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
         geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
         geo.setIndex(indices);
-        const wall = new THREE.Mesh(geo, compoundWallMat);
-        wall.castShadow = true;
-        wall.receiveShadow = true;
-        scene.add(wall);
+        wallGeos.push(geo);
       }
     }
 
-    // --- Roof: triangle-vertex peaks ---
+    // Roof: triangle-vertex peaks
     const ROOF_HIGH = 0.55;
     const ROOF_LOW = 0.3;
     const baseY = cluster[0].height * HEX_HEIGHT_STEP + WALL_HEIGHT;
     const peakY = baseY + ROOF_HIGH;
     const centerY = baseY + ROOF_LOW;
-
-    // Find peak vertices: corners where all 3 surrounding hexes are in cluster
     const peakSet = new Set();
     for (const hex of cluster) {
       const wp = hexToWorld(hex.q, hex.r);
       for (let i = 0; i < 6; i++) {
         const [d0, d1] = CORNER_NEIGHBORS[i];
-        const n0 = `${hex.q + d0[0]},${hex.r + d0[1]}`;
-        const n1 = `${hex.q + d1[0]},${hex.r + d1[1]}`;
-        if (clusterSet.has(n0) && clusterSet.has(n1)) {
+        if (clusterSet.has(`${hex.q + d0[0]},${hex.r + d0[1]}`) && clusterSet.has(`${hex.q + d1[0]},${hex.r + d1[1]}`)) {
           const c = hexCorner(wp.x, wp.z, i);
           peakSet.add(`${c.x.toFixed(3)},${c.z.toFixed(3)}`);
         }
       }
     }
-
-    function isPeak(wx, wz) {
-      return peakSet.has(`${wx.toFixed(3)},${wz.toFixed(3)}`);
-    }
-
-    // Build roof mesh per hex: triangle fan from center to corners
+    const isPeak = (wx, wz) => peakSet.has(`${wx.toFixed(3)},${wz.toFixed(3)}`);
+    let chimney = null;
     for (const hex of cluster) {
       const wp = hexToWorld(hex.q, hex.r);
       const corners = [];
-      for (let i = 0; i < 6; i++) {
-        const c = hexCorner(wp.x, wp.z, i);
-        corners.push(c);
-      }
-
-      const positions = [];
-      const normals = [];
-      const indices = [];
-
-      // Count peaks around this hex to decide center height
+      for (let i = 0; i < 6; i++) corners.push(hexCorner(wp.x, wp.z, i));
       let peakCount = 0;
-      for (let i = 0; i < 6; i++) {
-        if (isPeak(corners[i].x, corners[i].z)) peakCount++;
-      }
+      for (let i = 0; i < 6; i++) if (isPeak(corners[i].x, corners[i].z)) peakCount++;
       const hexCenterY = peakCount >= 2 ? peakY : centerY;
-
-      // Vertex 0: hex center
-      positions.push(wp.x, hexCenterY, wp.z);
-      normals.push(0, 1, 0);
-
-      // Vertices 1-6: corners
+      const positions = [wp.x, hexCenterY, wp.z];
+      const normals = [0, 1, 0];
       for (let i = 0; i < 6; i++) {
-        const cy = isPeak(corners[i].x, corners[i].z) ? peakY : baseY;
-        positions.push(corners[i].x, cy, corners[i].z);
+        const pk = isPeak(corners[i].x, corners[i].z);
+        positions.push(corners[i].x, pk ? peakY : baseY, corners[i].z);
         normals.push(0, 1, 0);
+        if (pk && !chimney) chimney = { x: corners[i].x, y: peakY, z: corners[i].z };
       }
-
-      // 6 triangles: (center, corner_i, corner_{i+1})
-      for (let i = 0; i < 6; i++) {
-        const a = 0, b = 1 + i, c = 1 + (i + 1) % 6;
-        indices.push(a, c, b);
-      }
-
+      const indices = [];
+      for (let i = 0; i < 6; i++) indices.push(0, 1 + (i + 1) % 6, 1 + i);
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
       geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
       geo.setIndex(indices);
       geo.computeVertexNormals();
-      const roof = new THREE.Mesh(geo, roofMat);
-      roof.castShadow = true;
-      roof.receiveShadow = true;
-      scene.add(roof);
+      roofGeos.push(geo);
     }
+    if (!chimney) {
+      const wp = hexToWorld(cluster[0].q, cluster[0].r);
+      chimney = { x: wp.x, y: centerY, z: wp.z };
+    }
+    smokeSources.push(chimney);
 
     // Waterwheels at vertices with building-water-water configuration
-    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x6b4226, roughness: 0.7, flatShading: true });
     const placedWheels = new Set();
     for (const hex of cluster) {
       const wp = hexToWorld(hex.q, hex.r);
@@ -958,34 +1349,29 @@ const waterwheels = [];
         const n0 = allHexes.get(`${hex.q + d0[0]},${hex.r + d0[1]}`);
         const n1 = allHexes.get(`${hex.q + d1[0]},${hex.r + d1[1]}`);
         if (!n0 || !n1 || n0.terrain !== 'river' || n1.terrain !== 'river') continue;
-
         const c = hexCorner(wp.x, wp.z, i);
         const wKey = `${c.x.toFixed(3)},${c.z.toFixed(3)}`;
         if (placedWheels.has(wKey)) continue;
         placedWheels.add(wKey);
 
-        // Face outward: from hex center toward the corner vertex
-        const outDx = c.x - wp.x;
-        const outDz = c.z - wp.z;
+        const outDx = c.x - wp.x, outDz = c.z - wp.z;
         const faceAngle = Math.atan2(outDx, outDz);
-
         const wheelRadius = 0.55;
         const wheelWidth = 0.45;
         const wheelY = WATER_LEVEL + wheelRadius * 0.6;
-
-        // Offset away from building
         const dist = 0.3;
-        const offX = c.x + (outDx / Math.sqrt(outDx * outDx + outDz * outDz)) * dist;
-        const offZ = c.z + (outDz / Math.sqrt(outDx * outDx + outDz * outDz)) * dist;
-
+        const ol = Math.sqrt(outDx * outDx + outDz * outDz);
         const wheelBase = new THREE.Group();
-        wheelBase.position.set(offX, wheelY, offZ);
+        wheelBase.position.set(c.x + outDx / ol * dist, wheelY, c.z + outDz / ol * dist);
         wheelBase.rotation.y = faceAngle + Math.PI / 2 + Math.PI;
 
-        const spin = new THREE.Group();
-        wheelBase.add(spin);
-
-        // Rims at paddle extremities, 2 pairs along width
+        const spinParts = [];
+        const addPart = (geo, setup) => {
+          const m = new THREE.Object3D();
+          setup(m);
+          m.updateMatrix();
+          spinParts.push(geo.applyMatrix4(m.matrix));
+        };
         const paddleH = 0.12;
         const rimInnerR = wheelRadius - paddleH / 2;
         const rimOuterR = wheelRadius + paddleH / 2;
@@ -993,474 +1379,422 @@ const waterwheels = [];
         const xFar = wheelWidth * 0.35;
         for (const rr of [rimInnerR, rimOuterR]) {
           for (const xOff of [xNear, xFar]) {
-            const rim = new THREE.Mesh(
-              new THREE.TorusGeometry(rr, 0.04, 4, 24),
-              wheelMat
-            );
-            rim.rotation.y = Math.PI / 2;
-            rim.rotation.z = Math.PI / 4;
-            rim.scale.set(1, 1, 1.5);
-            rim.position.x = xOff;
-            spin.add(rim);
+            addPart(new THREE.TorusGeometry(rr, 0.04, 4, 24), (m) => {
+              m.rotation.y = Math.PI / 2; m.rotation.z = Math.PI / 4; m.scale.set(1, 1, 1.5); m.position.x = xOff;
+            });
           }
         }
-
-        // Spokes (fewer, thicker, doubled at near/far positions)
         for (let s = 0; s < 5; s++) {
           for (const xOff of [xNear, xFar]) {
-            const spoke = new THREE.Mesh(
-              new THREE.CylinderGeometry(0.04, 0.04, rimOuterR * 2, 4),
-              wheelMat
-            );
-            spoke.rotation.y = Math.PI / 2;
-            spoke.rotation.z = (Math.PI * 2 / 5) * s;
-            spoke.position.x = xOff;
-            spin.add(spoke);
+            addPart(new THREE.CylinderGeometry(0.04, 0.04, rimOuterR * 2, 4), (m) => {
+              m.rotation.y = Math.PI / 2; m.rotation.z = (Math.PI * 2 / 5) * s; m.position.x = xOff;
+            });
           }
         }
-
-        // Paddles
         const numPaddles = 24;
         const tilt = 10 * Math.PI / 180;
         for (let p = 0; p < numPaddles; p++) {
           const a = (Math.PI * 2 / numPaddles) * p;
-          const paddle = new THREE.Mesh(
-            new THREE.BoxGeometry(wheelWidth, 0.12, 0.04),
-            wheelMat
-          );
-          paddle.position.set(0, wheelRadius * Math.sin(a), wheelRadius * Math.cos(a));
-          paddle.rotation.x = -a + tilt;
-          spin.add(paddle);
+          addPart(new THREE.BoxGeometry(wheelWidth, 0.12, 0.04), (m) => {
+            m.position.set(0, wheelRadius * Math.sin(a), wheelRadius * Math.cos(a));
+            m.rotation.x = -a + tilt;
+          });
         }
+        const spin = new THREE.Mesh(mergeGeometries(spinParts), woodMat);
+        spin.castShadow = true;
+        wheelBase.add(spin);
 
-        // Axle from building to far spoke row
         const axleStart = -wheelWidth * 0.7;
-        const axleEnd = xFar;
-        const axleLen = axleEnd - axleStart;
-        const axle = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.04, 0.04, axleLen, 6),
-          wheelMat
-        );
+        const axle = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, xFar - axleStart, 6), woodMat);
         axle.rotation.z = Math.PI / 2;
-        axle.position.x = (axleStart + axleEnd) / 2;
+        axle.position.x = (axleStart + xFar) / 2;
         wheelBase.add(axle);
-
-        wheelBase.castShadow = true;
         scene.add(wheelBase);
         waterwheels.push(spin);
       }
     }
-
   }
-
+  const walls = new THREE.Mesh(mergeGeometries(wallGeos), compoundWallMat);
+  walls.castShadow = walls.receiveShadow = true;
+  const roofs = new THREE.Mesh(mergeGeometries(roofGeos), roofMat);
+  roofs.castShadow = roofs.receiveShadow = true;
+  scene.add(walls, roofs);
 }
 
-setProgress(90, 'Adding segment walls...');
+// --- Wooden structures: bridges, footbridges, gates, fences ---
+{
+  const parts = [];
+  const tmpQ = new THREE.Quaternion(), X = new THREE.Vector3(1, 0, 0);
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  function beam(p0, p1, w, h) {
+    const dir = new THREE.Vector3().subVectors(p1, p0);
+    const len = dir.length();
+    const g = new THREE.BoxGeometry(len, h, w);
+    tmpQ.setFromUnitVectors(X, dir.normalize());
+    g.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3().addVectors(p0, p1).multiplyScalar(0.5), tmpQ, V(1, 1, 1)));
+    return g;
+  }
+  function post(x, y, z, r, h) {
+    const g = new THREE.CylinderGeometry(r, r * 1.1, h, 6);
+    g.translate(x, y + h / 2, z);
+    return g;
+  }
 
-// --- Segment visualization (walls, cliffs, etc.) ---
-const wallMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.7, flatShading: true });
-const barrierMat = new THREE.MeshStandardMaterial({ color: 0x5a4a3a, roughness: 0.7, flatShading: true });
-
-for (const [segKey, segType] of Object.entries(segmentData)) {
-  const [keyA, keyB] = segKey.split('|');
-  const [q1, r1] = keyA.split(',').map(Number);
-  const [q2, r2] = keyB.split(',').map(Number);
-  const posA = hexToWorld(q1, r1);
-  const posB = hexToWorld(q2, r2);
-  const midX = (posA.x + posB.x) / 2;
-  const midZ = (posA.z + posB.z) / 2;
-  const hA = getHexElevation(q1, r1);
-  const hB = getHexElevation(q2, r2);
-  const midY = Math.max(hA, hB);
-
-  let mat, wallHeight;
-  switch (segType) {
-    case 'mur':
-      continue; // handled by compound building walls
-    case 'barriere':
-    case 'chevaux_de_frise':
-      mat = barrierMat; wallHeight = 0.2; break;
-    default:
+  // Arched bridges over river hexes
+  for (const hex of hexesByType.bridge || []) {
+    const wp = hexToWorld(hex.q, hex.r);
+    let best = null;
+    for (let d = 0; d < 3; d++) {
+      const a = allHexes.get(`${hex.q + HEX_DIRS[d][0]},${hex.r + HEX_DIRS[d][1]}`);
+      const b = allHexes.get(`${hex.q + HEX_DIRS[d + 3][0]},${hex.r + HEX_DIRS[d + 3][1]}`);
+      if (!a || !b || isWaterHex(a) || isWaterHex(b)) continue;
+      const score = (a.terrain === 'road') + (b.terrain === 'road');
+      if (!best || score > best.score) best = { a, b, score };
+    }
+    if (!best) {
+      const deck = new THREE.CylinderGeometry(0.95, 0.95, 0.12, 6);
+      deck.translate(wp.x, hex.height, wp.z);
+      parts.push(deck);
       continue;
+    }
+    const pa = hexToWorld(best.a.q, best.a.r), pb = hexToWorld(best.b.q, best.b.r);
+    const ux = (pb.x - pa.x) / (2 * sqrt3), uz = (pb.z - pa.z) / (2 * sqrt3);
+    const px = -uz, pz = ux;
+    const half = 1.25, segs = 10, width = 0.34;
+    const yEnd = Math.max(effH(best.a), effH(best.b)) + 0.04;
+    const arch = 0.2;
+    const pts = [];
+    for (let i = 0; i <= segs; i++) {
+      const s = i / segs * 2 - 1;
+      pts.push(V(wp.x + ux * half * s, yEnd + arch * (1 - s * s), wp.z + uz * half * s));
+    }
+    for (let i = 0; i < segs; i++) {
+      parts.push(beam(pts[i], pts[i + 1], width * 2, 0.07));
+      for (const side of [-1, 1]) {
+        const o0 = pts[i].clone().add(V(px * width * side, 0.18, pz * width * side));
+        const o1 = pts[i + 1].clone().add(V(px * width * side, 0.18, pz * width * side));
+        parts.push(beam(o0, o1, 0.035, 0.035));
+      }
+    }
+    for (let i = 0; i <= segs; i += 2) {
+      for (const side of [-1, 1]) parts.push(post(pts[i].x + px * width * side, pts[i].y - 0.02, pts[i].z + pz * width * side, 0.025, 0.2));
+    }
+    for (const s of [-0.45, 0.45]) {
+      const cx = wp.x + ux * half * s, cz = wp.z + uz * half * s;
+      for (const side of [-1, 1]) parts.push(post(cx + px * width * 0.8 * side, RIVERBED_HEIGHT, cz + pz * width * 0.8 * side, 0.05, yEnd + arch * (1 - s * s) - RIVERBED_HEIGHT));
+    }
+    for (const side of [-1, 1]) lanternSpots.push(V(pts[0].x + px * width * side, pts[0].y + 0.24, pts[0].z + pz * width * side));
   }
 
-  const dx = posB.x - posA.x;
-  const dz = posB.z - posA.z;
-  const angle = Math.atan2(dz, dx);
-  const segLen = HEX_SIZE * 0.85;
+  // Footbridges over streams
+  for (const fb of footbridges) {
+    const pa = hexToWorld(fb.q1, fb.r1), pb = hexToWorld(fb.q2, fb.r2);
+    const mx = (fb.a.x + fb.b.x) / 2, mz = (fb.a.z + fb.b.z) / 2;
+    const ux = (pb.x - pa.x) / sqrt3, uz = (pb.z - pa.z) / sqrt3;
+    const px = -uz, pz = ux;
+    const L = 0.5;
+    const yy = Math.max(groundHeight(mx - ux * L, mz - uz * L), groundHeight(mx + ux * L, mz + uz * L)) + 0.05;
+    for (let k = -3; k <= 3; k++) {
+      const ox = px * k * 0.04, oz = pz * k * 0.04;
+      parts.push(beam(V(mx - ux * L + ox, yy, mz - uz * L + oz), V(mx + ux * L + ox, yy, mz + uz * L + oz), 0.035, 0.03));
+    }
+    for (const side of [-1, 1]) {
+      parts.push(beam(V(mx - ux * L + px * 0.15 * side, yy + 0.14, mz - uz * L + pz * 0.15 * side), V(mx + ux * L + px * 0.15 * side, yy + 0.14, mz + uz * L + pz * 0.15 * side), 0.025, 0.025));
+      for (const t of [-L, 0, L]) parts.push(post(mx + ux * t + px * 0.15 * side, yy - 0.05, mz + uz * t + pz * 0.15 * side, 0.018, 0.2));
+    }
+  }
 
-  const wallGeo = new THREE.BoxGeometry(segLen, wallHeight, 0.08);
-  const wall = new THREE.Mesh(wallGeo, mat);
-  wall.position.set(midX, midY + wallHeight / 2, midZ);
-  wall.rotation.y = -angle + Math.PI / 2;
-  wall.castShadow = true;
-  wall.receiveShadow = true;
-  scene.add(wall);
+  // Compound gateways (passerelle segments on building edges)
+  for (const gw of gateways) {
+    const mx = (gw.a.x + gw.b.x) / 2, mz = (gw.a.z + gw.b.z) / 2;
+    const ex = gw.b.x - gw.a.x, ez = gw.b.z - gw.a.z;
+    const y = groundHeight(mx, mz);
+    const h = 0.95;
+    const p0 = V(mx - ex * 0.42, y, mz - ez * 0.42), p1 = V(mx + ex * 0.42, y, mz + ez * 0.42);
+    parts.push(post(p0.x, y - 0.1, p0.z, 0.045, h + 0.1), post(p1.x, y - 0.1, p1.z, 0.045, h + 0.1));
+    parts.push(beam(V(p0.x - ex * 0.12, y + h, p0.z - ez * 0.12), V(p1.x + ex * 0.12, y + h, p1.z + ez * 0.12), 0.12, 0.06));
+    parts.push(beam(V(p0.x, y + h - 0.16, p0.z), V(p1.x, y + h - 0.16, p1.z), 0.06, 0.04));
+    lanternSpots.push(V(mx, y + h - 0.3, mz));
+  }
+
+  // Fences on barrier segments
+  for (const [segKey, type] of Object.entries(segmentData)) {
+    if (type !== 'barriere' && type !== 'chevaux_de_frise') continue;
+    const s = parseSeg(segKey);
+    const ec = edgeCorners(s.q1, s.r1, s.q2, s.r2);
+    if (!ec) continue;
+    const pts = [];
+    for (let i = 0; i <= 4; i++) {
+      const t = 0.06 + i / 4 * 0.88;
+      const x = ec[0].x + (ec[1].x - ec[0].x) * t, z = ec[0].z + (ec[1].z - ec[0].z) * t;
+      pts.push(V(x, groundHeight(x, z), z));
+    }
+    for (const p of pts) parts.push(post(p.x, p.y - 0.05, p.z, 0.022, 0.27));
+    for (let i = 0; i < pts.length - 1; i++) {
+      for (const hy of [0.1, 0.19]) parts.push(beam(pts[i].clone().setY(pts[i].y + hy), pts[i + 1].clone().setY(pts[i + 1].y + hy), 0.02, 0.025));
+    }
+  }
+
+  const strip = (g) => { const n = g.index ? g.toNonIndexed() : g; n.deleteAttribute('uv'); return n; };
+  if (parts.length) {
+    const wood = new THREE.Mesh(mergeGeometries(parts.map(strip)), woodMat);
+    wood.castShadow = wood.receiveShadow = true;
+    scene.add(wood);
+  }
 }
 
-setProgress(95, 'Adding roads...');
+// Lanterns (glow at dusk/night, bloom picks them up)
+if (lanternSpots.length) {
+  const m = new THREE.MeshStandardMaterial({ color: 0x3a2410, emissive: 0xffa040, emissiveIntensity: 0, roughness: 0.6 });
+  lanternMats.push(m);
+  vegGroup.add(VEG.instanced(new THREE.SphereGeometry(0.055, 8, 6), m, lanternSpots.map(p => ({ x: p.x, y: p.y, z: p.z, s: 1 }))));
+}
 
-// --- Road markers ---
-// --- Bridge decks (flat planks over water) ---
-const bridgeHexes = hexesByType['bridge'] || [];
-const bridgeDeckMat = new THREE.MeshStandardMaterial({
-  color: 0x7a6b5a,
-  roughness: 0.8,
-  metalness: 0.02,
-  flatShading: true,
+await setProgress(86, 'Breathing life...');
+
+// --- Chimney smoke ---
+const smokeMat = new THREE.ShaderMaterial({
+  uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTime: { value: 0 }, uWind: { value: new THREE.Vector2() }, uLight: { value: 1 }, uPx: { value: 1 } }]),
+  transparent: true,
+  depthWrite: false,
+  fog: true,
+  vertexShader: /* glsl */`
+    #include <common>
+    #include <fog_pars_vertex>
+    uniform float uTime;
+    uniform vec2 uWind;
+    uniform float uPx;
+    attribute float seed;
+    varying float vAge;
+    void main() {
+      float age = fract( uTime * 0.07 + seed );
+      vAge = age;
+      vec3 p = position;
+      p.y += age * 2.6;
+      p.xz += uWind * age * age * 2.2 + vec2( sin( seed * 40.0 + uTime * 0.6 ), cos( seed * 23.0 + uTime * 0.5 ) ) * 0.12 * age;
+      vec4 mvPosition = modelViewMatrix * vec4( p, 1.0 );
+      gl_Position = projectionMatrix * mvPosition;
+      gl_PointSize = ( 0.25 + age * 1.5 ) * uPx / -mvPosition.z;
+      #include <fog_vertex>
+    }
+  `,
+  fragmentShader: /* glsl */`
+    #include <common>
+    #include <fog_pars_fragment>
+    uniform float uLight;
+    varying float vAge;
+    void main() {
+      float r = length( gl_PointCoord - 0.5 );
+      float a = smoothstep( 0.5, 0.1, r ) * smoothstep( 0.0, 0.12, vAge ) * ( 1.0 - smoothstep( 0.45, 1.0, vAge ) ) * 0.32;
+      if ( a < 0.003 ) discard;
+      vec3 col = mix( vec3( 0.55, 0.53, 0.52 ), vec3( 0.86, 0.85, 0.84 ), vAge ) * uLight;
+      gl_FragColor = vec4( col, a );
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+      #include <fog_fragment>
+    }
+  `,
+});
+{
+  const pos = [], seeds = [];
+  for (const s of smokeSources) {
+    for (let i = 0; i < 26; i++) { pos.push(s.x, s.y + 0.05, s.z); seeds.push(i / 26 + Math.random() * 0.02); }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('seed', new THREE.Float32BufferAttribute(seeds, 1));
+  const smoke = new THREE.Points(g, smokeMat);
+  smoke.frustumCulled = false;
+  smoke.renderOrder = 3;
+  scene.add(smoke);
+}
+
+// --- Birds ---
+const birdCount = 22;
+const birdGeo = new THREE.BufferGeometry();
+birdGeo.setAttribute('position', new THREE.Float32BufferAttribute([
+  0, 0, 0.12, 0, 0, -0.08, -0.32, 0.0, -0.02,
+  0, 0, 0.12, 0.32, 0.0, -0.02, 0, 0, -0.08,
+], 3));
+birdGeo.setAttribute('wing', new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 0], 1));
+const birdMat = new THREE.MeshBasicMaterial({ color: 0x1d1b1a, side: THREE.DoubleSide });
+birdMat.onBeforeCompile = (shader) => {
+  shader.uniforms.uTime = G.uTime;
+  shader.vertexShader = shader.vertexShader
+    .replace('#include <common>', '#include <common>\nuniform float uTime;\nattribute float wing;')
+    .replace('#include <begin_vertex>', `#include <begin_vertex>
+      float ph = uTime * 9.0 + float( gl_InstanceID ) * 1.7;
+      transformed.y += sin( ph ) * 0.22 * wing;
+      transformed.x *= 1.0 - 0.25 * wing * ( 0.5 + 0.5 * sin( ph ) );`);
+};
+const birds = new THREE.InstancedMesh(birdGeo, birdMat, birdCount);
+birds.frustumCulled = false;
+scene.add(birds);
+const birdData = Array.from({ length: birdCount }, (_, i) => ({
+  flock: i < 12 ? 0 : 1,
+  off: new THREE.Vector3((Math.random() - 0.5) * 5, (Math.random() - 0.5) * 1.5, (Math.random() - 0.5) * 5),
+  ph: Math.random() * 10,
+}));
+const _bm = new THREE.Matrix4(), _bq = new THREE.Quaternion(), _bs = new THREE.Vector3(1, 1, 1);
+const _bp = new THREE.Vector3(), _bn = new THREE.Vector3(), _be = new THREE.Euler();
+function flockPos(f, t, out) {
+  const r = f === 0 ? 34 : 22, sp = f === 0 ? 0.035 : -0.05;
+  const a = t * sp + f * 2.1;
+  return out.set(BCX + Math.cos(a) * r + Math.sin(a * 2.3) * 6, 15 + f * 5 + Math.sin(t * 0.21 + f) * 2, BCZ + Math.sin(a) * r * 0.75);
+}
+function updateBirds(t) {
+  for (let i = 0; i < birdCount; i++) {
+    const b = birdData[i];
+    const tt = t + b.ph * 0.15;
+    flockPos(b.flock, tt, _bp).add(b.off);
+    flockPos(b.flock, tt + 0.1, _bn).add(b.off);
+    _be.set(0, Math.atan2(_bn.x - _bp.x, _bn.z - _bp.z), Math.sin(tt * 0.7 + i) * 0.25);
+    _bq.setFromEuler(_be);
+    _bm.compose(_bp, _bq, _bs);
+    birds.setMatrixAt(i, _bm);
+  }
+  birds.instanceMatrix.needsUpdate = true;
+}
+
+await setProgress(92, 'Compiling shaders...');
+
+// --- Post-processing + adaptive quality ---
+const post = createPost(renderer, scene, camera);
+let usePost = true;
+const maxDpr = Math.min(window.devicePixelRatio || 1, 2);
+const LEVELS = [
+  { name: 'Ultra', dpr: maxDpr, samples: maxDpr > 1.6 ? 2 : 4, bloom: true, post: true, grass: true, far: true },
+  { name: 'High', dpr: Math.min(maxDpr, 1.5), samples: 4, bloom: true, post: true, grass: true, far: true },
+  { name: 'Medium', dpr: Math.min(maxDpr, 1.25), samples: 2, bloom: false, post: true, grass: true, far: true },
+  { name: 'Low', dpr: 1.0, samples: 0, bloom: false, post: true, grass: false, far: true },
+  { name: 'Minimum', dpr: 0.75, samples: 0, bloom: false, post: false, grass: false, far: false },
+];
+function applyQuality(l) {
+  renderer.setPixelRatio(l.dpr);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  for (const rt of [post.composer.renderTarget1, post.composer.renderTarget2]) {
+    if (rt.samples !== l.samples) { rt.samples = l.samples; rt.dispose(); }
+  }
+  post.composer.setPixelRatio(l.dpr);
+  post.composer.setSize(window.innerWidth, window.innerHeight);
+  post.bloom.enabled = l.bloom;
+  usePost = l.post;
+  grassMesh.visible = l.grass;
+  wheatMesh.visible = l.far;
+  farTrees.visible = l.far;
+  smokeMat.uniforms.uPx.value = window.innerHeight * l.dpr * 0.5;
+}
+const governor = new QualityGovernor(LEVELS, (l) => applyQuality(l));
+if (params.has('q')) {
+  governor.set(Math.max(0, Math.min(LEVELS.length - 1, parseInt(params.get('q'), 10) || 0)));
+  governor.locked = true;
+}
+applyQuality(LEVELS[governor.level]);
+
+const todInput = document.getElementById('tod');
+const savedHour = parseFloat(localStorage.getItem('map3d_hour'));
+const startHour = Number.isFinite(savedHour) ? savedHour : 16.2;
+todInput.value = startHour;
+setTimeOfDay(startHour);
+todInput.addEventListener('input', () => setTimeOfDay(parseFloat(todInput.value), { env: false }));
+todInput.addEventListener('change', () => {
+  setTimeOfDay(parseFloat(todInput.value));
+  localStorage.setItem('map3d_hour', todInput.value);
 });
 
-for (const hex of bridgeHexes) {
-  const worldPos = hexToWorld(hex.q, hex.r);
-  const topY = hex.height * HEX_HEIGHT_STEP;
+if (renderer.compileAsync) await renderer.compileAsync(scene, camera);
+else renderer.compile(scene, camera);
 
-  // Flat hex deck at the bridge height
-  const deckGeo = createHexPrismGeometry(INNER_RADIUS, topY, topY - 0.15);
-  const deck = new THREE.Mesh(deckGeo, bridgeDeckMat);
-  deck.position.set(worldPos.x, 0, worldPos.z);
-  deck.castShadow = true;
-  deck.receiveShadow = true;
-  scene.add(deck);
+await setProgress(100, 'Ready');
+
+// --- Intro fly-in ---
+if (!params.has('nointro')) {
+  const to = { p: camera.position.clone(), t: controls.target.clone() };
+  const sph = new THREE.Spherical().setFromVector3(to.p.clone().sub(to.t));
+  sph.radius = Math.min(150, sph.radius * 2.4 + 40);
+  sph.phi = Math.max(0.3, sph.phi * 0.55);
+  sph.theta -= 0.9;
+  const fromT = new THREE.Vector3(BCX, 0, BCZ);
+  intro.from = { p: fromT.clone().add(new THREE.Vector3().setFromSpherical(sph)), t: fromT };
+  intro.to = to;
+  intro.active = true;
+  camera.position.copy(intro.from.p);
+  controls.target.copy(intro.from.t);
+  const cancel = () => { intro.active = false; };
+  canvas.addEventListener('pointerdown', cancel, { once: true });
+  canvas.addEventListener('wheel', cancel, { once: true, passive: true });
+}
+const ease = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const _s0 = new THREE.Spherical(), _s1 = new THREE.Spherical(), _sv = new THREE.Vector3();
+function updateIntro(dt) {
+  if (!intro.active) return;
+  intro.t += dt / intro.dur;
+  const k = ease(Math.min(1, intro.t));
+  _s0.setFromVector3(_sv.copy(intro.from.p).sub(intro.from.t));
+  _s1.setFromVector3(_sv.copy(intro.to.p).sub(intro.to.t));
+  const tgt = intro.from.t.clone().lerp(intro.to.t, k);
+  const sph = new THREE.Spherical(lerp(_s0.radius, _s1.radius, k), lerp(_s0.phi, _s1.phi, k), lerp(_s0.theta, _s1.theta, k));
+  camera.position.copy(tgt).add(_sv.setFromSpherical(sph));
+  controls.target.copy(tgt);
+  if (intro.t >= 1) intro.active = false;
 }
 
-setProgress(95, 'Adding border grass...');
-
-// --- Compute map world bounds (shared by border grass + mountains) ---
-const mapCorners = [
-  hexToWorld(minQ, minR), hexToWorld(maxQ, minR),
-  hexToWorld(minQ, maxR), hexToWorld(maxQ, maxR),
-];
-const mapMinX = Math.min(...mapCorners.map(c => c.x)) - 5;
-const mapMaxX = Math.max(...mapCorners.map(c => c.x)) + 5;
-const mapMinZ = Math.min(...mapCorners.map(c => c.z)) - 5;
-const mapMaxZ = Math.max(...mapCorners.map(c => c.z)) + 5;
-const mapCX = (mapMinX + mapMaxX) / 2;
-const mapCZ = (mapMinZ + mapMaxZ) / 2;
-const mapRadiusX = (mapMaxX - mapMinX) / 2;
-const mapRadiusZ = (mapMaxZ - mapMinZ) / 2;
-const mapRadius = Math.max(mapRadiusX, mapRadiusZ);
-const mountainInnerRadius = mapRadius + 20;
-
-// --- Border grass: unified continuous mesh matching terrain style ---
-{
-  const positions = [];
-  const colors = [];
-  const indices = [];
-  const vertexMap = new Map();
-  const centerMap = new Map();
-
-  function addVertex(x, y, z, color) {
-    const idx = positions.length / 3;
-    positions.push(x, y, z);
-    colors.push(color.r, color.g, color.b);
-    return idx;
-  }
-  function getCornerKey(x, z) {
-    return `${Math.round(x * 1000)},${Math.round(z * 1000)}`;
-  }
-
-  const expand = 35;
-  const riseStartRadius = mapRadius - 2;
-  const riseEndRadius = mountainInnerRadius;
-  const maxRiseHeight = 4;
-
-  // Collect border hex positions and heights
-  const borderHexes = new Map();
-  for (let q = minQ - expand; q <= maxQ + expand; q++) {
-    for (let r = minR - expand; r <= maxR + expand; r++) {
-      const key = `${q},${r}`;
-      if (allHexes.has(key)) continue;
-
-      const worldPos = hexToWorld(q, r);
-      const dx = (worldPos.x - mapCX) / (mapRadiusX / mapRadius);
-      const dz = (worldPos.z - mapCZ) / (mapRadiusZ / mapRadius);
-      const dist = Math.sqrt(dx * dx + dz * dz);
-      if (dist > mountainInnerRadius + 5) continue;
-
-      let topY = WATER_LEVEL + 0.05;
-      if (dist > riseStartRadius) {
-        const t = Math.min(1, (dist - riseStartRadius) / (riseEndRadius - riseStartRadius));
-        topY = WATER_LEVEL + 0.05 + maxRiseHeight * t * t;
-      }
-      borderHexes.set(key, { q, r, topY, worldPos });
-    }
-  }
-
-  // Pass 1: Center vertices
-  for (const [key, bh] of borderHexes) {
-    const color = getTerrainColor('plain', bh.q, bh.r);
-    const vi = addVertex(bh.worldPos.x, bh.topY, bh.worldPos.z, color);
-    centerMap.set(key, vi);
-  }
-
-  // Pass 2: Corner vertices with blended heights + triangles
-  for (const [key, bh] of borderHexes) {
-    const centerIdx = centerMap.get(key);
-    const cornerIndices = [];
-
-    for (let i = 0; i < 6; i++) {
-      const angle = (Math.PI / 3) * i;
-      const cx = bh.worldPos.x + INNER_RADIUS * Math.cos(angle);
-      const cz = bh.worldPos.z + INNER_RADIUS * Math.sin(angle);
-      const cornerKey = getCornerKey(cx, cz);
-
-      if (vertexMap.has(cornerKey)) {
-        cornerIndices.push(vertexMap.get(cornerKey));
-      } else {
-        // Blend height and color from neighboring hexes sharing this corner
-        const neighborOffsets = CORNER_NEIGHBORS[i];
-        let heightSum = bh.topY;
-        let heightCount = 1;
-        const blendColors = [getTerrainColor('plain', bh.q, bh.r)];
-
-        for (const [dq, dr] of neighborOffsets) {
-          const nq = bh.q + dq, nr = bh.r + dr;
-          const nKey = `${nq},${nr}`;
-          // Check border hexes first, then map hexes
-          const nb = borderHexes.get(nKey);
-          const mh = allHexes.get(nKey);
-          if (nb) {
-            heightSum += nb.topY;
-            heightCount++;
-            blendColors.push(getTerrainColor('plain', nq, nr));
-          } else if (mh && mh.terrain !== 'river' && mh.terrain !== 'bridge') {
-            heightSum += mh.height * HEX_HEIGHT_STEP;
-            heightCount++;
-            blendColors.push(getTerrainColor(mh.terrain, nq, nr));
-          }
-        }
-
-        const blended = new THREE.Color(0, 0, 0);
-        for (const c of blendColors) {
-          blended.r += c.r; blended.g += c.g; blended.b += c.b;
-        }
-        blended.r /= blendColors.length;
-        blended.g /= blendColors.length;
-        blended.b /= blendColors.length;
-
-        const cornerY = heightSum / heightCount;
-        const vi = addVertex(cx, cornerY, cz, blended);
-        vertexMap.set(cornerKey, vi);
-        cornerIndices.push(vi);
-      }
-    }
-
-    for (let i = 0; i < 6; i++) {
-      const next = (i + 1) % 6;
-      indices.push(centerIdx, cornerIndices[next], cornerIndices[i]);
-    }
-  }
-
-  if (positions.length > 0) {
-    const borderGeo = new THREE.BufferGeometry();
-    borderGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    borderGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-    borderGeo.setIndex(indices);
-    borderGeo.computeVertexNormals();
-    borderGeo.computeBoundingSphere();
-
-    const borderMat = new THREE.MeshStandardMaterial({
-      vertexColors: true,
-      roughness: 0.75,
-      metalness: 0.02,
-      flatShading: false,
-    });
-    const borderMesh = new THREE.Mesh(borderGeo, borderMat);
-    borderMesh.receiveShadow = true;
-    scene.add(borderMesh);
-  }
-}
-
-setProgress(97, 'Adding mountains...');
-
-// --- Mountain ring around map perimeter ---
-{
-
-  const ringSegments = 128;
-  const ringLayers = 6;
-  const innerRadius = mapRadius + 20;
-  const peakRadius = mapRadius + 55;
-  const outerRadius = mapRadius + 100;
-  const peakHeight = 45;
-
-  const mtnPositions = [];
-  const mtnNormals = [];
-  const mtnColors = [];
-  const mtnIndices = [];
-
-  const rng = seededRandom(42);
-
-  // Layer radii and heights
-  const layers = [
-    { r: innerRadius - 3,      h: WATER_LEVEL + 0.05 + 4, colorMix: 0.0 },
-    { r: innerRadius + 10,     h: 8.0,  colorMix: 0.1 },
-    { r: peakRadius - 12,      h: peakHeight * 0.65, colorMix: 0.4 },
-    { r: peakRadius,           h: peakHeight, colorMix: 0.85 },
-    { r: outerRadius - 18,     h: peakHeight * 0.5, colorMix: 0.7 },
-    { r: outerRadius,          h: 0.5,  colorMix: 0.3 },
-  ];
-
-  // Base colors
-  const grassColor = new THREE.Color(0x5a7a38);
-  const rockColor = new THREE.Color(0x6a6a78);
-  const snowColor = new THREE.Color(0xa8a8b0);
-
-  for (let seg = 0; seg <= ringSegments; seg++) {
-    const angle = (seg / ringSegments) * Math.PI * 2;
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-
-    // Per-segment noise for variation
-    const segNoise1 = Math.sin(seg * 5.7 + 3.1) * 0.5 + 0.5;
-    const segNoise2 = Math.sin(seg * 11.3 + 7.2) * 0.5 + 0.5;
-
-    for (let li = 0; li < layers.length; li++) {
-      const layer = layers[li];
-      // Add noise to radius and height
-      const rNoise = 1 + (rng() - 0.5) * 0.15;
-      const hNoise = 1 + (segNoise1 * 0.5 + segNoise2 * 0.3 - 0.3) * 0.6;
-      const noiseR = layer.r * rNoise;
-      const noiseH = layer.h * hNoise;
-
-      // Elliptical ring (stretch to match map aspect ratio)
-      const x = mapCX + cos * noiseR * (mapRadiusX / mapRadius);
-      const z = mapCZ + sin * noiseR * (mapRadiusZ / mapRadius);
-      const y = noiseH;
-
-      mtnPositions.push(x, y, z);
-      mtnNormals.push(0, 1, 0); // will recompute
-
-      // Color: blend from grass to rock to snow based on height
-      const mix = layer.colorMix * hNoise;
-      const col = new THREE.Color();
-      if (mix < 0.5) {
-        col.lerpColors(grassColor, rockColor, mix * 2);
-      } else {
-        col.lerpColors(rockColor, snowColor, (mix - 0.5) * 2);
-      }
-      // Add per-vertex variation
-      const hsl = {};
-      col.getHSL(hsl);
-      hsl.l += (rng() - 0.5) * 0.06;
-      col.setHSL(hsl.h, hsl.s, Math.max(0.1, Math.min(0.8, hsl.l)));
-      mtnColors.push(col.r, col.g, col.b);
-    }
-  }
-
-  // Generate indices (quad strip between adjacent segments)
-  const layerCount = layers.length;
-  for (let seg = 0; seg < ringSegments; seg++) {
-    for (let li = 0; li < layerCount - 1; li++) {
-      const a = seg * layerCount + li;
-      const b = a + 1;
-      const c = (seg + 1) * layerCount + li;
-      const d = c + 1;
-      mtnIndices.push(a, c, b, b, c, d);
-    }
-  }
-
-  // Compute proper normals
-  const mtnGeo = new THREE.BufferGeometry();
-  mtnGeo.setAttribute('position', new THREE.Float32BufferAttribute(mtnPositions, 3));
-  mtnGeo.setAttribute('color', new THREE.Float32BufferAttribute(mtnColors, 3));
-  mtnGeo.setIndex(mtnIndices);
-  mtnGeo.computeVertexNormals();
-
-  const mtnMat = new THREE.MeshStandardMaterial({
-    vertexColors: true,
-    roughness: 0.85,
-    metalness: 0.02,
-    flatShading: true,
-    side: THREE.DoubleSide,
-  });
-
-  const mountains = new THREE.Mesh(mtnGeo, mtnMat);
-  mountains.castShadow = true;
-  mountains.receiveShadow = true;
-  scene.add(mountains);
-}
-
-setProgress(100, 'Ready!');
-
-// --- Hex grid wireframe overlay (all edges) ---
-const HEX_NEIGHBORS = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
-const edgeLineMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35, depthWrite: false });
-const edgePositions = [];
-
-for (const [key, hex] of allHexes) {
-  if (hex.terrain === 'river') continue;
-  const worldPos = hexToWorld(hex.q, hex.r);
-  const y = hex.height * HEX_HEIGHT_STEP + 0.02;
-
-  for (let i = 0; i < 6; i++) {
-    const [dq, dr] = HEX_NEIGHBORS[i];
-    const nKey = `${hex.q + dq},${hex.r + dr}`;
-    const neighbor = allHexes.get(nKey);
-
-    // Only draw each shared edge once (draw if no neighbor or neighbor key > this key)
-    if (neighbor && neighbor.terrain !== 'river' && nKey < key) continue;
-
-    const a1 = (Math.PI / 3) * i;
-    const a2 = (Math.PI / 3) * ((i + 1) % 6);
-    edgePositions.push(
-      worldPos.x + INNER_RADIUS * Math.cos(a1), y, worldPos.z + INNER_RADIUS * Math.sin(a1),
-      worldPos.x + INNER_RADIUS * Math.cos(a2), y, worldPos.z + INNER_RADIUS * Math.sin(a2)
-    );
-  }
-}
-const edgeGeo = new THREE.BufferGeometry();
-edgeGeo.setAttribute('position', new THREE.Float32BufferAttribute(edgePositions, 3));
-const edgeLines = new THREE.LineSegments(edgeGeo, edgeLineMat);
-scene.add(edgeLines);
-
-// --- Hide loading screen ---
-setTimeout(() => {
-  document.getElementById('loading').classList.add('hidden');
-}, 300);
+setTimeout(() => document.getElementById('loading').classList.add('hidden'), 150);
 
 // --- HUD ---
-const hudEl = document.getElementById('hud');
+const statsEl = document.getElementById('stats');
 function updateHud() {
-  const pos = camera.position;
-  hudEl.innerHTML = `
-    <strong>3D Map Preview</strong><br>
-    Hexes: ${allHexes.size.toLocaleString()}<br>
-    Forests: ${forestHexes.length} &nbsp; Buildings: ${buildingHexes.length}<br>
-    Segments: ${Object.keys(segmentData).length}
-  `;
+  const fps = 1000 / Math.max(1, governor.avgMs);
+  statsEl.innerHTML = `${allHexes.size.toLocaleString()} hexes · ${(hexesByType.forest || []).length} forests<br>`
+    + `${fps.toFixed(0)} fps · ${governor.avgMs.toFixed(1)} ms · ${LEVELS[governor.level].name}${governor.locked ? ' (locked)' : ''}`;
 }
+setInterval(updateHud, 500);
 updateHud();
 
-// --- Reset camera ---
+// --- Keys ---
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'r' || e.key === 'R') {
-    camera.position.set(centerPos.x + 25, 30, centerPos.z + 25);
-    controls.target.set(centerPos.x, 2, centerPos.z);
-    controls.update();
-  }
+  if (e.target && e.target.tagName === 'INPUT') return;
+  const k = e.key.toLowerCase();
+  if (k === 'r') { intro.active = false; applyView(DEFAULT_VIEW); }
+  else if (k === 'g') terrainUniforms.uGrid.value = terrainUniforms.uGrid.value > 0 ? 0 : 0.14;
+  else if (k === 'c') controls.autoRotate = !controls.autoRotate;
+  else if (k === 'h') document.body.classList.toggle('clean');
+  else if (k === 'q') { governor.locked = true; governor.set((governor.level + 1) % LEVELS.length); applyQuality(LEVELS[governor.level]); updateHud(); }
 });
 
-// --- Resize ---
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  applyQuality(LEVELS[governor.level]);
 });
 
 // --- Animate ---
 const clock = new THREE.Clock();
+const perf = { cpu: 0, frame: 16.7 };
 function animate() {
   requestAnimationFrame(animate);
-  const dt = clock.getDelta();
-  const elapsed = clock.getElapsedTime();
-
-  water.material.uniforms['time'].value = elapsed * 0.5;
-  for (const ww of waterwheels) ww.rotation.x = elapsed * 0.3;
+  const dt = Math.min(clock.getDelta(), 0.1);
+  const t = clock.elapsedTime;
+  G.uTime.value = t;
+  G.uWindStrength.value = 0.75 + 0.35 * Math.sin(t * 0.13) + 0.2 * Math.sin(t * 0.41);
+  smokeMat.uniforms.uTime.value = t;
+  smokeMat.uniforms.uWind.value.copy(G.uWindDir.value);
+  smokeMat.uniforms.uLight.value = 1 - timeState.night * 0.75;
+  for (const ww of waterwheels) ww.rotation.x = t * 0.3;
+  updateBirds(t);
+  updateIntro(dt);
   controls.update();
-  renderer.render(scene, camera);
+  sky.position.copy(camera.position);
+  clouds.position.set(camera.position.x, G.uCloudHeight.value, camera.position.z);
+  const t0 = performance.now();
+  if (usePost) post.composer.render(dt);
+  else renderer.render(scene, camera);
+  perf.cpu = perf.cpu * 0.95 + (performance.now() - t0) * 0.05;
+  perf.frame = perf.frame * 0.95 + dt * 1000 * 0.05;
+  governor.frame(dt * 1000);
 }
+window.__map3d = { renderer, scene, camera, controls, perf, governor, post, setTimeOfDay, applyView, LEVELS, applyQuality };
 animate();
-
 </script>
 </body>
 </html>
