@@ -50,6 +50,28 @@ export function createBoardLayers(world) {
     ctx.closePath();
   }
 
+  // Hidden hexes grouped by distance (1..FOG_STEPS) to the nearest visible hex
+  const FOG_STEPS = 6;
+  function fogRings(visibleKeys) {
+    const seen = new Set(visibleKeys);
+    const rings = [[]];
+    let frontier = visibleKeys.map((k) => k.split(',').map(Number));
+    for (let d = 1; d <= FOG_STEPS; d++) {
+      const next = [];
+      for (const [q, r] of frontier) {
+        for (const [dq, dr] of DIRS) {
+          const k = `${q + dq},${r + dr}`;
+          if (seen.has(k)) continue;
+          seen.add(k);
+          next.push([q + dq, r + dr]);
+        }
+      }
+      rings.push(next);
+      frontier = next;
+    }
+    return rings;
+  }
+
   function setVisibility(keys) {
     if (!keys) { G.uFogOn.value = 0; lastVisKey = null; return; }
     const arr = Array.from(keys).sort();
@@ -63,6 +85,16 @@ export function createBoardLayers(world) {
     ctx.filter = 'none';
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, visW, visH);
+    // green = closeness to the visible area, so the fog darkens progressively with distance
+    const rings = fogRings(arr);
+    ctx.filter = `blur(${(0.6 * VIS_PPU).toFixed(1)}px)`;
+    for (let d = FOG_STEPS; d >= 1; d--) {
+      if (!rings[d].length) continue;
+      ctx.fillStyle = `rgb(0,${Math.round(255 * (1 - d / (FOG_STEPS + 1)))},0)`;
+      ctx.beginPath();
+      for (const [q, r] of rings[d]) hexPath(ctx, visP, q, r, 1.08);
+      ctx.fill();
+    }
     ctx.filter = `blur(${(0.28 * VIS_PPU).toFixed(1)}px)`;
     ctx.fillStyle = '#fff';
     ctx.beginPath();
