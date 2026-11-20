@@ -159,6 +159,19 @@ function getStartingZones(numPlayers, mapRadius, budget, map = maps.getMap('defa
   const fixed = fixedZones(numPlayers, map.zones, td);
   if (fixed) return fixed;
   const maxTiles = Math.max(5, Math.floor((budget || 2500) / 1000) * 5);
+  // Random placement can occasionally squeeze a zone to nothing: retry, keep the best attempt
+  const wanted = Math.min(maxTiles, 8);
+  let best = null;
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const zones = _randomZones(numPlayers, maxTiles, td, sd);
+    const size = Math.min(...zones.map(z => z.tiles.length));
+    if (!best || size > best.size) best = { zones, size };
+    if (size >= wanted) break;
+  }
+  return best.zones;
+}
+
+function _randomZones(numPlayers, maxTiles, td, sd) {
 
   const validHexes = [];
   for (const [key, type] of Object.entries(td)) {
