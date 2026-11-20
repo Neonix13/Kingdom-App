@@ -156,7 +156,7 @@ export class MapModel {
 
   applyWhole(t, v) {
     if (t === 'obj') this.objectives = clone(v);
-    else if (t === 'meta') this.meta = clone(v);
+    else if (t === 'meta') this.meta = { ...this.meta, ...clone(v) };
     else if (t === 'zoneCount') this.zoneCount = v;
   }
 
@@ -172,7 +172,19 @@ export class MapModel {
   }
 
   setWhole(t, next) {
-    const prev = t === 'obj' ? this.objectives : t === 'meta' ? this.meta : this.zoneCount;
+    if (t === 'meta') {
+      // field-level diff, never touching id / updatedAt
+      const a = {}, b = {};
+      for (const k of new Set([...Object.keys(this.meta), ...Object.keys(next)])) {
+        if (k === 'id' || k === 'updatedAt') continue;
+        if (JSON.stringify(this.meta[k]) !== JSON.stringify(next[k])) { a[k] = clone(this.meta[k]) ?? null; b[k] = clone(next[k]) ?? null; }
+      }
+      if (!Object.keys(b).length) return false;
+      this.applyWhole('meta', b);
+      this.record({ t, a, b });
+      return true;
+    }
+    const prev = t === 'obj' ? this.objectives : this.zoneCount;
     if (JSON.stringify(prev) === JSON.stringify(next)) return false;
     const a = clone(prev);
     this.applyWhole(t, next);

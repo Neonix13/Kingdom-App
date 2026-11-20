@@ -62,6 +62,8 @@ function refreshPanelSoon() { clearTimeout(panelTimer); panelTimer = setTimeout(
 function refreshPanel() {
   const p = $('panel');
   const scroll = p.scrollTop;
+  const sel = 'input,select,textarea';
+  const focusIdx = p.contains(document.activeElement) ? [...p.querySelectorAll(sel)].indexOf(document.activeElement) : -1;
   p.innerHTML = '';
   if (state.tab === 'tool') {
     const t = tools.tools[state.tool];
@@ -71,6 +73,7 @@ function refreshPanel() {
   else if (state.tab === 'valid') p.append(...validationPanel());
   else if (state.tab === 'stats') p.append(...statsPanel());
   p.scrollTop = scroll;
+  if (focusIdx >= 0) { const el = p.querySelectorAll(sel)[focusIdx]; if (el) el.focus(); }
 }
 E.ui.refreshPanel = refreshPanel;
 E.ui.refreshPanelSoon = refreshPanelSoon;
@@ -671,7 +674,7 @@ async function saveAs() {
   if (!ok) return;
   const id = idIn.value.trim(), name = nameIn.value.trim();
   const oldId = model.meta.id;
-  flushDraft();
+  clearTimeout(draftTimer);
   model.meta = { ...model.meta, id, name, updatedAt: null };
   state.serverExists = true;
   model.markDirty();
@@ -679,7 +682,10 @@ async function saveAs() {
   updateTitle();
   if (state.validation.errors.length) runValidate();
   await save();
-  if (!model.dirty && oldId !== id) toast(`La carte « ${oldId} » n'a pas été modifiée sur le serveur.`, 'info');
+  if (!model.dirty && oldId !== id) {
+    localStorage.removeItem(LS_DRAFT(oldId));
+    toast(`La carte « ${oldId} » n'a pas été modifiée sur le serveur.`, 'info');
+  }
 }
 
 function suggestId(id) {
@@ -811,9 +817,15 @@ $('previewMode').addEventListener('change', () => {
 });
 
 // ---------------------------------------------------------------- model change hooks
+let titleQueued = false;
+function updateTitleSoon() {
+  if (titleQueued) return;
+  titleQueued = true;
+  requestAnimationFrame(() => { titleQueued = false; updateTitle(); });
+}
 model.on((ch) => {
   if (ch.layers || ch.all || ch.saved !== undefined) {
-    updateTitle();
+    updateTitleSoon();
     scheduleValidate();
     if (ch.saved !== true) scheduleDraft();
     if (ch.all) refreshPanelSoon();

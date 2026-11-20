@@ -280,7 +280,11 @@ export function createTools(E) {
       ];
       if (sel !== null && objs[sel]) {
         const o = objs[sel];
-        const upd = (patch) => { const next = objs.map((x, i) => (i === sel ? { ...x, ...patch } : x)); model.run('Objectif', () => model.setWhole('obj', next)); };
+        const upd = (patch) => {
+          const next = model.objectives.map((x, i) => (i === sel ? { ...x, ...patch } : x));
+          model.run('Objectif', () => model.setWhole('obj', next));
+          E.ui.refreshPanelSoon();
+        };
         out.push(h('div', { class: 'card-sub' },
           h('b', null, `Objectif sélectionné (${o.q},${o.r})`),
           field('Nom', (() => { const i = h('input', { type: 'text', value: o.name || '' }); i.addEventListener('change', () => upd({ name: i.value.trim() })); return i; })()),
