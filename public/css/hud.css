@@ -467,3 +467,17 @@ body.hud-gameover-on #hud-splash { display: none !important; }
 #hud-root .hud-route button { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; border: 2px solid #000; background: #fff; color: #000; font: 400 11px var(--hud-display); cursor: pointer; }
 #hud-root .hud-route button.on { background: var(--hud-red); color: #fff; }
 #hud-root .hud-route .hud-kbd { height: 16px; min-width: 16px; font-size: 9px; }
+
+/* Stance: current stance line and coloured kanji chips (selector, tokens) */
+.st-chip { display: inline-flex; vertical-align: middle; align-items: center; justify-content: center; width: 20px; height: 20px; flex-shrink: 0; border: 2px solid #000; color: #fff; font: 400 13px var(--hud-brush); font-style: normal; line-height: 1; }
+.hud-card .stance-now { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.hud-card .stance-now b { font: 400 13px var(--hud-display); }
+.hud-card .stance-now span { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.hud-card .body { gap: 5px; }
+.hud-card .stances .st-btn > span { gap: 5px; }
+.hud-card .stances .st-btn .st-chip { width: 22px; height: 22px; font-size: 14px; }
+.hud-card .stances .st-btn.on { box-shadow: 0 0 0 3px var(--hud-red); }
+#v3-tip .st-chip, #hud-tip2d .st-chip { width: 16px; height: 16px; font-size: 11px; border-width: 1.5px; }
+#hud-splash .sp-st { display: flex; align-items: center; gap: 5px; margin-top: 3px; font: 700 11px var(--hud-body); color: #fff; }
+#hud-splash .sp-st .st-chip { border-color: #fff; }
+#sim-panel .st-chip { width: 16px; height: 16px; font-size: 11px; border-width: 1.5px; margin-right: 2px; }

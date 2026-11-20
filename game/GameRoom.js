@@ -1055,13 +1055,10 @@ class GameRoom {
     const mounted = rules.isMounted(unit);
     let q = unit.q, r = unit.r, cost = 0;
     const path = [];
-    const seen = new Set([hexKey(q, r)]);
     for (const step of route) {
       const [nq, nr] = step || [];
       const k = hexKey(nq, nr);
       if (!Number.isInteger(nq) || !Number.isInteger(nr) || hexDistance(q, r, nq, nr) !== 1 || !this.hexMap[k]) return { error: 'Chemin invalide.' };
-      if (seen.has(k)) return { error: 'Le chemin repasse par la même case.' };
-      seen.add(k);
       const c = rules.stepCost(this.moveTable(), this.hexMap[hexKey(q, r)], this.hexMap[k], this.segmentData[segmentEdgeKey(q, r, nq, nr)] || null, mounted);
       if (!isFinite(c)) return { error: 'Chemin infranchissable.' };
       if (blocked(k) && !(crossable && crossable(k))) return { error: 'Le chemin traverse une case occupée.' };
@@ -1414,6 +1411,7 @@ class GameRoom {
       attackerName: attacker.name, targetName: target.name,
       attackerPlayerId: attackerPlayer.id, targetPlayerId: targetPlayer.id, defenderPlayerId: targetPlayer.id,
       turn: this.turn, manche: this.manche,
+      attackerStance: attacker.isGeneral ? undefined : attacker.stance, targetStance: target.isGeneral ? undefined : target.stance,
       defenseChoice,
       hit: result.hit, dmgReceived: result.dmgReceived,
       moralDmg: result.moralDmg,

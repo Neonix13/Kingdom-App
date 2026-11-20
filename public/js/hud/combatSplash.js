@@ -37,10 +37,25 @@ export function createCombatSplash({ bridge, portrait, kanji, isActive }) {
     return { name: hidden ? 'Unité inconnue' : (name || u?.name || '?'), u, color, pic: u && !hidden ? portrait(u) : null, kj: u ? kanji(u) : '?' };
   }
 
-  function side(info, cls, label) {
+  const stanceOf = (id) => (id && window.stanceStyle ? window.stanceStyle(id) : null);
+  function side(info, cls, label, stance) {
     const pic = info.pic ? `<img src="${esc(info.pic)}" alt="">` : `<span class="ph hud-hatch"><b class="hud-brush">${esc(info.kj)}</b></span>`;
+    const ss = stanceOf(stance);
+    const st = ss ? `<span class="sp-st"><i class="st-chip" style="background:${esc(ss.c)}">${esc(ss.k)}</i>${esc(ss.name)}</span>` : '';
     return `<div class="sp-side ${cls}"><div class="sp-pic">${pic}</div>
-      <div class="sp-tag" style="background:${esc(info.color)}"><span>${esc(label)}</span><b class="hud-dela">${esc(info.name)}</b></div></div>`;
+      <div class="sp-tag" style="background:${esc(info.color)}"><span>${esc(label)}</span><b class="hud-dela">${esc(info.name)}</b>${st}</div></div>`;
+  }
+  // "Charge (+3 attaque mêlée, …) contre Repos (−2 défense mêlée, …)": what each stance brought to this combat
+  function stancesRow(log) {
+    const a = stanceOf(log.attackerStance), t = stanceOf(log.targetStance);
+    if ((!a && !t) || !window.stanceEffects) return null;
+    const kind = log.ranged ? 'tir' : 'cac';
+    const part = (ss, id, keys) => {
+      if (!ss) return 'général';
+      const fx = window.stanceEffects(id, kind).filter((e) => keys.test(e.key)).slice(0, 3);
+      return `<b>${esc(ss.name)}</b>${fx.length ? ` (${fx.map((e) => `${e.v > 0 ? '+' : '−'}${Math.abs(e.v)} ${esc(e.label)}`).join(', ')})` : ''}`;
+    };
+    return ['Postures', `${part(a, log.attackerStance, /^(attack|puissance|intimidation)_/)} contre ${part(t, log.targetStance, /^(defense|courage)_|^armure$/)}`];
   }
 
   function normalBody(log, A, T) {
@@ -65,6 +80,8 @@ export function createCombatSplash({ bridge, portrait, kanji, isActive }) {
     if (dc === 'counter') foot = log.defenseSuccess ? `${DEF_LABEL.counter} réussie : <b>−${log.counterDmgReceived ?? 0}</b> pour ${esc(A.name)}${log.counterMoralDmg ? ` · −${log.counterMoralDmg} moral` : ''}` : `${DEF_LABEL.counter} ratée`;
     else if (dc === 'absorb') foot = `${DEF_LABEL.absorb} : <b>${log.counterDmgReceived ?? 0}</b> PV absorbés`;
     else if (dc) foot = DEF_LABEL[dc] || esc(dc);
+    const sr = stancesRow(log);
+    if (sr) rows.push(sr);
     for (const bn of log.bonuses || []) rows.push(['Capacité', esc(bn.text)]);
     if (log.attackerKilled) foot += `${foot ? ' · ' : ''}<b>${esc(A.name)} détruit</b>`;
     if (log.generalKilled && log.eliminatedPlayer) foot += `${foot ? ' · ' : ''}<b>${esc(log.eliminatedPlayer)} perd son général</b>`;
@@ -101,7 +118,7 @@ export function createCombatSplash({ bridge, portrait, kanji, isActive }) {
     }
     return `<div class="sp-speed"></div>
       <div class="sp-stage">
-        <div class="sp-comic">${side(A, 'att', duel ? 'Général' : 'Attaquant')}${side(T, 'def', duel ? 'Général' : 'Défenseur')}</div>
+        <div class="sp-comic">${side(A, 'att', duel ? 'Général' : 'Attaquant', log.attackerStance)}${side(T, 'def', duel ? 'Général' : 'Défenseur', log.targetStance)}</div>
         <div class="sp-kanji hud-brush">${kj}</div>
         ${duel ? '<div class="sp-shout hud-dela">DUEL !</div>' : log.trample ? '<div class="sp-shout hud-dela">PIÉTINEMENT !</div>' : log.ranged ? '<div class="sp-shout hud-dela">TIR !</div>' : ''}
         ${result}

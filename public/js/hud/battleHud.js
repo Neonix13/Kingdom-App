@@ -303,7 +303,6 @@ export function mountBattleHud(bridge, view) {
     if (!u.isMine && !deploying) meta.push(u.isAlly ? '<span class="flag ok">ALLIÉ</span>' : '<span class="flag">ENNEMI</span>');
     meta.push(esc(u.isGeneral ? 'GÉNÉRAL' : (u.category || '').toUpperCase()));
     if (u.speed != null) meta.push(`VITESSE ${u.speedRemaining != null ? esc(fmtSpeed(u.speedRemaining)) + '/' : ''}${u.speed}`);
-    if (!u.isGeneral && u.stance) meta.push(`POSTURE ${esc((names[u.stance] || u.stance).toUpperCase())}`);
     if (!u.isGeneral && u.q != null) meta.push(esc(String(terrainName).toUpperCase()));
     if (u.range > 1) meta.push(`PORTÉE ${u.range}`);
     if (u.isFleeing) meta.push('<span class="flag">EN FUITE</span>');
@@ -313,13 +312,21 @@ export function mountBattleHud(bridge, view) {
     if (u.isMine && !deploying && !sim && u.hasAttacked) meta.push('A ATTAQUÉ');
     const pct = u.maxVitality ? Math.max(0, Math.min(100, (u.vitality / u.maxVitality) * 100)) : 0;
     const stanceShown = !sim && $('stance-panel')?.style.display === 'block';
-    const icons = bridge.stanceIcons || {};
+    const sty = (s) => (window.stanceStyle ? window.stanceStyle(s) : { k: '', c: '#000', name: names[s] || s, short: names[s] || s });
     const stanceBtns = list.map((s, i) => {
       const on = u.stance === s;
-      const ic = icons[s] && icons[s].src ? `<img src="${esc(icons[s].src)}" alt="">` : '';
-      const label = on || !ic ? esc(names[s] || s) : '';
-      return `<button class="hud-para${on ? ' on' : ''}" data-stance="${i}" title="${esc(names[s] || s)} (${i + 1})" aria-label="${esc(names[s] || s)}"><span>${ic}${label}</span></button>`;
+      const ss = sty(s);
+      const label = on ? esc(ss.short) : '';
+      return `<button class="hud-para st-btn${on ? ' on' : ''}" data-stance="${i}" title="${esc(ss.name)} (${i + 1})" aria-label="${esc(ss.name)}"><span><i class="st-chip" style="background:${esc(ss.c)}">${esc(ss.k)}</i>${label}</span></button>`;
     }).join('');
+    let stanceNow = '';
+    if (!u.isGeneral && u.stance) {
+      const ss = sty(u.stance);
+      const kind = (u.range || 1) > 1 ? 'tir' : 'cac';
+      const fx = window.stanceEffectsText ? window.stanceEffectsText(u.stance, kind, 4) : '';
+      const full = [window.stanceEffectsText ? window.stanceEffectsText(u.stance) : '', window.stanceAngleText ? window.stanceAngleText(u.stance) : '', sim && window.stanceReactionText ? `si attaquée : ${window.stanceReactionText(u.stance)}` : ''].filter(Boolean).join(' — ');
+      stanceNow = `<div class="stance-now" title="${esc(full)}"><i class="st-chip" style="background:${esc(ss.c)}">${esc(ss.k)}</i><b>${esc(ss.name.toUpperCase())}</b><span>${esc(fx)}${sim && window.stanceReactionText ? ` · si attaquée : ${esc(window.stanceReactionText(u.stance))}` : ''}</span></div>`;
+    }
     el.card.innerHTML = `
       <div class="pic">${src ? `<img src="${esc(src)}" alt="">` : ''}<span class="k">${unitKanji(u)}</span><i class="owner" style="background:${esc(color)}"></i></div>
       <div class="body">
@@ -328,6 +335,7 @@ export function mountBattleHud(bridge, view) {
           <div class="vit"><b>${u.vitality ?? '—'}</b><small>/${u.maxVitality ?? '—'}</small></div>
         </div>
         <div class="vbar${pct < 35 ? ' low' : ''}"><i style="width:${pct}%"></i></div>
+        ${stanceNow}
         <div class="stats">${stats.map((s) => `<div class="stat"><span>${s.label}</span><b class="${s.d > 0 ? 'up' : s.d < 0 ? 'down' : ''}" title="${s.d ? `base ${s.v - s.d}, ${s.d > 0 ? '+' : ''}${s.d} posture/terrain` : ''}">${s.v ?? '—'}</b></div>`).join('')}
           ${u.isGeneral ? `<div class="stat inv"><span>${esc((u.weapon || 'ARME').toUpperCase())}</span><b>${u.power ?? '—'}</b></div>` : `<div class="stat inv"><span>MORAL</span><b>${u.morale ?? '—'}</b></div>`}</div>
         <div class="stances" ${stanceShown ? '' : 'hidden'}>${stanceBtns}</div>

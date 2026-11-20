@@ -42,8 +42,23 @@ export function attackTipHtml(att, tgt, types, from = null) {
   if (abA && abA.type === 'speed_free') notes.push(`Cavalier léger : l'attaque coûte ${R.RULES.abilities.speed_free.attackCost} de vitesse, il peut encore bouger`);
   if (ranged && abT && abT.type === 'defend_ranged') notes.push(`Phalange : +${abT.value} armure contre les tirs`);
   if (ranged) notes.push('Tir : pas de jet de défense');
+  // Stances of both sides and what they bring to this kind of attack
+  const kind = ranged ? 'tir' : 'cac';
+  const sty = (u) => (!u.isGeneral && u.stance && window.stanceStyle ? window.stanceStyle(u.stance) : null);
+  const chip = (u) => { const ss = sty(u); return ss ? `<i class="st-chip" style="background:${ss.c}">${ss.k}</i> ${ss.short}` : 'général'; };
+  const fx = (u, keys) => (window.stanceEffects && !u.isGeneral && u.stance ? window.stanceEffects(u.stance, kind).filter((e) => keys.test(e.key)) : []);
+  const fmtFx = (list) => list.map((e) => `${e.v > 0 ? '+' : '−'}${Math.abs(e.v)} ${e.label}`).join(', ');
+  const fa = fx(att, /^(attack|puissance|intimidation|precision)_/);
+  const ft = fx(tgt, /^(defense|courage|esquive)_|^armure$/);
+  if (sty(att)) notes.push(`<b>${att.name}</b> en ${sty(att).name} : ${fa.length ? fmtFx(fa) : 'pas de modificateur d\'attaque'}`);
+  if (sty(tgt)) {
+    const sim = window.gameBridge && window.gameBridge.simultaneous;
+    const react = sim && window.stanceReactionText ? ` · ${window.stanceReactionText(tgt.stance)}` : '';
+    notes.push(`<b>${tgt.name}</b> en ${sty(tgt).name} : ${ft.length ? fmtFx(ft) : 'pas de modificateur de défense'}${react}`);
+  }
   const dice = (u) => (u.isGeneral ? 'd20' : `${Math.max(1, Math.floor((u.vitality || 0) / ((R && R.RULES.combat.diceDivisor) || 5)))} dés`);
   return `<b>${ranged ? 'Tir' : 'Attaque'}</b> : ${att.name} → ${tgt.name}<div class="vs">
+      ${row('Posture', chip(att), chip(tgt))}
       ${row('Attaque / Défense', att.attack ?? att.force, tgt.defense ?? tgt.force ?? '–')}
       ${row('Dés', dice(att), dice(tgt))}
       ${row('Puissance / Armure', att.power, tgt.armor)}

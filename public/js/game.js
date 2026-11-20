@@ -274,6 +274,55 @@ const STANCES_DATA = {
   defense_distance: { vitesse:0, attack_cac:-3, attack_tir:0, defense_cac:-2, defense_tir:0, puissance_cac:-2, puissance_tir:0, intimidation_cac:-2, intimidation_tir:-1, courage_cac:-1, courage_tir:1, esquive_cac:2, esquive_tir:4, precision_cac:-2, precision_tir:-1, armure:0, armure_tour:0, moral_tour:0, vitalite_tour:0 },
 };
 
+// ---- Stance display (kanji + colour on tokens, plates, HUD card, attack tip and combat card) ----
+const STANCE_STYLE = {
+  marche: { k: '行', c: '#5f5f5f' },
+  combat: { k: '闘', c: '#111111' },
+  charge: { k: '突', c: '#D8352A' },
+  repos: { k: '休', c: '#3b78b8' },
+  defense_combat: { k: '守', c: '#a8790c' },
+  defense_distance: { k: '避', c: '#2a8270' },
+};
+const STANCE_FULL_NAMES = { defense_combat: 'Défense de combat', defense_distance: 'Défense à distance' };
+function stanceStyle(id) {
+  const st = STANCE_STYLE[id] || { k: '?', c: '#444' };
+  return { ...st, name: STANCE_FULL_NAMES[id] || stanceNames[id] || id, short: stanceNames[id] || id };
+}
+// Non-zero modifiers of a stance: [{ label, v, key }]; kind 'cac' | 'tir' keeps the general ones plus that kind only
+const STANCE_FIELDS = [
+  ['vitesse', 'vitesse'], ['attack_cac', 'attaque mêlée'], ['attack_tir', 'attaque tir'], ['defense_cac', 'défense mêlée'], ['defense_tir', 'défense contre tirs'],
+  ['puissance_cac', 'puissance mêlée'], ['puissance_tir', 'puissance tir'], ['intimidation_cac', 'intimidation mêlée'], ['intimidation_tir', 'intimidation tir'],
+  ['courage_cac', 'courage mêlée'], ['courage_tir', 'courage tir'], ['esquive_cac', 'esquive mêlée'], ['esquive_tir', 'esquive tirs'],
+  ['precision_cac', 'précision mêlée'], ['precision_tir', 'précision tir'], ['armure', 'armure'],
+  ['armure_tour', 'armure / tour'], ['moral_tour', 'moral / tour'], ['vitalite_tour', 'vitalité / tour'],
+];
+function stanceEffects(id, kind = null) {
+  const d = STANCES_DATA[id] || {};
+  return STANCE_FIELDS.filter(([k]) => d[k] && (!kind || !/_(cac|tir)$/.test(k) || k.endsWith(`_${kind}`)))
+    .map(([k, label]) => ({ key: k, label, v: d[k] }));
+}
+function stanceEffectsText(id, kind = null, max = 99) {
+  const list = stanceEffects(id, kind);
+  if (!list.length) return 'aucun modificateur (posture neutre)';
+  return list.slice(0, max).map(e => `${e.v > 0 ? '+' : '−'}${Math.abs(e.v)} ${e.label}`).join(' · ') + (list.length > max ? ' …' : '');
+}
+// Angle of attack against a unit in this stance (RULES.combat.angleMods: front, front flank, rear flank, back)
+function stanceAngleText(id) {
+  const t = (KBRules.RULES.combat && KBRules.RULES.combat.angleMods || {})[id];
+  if (!t) return '';
+  const parts = [];
+  if (t[1] || t[5]) parts.push(`flancs avant +${Math.max(t[1], t[5])}`);
+  if (t[2] || t[4]) parts.push(`flancs arrière +${Math.max(t[2], t[4])}`);
+  if (t[3]) parts.push(`dos +${t[3]}`);
+  if (t[0]) parts.push(`face +${t[0]}`);
+  return parts.length ? `attaquée : ${parts.join(', ')}` : '';
+}
+// Response of a unit attacked in this stance in simultaneous mode (RULES.simultaneous.stanceReaction)
+function stanceReactionText(id) {
+  const r = KBRules.RULES.simultaneous && KBRules.RULES.simultaneous.stanceReaction ? KBRules.RULES.simultaneous.stanceReaction[id] : null;
+  return { counter: 'contre-attaque', absorb: 'encaisse', rien: 'ne répond pas' }[r] || '';
+}
+
 // Balance data (data/balance/*.json): /api/balance on the local server, else the tables frozen for the battle
 // (game_state.balanceTables, sent at battle start and on resync). The hardcoded copies above are the fallback.
 function applyBalanceTables(t) {
@@ -989,30 +1038,27 @@ function drawUnit(ctx, x, y, unit, playerId, isSelected = false) {
   ctx.fillStyle = hpRatio > 0.3 ? '#ffffff' : '#D8352A';
   ctx.fillRect(bx, by, barW * hpRatio, barH);
 
-  // Draw stance icon (bottom-right of hex) — all non-general units
+  // Stance badge (bottom-right of hex) — all non-general units: stance colour + kanji
   if (unit.stance && !unit.isGeneral) {
-    const icon = stanceIcons[unit.stance];
-    const iconSize = HEX_SIZE * 0.4;
-    const iconX = x + HEX_SIZE * 0.45;
-    const iconY = y + HEX_SIZE * 0.35;
-    const r = iconSize * 0.62;
-    // Background circle + golden border
+    const sst = stanceStyle(unit.stance);
+    const iconX = x + HEX_SIZE * 0.46;
+    const iconY = y + HEX_SIZE * 0.36;
+    const r = HEX_SIZE * 0.2;
     ctx.beginPath();
     ctx.arc(iconX, iconY, r, 0, Math.PI * 2);
-    ctx.fillStyle = '#111';
+    ctx.fillStyle = sst.c;
     ctx.fill();
-    ctx.strokeStyle = unit.isMine ? '#ffffff' : '#D8352A';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 3;
     ctx.stroke();
-    if (icon && icon.complete && icon.naturalWidth) {
-      ctx.drawImage(icon, iconX - iconSize/2, iconY - iconSize/2, iconSize, iconSize);
-    } else {
-      ctx.fillStyle = '#fff';
-      ctx.font = `900 ${Math.round(HEX_SIZE * 0.22)}px 'Zen Kaku Gothic New', sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText((unit.stance || '').charAt(0).toUpperCase(), iconX, iconY);
-    }
+    ctx.strokeStyle = unit.isMine ? '#ffffff' : '#D8352A';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = `${Math.round(HEX_SIZE * 0.27)}px 'Yuji Boku', 'Zen Old Mincho', serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(sst.k, iconX, iconY + 1);
   }
 
   ctx.restore();

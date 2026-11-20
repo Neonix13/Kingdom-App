@@ -56,8 +56,6 @@ test('chemin choisi : invalide → refusé, l\'unité ne bouge pas', () => {
   before();
   assert.ok(room.moveUnit(me.id, mine.id, 2, 0, [[1, 2], [1, 1], [1, 0], [2, 0]]).error, 'trop long pour la vitesse');
   before();
-  assert.ok(room.moveUnit(me.id, mine.id, 1, 2, [[1, 2], [2, 2], [1, 2]]).error, 'repasse par la même case');
-  before();
 });
 
 test('déplacer puis attaquer : le chemin choisi mène à la case d\'attaque, l\'attaque part dans la même action', () => {
@@ -123,4 +121,18 @@ test('simultané : chemin d\'attaque trop long refusé à la planification', () 
   const { room, A, B, T } = simSetup();
   put(room, A, 4, 4); put(room, B, 7, 4);
   assert.ok(T.setOrders(room, 'p0', { [A.id]: { type: 'attack', targetId: B.id, path: [[4, 3], [5, 2], [6, 2], [6, 1]] } }).error);
+});
+
+test('journal de combat : postures de l\'attaquant et du défenseur (cachées quand le camp n\'est pas vu)', () => {
+  const { room, me, mine, enemy, place, ready } = battleRoom();
+  place(mine, 3, 2); place(enemy, 4, 2); ready();
+  mine.stance = 'charge'; enemy.stance = 'repos';
+  enemy.morale = enemy.maxMorale = 1e6; enemy.vitality = enemy.maxVitality = 1e6;
+  const atk = room.initiateCombat(me.id, mine.id, enemy.id);
+  const res = room.resolveAttack(atk.attackId, 'rien');
+  assert.equal(res.combatLog.attackerStance, 'charge');
+  assert.equal(res.combatLog.targetStance, 'repos');
+  const { combatView } = require('../game/views');
+  const hidden = combatView(res.combatLog, { seeAttacker: false, seeTarget: true, details: false });
+  assert.equal(hidden.attackerStance, undefined);
 });

@@ -389,7 +389,8 @@
       html += `<div class="sim-label">Posture (coût ${S.stanceCost} vitesse, au début de la résolution)</div><div class="sim-row">`;
       for (const s of stanceList) {
         const active = (o && o.stance) ? o.stance === s : unit.stance === s;
-        html += `<button data-stance="${s}" class="${active ? 'active' : ''}">${escapeHtml(stanceNames[s] || s)}</button>`;
+        const sst = stanceStyle(s);
+        html += `<button data-stance="${s}" class="${active ? 'active' : ''}"><i class="st-chip" style="background:${sst.c}">${sst.k}</i> ${escapeHtml(stanceNames[s] || s)}</button>`;
       }
       html += '</div>';
     }
