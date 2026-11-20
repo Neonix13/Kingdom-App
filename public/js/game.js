@@ -437,6 +437,48 @@ let zoom = 0.3;
 let camX = 0;
 let camY = 0;
 
+// Frames hexes in 2D (pan, zoom out if they do not fit); false when they are already on screen
+function frameHexes2D(hexes, margin = 0.14) {
+  if (!hexes.length || (window.view3d && window.view3d.active)) return false;
+  const pts = hexes.map(h => hexToPixel(h.q, h.r));
+  const W = canvas.width, H = canvas.height;
+  const inside = (z, cx, cy) => pts.every(p => { const sx = p.x * z + cx + W / 2, sy = p.y * z + cy + H / 2; return sx > W * margin && sx < W * (1 - margin) && sy > H * margin && sy < H * (1 - margin); });
+  if (inside(zoom, camX, camY)) return false;
+  const x0 = Math.min(...pts.map(p => p.x)), x1 = Math.max(...pts.map(p => p.x));
+  const y0 = Math.min(...pts.map(p => p.y)), y1 = Math.max(...pts.map(p => p.y));
+  const fit = Math.min(W * (1 - 2 * margin) / (x1 - x0 + HEX_SIZE * 3), H * (1 - 2 * margin) / (y1 - y0 + HEX_SIZE * 3));
+  const z1 = Math.min(zoom, Math.max(0.3, fit));
+  const cx1 = -(x0 + x1) / 2 * z1, cy1 = -(y0 + y1) / 2 * z1;
+  const z0 = zoom, cx0 = camX, cy0 = camY, t0 = performance.now(), dur = 700;
+  (function step(now) {
+    const t = Math.min(1, (now - t0) / dur), e = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+    zoom = z0 + (z1 - z0) * e; camX = cx0 + (cx1 - cx0) * e; camY = cy0 + (cy1 - cy0) * e;
+    render();
+    if (t < 1) requestAnimationFrame(step);
+  })(t0);
+  return true;
+}
+
+// Fog of war: distance (1..6) of each hidden hex to the visible area, darker farther away (cached per vision set)
+let fogDistCache = { src: null, map: new Map() };
+function fogDistances(visible) {
+  if (!visible || fogDistCache.src === visible) return fogDistCache.map;
+  const map = new Map();
+  let frontier = [...visible].map(k => k.split(',').map(Number));
+  const seen = new Set(visible);
+  for (let d = 1; d <= 6 && frontier.length; d++) {
+    const next = [];
+    for (const [q, r] of frontier) for (const [dq, dr] of SEGMENT_EDGE_DIRS) {
+      const k = `${q + dq},${r + dr}`;
+      if (seen.has(k)) continue;
+      seen.add(k); map.set(k, d); next.push([q + dq, r + dr]);
+    }
+    frontier = next;
+  }
+  fogDistCache = { src: visible, map };
+  return map;
+}
+
 function smoothPanTo(worldX, worldY, durationMs = 600) {
   if (window.view3d && window.view3d.active) { const h = pixelToHex(worldX, worldY); window.view3d.focusHex(h.q, h.r); return; }
   const startX = camX, startY = camY;
@@ -510,16 +552,18 @@ function render() {
     }
   }
   if (mapDoc && window.KBMapProps) KBMapProps.drawDecor2D(ctx, mapDoc.decor, hexToPixel, HEX_SIZE);
+  if (window.KBCorpses) KBCorpses.draw2D(ctx, hexToPixel, HEX_SIZE);
 
   const visibleSet = new Set(gameState?.visibleHexes || []);
   const startZone = deployState?.startingZone;
 
   if (gameState && gameState.phase === 'battle') {
+    const fogDist = fogDistances(gameState.visibleHexes);
     for (const { q, r, key } of mapHexes) {
       const { x, y } = hexToPixel(q, r);
       const isVisible = visibleSet.has(key);
       const isHovered = hoveredHex && hoveredHex.q === q && hoveredHex.r === r;
-      let fill = isVisible ? 'rgba(0,0,0,0)' : 'rgba(14,12,10,0.74)';
+      let fill = isVisible ? 'rgba(0,0,0,0)' : `rgba(8,7,6,${(0.8 + 0.028 * (fogDist.get(key) || 6)).toFixed(3)})`;
       let stroke = isVisible ? `rgba(${gridColorRGB},${gridOpacity})` : 'rgba(0,0,0,0)';
       if (isVisible && movableTiles.has(key)) fill = 'rgba(255,255,255,0.22)';
       if (abilityTiles.has(key)) fill = 'rgba(47,95,168,0.45)';
@@ -1830,11 +1874,23 @@ function closeAbilityTarget() {
 }
 
 // ---- TOP BAR: time of day, scores, turn timer ----
+// Displayed hour: time flows during the round instead of jumping at its start.
+// Sequential: the round's hours are spread over the manches; simultaneous: the resolution playback sets an override per tick.
+let hourOverride = null;
+function displayHour() {
+  if (!gameState || gameState.timeOfDay == null) return null;
+  if (hourOverride != null) return hourOverride;
+  const n = (gameState.turnOrder || []).length;
+  if (gameState.mode === 'simultaneous' || n < 2 || !gameState.hoursPerTurn || gameState.phase !== 'battle') return gameState.timeOfDay;
+  const i = Math.min(n - 1, Math.max(0, (gameState.manche || 1) - 1));
+  return (gameState.timeOfDay + gameState.hoursPerTurn * i / n) % 24;
+}
+
 function renderTopInfo() {
   const el = document.getElementById('top-time');
   if (!el) return;
   if (!gameState || gameState.timeOfDay == null) { el.textContent = ''; return; }
-  el.textContent = `${gameState.isNight ? 'Nuit ·' : ''} Jour ${gameState.day || 1} · ${KBRules.formatHour(gameState.timeOfDay)}`;
+  el.textContent = `${gameState.isNight ? 'Nuit ·' : ''} Jour ${gameState.day || 1} · ${KBRules.formatHour(displayHour())}`;
   el.style.color = gameState.isNight ? '#9fb4ff' : '#e8c060';
   const sc = document.getElementById('top-scores');
   const objs = gameState.objectives || [];
@@ -2983,6 +3039,10 @@ function wsDispatch(event, data) {
 // ---- 3D VIEW BRIDGE ----
 window.gameBridge = {
   get state() { return gameState; },
+  get displayHour() { return displayHour(); },
+  get roomCode() { return roomCode; },
+  frameHexes2D,
+  setHourOverride(h) { hourOverride = h; renderTopInfo(); if (window.view3d) window.view3d.markDirty(); },
   get mapDoc() { return mapDoc; },
   get mapLoading() { return mapLoading; },
   get deployState() { return deployState; },
