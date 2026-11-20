@@ -59,7 +59,14 @@ export function createReplayModel(rep) {
     }
     return st;
   }
-  return { stateAt, apply, events: rep.events, players: rep.players, roster };
+  // Recorded replays carry the clock (turn, manche, hour) in keyframes rather than 'turn' events
+  function syncClock(st, index) {
+    const k = kfs.find((x) => x.e === index);
+    if (!k) return false;
+    Object.assign(st, { turn: k.turn, manche: k.manche, currentPlayerId: k.currentPlayerId, timeOfDay: k.timeOfDay, isNight: k.isNight });
+    return true;
+  }
+  return { stateAt, apply, syncClock, events: rep.events, players: rep.players, roster };
 }
 
 export async function mountReplay3d(rep, { container, canvas, onProgress, controlsEl }) {
@@ -154,6 +161,7 @@ export async function mountReplay3d(rep, { container, canvas, onProgress, contro
     while (playing && index < model.events.length) {
       await playEvent(model.events[index]);
       index++;
+      if (model.syncClock(state, index)) ui.applyHour();
       render();
     }
     playing = false;
