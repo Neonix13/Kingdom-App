@@ -1295,12 +1295,49 @@ vegGroup.add(grassMesh, wheatMesh, flowerMesh);
 
 await setProgress(78, 'Raising villages...');
 
-const { waterwheels, smokeSources, lanternSpots } = buildStructures({
+const { waterwheels, smokeSources, lanternSpots, decks } = buildStructures({
   scene, vegGroup, allHexes, hexesByType, segmentData, getSegType, parseSeg, edgeCorners,
   hexToWorld, hexCorner, groundHeight, effH, isWaterHex, footbridges, gateways,
   HEX_DIRS, DIR_TO_GEO_EDGE, CORNER_NEIGHBORS, HEX_HEIGHT_STEP, WATER_LEVEL, RIVERBED_HEIGHT,
   lanternMats, windowMats,
 });
+
+// Height where units stand: the ground, or the deck of a bridge they are crossing
+function walkHeight(x, z) {
+  const g = groundHeight(x, z);
+  for (const d of decks) {
+    if (x < d.x0 || x > d.x1 || z < d.z0 || z > d.z1) continue;
+    for (let i = 0; i < d.pts.length - 1; i++) {
+      const a = d.pts[i], b = d.pts[i + 1];
+      const vx = b.x - a.x, vz = b.z - a.z, l2 = vx * vx + vz * vz || 1;
+      const t = Math.max(0, Math.min(1, ((x - a.x) * vx + (z - a.z) * vz) / l2));
+      const px = a.x + vx * t, pz = a.z + vz * t;
+      if ((x - px) ** 2 + (z - pz) ** 2 <= d.hw * d.hw) return Math.max(g, a.y + (b.y - a.y) * t);
+    }
+  }
+  return g;
+}
+
+// Point (x, z) pulled to within maxOff of the centre line of the nearest bridge deck (null when no deck is close):
+// keeps a formation crossing a bridge on its deck
+function deckClamp(x, z, maxOff) {
+  let best = null;
+  for (const d of decks) {
+    if (x < d.x0 - 0.5 || x > d.x1 + 0.5 || z < d.z0 - 0.5 || z > d.z1 + 0.5) continue;
+    for (let i = 0; i < d.pts.length - 1; i++) {
+      const a = d.pts[i], b = d.pts[i + 1];
+      const vx = b.x - a.x, vz = b.z - a.z, l2 = vx * vx + vz * vz || 1;
+      const t = Math.max(0, Math.min(1, ((x - a.x) * vx + (z - a.z) * vz) / l2));
+      const px = a.x + vx * t, pz = a.z + vz * t;
+      const dd = Math.hypot(x - px, z - pz);
+      if (dd < d.hw + 0.6 && (!best || dd < best.dd)) best = { dd, px, pz };
+    }
+  }
+  if (!best) return null;
+  if (best.dd <= maxOff) return { x, z };
+  const k = maxOff / best.dd;
+  return { x: best.px + (x - best.px) * k, z: best.pz + (z - best.pz) * k };
+}
 
 {
   const pools = lanternSpots.map(p => ({ x: p.x, y: groundHeight(p.x, p.z) + 0.05, z: p.z, r: 1.4 }));
@@ -1653,7 +1690,7 @@ function setRunning(v) {
 return {
   THREE, renderer, scene, camera, controls, canvas, perf, governor, post, LEVELS,
   allHexes, hexesByType, getSegType, effH, isWaterHex,
-  hexToWorld, worldToHex, groundHeight, pickHex, pickPoint, projectToScreen,
+  hexToWorld, worldToHex, groundHeight, walkHeight, deckClamp, pickHex, pickPoint, projectToScreen,
   bounds: { bx0, bx1, bz0, bz1, BCX, BCZ },
   applyView, DEFAULT_VIEW, flyTo, focusHex, resize, start, setRunning,
   setTimeOfDay, previewTimeOfDay, commitTimeOfDay, get hour() { return timeState.hour; }, timeState,

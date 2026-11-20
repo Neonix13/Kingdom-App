@@ -659,6 +659,7 @@ export function buildStructures(ctx) {
   }
 
   // --- Wooden structures: bridges, footbridges, fences ---
+  const decks = []; // walkable bridge decks: sampled centre line (x, y, z) and half width, for units crossing them
   {
     const bridgeHexes = hexesByType.bridge || [];
     const bKey = (h) => `${h.q},${h.r}`;
@@ -729,6 +730,13 @@ export function buildStructures(ctx) {
       const P = (u) => { const p = curve.getPointAt(Math.min(1, Math.max(0, u))); p.y = Y(u); return p; };
       const F = (u) => { const du = 0.01; return frame(P(Math.min(1, u + du)).sub(P(Math.max(0, u - du)))); };
       const HW = 0.33;
+      {
+        const pts = [];
+        const n = Math.max(8, Math.round(L / 0.1));
+        for (let i = 0; i <= n; i++) { const p = P(i / n); pts.push({ x: p.x, y: p.y, z: p.z }); }
+        const xs = pts.map(p => p.x), zs = pts.map(p => p.z), m = HW + 0.1;
+        decks.push({ pts, hw: HW + 0.05, x0: Math.min(...xs) - m, x1: Math.max(...xs) + m, z0: Math.min(...zs) - m, z1: Math.max(...zs) + m });
+      }
 
       const nP = Math.round(L / 0.082);
       for (let i = 0; i < nP; i++) {
@@ -883,5 +891,5 @@ export function buildStructures(ctx) {
     vegGroup.add(VEG.instanced(new THREE.SphereGeometry(0.055, 8, 6), m, lanternSpots.map(p => ({ x: p.x, y: p.y, z: p.z, s: 1 }))));
   }
 
-  return { waterwheels, smokeSources, lanternSpots };
+  return { waterwheels, smokeSources, lanternSpots, decks };
 }

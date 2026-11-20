@@ -2,7 +2,8 @@ import * as THREE from 'three';
 
 // Movement path chevrons draped on the terrain + attack arc between two formations
 export function createPathPreview(world) {
-  const { scene, groundHeight, hexToWorld } = world;
+  const { scene, hexToWorld } = world;
+  const groundHeight = world.walkHeight || world.groundHeight;
   const MAX = 64;
 
   const chevGeo = new THREE.BufferGeometry();
@@ -97,7 +98,8 @@ export function createPathPreview(world) {
 
 // Planned orders (simultaneous mode): one chevron trail per move, an arc per attack, all in the player's colour
 export function createOrdersLayer(world) {
-  const { scene, groundHeight, hexToWorld } = world;
+  const { scene, hexToWorld } = world;
+  const groundHeight = world.walkHeight || world.groundHeight;
   const MAX = 512;
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute([

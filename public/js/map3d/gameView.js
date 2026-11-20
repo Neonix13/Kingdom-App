@@ -193,10 +193,15 @@ export async function mountGameView(bridge, { container }) {
       const z = ds.startingZone;
       const keys = z.tileSet || new Set();
       if (!keys.size) for (const k of world.allHexes.keys()) { const [q, r] = k.split(',').map(Number); if (hexDist(q, r, z.q, z.r) <= (z.radius || 4)) keys.add(k); }
-      fills.push({ keys, color: 'rgba(60,170,40,0.28)', edge: 'rgba(120,230,80,0.85)' });
+      fills.push({ keys, color: 'rgba(70,190,50,0.38)', edge: 'rgba(140,255,90,0.95)' });
+      outlines.push({ keys, center: null, color: 'rgba(170,255,110,0.95)', width: 0.14 });
     }
     fills.push({ keys: bridge.movableTiles, color: 'rgba(60,170,40,0.42)', edge: 'rgba(150,255,100,0.9)' });
     fills.push({ keys: bridge.attackableTiles, color: 'rgba(200,40,20,0.5)', edge: 'rgba(255,120,80,0.95)' });
+    if (bridge.approachAt) {
+      const approach = new Set([...bridge.attackableTiles].filter((k) => bridge.approachAt(k)));
+      if (approach.size) fills.push({ keys: approach, color: 'rgba(230,120,20,0.5)', edge: 'rgba(255,190,90,0.95)' });
+    }
     const sel = bridge.selectedUnit;
     if (sel && sel.q != null) fills.push({ keys: new Set([hexKey(sel.q, sel.r)]), color: 'rgba(255,210,60,0.32)' });
     const rc = bridge.rangeCenter, mc = bridge.motivateCenter;
@@ -247,7 +252,7 @@ export async function mountGameView(bridge, { container }) {
     }
     const ap = animatedPos(u);
     const p = ap || world.hexToWorld(u.q, u.r);
-    return _v.set(p.x, world.groundHeight(p.x, p.z) + 0.7, p.z);
+    return _v.set(p.x, world.walkHeight(p.x, p.z) + 0.7, p.z);
   }
 
   function frame(dt = 0.016) {
@@ -265,16 +270,24 @@ export async function mountGameView(bridge, { container }) {
         const sel = bridge.selectedUnit;
         const attackable = key && bridge.attackableTiles.has(key);
         const movable = key && bridge.movableTiles.has(key);
-        world.layers.setHover(valid, attackable ? '#ff6040' : movable ? '#a0ff70' : '#ffd25a');
         const hu = valid && shownUnits.find((x) => x.q === valid.q && x.r === valid.r);
+        const outOfReach = sel && hu && !hu.isMine && !attackable && !bridge.simultaneous;
+        world.layers.setHover(valid, attackable ? '#ff6040' : movable ? '#a0ff70' : outOfReach ? '#8a8a8a' : '#ffd25a');
         if (units3d) units3d.setHovered(hu ? hu.id : null);
         for (const el of plateEls.values()) el.classList.toggle('hov', !!(hu && el._unit.id === hu.id));
+        const approach = sel && attackable && hu && bridge.approachTo ? bridge.approachTo(sel, hu) : null;
         if (sel && movable) {
           const res = bridge.pathTo(sel, valid.q, valid.r);
           preview.showPath(res ? [[sel.q, sel.r], ...res.path.slice(1)] : null);
-        } else preview.showPath(null);
+        } else if (approach && approach.path.length > 1) preview.showPath(approach.path);
+        else preview.showPath(null);
         if (sel && attackable && hu) {
-          preview.showAttack(anchorOf(sel).clone().setY(anchorOf(sel).y - 0.35), anchorOf(hu).clone().setY(anchorOf(hu).y - 0.35), (sel.range || 1) > 1);
+          let from = anchorOf(sel).clone().setY(anchorOf(sel).y - 0.35);
+          if (approach && approach.path.length > 1) {
+            const p = world.hexToWorld(approach.q, approach.r);
+            from = new THREE.Vector3(p.x, world.walkHeight(p.x, p.z) + 0.35, p.z);
+          }
+          preview.showAttack(from, anchorOf(hu).clone().setY(anchorOf(hu).y - 0.35), (sel.range || 1) > 1);
         } else preview.showAttack(null, null);
       }
       const sel = bridge.selectedUnit;
@@ -368,6 +381,14 @@ export async function mountGameView(bridge, { container }) {
     world,
     markDirty() { dirty = true; },
     focusHex(q, r) { world.focusHex(q, r, 0.9); },
+    // true when the hex is well inside the screen (not near the borders)
+    hexOnScreen(q, r, margin = 0.12) {
+      const p = world.hexToWorld(q, r);
+      const sp = world.projectToScreen(new THREE.Vector3(p.x, world.groundHeight(p.x, p.z), p.z));
+      const w = canvas.clientWidth, h = canvas.clientHeight;
+      return sp.visible && sp.x > w * margin && sp.x < w * (1 - margin) && sp.y > h * margin && sp.y < h * (1 - margin);
+    },
+    pingHex(q, r, color) { world.layers.addPing(q, r, color); },
     onEvent(event, data) {
       if (!view.active) return;
       if (event === 'combat_result') {

@@ -876,7 +876,8 @@ function makeRing(color, alpha, groundHeight) {
 
 // --- Layer ---
 export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPlayerEmblem = null, autoUpdate = true } = {}) {
-  const { scene, hexToWorld, groundHeight } = world;
+  const { scene, hexToWorld } = world;
+  const groundHeight = world.walkHeight || world.groundHeight;
   const group = new THREE.Group();
   group.name = 'units3d';
   scene.add(group);
@@ -991,7 +992,11 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
   }
   function writeMemberMatrix(f, m, bx, bz, h) {
     const ch = Math.cos(h), sh = Math.sin(h);
-    const mx = bx + m.lx * ch + m.lz * sh, mz = bz - m.lx * sh + m.lz * ch;
+    let mx = bx + m.lx * ch + m.lz * sh, mz = bz - m.lx * sh + m.lz * ch;
+    if (world.deckClamp && world.walkHeight(bx, bz) > world.groundHeight(bx, bz) + 0.05) {
+      const c = world.deckClamp(mx, mz, 0.26); // crossing a bridge: the formation narrows onto the deck
+      if (c) { mx = c.x; mz = c.z; }
+    }
     const yaw = h + m.yaw, cy = Math.cos(yaw), sy = Math.sin(yaw), sc = m.t.sc || 1;
     let g0 = NaN;
     for (const p of m.parts) {
