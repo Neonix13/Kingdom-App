@@ -31,7 +31,7 @@ body.v3-photo #v3-photo-bar { display:flex; }
 `;
 
 const CAM_CODES = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Equal', 'Minus', 'NumpadAdd', 'NumpadSubtract']);
-const DEFAULTS = { quality: 'auto', grid: 0.16, plates: 'auto', hour: 'auto', camSpeed: 1, staging: true };
+const DEFAULTS = { quality: 'auto', grid: 0.16, plates: 'auto', hour: 'auto', camSpeed: 1, staging: true, combatCard: 'full', followPlayback: true };
 
 export function createGameUI({ world, container, bridge, getView }) {
   const style = document.createElement('style');
@@ -64,6 +64,8 @@ export function createGameUI({ world, container, bridge, getView }) {
     <label>Heure <select data-k="hour"><option value="auto">Suit les tours</option><option value="6.5">Aube</option><option value="10">Matin</option><option value="13">Midi</option><option value="16.2">Après-midi</option><option value="18.2">Crépuscule</option><option value="20.3">Nuit</option></select></label>
     <label>Vitesse caméra <input type="range" data-k="camSpeed" min="0.4" max="2.5" step="0.1"></label>
     <label>Mise en scène des combats <input type="checkbox" data-k="staging"></label>
+    <label>Fiche de combat <select data-k="combatCard"><option value="full">Grande</option><option value="small">Petite</option><option value="off">Aucune</option></select></label>
+    <label>Suivre la résolution <input type="checkbox" data-k="followPlayback"></label>
     <div class="row"><button data-act="photo">Mode photo (P)</button><button data-act="top">Vue du dessus (T)</button></div>
     <div class="hint">Clic gauche : sélection · glisser : déplacer la vue · clic droit glissé : pivoter · molette : zoom<br>
     ZQSD / WASD / flèches : déplacer · A/E : pivoter · Espace : centrer sur l’unité · Échap : désélectionner</div>`;
@@ -278,6 +280,7 @@ export function createGameUI({ world, container, bridge, getView }) {
     get photo() { return photo; },
     platesMode() { return settings.plates; },
     staging() { return !!settings.staging; },
+    followPlayback() { return settings.followPlayback !== false; },
     hide(on) { gear.style.display = on ? 'none' : ''; sep.style.display = on ? 'none' : ''; if (on) { panel.classList.remove('open'); setPhoto(false); } },
   };
 }

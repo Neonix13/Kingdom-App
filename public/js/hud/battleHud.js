@@ -1,7 +1,8 @@
 // Battle HUD (style D) shown over the 3D view. It is a presentation layer only: the legacy sidebar, top bar and buttons
 // stay in the DOM (hidden) and keep their logic in game.js / simultaneous.js / tutorial.js; the HUD reads the bridge state
 // and those elements, and forwards every click to the legacy control, so the rules live in one place.
-const KANJI = { pietaille: '卒', soldats: '兵', phalange: '盾', lancier: '槍', espion: '諜', assassin: '刺', cavalier_leger: '騎', cavalier_lourd: '騎', archer: '弓', archer_elite: '弓', batisseurs: '工', char: '車' };
+import { createCombatSplash } from './combatSplash.js';
+export const KANJI = { pietaille: '卒', soldats: '兵', phalange: '盾', lancier: '槍', espion: '諜', assassin: '刺', cavalier_leger: '騎', cavalier_lourd: '騎', archer: '弓', archer_elite: '弓', batisseurs: '工', char: '車' };
 const CAM_CODES = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Equal', 'Minus', 'NumpadAdd', 'NumpadSubtract']);
 const ACTIONS = [
   { id: 'btn-move', key: 'KeyR', hint: 'R', label: 'Déplacer', cls: '' },
@@ -512,8 +513,18 @@ export function mountBattleHud(bridge, view) {
   const area = $('canvas-area');
   if (area && window.ResizeObserver) new ResizeObserver(() => { if (active && view.active && view.world) view.world.resize(); }).observe(area);
 
+  const splash = createCombatSplash({ bridge, portrait, kanji: unitKanji, isActive: () => active && !!view.active });
+  (window.gameEventHooks = window.gameEventHooks || []).push((event, data) => {
+    if (event !== 'combat_result' || !active) return;
+    const log = (data && data.combatLog) || data;
+    if (!log || log.abilityUsed) return;
+    splash.show(log, { playback: !!(data && data.playback) });
+    setTimeout(() => { const box = $('combat-result-box'); if (box && document.body.classList.contains('hud-d')) box.style.display = 'none'; }, 0);
+  });
+
   function setActive(on) {
     active = on;
+    if (!on) splash.hide();
     document.body.classList.toggle('hud-d', on);
     if (!on) {
       document.body.classList.remove('hud-drawer', 'hud-tools', 'hud-coach');
