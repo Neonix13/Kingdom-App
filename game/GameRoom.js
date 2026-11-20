@@ -12,7 +12,7 @@ const { RULES } = rules;
 
 const MAP_RADIUS = 70;
 // Derived from the map or rebuilt on load: never serialized
-const TRANSIENT = new Set(['map', 'hexMap', 'unitMap', 'terrainData', 'segmentData', 'heightData', 'mapCenter', '_events', '_moveTable']);
+const TRANSIENT = new Set(['map', 'hexMap', 'unitMap', 'terrainData', 'segmentData', 'heightData', 'mapCenter', '_events', '_moveTable', '_rng']);
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
@@ -69,6 +69,9 @@ class GameRoom {
     if (!this._moveTable) this._moveTable = rules.movementTable(this.balance.segments);
     return this._moveTable;
   }
+
+  // Dice: Math.random, or the seeded generator installed while a simultaneous turn resolves (deterministic replays)
+  _random() { return this._rng ? this._rng() : Math.random(); }
 
   // Events produced by the rules (captures, ambushes, nightfall...) for the protocol to broadcast
   emitEvent(e) { this._events.push(e); }
@@ -513,7 +516,7 @@ class GameRoom {
     for (const p of activePlayers) {
       const general = GENERALS.find(g => g.id === p.generalId);
       const strategy = general ? general.strategy : 10;
-      const d20 = Math.floor(Math.random() * 20) + 1;
+      const d20 = Math.floor(this._random() * 20) + 1;
       this.initiativeRolls[p.id] = {
         d20,
         strategy,
@@ -701,6 +704,7 @@ class GameRoom {
       units,
       myUnits: [],
       activeEffects: vision === 'full' ? this.activeEffects : [],
+      ...(this.turns.stateFor ? this.turns.stateFor(this, null) : {}),
     };
   }
 
@@ -736,6 +740,7 @@ class GameRoom {
       myUnits,
       activeEffects: this.activeEffects.filter(e => e.targetPlayerId === playerId),
       actionsLeft: isCurrent && this.phase === 'battle' ? this.unitsAbleToAct(playerId).length : 0,
+      ...(this.turns.stateFor ? this.turns.stateFor(this, playerId) : {}),
     };
   }
 
@@ -935,7 +940,7 @@ class GameRoom {
     const targets = player.units.filter(u => !u.isGeneral && u.q !== null && hexDistance(general.q, general.r, u.q, u.r) <= range);
     if (targets.length === 0) return { error: 'Aucune unité à portée.' };
 
-    const d20 = Math.floor(Math.random() * 20) + 1;
+    const d20 = Math.floor(this._random() * 20) + 1;
     const success = charisma >= d20;
     const moralGain = success ? (general.intimidation || 5) : 0;
     if (success) {
@@ -1020,8 +1025,15 @@ class GameRoom {
       if (isCac) this._reveal(target);
     }
 
-    const tVitBefore = target.vitality, aVitBefore = attacker.vitality;
     const result = this._resolveCombat(attacker, target, isCac, defenseChoice);
+    const combatLog = this._applyCombat(attacker, target, isCac, defenseChoice, result, attackerPlayer, targetPlayer);
+    return { ok: true, combatLog };
+  }
+
+  // Applies a computed combat result (damage, morale, rout, stats, deaths, replay); returns the combat log
+  _applyCombat(attacker, target, isCac, defenseChoice, result, attackerPlayer, targetPlayer) {
+    const attackerId = attacker.id, targetId = target.id;
+    const tVitBefore = target.vitality, aVitBefore = attacker.vitality;
 
     // Apply to target
     target.vitality = Math.max(0, target.vitality - result.dmgReceived);
@@ -1066,7 +1078,7 @@ class GameRoom {
     this._removeDead(combatLog, attacker, target, attackerPlayer, targetPlayer);
     const { breakdown, ...logged } = combatLog;
     this._record('combat', { log: logged });
-    return { ok: true, combatLog };
+    return combatLog;
   }
 
   _removeDead(combatLog, attacker, target, attackerPlayer, targetPlayer) {
@@ -1100,7 +1112,7 @@ class GameRoom {
     const won = { [attacker.id]: 0, [target.id]: 0 };
     const dealt = { [attacker.id]: 0, [target.id]: 0 };
     for (let i = 0; i < D.maxRounds && attacker.vitality > 0 && target.vitality > 0; i++) {
-      const aD = Math.floor(Math.random() * D.die) + 1, tD = Math.floor(Math.random() * D.die) + 1;
+      const aD = Math.floor(this._random() * D.die) + 1, tD = Math.floor(this._random() * D.die) + 1;
       const aRoll = attacker.force + aD, tRoll = target.force + tD;
       if (aRoll === tRoll) { rounds.push({ attacker: null, dmg: 0, attackerRoll: aRoll, defenderRoll: tRoll, attackerD20: aD, defenderD20: tD }); continue; }
       const striker = aRoll > tRoll ? attacker : target;
@@ -1169,7 +1181,8 @@ class GameRoom {
     return segType ? (this._segments()[segType] || null) : null;
   }
 
-  _resolveCombat(attacker, target, isCac, defenseChoice) {
+  // extra (simultaneous mode): { attack, power } added to the attacker (charge bonus / malus)
+  _resolveCombat(attacker, target, isCac, defenseChoice, extra = null) {
     const type = isCac ? 'cac' : 'tir';
     const stA = attacker.isGeneral ? {} : this._getStanceMods(attacker);
     const stD = target.isGeneral ? {} : this._getStanceMods(target);
@@ -1190,19 +1203,21 @@ class GameRoom {
 
     // Attack effective (généraux utilisent force comme base d'attaque)
     const attackBase = attacker.isGeneral ? attacker.force : attacker.attack;
-    const attackTotal = attackBase
+    const extraAttack = extra ? (extra.attack || 0) : 0;
+    const extraPower = extra ? (extra.power || 0) : 0;
+    const attackTotal = attackBase + extraAttack
       + (stA[`attack_${type}`] || 0) + (tA[`attack_${type}`] || 0) + (segDef ? (segDef[`attack_${type}`] || 0) : 0)
       - (stD[`esquive_${type}`] || 0) - (tD[`esquive_${type}`] || 0)
       + heightDiff + nightMod;
-    const attackD20 = Math.floor(Math.random() * 20) + 1;
+    const attackD20 = Math.floor(this._random() * 20) + 1;
     const hit = attackTotal >= attackD20;
 
     // Damage inflicted: N dé X where N=attacker.vitality, X=effective power
     let dmgInflicted = 0;
     if (hit) {
-      const dieFaces = Math.max(1, attacker.power + powerA + (stA[`puissance_${type}`] || 0) + (tA[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0));
+      const dieFaces = Math.max(1, attacker.power + extraPower + powerA + (stA[`puissance_${type}`] || 0) + (tA[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0));
       for (let i = 0; i < attacker.vitality; i++) {
-        dmgInflicted += Math.floor(Math.random() * dieFaces) + 1;
+        dmgInflicted += Math.floor(this._random() * dieFaces) + 1;
       }
     }
 
@@ -1237,14 +1252,14 @@ class GameRoom {
         + (stD[`defense_${type}`] || 0) + (tD[`defense_${type}`] || 0) + (segDef ? (segDef[`defense_${type}`] || 0) : 0)
         - (stA[`precision_${type}`] || 0) - (tA[`precision_${type}`] || 0)
         - heightDiff;
-      defenseRoll = Math.floor(Math.random() * 20) + 1;
+      defenseRoll = Math.floor(this._random() * 20) + 1;
       defenseSuccess = defTotal >= defenseRoll;
 
       if (defenseSuccess) {
         const counterDieFaces = Math.max(1, target.power + powerD + (stD[`puissance_${type}`] || 0) + (tD[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0));
         let counterRaw = 0;
         for (let i = 0; i < target.vitality; i++) {
-          counterRaw += Math.floor(Math.random() * counterDieFaces) + 1;
+          counterRaw += Math.floor(this._random() * counterDieFaces) + 1;
         }
         const atkArmor = Math.max(0, attacker.armor + (stA.armure || 0) + (tA.armure || 0) - armorRedA);
         const atkArmorAbsorb = attacker.vitality * atkArmor;
@@ -1278,7 +1293,8 @@ class GameRoom {
       attackD20,
       hit,
       night: nightMod,
-      dieFaces: Math.max(1, attacker.power + powerA + (stA[`puissance_${type}`] || 0) + (tA[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0)),
+      extraAttack, extraPower,
+      dieFaces: Math.max(1, attacker.power + extraPower + powerA + (stA[`puissance_${type}`] || 0) + (tA[`puissance_${type}`] || 0) + (segDef ? (segDef[`puissance_${type}`] || 0) : 0)),
       diceCount: attacker.vitality,
       dmgInflicted,
       armorAbsorb,

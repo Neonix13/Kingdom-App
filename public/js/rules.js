@@ -67,6 +67,22 @@
       victoryPoints: { min: 0, max: 1000, default: 0 },    // 0 = disabled
       turnTimer: { min: 0, max: 600, default: 0 },         // seconds, 0 = off (else >= 15)
       spectatorVision: { values: ['full', 'delayed', 'off'], default: 'full' },
+      planningTimer: { min: 0, max: 600, default: 90 },    // simultaneous mode: seconds, 0 = off (else >= 15)
+      commandPoints: { min: 0, max: 50, default: 0 },      // simultaneous mode: 0 = formula below, else fixed
+    },
+    // Simultaneous mode (game/turns/simultaneous.js, game/rules/resolve.js)
+    simultaneous: {
+      commandPoints: { base: 2, strategyDivisor: 3 },   // units that may receive an order per turn = 2 + ceil(Strategy / 3)
+      maxTicks: 40,
+      stanceCost: 2, facingCost: 1,                     // taken from the speed budget, as in sequential mode
+      // Defender reaction in place of the defense prompt (rien | counter | absorb); generals: counter
+      stanceReaction: { marche: 'absorb', combat: 'counter', charge: 'counter', percee: 'absorb', defense_combat: 'counter', defense_distance: 'absorb', repos: 'rien' },
+      marchMovingReaction: 'rien',                      // a unit in Marche caught while it moved this turn does not defend
+      charge: { minHexes: 2, attack: 2, power: 3 },     // first melee after >= 2 hexes, with a Charge order or in Charge stance
+      antiCharge: { lancierTypeId: 'lancier', attackMalus: 2 }, // against spearmen the bonus becomes a malus; Def. combat cancels it
+      reactionFireStance: 'defense_distance',           // shooters in this stance fire once at the first enemy entering range
+      breakthroughStance: 'percee',                     // may keep moving one hex after winning a melee
+      playback: { tickMs: 700, combatMs: 1300, minMs: 1500 },  // estimated playback duration (next planning starts after it)
     },
   };
 
@@ -209,6 +225,8 @@
       victoryPoints: s.victoryPoints.default,
       turnTimer: s.turnTimer.default,
       spectatorVision: s.spectatorVision.default,
+      planningTimer: s.planningTimer.default,
+      commandPoints: s.commandPoints.default,
     };
   }
 
@@ -226,7 +244,8 @@
       return null;
     };
     const bad = intField('turnsPerHalfDay') || intField('maxTurns') || intField('victoryPoints')
-      || intField('turnTimer', (v) => v === 0 || v >= 15);
+      || intField('turnTimer', (v) => v === 0 || v >= 15)
+      || intField('planningTimer', (v) => v === 0 || v >= 15) || intField('commandPoints');
     if (bad) return { settings: current, error: bad };
     if ('spectatorVision' in patch) {
       if (s.spectatorVision.values.indexOf(patch.spectatorVision) === -1) return { settings: current, error: 'spectatorVision' };

@@ -151,8 +151,12 @@ test('hôte : changement de budget, mode, couleur unique', async () => {
   await b.send('join_room', { roomCode: a.session.roomCode, playerName: 'Bob' });
   await a.send('set_budget', { budget: 5000 });
   assert.equal(b.last('room_update').budget, 5000);
-  await a.send('set_mode', { mode: 'simultaneous' });
+  await a.send('set_mode', { mode: 'turbo' });
   assert.equal(a.last('error').code, 'invalid_mode');
+  await b.send('set_mode', { mode: 'simultaneous' });
+  assert.equal(b.last('error').code, 'not_host');
+  await a.send('set_mode', { mode: 'simultaneous' });
+  assert.equal(b.last('room_update').mode, 'simultaneous');
   await b.send('set_player_color', { color: '#4A90D9' });
   assert.equal(b.last('error').code, 'color_taken');
   await b.send('set_player_color', { color: '#2070e0' });

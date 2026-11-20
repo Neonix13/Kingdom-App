@@ -1,15 +1,15 @@
 // Turn controllers decide who may act and when a turn/round ends; GameRoom keeps the rules resolution.
 // Interface: start(room), currentPlayerId(room), canAct(room, playerId), endTurn(room) -> { newRound, fled },
 // settle(room) -> null | { newRound, fled }.
-// A "simultaneous" controller (everyone plans orders, then all resolve together) is planned: register it here
-// and flip `available` once implemented.
+// simultaneous: everyone plans secret orders, then all resolve together (setOrders, commit, resolve, stateFor).
 const sequential = require('./sequential');
+const simultaneous = require('./simultaneous');
 
-const CONTROLLERS = { sequential };
+const CONTROLLERS = { sequential, simultaneous };
 
 const MODES = [
   { id: 'sequential', name: 'Séquentiel (initiative)', available: true },
-  { id: 'simultaneous', name: 'Simultané (bientôt)', available: false },
+  { id: 'simultaneous', name: 'Simultané (ordres secrets)', available: true },
 ];
 
 function getTurnController(mode) {
@@ -17,7 +17,7 @@ function getTurnController(mode) {
 }
 
 function isModeAvailable(mode) {
-  return !!CONTROLLERS[mode];
+  return typeof mode === 'string' && Object.prototype.hasOwnProperty.call(CONTROLLERS, mode);
 }
 
 module.exports = { getTurnController, isModeAvailable, MODES };

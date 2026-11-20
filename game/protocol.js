@@ -14,6 +14,7 @@ const maps = require('./maps');
 const { MODES, isModeAvailable } = require('./turns');
 const { hexKey } = require('./HexUtils');
 const v = require('./validate');
+const { UNKNOWN, combatView } = require('./views');
 
 const { ProtocolError, fail } = v;
 
@@ -252,21 +253,6 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     }
   }
 
-  const UNKNOWN = 'Unité inconnue';
-
-  // What a recipient may know about a combat: sides it cannot see are anonymised, details only for the two camps
-  function combatView(log, { seeAttacker, seeTarget, details }) {
-    const out = { ...log };
-    if (!details) delete out.breakdown;
-    if (!seeAttacker) Object.assign(out, { attackerId: null, attackerName: UNKNOWN, attackerVitalityLeft: null, attackerHidden: true });
-    if (!seeTarget) Object.assign(out, { targetId: null, targetName: UNKNOWN, targetVitalityLeft: null, targetMoraleLeft: null, targetHidden: true });
-    if (log.duel) {
-      const hide = (id) => ((id === log.attackerId && !seeAttacker) || (id === log.targetId && !seeTarget) ? null : id);
-      out.duel = { ...log.duel, attackerId: hide(log.duel.attackerId), defenderId: hide(log.duel.defenderId), winnerId: hide(log.duel.winnerId), loserId: hide(log.duel.loserId), rounds: log.duel.rounds.map(rd => ({ ...rd, attacker: hide(rd.attacker) })) };
-    }
-    return out;
-  }
-
   // Who saw each side of a pending attack (computed before resolution: dead units leave the board)
   function combatWitnesses(room, pending) {
     const att = room.findUnit(pending.attackerId);
@@ -297,7 +283,7 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
   function startTurnTimer(tx) {
     const room = tx.room;
     const sec = room.settings.turnTimer;
-    room.turnEndsAt = room.phase === 'battle' && sec > 0 ? tx.t + sec * 1000 : null;
+    room.turnEndsAt = room.phase === 'battle' && sec > 0 && !isSimultaneous(room) ? tx.t + sec * 1000 : null;
   }
 
   function refreshTurnDeadline(tx, ms = cfg.absentTurnMs) {
@@ -370,6 +356,68 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     return resolved;
   }
 
+  // ---------- simultaneous mode (game/turns/simultaneous.js) ----------
+
+  function isSimultaneous(room) {
+    return room.mode === 'simultaneous';
+  }
+
+  // Opens the planning of room.turn; its timer starts once the playback of the previous resolution is over
+  function planningStartFlow(tx, startsAt) {
+    const room = tx.room;
+    const sim = room.sim || (room.turns.stateFor(room, null), room.sim);
+    const sec = room.settings.planningTimer;
+    sim.planningStartsAt = startsAt;
+    sim.planningEndsAt = sec > 0 ? startsAt + sec * 1000 : null;
+    emitBuild(tx, 'all', (r) => {
+      const msg = { event: 'planning_start', turn: room.turn, startsAt, endsAt: sim.planningEndsAt, ...room.timeState() };
+      if (r.role === 'player') msg.commandPoints = { max: room.turns.commandPoints(room, r.member.id) };
+      return msg;
+    });
+  }
+
+  function commitStatusFlow(tx) {
+    emit(tx, 'all', { event: 'commit_status', ...tx.room.turns.commitStatus(tx.room) });
+  }
+
+  function maybeResolveFlow(tx, force = false) {
+    const room = tx.room;
+    if (!isSimultaneous(room) || room.phase !== 'battle' || !room.players.length) return;
+    if (!force && room.turns.waiting(room, tx.t, cfg.absentTurnMs).length) return;
+    resolveFlow(tx);
+  }
+
+  // Resolution message for one recipient (also used on reconnection while the playback runs)
+  function resolutionMessage(room, r, t) {
+    const pb = room.sim && room.sim.playback;
+    if (!pb) return null;
+    let view, start;
+    if (r.role === 'spectator') {
+      if (!spectatorsLive(room)) return null;
+      view = pb.full; start = pb.startAll;
+    } else {
+      view = pb.views[r.member.id]; start = pb.start[r.member.id];
+    }
+    if (!view) return null;
+    return { event: 'resolution', turn: pb.turn, seed: pb.seed, durationMs: pb.endsAt - pb.startedAt, startedAt: pb.startedAt, elapsedMs: Math.max(0, t - pb.startedAt), start: { units: start || [] }, ticks: view.ticks };
+  }
+
+  function resolveFlow(tx) {
+    const room = tx.room;
+    const seed = crypto.randomInt(0x7fffffff);
+    const res = room.turns.resolve(room, seed);
+    tx.dirty = true;
+    log.log && log.log(`[simultaneous] ${room.roomCode} tour ${res.turn} résolu (graine ${seed}, ${res.combats} combats)`);
+    room.sim.playback = { turn: res.turn, seed, startedAt: tx.t, endsAt: tx.t + res.durationMs, views: res.views, full: res.full, start: res.start, startAll: res.startAll };
+    emitBuild(tx, 'all', (r) => resolutionMessage(room, r, tx.t));
+    if (room.phase === 'battle') {
+      planningStartFlow(tx, tx.t + res.durationMs);
+      room._recordKeyframe();
+    }
+    gameOverFlow(tx);
+    emitState(tx);
+  }
+
   function startDeploymentFlow(tx) {
     const room = tx.room;
     room.startDeployment();
@@ -381,6 +429,11 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     const room = tx.room;
     room.startBattle();
     emit(tx, 'all', { event: 'phase_change', phase: 'battle', mapId: room.mapId });
+    if (isSimultaneous(room)) {
+      planningStartFlow(tx, tx.t);
+      emitState(tx, 'all', true);
+      return;
+    }
     emit(tx, 'all', { event: 'initiative_rolled', rolls: room.initiativeRolls, turnOrder: room.turnOrder, turn: room.turn });
     startTurnTimer(tx);
     refreshTurnDeadline(tx);
@@ -410,6 +463,7 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     if (!room.eliminatePlayer(p.id)) return;
     emit(tx, 'all', { event: 'player_left', playerId: p.id, name: p.name, reason });
     settleFlow(tx);
+    if (isSimultaneous(room) && room.phase === 'battle') { commitStatusFlow(tx); maybeResolveFlow(tx); }
     emitState(tx);
   }
 
@@ -451,6 +505,12 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
       turnChangeFlow(tx, room.endTurn());
       emitState(tx);
     }
+    if (isSimultaneous(room) && room.phase === 'battle' && room.sim) {
+      if (room.sim.planningEndsAt && room.sim.planningEndsAt <= t) {
+        emit(tx, 'all', { event: 'planning_timeout', turn: room.turn });
+        resolveFlow(tx);
+      } else maybeResolveFlow(tx);
+    }
     const anyConnected = room.players.some(p => p.connected !== false) || (room.spectators || []).some(s => s.connected !== false);
     if (room.phase === 'ended' && room.endedAt && t - room.endedAt >= cfg.endedRoomMs) tx.deleted = true;
     if (!anyConnected && t - (room.lastActivity || t) >= cfg.idleRoomMs) tx.deleted = true;
@@ -461,6 +521,12 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     for (const a of Object.values(room.pendingAttacks || {})) if (a.expiresAt) times.push(a.expiresAt);
     if (room.phase === 'battle' && room.turnDeadline) times.push(room.turnDeadline);
     if (room.phase === 'battle' && room.turnEndsAt) times.push(room.turnEndsAt);
+    if (room.phase === 'battle' && room.mode === 'simultaneous' && room.sim) {
+      if (room.sim.planningEndsAt) times.push(room.sim.planningEndsAt);
+      for (const p of room.players) {
+        if (!p.isEliminated && p.connected === false && p.disconnectedAt && !room.sim.committed[p.id]) times.push(p.disconnectedAt + cfg.absentTurnMs);
+      }
+    }
     const dropMs = room.phase === 'lobby' ? cfg.lobbyDropMs
       : (room.phase === 'army_building' || room.phase === 'deployment') ? cfg.preBattleDropMs
         : room.phase === 'battle' ? cfg.abandonMs : null;
@@ -498,6 +564,9 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
         if (a.targetPlayerId === member.id) reply(tx, connId, defenseRequest(room, attackId, a, seconds));
         if (a.attackerPlayerId === member.id) reply(tx, connId, { event: 'waiting_defense', attackId, seconds });
       }
+    }
+    if (room.phase === 'battle' && isSimultaneous(room) && room.sim && room.sim.playback && tx.t < room.sim.playback.endsAt) {
+      reply(tx, connId, resolutionMessage(room, found, tx.t));
     }
     if (room.phase === 'ended') reply(tx, connId, gameOverMessage(room));
   }
@@ -858,6 +927,39 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     tx.dirty = true;
     turnChangeFlow(tx, tx.room.endTurn());
     emitState(tx);
+  });
+
+  function requirePlanning(tx, connId) {
+    const p = requirePlayer(tx, connId);
+    requirePhase(tx, 'battle');
+    if (!isSimultaneous(tx.room)) fail('wrong_mode', 'Action réservée au mode simultané.');
+    if (p.isEliminated) fail('eliminated', 'Vous êtes éliminé.');
+    return p;
+  }
+
+  H.set_orders = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    const p = requirePlanning(tx, connId);
+    const room = tx.room;
+    const res = engine(room.turns.setOrders(room, p.id, data.orders, data.replace === true));
+    tx.dirty = true;
+    reply(tx, connId, { event: 'orders_update', turn: room.turn, orders: res.orders, commandPoints: res.commandPoints, committed: !!room.sim.committed[p.id] });
+  });
+
+  H.commit_orders = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    const p = requirePlanning(tx, connId);
+    const room = tx.room;
+    if (data.turn != null && data.turn !== room.turn) fail('stale_turn', 'Ce tour est déjà résolu.');
+    engine(room.turns.commit(room, p.id, true));
+    tx.dirty = true;
+    commitStatusFlow(tx);
+    maybeResolveFlow(tx);
+  });
+
+  H.cancel_commit = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    const p = requirePlanning(tx, connId);
+    engine(tx.room.turns.commit(tx.room, p.id, false));
+    tx.dirty = true;
+    commitStatusFlow(tx);
   });
 
   // Replay of a finished battle, in chunks (API Gateway frames are limited to 128 KB)
