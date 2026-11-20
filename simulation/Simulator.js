@@ -4,6 +4,7 @@ const UNITS = require('../game/data/units');
 const AIAgent = require('./AIAgent');
 const RewardFunction = require('./RewardFunction');
 const { hexKey } = require('../game/HexUtils');
+const crypto = require('crypto');
 
 const MAX_TURNS = 200;
 const PLAYER_COLORS = ['#4a90d9', '#d94a4a', '#4ad94a', '#d9d94a', '#d94ad9', '#4ad9d9', '#d9944a', '#944ad9'];
@@ -15,6 +16,7 @@ class Simulator {
     this.budget = config.budget || 2500;
     this.record = config.record || false;
     this.noInitiative = config.noInitiative || false;
+    this.simultaneous = config.simultaneous || false; // simultaneous mode: orders planned by game/bots (Vétéran)
   }
 
   run() {
@@ -26,7 +28,7 @@ class Simulator {
     const MAX_RETRIES = 20;
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      room = new GameRoom('SIM', 'p1');
+      room = new GameRoom('SIM', 'p1', { mode: this.simultaneous ? 'simultaneous' : 'sequential' });
       room.addPlayer('p1', 'AI_1');
       room.addPlayer('p2', 'AI_2');
 
@@ -113,7 +115,19 @@ class Simulator {
 
     let turnCount = 0;
 
-    while (room.phase === 'battle' && turnCount < MAX_TURNS) {
+    while (this.simultaneous && room.phase === 'battle' && turnCount < MAX_TURNS) {
+      const { planOrders } = require('../game/bots/simultaneous');
+      const profile = require('../game/bots/profiles').getProfile('veteran');
+      for (const pid of ['p1', 'p2']) {
+        const res = room.turns.setOrders(room, pid, planOrders(room, pid, profile), true);
+        if (res.error) room.turns.setOrders(room, pid, {}, true);
+      }
+      room.turns.resolve(room, crypto.randomInt(0x7fffffff));
+      turnCount++;
+      if (replay) replay.frames.push({ type: 'end_turn', turn: room.turn, manche: 1, currentPlayerId: null, newRound: true, fled: [], units: this._snapshotAllUnits(room), phase: room.phase, winner: room.winner });
+    }
+
+    while (!this.simultaneous && room.phase === 'battle' && turnCount < MAX_TURNS) {
       const currentPlayerId = room.getCurrentPlayerId();
       if (!currentPlayerId) break;
 

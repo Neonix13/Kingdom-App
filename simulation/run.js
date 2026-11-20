@@ -16,6 +16,7 @@ const budget = parseInt(getArg('budget', '2500'));
 const threadCount = parseInt(getArg('threads', '4'));
 const outputDir = getArg('output', path.join(__dirname, 'results'));
 const noInitiative = args.includes('--no-initiative');
+const simultaneous = args.includes('--simultaneous');
 
 const GENERAL_IDS = GENERALS.map(g => g.id);
 
@@ -37,6 +38,7 @@ console.log(`  Total games: ${totalGames}`);
 console.log(`  Budget: ${budget}`);
 console.log(`  Threads: ${threadCount}`);
 console.log(`  Initiative: ${noInitiative ? 'DISABLED (random start, alternating)' : 'enabled'}`);
+console.log(`  Mode: ${simultaneous ? 'simultaneous' : 'sequential'}`);
 console.log(`  Output: ${outputDir}\n`);
 
 // Split matchups across threads
@@ -71,7 +73,7 @@ function sendProgress(force) {
 const workers = chunks.map((chunk, i) => {
   return new Promise((resolve, reject) => {
     const worker = new Worker(path.join(__dirname, 'worker.js'), {
-      workerData: { matchups: chunk, budget, noInitiative },
+      workerData: { matchups: chunk, budget, noInitiative, simultaneous },
     });
 
     worker.on('message', (results) => {
@@ -109,7 +111,7 @@ Promise.all(workers)
     const reportPath = path.join(outputDir, `report_${timestamp}.json`);
     const balance = require('../data/balance');
     stats.exportJSON(reportPath, {
-      params: { gamesPerMatchup, budget, threads: threadCount, initiative: !noInitiative },
+      params: { gamesPerMatchup, budget, threads: threadCount, initiative: !noInitiative, mode: simultaneous ? 'simultaneous' : 'sequential' },
       balance: { version: balance.globalVersion(), tables: balance.all() },
     });
     console.log(`Report saved to: ${reportPath}`);
