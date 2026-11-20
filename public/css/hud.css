@@ -455,3 +455,5 @@ body.hud-d #overlay-gameover { display: none !important; }
 }
 body.hud-splash-on #turn-popup, body.hud-gameover-on #turn-popup { opacity: 0 !important; }
 body.hud-gameover-on #hud-splash { display: none !important; }
+
+#hud-root .hud-exit.armed { background: #D8352A; color: #fff; }

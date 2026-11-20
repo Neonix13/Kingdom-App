@@ -21,6 +21,7 @@ const SUN = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke=
 const MOON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M20 14A8 8 0 1 1 10 4a6 6 0 0 0 10 10z"></path></svg>';
 const ICONS = {
   rules: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M4 4h6a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H4zM20 4h-6a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h6z"></path></svg>',
+  exit: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M14 4H5v16h9"></path><path d="M10 12h10M16 8l4 4-4 4"></path></svg>',
   journal: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"></path><path d="M8 9h8M8 12h5"></path></svg>',
   tools: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg>',
 };
@@ -56,6 +57,7 @@ export function mountBattleHud(bridge, view) {
       <button class="hud-ibtn" data-hud="rules" title="Règles" aria-label="Règles">${ICONS.rules}</button>
       <button class="hud-ibtn" data-hud="journal" title="Journal : historique et chat (J)" aria-label="Journal">${ICONS.journal}<span class="hud-dot"></span></button>
       <button class="hud-ibtn" data-hud="tools" title="Outils et réglages" aria-label="Outils">${ICONS.tools}</button>
+      <button class="hud-ibtn hud-exit" data-hud="exit" title="Quitter la partie (retour au menu)" aria-label="Quitter la partie">${ICONS.exit}</button>
     </div>
     <div class="hud-roster"></div>
     <div class="hud-orders hud-panel" hidden></div>
@@ -117,6 +119,14 @@ export function mountBattleHud(bridge, view) {
     else if (a === 'rules') window.toggleRules && window.toggleRules();
     else if (a === 'journal') toggleDrawer();
     else if (a === 'tools') { document.body.classList.toggle('hud-tools'); document.body.classList.remove('hud-drawer'); render(); }
+    else if (a === 'exit') {
+      if (b.classList.contains('armed')) { window.leaveGame && window.leaveGame(); return; }
+      b.classList.add('armed');
+      b.title = 'Cliquer à nouveau pour quitter la partie';
+      window.notify && window.notify('Cliquez à nouveau sur le bouton pour quitter la partie et revenir au menu.', 'info');
+      clearTimeout(b._disarm);
+      b._disarm = setTimeout(() => { b.classList.remove('armed'); b.title = 'Quitter la partie (retour au menu)'; }, 3500);
+    }
   });
   function toggleDrawer(force) {
     const on = force != null ? force : !document.body.classList.contains('hud-drawer');
