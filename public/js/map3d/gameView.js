@@ -110,7 +110,7 @@ export async function mountGameView(bridge, { container }) {
     down = null;
     if (moved > 6 || !quick) return;
     const hex = world.pickHex(e.clientX, e.clientY);
-    if (b === 0) bridge.click(hex);
+    if (b === 0) { bridge.click(hex, { shiftKey: e.shiftKey }); lastMove = e; hovered = null; }
     else if (b === 2) bridge.contextMenu(hex, e.clientX, e.clientY);
   });
   canvas.addEventListener('dblclick', (e) => {
@@ -119,7 +119,8 @@ export async function mountGameView(bridge, { container }) {
   });
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   let lastMove = null;
-  canvas.addEventListener('pointermove', (e) => { lastMove = e; });
+  let lastPointer = null, routeSig = '';
+  canvas.addEventListener('pointermove', (e) => { lastMove = e; lastPointer = e; });
   canvas.addEventListener('pointerleave', () => { lastMove = null; hovered = null; bridge.hover(null); world.layers.setHover(null); preview.clear(); ui.showAttackTip(null); });
   let hovered = null;
 
@@ -264,6 +265,10 @@ export async function mountGameView(bridge, { container }) {
   function frame(dt = 0.016) {
     if (!view.active) return;
     if (dirty) syncNow();
+    // route waypoints changed (Maj+clic, Échap...): markers and path preview follow
+    const wps = bridge.routeWaypoints || [];
+    const sig = `${bridge.selectedUnit ? bridge.selectedUnit.id : ''}|${wps.join(';')}`;
+    if (sig !== routeSig) { routeSig = sig; preview.showWaypoints(wps); hovered = null; lastMove = lastMove || lastPointer; }
     if (lastMove) {
       const e = lastMove;
       lastMove = null;

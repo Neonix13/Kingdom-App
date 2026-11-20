@@ -47,4 +47,13 @@ function oneOf(v, allowed, code = 'invalid_value', message = 'Valeur invalide.')
   return v;
 }
 
-module.exports = { ProtocolError, fail, cleanText, name, roomCode, int, id, color, oneOf };
+// Route chosen by the player: [[q, r], ...] (origin excluded), at most 60 steps
+function path(v) {
+  if (!Array.isArray(v) || v.length < 1 || v.length > 60) fail('invalid_path', 'Chemin invalide.');
+  return v.map((step) => {
+    if (!Array.isArray(step) || step.length !== 2) fail('invalid_path', 'Chemin invalide.');
+    return [int(step[0], -10000, 10000, 'invalid_path', 'Chemin invalide.'), int(step[1], -10000, 10000, 'invalid_path', 'Chemin invalide.')];
+  });
+}
+
+module.exports = { ProtocolError, fail, cleanText, name, roomCode, int, id, color, oneOf, path };

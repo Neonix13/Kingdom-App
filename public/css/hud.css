@@ -457,3 +457,13 @@ body.hud-splash-on #turn-popup, body.hud-gameover-on #turn-popup { opacity: 0 !i
 body.hud-gameover-on #hud-splash { display: none !important; }
 
 #hud-root .hud-exit.armed { background: #D8352A; color: #fff; }
+
+/* Route being chosen (waypoints) */
+#hud-root .hud-route { position: absolute; top: 124px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 5px 8px 5px 12px; background: rgba(255,255,255,.92); border: 3px solid #000; box-shadow: 4px 4px 0 #000; font: 700 12px var(--hud-body); color: #000; pointer-events: auto; white-space: nowrap; }
+#hud-root .hud-route[hidden] { display: none; }
+#hud-root .hud-route.on { background: #fff; box-shadow: 4px 4px 0 var(--hud-red); }
+#hud-root .hud-route .t { font: 400 13px var(--hud-display); }
+#hud-root .hud-route b { font: 400 14px var(--hud-display); color: var(--hud-red); }
+#hud-root .hud-route button { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; border: 2px solid #000; background: #fff; color: #000; font: 400 11px var(--hud-display); cursor: pointer; }
+#hud-root .hud-route button.on { background: var(--hud-red); color: #fff; }
+#hud-root .hud-route .hud-kbd { height: 16px; min-width: 16px; font-size: 9px; }

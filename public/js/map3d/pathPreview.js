@@ -85,6 +85,27 @@ export function createPathPreview(world) {
     scene.add(arc);
   }
 
+  // Waypoints of the route chosen by the player: red rings standing on the walking surface
+  const wpMat = new THREE.MeshBasicMaterial({ color: 0xd8352a, transparent: true, opacity: 0.95, depthWrite: false, fog: false, toneMapped: false, side: THREE.DoubleSide });
+  const wpGeo = new THREE.RingGeometry(0.16, 0.3, 24).rotateX(-Math.PI / 2);
+  const wpMarks = [];
+  function showWaypoints(list) {
+    const n = list ? list.length : 0;
+    while (wpMarks.length < n) {
+      const m = new THREE.Mesh(wpGeo, wpMat);
+      m.renderOrder = 9;
+      scene.add(m);
+      wpMarks.push(m);
+    }
+    wpMarks.forEach((m, i) => {
+      m.visible = i < n;
+      if (i < n) {
+        const c = hexToWorld(list[i][0], list[i][1]);
+        m.position.set(c.x, world.walkHeight(c.x, c.z) + 0.1, c.z);
+      }
+    });
+  }
+
   function clear() { showPath(null); showAttack(null, null); }
 
   function update(dt) {
@@ -93,7 +114,7 @@ export function createPathPreview(world) {
     if (arc) arcMat.opacity = 0.65 + 0.25 * Math.sin(phase * 6);
   }
 
-  return { showPath, showAttack, clear, update };
+  return { showPath, showAttack, showWaypoints, clear, update };
 }
 
 // Planned orders (simultaneous mode): one chevron trail per move, an arc per attack, all in the player's colour

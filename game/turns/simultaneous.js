@@ -8,6 +8,7 @@
 // Actions (battle phase, players only):
 //   set_orders     { orders: { [unitId]: order | null }, replace?: bool, turn? }   replace = the whole set (default: merge, null clears)
 //                  order = { type: 'move', path: [[q, r], ...] (first step to destination, origin excluded) }
+//                  attack / charge orders may carry the same kind of path (route followed before engaging)
 //                        | { type: 'attack' | 'charge', targetId }     (target visible when ordered; shooters fire, melee units close in)
 //                        | { type: 'hold' } | { type: 'motivate' }     (motivate: generals)
 //                        + optional stance: stanceId (-2 speed), facing: 0-5 (-1 speed, applied at the end), ability: { targetId? } (generals)
@@ -121,9 +122,10 @@ function validateOrder(room, playerId, unit, raw) {
     order.unitAbility = out;
     budget = Math.max(0, rules.snap(budget - ab.cost));
   }
-  // a shooter's attack order may carry the path to its firing position (it fires as soon as the target is in range)
-  const rangedApproach = order.type === 'attack' && (unit.range || 1) > 1 && Array.isArray(raw.path) && raw.path.length > 0;
-  if (order.type === 'move' || rangedApproach) {
+  // an attack / charge order may carry a route: a shooter walks it to its firing position (it fires as soon as the
+  // target is in range); a melee unit follows it first, then closes in on its target
+  const routed = (order.type === 'attack' || order.type === 'charge') && Array.isArray(raw.path) && raw.path.length > 0;
+  if (order.type === 'move' || routed) {
     const path = raw.path;
     if (!Array.isArray(path) || path.length < 1 || path.length > 60) return { error: 'Chemin invalide.' };
     let q = unit.q, r = unit.r, cost = 0;

@@ -958,7 +958,9 @@ class GameRoom {
     };
   }
 
-  moveUnit(playerId, unitId, targetQ, targetR) {
+  // route: optional path chosen by the player ([[q, r], ...], origin excluded, ending on (targetQ, targetR));
+  // without it the cheapest path is used
+  moveUnit(playerId, unitId, targetQ, targetR, route = null) {
     const player = this.getPlayer(playerId);
     const unit = player?.units.find(u => u.id === unitId);
     if (!unit || unit.q === null) return { error: 'Unité introuvable.' };
@@ -977,8 +979,16 @@ class GameRoom {
     const drive = !!ab && ab.type === 'trample';
     const crossable = (k) => { const occ = this.unitMap[k]; return blocked(k) && !this.areAllies(playerId, occ.playerId); };
     if (drive && blocked(hexKey(targetQ, targetR))) return { error: 'Case occupée.' };
-    const found = findPathCost(this.hexMap, this.unitMap, unit.q, unit.r, targetQ, targetR, unit.speedRemaining, unit, this.segmentData, blocked, this.moveTable(), rules.hasFullSpeed(unit), drive ? crossable : null);
-    if (found === null) return { error: 'Chemin inaccessible.' };
+    let found;
+    if (route) {
+      found = this._checkRoute(unit, route, blocked, drive ? crossable : null);
+      if (found.error) return found;
+      const end = found.path[found.path.length - 1];
+      if (end[0] !== targetQ || end[1] !== targetR) return { error: 'Le chemin ne mène pas à cette case.' };
+    } else {
+      found = findPathCost(this.hexMap, this.unitMap, unit.q, unit.r, targetQ, targetR, unit.speedRemaining, unit, this.segmentData, blocked, this.moveTable(), rules.hasFullSpeed(unit), drive ? crossable : null);
+      if (found === null) return { error: 'Chemin inaccessible.' };
+    }
 
     const fromQ = unit.q, fromR = unit.r;
     let path = found.path;
@@ -1035,6 +1045,34 @@ class GameRoom {
     }
 
     return { ok: true, unitId: unit.id, fromQ, fromR, path, ambush, trampledAttacks };
+  }
+
+  // A route chosen by the player: adjacent steps on the map, passable edges, no hex held by a unit the mover can see
+  // (a chariot may cross visible enemies but not stop on one), total cost within the remaining speed
+  // (one step is always allowed when the unit has not spent anything yet)
+  _checkRoute(unit, route, blocked, crossable) {
+    if (!Array.isArray(route) || !route.length || route.length > 60) return { error: 'Chemin invalide.' };
+    const mounted = rules.isMounted(unit);
+    let q = unit.q, r = unit.r, cost = 0;
+    const path = [];
+    const seen = new Set([hexKey(q, r)]);
+    for (const step of route) {
+      const [nq, nr] = step || [];
+      const k = hexKey(nq, nr);
+      if (!Number.isInteger(nq) || !Number.isInteger(nr) || hexDistance(q, r, nq, nr) !== 1 || !this.hexMap[k]) return { error: 'Chemin invalide.' };
+      if (seen.has(k)) return { error: 'Le chemin repasse par la même case.' };
+      seen.add(k);
+      const c = rules.stepCost(this.moveTable(), this.hexMap[hexKey(q, r)], this.hexMap[k], this.segmentData[segmentEdgeKey(q, r, nq, nr)] || null, mounted);
+      if (!isFinite(c)) return { error: 'Chemin infranchissable.' };
+      if (blocked(k) && !(crossable && crossable(k))) return { error: 'Le chemin traverse une case occupée.' };
+      cost = rules.snap(cost + c);
+      path.push([nq, nr]);
+      q = nq; r = nr;
+    }
+    if (crossable && crossable(hexKey(q, r))) return { error: 'Case occupée.' };
+    const minStep = path.length === 1 && unit.speedRemaining > 0 && rules.hasFullSpeed(unit);
+    if (cost > unit.speedRemaining + 1e-9 && !minStep) return { error: `Chemin trop long (coût ${cost}, vitesse ${unit.speedRemaining}).` };
+    return { path, cost };
   }
 
   _pathCost(unit, fromQ, fromR, path) {
@@ -1228,7 +1266,7 @@ class GameRoom {
 
   // Attack from a distance in one action: walk to (q, r), then strike. Everything is checked before the unit moves,
   // so either both happen or nothing does (an ambush on the way still stops the unit before the attack).
-  moveAndAttack(playerId, attackerId, targetId, q, r) {
+  moveAndAttack(playerId, attackerId, targetId, q, r, route = null) {
     const player = this.getPlayer(playerId);
     const attacker = player?.units.find(u => u.id === attackerId);
     if (!attacker || attacker.q === null) return { error: 'Unité attaquante introuvable.' };
@@ -1242,7 +1280,7 @@ class GameRoom {
     if (d === 0 || d > rules.attackRange(attacker.range, this.heightData[hexKey(q, r)], this.heightData[hexKey(target.q, target.r)])) {
       return { error: 'La cible ne serait pas à portée depuis cette case.' };
     }
-    const move = this.moveUnit(playerId, attackerId, q, r);
+    const move = this.moveUnit(playerId, attackerId, q, r, route);
     if (move.error) return move;
     if (move.ambush || attacker.q !== q || attacker.r !== r) return { move, attack: null };
     return { move, attack: this.initiateCombat(playerId, attackerId, targetId) };

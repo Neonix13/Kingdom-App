@@ -64,6 +64,7 @@ export function mountBattleHud(bridge, view) {
     <div class="hud-feed"></div>
     <div class="hud-card hud-panel hud-hatch" hidden></div>
     <div class="hud-mode"></div>
+    <div class="hud-route" hidden></div>
     <div class="hud-actions"></div>
     <div class="hud-simslot"></div>
     <button class="hud-seal" hidden></button>`;
@@ -71,7 +72,7 @@ export function mountBattleHud(bridge, view) {
   const q = (sel) => root.querySelector(sel);
   const el = {
     turn: q('.hud-turn'), sub: q('.hud-sub'), callout: q('.hud-callout'), presence: q('.hud-presence'), scores: q('.hud-scores'), timer: q('.hud-timer'),
-    roster: q('.hud-roster'), orders: q('.hud-orders'), feed: q('.hud-feed'), card: q('.hud-card'), mode: q('.hud-mode'), actions: q('.hud-actions'),
+    route: q('.hud-route'), roster: q('.hud-roster'), orders: q('.hud-orders'), feed: q('.hud-feed'), card: q('.hud-card'), mode: q('.hud-mode'), actions: q('.hud-actions'),
     simslot: q('.hud-simslot'), seal: q('.hud-seal'), journal: q('[data-hud=journal]'), tools: q('[data-hud=tools]'),
   };
 
@@ -152,6 +153,7 @@ export function mountBattleHud(bridge, view) {
     renderRoster(st, ds, deploying, sim);
     renderCard(st, deploying, sim);
     renderActions(sim);
+    renderRoute(deploying);
     renderSeal(st, deploying, sim);
     renderFeed();
     renderOrders(st, sim);
@@ -377,6 +379,28 @@ export function mountBattleHud(bridge, view) {
     el.mode.textContent = sim ? '' : (labels[mode] || '');
     el.mode.style.bottom = `${26 + vis.length * 55 + 6}px`;
   }
+  // Route being chosen (waypoints): count, cost / speed, tool toggle (T) and undo (Échap)
+  function renderRoute(deploying) {
+    const info = !deploying && bridge.routeInfo;
+    if (!info) { el.route.hidden = true; el.route.innerHTML = ''; return; }
+    const fmt = window.fmtSpeed || ((x) => x);
+    const n = info.waypoints.length;
+    el.route.hidden = false;
+    el.route.classList.toggle('on', n > 0 || info.tool);
+    el.route.innerHTML = n || info.tool
+      ? `<span class="t">CHEMIN</span><span>${n} étape${n > 1 ? 's' : ''} · coût <b>${esc(fmt(info.cost))}</b> / ${esc(fmt(info.budget))}</span>
+         <button data-route="tool" class="${info.tool ? 'on' : ''}" title="Chaque clic sur une case ajoute une étape (T)">ÉTAPES <span class="hud-kbd">T</span></button>
+         <button data-route="undo" title="Retirer la dernière étape (Échap)">RETIRER <span class="hud-kbd">ÉCHAP</span></button>`
+      : `<span>Maj+clic sur une case : choisir le chemin étape par étape</span><button data-route="tool" title="Chaque clic sur une case ajoute une étape (T)">ÉTAPES <span class="hud-kbd">T</span></button>`;
+  }
+  el.route.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-route]');
+    if (!b) return;
+    if (b.dataset.route === 'tool' && bridge.toggleRouteTool) bridge.toggleRouteTool();
+    if (b.dataset.route === 'undo' && bridge.undoWaypoint) bridge.undoWaypoint();
+    render();
+  });
+
   function doAction(id) {
     if (id === 'btn-move') {
       const sel = bridge.selectedUnit;
@@ -504,6 +528,7 @@ export function mountBattleHud(bridge, view) {
     if (m) { const b = el.card.querySelector(`.stances:not([hidden]) [data-stance="${Number(m[1]) - 1}"]`); if (b) { e.preventDefault(); b.click(); } return; }
     if (e.code === 'Enter' || e.code === 'NumpadEnter') { if (!el.seal.hidden && sealTarget) { e.preventDefault(); el.seal.click(); } return; }
     if (e.code === 'KeyJ') { e.preventDefault(); toggleDrawer(); }
+    if (e.code === 'KeyT' && bridge.routeInfo && bridge.toggleRouteTool) { e.preventDefault(); bridge.toggleRouteTool(); render(); }
   });
 
   // ---- periodic: timers, tutorial highlights mirrored on the HUD, coach placement ----
