@@ -63,6 +63,10 @@
         <thead><tr><th>Nom</th><th>Cases</th><th>Modifiée</th><th></th></tr></thead>
         <tbody id="mapRows"><tr><td colspan="4" class="empty">Chargement…</td></tr></tbody>
       </table>
+      <div id="drafts" hidden style="margin-top:16px">
+        <h4>Brouillons locaux (navigateur, non enregistrés)</h4>
+        <table class="maps"><tbody id="draftRows"></tbody></table>
+      </div>
     </div>
   </div>
 </div>
@@ -109,6 +113,31 @@ async function loadMaps() {
         h('button', { type: 'button', class: 'small', onclick: () => duplicate(m) }, 'Dupliquer'),
         h('button', { type: 'button', class: 'small', onclick: () => rename(m) }, 'Renommer'),
         m.id === 'default' ? null : h('button', { type: 'button', class: 'small danger', onclick: () => remove(m) }, 'Supprimer'))));
+  }
+  renderDrafts();
+}
+
+function renderDrafts() {
+  const rows = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (!k.startsWith('kbMapEditor:draft:')) continue;
+    try { const d = JSON.parse(localStorage.getItem(k)); rows.push({ key: k, id: k.slice(18), d }); } catch (e) { /* ignore */ }
+  }
+  $('drafts').hidden = !rows.length;
+  const tb = $('draftRows');
+  tb.innerHTML = '';
+  for (const r of rows.sort((a, b) => b.d.ts - a.d.ts)) {
+    const onServer = maps.some((m) => m.id === r.id);
+    tb.append(h('tr', null,
+      h('td', null, h('b', null, r.d.doc?.name || r.id), ' ', h('span', { class: 'id' }, `[${r.id}]`), h('div', { class: 'muted' }, onServer ? 'Modifications non enregistrées d\'une carte existante' : 'Nouvelle carte jamais enregistrée')),
+      h('td', { class: 'muted' }, new Date(r.d.ts).toLocaleString('fr-FR')),
+      h('td', { class: 'actions' },
+        h('a', { class: 'btn small primary', href: `/admin/map-editor.html?map=${encodeURIComponent(r.id)}` }, 'Reprendre'),
+        h('button', { type: 'button', class: 'small danger', onclick: async () => {
+          if (!(await confirmModal('Supprimer le brouillon', `Supprimer le brouillon local de « ${r.id} » ? Les modifications non enregistrées seront perdues.`, { okLabel: 'Supprimer', danger: true }))) return;
+          localStorage.removeItem(r.key); renderDrafts();
+        } }, 'Supprimer'))));
   }
 }
 

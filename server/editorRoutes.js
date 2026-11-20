@@ -1,8 +1,7 @@
-// Map editor helpers: background image upload/list and server-side validation (admin only)
+// Map editor helpers: background image upload and listing (admin only)
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
-const maps = require('../game/maps');
 const { requireAdmin } = require('./admin');
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -49,11 +48,6 @@ function mountEditorRoutes(app) {
       fs.writeFileSync(path.join(BG_DIR, file), req.body);
       res.json({ url: `/assets/maps/${file}` });
     });
-
-  app.post('/api/editor/validate', requireAdmin, (req, res) => {
-    const map = maps.normalizeMap(req.body || {});
-    res.json({ errors: maps.validateMap(map) });
-  });
 }
 
 module.exports = { mountEditorRoutes };

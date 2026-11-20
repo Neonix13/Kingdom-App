@@ -575,7 +575,16 @@ function loadDoc(doc, { dirty = false } = {}) {
   model.load(doc);
   if (dirty) model.markDirty(); else model.markSaved();
   renderer.highlight = null;
-  renderer.fit();
+  const sess = JSON.parse(sessionStorage.getItem('kbMapEditor:session') || 'null');
+  sessionStorage.removeItem('kbMapEditor:session');
+  if (sess && sess.id === doc.id && sess.cam) {
+    Object.assign(renderer.cam, sess.cam);
+    renderer.request();
+    if (sess.tool) setTool(sess.tool);
+    if (Number.isFinite(sess.brush)) settings.brush = sess.brush;
+    if (sess.tab) state.tab = sess.tab;
+    for (const b of document.querySelectorAll('#tabs button')) b.classList.toggle('on', b.dataset.tab === state.tab);
+  } else renderer.fit();
   updateTitle();
   refreshPanel();
   runValidate();
@@ -597,7 +606,10 @@ function flushDraft() {
     else localStorage.removeItem(LS_DRAFT(id));
   } catch (e) { toast('Brouillon local non sauvegardé (stockage plein ?)', 'error'); }
 }
-window.addEventListener('pagehide', flushDraft);
+function saveSession() {
+  sessionStorage.setItem('kbMapEditor:session', JSON.stringify({ id: model.meta.id, tool: state.tool, tab: state.tab, cam: renderer.cam, brush: settings.brush }));
+}
+window.addEventListener('pagehide', () => { flushDraft(); saveSession(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden) flushDraft(); });
 
 // ---- save
@@ -740,9 +752,7 @@ E.ui.newMapWizard = newMapWizard;
 
 // ---- import / export
 $('btnExport').addEventListener('click', () => downloadJson(model.toDoc(), `${model.meta.id || 'carte'}.json`));
-$('btnImport').addEventListener('click', async () => {
-  const f = await pickFile('application/json,.json');
-  if (!f) return;
+async function importFile(f) {
   try {
     const doc = JSON.parse(await f.text());
     if (!doc || typeof doc !== 'object' || !doc.height || typeof doc.height !== 'object') throw new Error('Fichier sans « height » : pas une carte au format 2.');
@@ -755,6 +765,16 @@ $('btnImport').addEventListener('click', async () => {
     history.replaceState(null, '', `?map=${encodeURIComponent(doc.id)}`);
     toast(`Importé : ${doc.name} [${doc.id}]${state.serverExists ? ' — l\'enregistrement écrasera la carte serveur du même id' : ''}`, 'ok', { timeout: 6000 });
   } catch (e) { toast('Import impossible : ' + e.message, 'error'); }
+}
+window.__editor.importFile = importFile;
+$('btnImport').addEventListener('click', async () => { const f = await pickFile('application/json,.json'); if (f) importFile(f); });
+vp.addEventListener('dragover', (e) => { if ([...e.dataTransfer.types].includes('Files')) e.preventDefault(); });
+vp.addEventListener('drop', (e) => {
+  const f = e.dataTransfer.files[0];
+  if (!f) return;
+  e.preventDefault();
+  if (/\.json$/i.test(f.name) || f.type === 'application/json') importFile(f);
+  else toast('Déposer un fichier .json de carte.', 'error');
 });
 
 $('btnNew').addEventListener('click', newMapWizard);

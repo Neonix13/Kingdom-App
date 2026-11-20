@@ -9,7 +9,9 @@
   html, body { height: 100%; overflow: hidden; }
   body { display: flex; flex-direction: column; min-height: 0; }
   #topbar { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: #1f1408; border-bottom: 1px solid #5a3c10; flex-wrap: wrap; }
-  #topbar .title { color: #c8960c; font-weight: bold; margin: 0 8px; white-space: nowrap; max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
+  #topbar button, #topbar select, #topbar .btn { padding: 3px 8px; font-size: 0.85em; }
+  #openSelect { max-width: 170px; }
+  #topbar .title { color: #c8960c; font-weight: bold; margin: 0 6px; white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
   #topbar .title small { color: #a89060; font-weight: normal; }
   #topbar .sep { width: 1px; height: 22px; background: #5a3c10; margin: 0 4px; }
   #topbar .grow { flex: 1; }
