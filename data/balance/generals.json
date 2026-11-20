@@ -1,0 +1,200 @@
+[
+  {
+    "id": "ou_ki",
+    "name": "Ou Ki",
+    "kingdom": "QIN",
+    "army": 11000,
+    "vitality": 110,
+    "maxVitality": 110,
+    "armor": 20,
+    "intimidation": 9,
+    "weapon": {
+      "name": "Naginata",
+      "damage": 21
+    },
+    "force": 15,
+    "strategy": 16,
+    "charisma": 18,
+    "citation": "«Ne l'as-tu pas encore compris ? La guerre, c'est amusant !»"
+  },
+  {
+    "id": "mou_bu",
+    "name": "Mou Bu",
+    "kingdom": "QIN",
+    "army": 10000,
+    "vitality": 130,
+    "maxVitality": 130,
+    "armor": 20,
+    "intimidation": 8,
+    "weapon": {
+      "name": "Masse",
+      "damage": 21
+    },
+    "force": 18,
+    "strategy": 12,
+    "charisma": 16,
+    "citation": "«Ce n'est pas la stratégie qui gagne les guerres… c'est la force !»"
+  },
+  {
+    "id": "ou_sen",
+    "name": "Ou Sen",
+    "kingdom": "QIN",
+    "army": 9500,
+    "vitality": 110,
+    "maxVitality": 110,
+    "armor": 18,
+    "intimidation": 8,
+    "weapon": {
+      "name": "Naginata",
+      "damage": 19
+    },
+    "force": 13,
+    "strategy": 17,
+    "charisma": 16,
+    "citation": "«La guerre n'est pas un duel de force… mais un jeu d'esprit où le perdant ne se relève jamais.»"
+  },
+  {
+    "id": "kan_ki",
+    "name": "Kan Ki",
+    "kingdom": "QIN",
+    "army": 8500,
+    "vitality": 100,
+    "maxVitality": 100,
+    "armor": 20,
+    "intimidation": 8,
+    "weapon": {
+      "name": "Arc",
+      "damage": 21
+    },
+    "force": 14,
+    "strategy": 16,
+    "charisma": 16,
+    "citation": "«La guerre n'a jamais eu de règles. Ce sont juste les idiots qui s'en inventent.»"
+  },
+  {
+    "id": "ri_boku",
+    "name": "Ri Boku",
+    "kingdom": "ZHAO",
+    "army": 11000,
+    "vitality": 100,
+    "maxVitality": 100,
+    "armor": 19,
+    "intimidation": 8,
+    "weapon": {
+      "name": "Sabre",
+      "damage": 20
+    },
+    "force": 11,
+    "strategy": 18,
+    "charisma": 17,
+    "citation": "«Gagner une guerre sans combattre est la plus grande des victoires.»"
+  },
+  {
+    "id": "kei_sha",
+    "name": "Kei Sha",
+    "kingdom": "ZHAO",
+    "army": 10000,
+    "vitality": 100,
+    "maxVitality": 100,
+    "armor": 19,
+    "intimidation": 7,
+    "weapon": {
+      "name": "Sabre",
+      "damage": 20
+    },
+    "force": 13,
+    "strategy": 16,
+    "charisma": 14,
+    "citation": "«La guerre est un art, et seuls les plus fins stratèges en maîtrisent toutes les nuances.»"
+  },
+  {
+    "id": "shi_ba_shou",
+    "name": "Shi Ba Shou",
+    "kingdom": "ZHAO",
+    "army": 8500,
+    "vitality": 130,
+    "maxVitality": 130,
+    "armor": 19,
+    "intimidation": 8,
+    "weapon": {
+      "name": "Naginata",
+      "damage": 19
+    },
+    "force": 17,
+    "strategy": 15,
+    "charisma": 16,
+    "citation": "«Tant que Zhao aura besoin de moi, je resterai son bouclier.»"
+  },
+  {
+    "id": "ren_pa",
+    "name": "Ren Pa",
+    "kingdom": "ZHAO/WEI",
+    "army": 11000,
+    "vitality": 120,
+    "maxVitality": 120,
+    "armor": 20,
+    "intimidation": 9,
+    "weapon": {
+      "name": "Naginata",
+      "damage": 21
+    },
+    "force": 17,
+    "strategy": 16,
+    "charisma": 18,
+    "citation": "«Un vrai guerrier ne fuit jamais la bataille. Seuls les faibles se cachent derrière les mots.»"
+  },
+  {
+    "id": "go_kei",
+    "name": "Go Kei",
+    "kingdom": "WEI",
+    "army": 10000,
+    "vitality": 90,
+    "maxVitality": 90,
+    "armor": 20,
+    "intimidation": 8,
+    "weapon": {
+      "name": "Sabre",
+      "damage": 20
+    },
+    "force": 14,
+    "strategy": 17,
+    "charisma": 16,
+    "citation": "«Un général qui se précipite vers la bataille a déjà perdu. Celui qui attend son heure triomphe sans effort.»"
+  },
+  {
+    "id": "go_hou_mei",
+    "name": "Go Hou Mei",
+    "kingdom": "WEI",
+    "army": 9000,
+    "vitality": 80,
+    "maxVitality": 80,
+    "armor": 17,
+    "intimidation": 7,
+    "weapon": {
+      "name": "-",
+      "damage": 18
+    },
+    "force": 10,
+    "strategy": 18,
+    "charisma": 14,
+    "citation": "«La guerre est un jeu d'échecs où chaque mouvement détermine le vainqueur avant même que l'ennemi ne s'en rende compte.»"
+  },
+  {
+    "id": "gai_mou",
+    "name": "Gai Mou",
+    "kingdom": "WEI",
+    "army": 10000,
+    "vitality": 130,
+    "maxVitality": 130,
+    "armor": 20,
+    "intimidation": 8,
+    "weapon": {
+      "name": "Naginata",
+      "damage": 21
+    },
+    "force": 18,
+    "strategy": 12,
+    "charisma": 16,
+    "citation": "«Que ce soit dix, cent ou mille ennemis… je les écraserai tous de mes propres mains !»"
+  }
+]
