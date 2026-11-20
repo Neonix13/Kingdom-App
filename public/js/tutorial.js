@@ -57,13 +57,13 @@
     },
     {
       id: 'select', title: 'Sélectionner une unité',
-      text: () => `Cliquez sur vos <b>Soldats</b> ${at(unitOf('soldats'))}, sur la carte ou dans la liste des unités (à droite en 2D, à gauche en 3D).<br><span class="text-muted">Le bouton <b>Q,R</b> de la barre d'outils (bouton ≡ en 3D) affiche les coordonnées des cases.</span>`,
+      text: () => `Cliquez sur vos <b>Soldats</b> ${at(unitOf('soldats'))}, sur la carte ou dans la liste des unités (à gauche).<br><span class="text-muted">Le bouton <b>Q,R</b> des outils (bouton ≡ en haut à droite) affiche les coordonnées des cases.</span>`,
       highlight: ['#unit-list', '#tool-coords'], hexes: () => [unitOf('soldats')],
       done: (f) => f.selected,
     },
     {
       id: 'card', title: 'La fiche de l\'unité', next: true,
-      text: () => 'La fiche (à droite en 2D, en bas à gauche en 3D) : vitalité, moral, attaque, défense, armure et <b>vitesse restante</b> de l\'unité. Double-cliquez sur une unité pour sa fiche complète.',
+      text: () => 'La fiche (en bas à gauche) : vitalité, moral, attaque, défense, armure et <b>vitesse restante</b> de l\'unité. Double-cliquez sur une unité pour sa fiche complète.',
       highlight: ['#selected-unit-detail'],
     },
     {
@@ -74,7 +74,7 @@
     },
     {
       id: 'stance', title: 'Les postures',
-      text: () => 'Marche (+1 vitesse), Combat, Charge, Percée, Défenses, Repos… Changer coûte <b>2 de vitesse</b> et vaut pour les tours suivants.<br>Sélectionnez une unité qui a encore de la vitesse (vos <b>Archers</b> par exemple) et choisissez une posture dans le panneau <b>POSTURE</b> (sous la fiche en 3D).',
+      text: () => 'Marche (+1 vitesse), Combat, Charge, Percée, Défenses, Repos… Changer coûte <b>2 de vitesse</b> et vaut pour les tours suivants.<br>Sélectionnez une unité qui a encore de la vitesse (vos <b>Archers</b> par exemple) et choisissez une posture dans la rangée de postures de la fiche.',
       highlight: ['#stance-panel'], hexes: () => [unitOf('archer')],
       done: (f) => f.stance,
     },
