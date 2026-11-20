@@ -97,6 +97,34 @@
             <label for="mode-select">Mode de tour</label>
             <select id="mode-select" onchange="setMode(this.value)"></select>
           </div>
+          <div class="input-group">
+            <label for="set-turnsPerHalfDay">Tours par demi-journée</label>
+            <input type="number" id="set-turnsPerHalfDay" data-setting="turnsPerHalfDay" value="12" min="5" max="20" step="1" onchange="setSetting(this)">
+            <div class="hint">5 à 20 tours entre l'aube et le crépuscule (la nuit arrive au bout d'une demi-journée).</div>
+          </div>
+          <div class="input-group">
+            <label for="set-maxTurns">Nombre de tours maximum</label>
+            <input type="number" id="set-maxTurns" data-setting="maxTurns" value="0" min="0" max="200" step="1" onchange="setSetting(this)">
+            <div class="hint">0 = illimité. À la limite, le meilleur score l'emporte.</div>
+          </div>
+          <div class="input-group">
+            <label for="set-victoryPoints">Points de victoire pour gagner</label>
+            <input type="number" id="set-victoryPoints" data-setting="victoryPoints" value="0" min="0" max="1000" step="1" onchange="setSetting(this)">
+            <div class="hint">0 = désactivé. Points gagnés à chaque tour par objectif tenu.</div>
+          </div>
+          <div class="input-group">
+            <label for="set-turnTimer">Minuteur de manche (secondes)</label>
+            <input type="number" id="set-turnTimer" data-setting="turnTimer" value="0" min="0" max="600" step="5" onchange="setSetting(this)">
+            <div class="hint">0 = sans minuteur, sinon 15 à 600 s.</div>
+          </div>
+          <div class="input-group">
+            <label for="set-spectatorVision">Vision des spectateurs</label>
+            <select id="set-spectatorVision" data-setting="spectatorVision" onchange="setSetting(this)">
+              <option value="full">Complète</option>
+              <option value="delayed">Différée (1 tour)</option>
+              <option value="off">Aucune</option>
+            </select>
+          </div>
         </div>
         <p class="text-muted mt-8" style="font-size:0.8em" id="settings-hint">Seul l'hôte peut modifier les paramètres.</p>
       </div>
@@ -159,12 +187,13 @@
 
   <script>
     if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-      window.WS_URL = 'ws://localhost:3000';
+      window.WS_URL = 'ws://' + location.host;
     } else {
       window.WS_URL = 'wss://czp9kaymr6.execute-api.eu-west-3.amazonaws.com/prod';
     }
   </script>
   <script src="/js/version.js"></script>
+  <script src="/js/rules.js"></script>
   <script src="/js/net.js"></script>
   <script src="/js/lobby.js"></script>
   <script>document.getElementById('app-version').textContent = APP_VERSION;</script>

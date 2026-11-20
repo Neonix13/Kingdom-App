@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Kingdom Battleground — Replay Viewer</title>
+  <title>Kingdom Battleground — Replay</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #0a0a0a; color: #c8a060; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
@@ -74,7 +74,8 @@
 </head>
 <body>
   <div id="top-bar">
-    <h1>REPLAY VIEWER</h1>
+    <h1>REPLAY</h1>
+    <span class="info" id="time-info"></span>
     <span class="info" id="matchup-info"></span>
     <span class="info" id="result-info"></span>
   </div>
@@ -86,21 +87,21 @@
   <div id="sidebar">
     <h3>Actions</h3>
     <div id="action-list"></div>
-    <h3>Player 1</h3>
-    <div id="p1-units"></div>
-    <h3>Player 2</h3>
-    <div id="p2-units"></div>
+    <div id="scores-panel"></div>
+    <div id="players-units"></div>
   </div>
 
   <div id="controls">
     <div class="row">
-      <button id="btn-start" title="Go to start">⏮</button>
-      <button id="btn-prev" title="Previous frame">◀</button>
-      <button id="btn-play" title="Play/Pause">▶</button>
-      <button id="btn-next" title="Next frame">▶▏</button>
-      <button id="btn-end" title="Go to end">⏭</button>
-      <span id="frame-info">Frame 0 / 0</span>
-      <label style="font-size:11px;color:#7a5820;">Speed:
+      <button id="btn-start" title="Début">⏮</button>
+      <button id="btn-prev" title="Manche précédente">◀</button>
+      <button id="btn-step-prev" title="Action précédente">‹</button>
+      <button id="btn-play" title="Lecture / pause">▶</button>
+      <button id="btn-step-next" title="Action suivante">›</button>
+      <button id="btn-next" title="Manche suivante">▶▏</button>
+      <button id="btn-end" title="Fin">⏭</button>
+      <span id="frame-info">Image 0 / 0</span>
+      <label style="font-size:11px;color:#7a5820;">Vitesse :
         <select id="speed-select" style="background:#1a0f04;color:#c8a060;border:1px solid #3a2408;border-radius:3px;padding:2px;">
           <option value="2000">0.5x</option>
           <option value="1000">1x</option>
@@ -114,9 +115,10 @@
   </div>
 
   <div id="drop-zone">
-    <h2>Load Replay</h2>
-    <p>Drop a replay JSON file here or click to browse</p>
-    <label>Choose File <input type="file" id="file-input" accept=".json"></label>
+    <h2>Charger un replay</h2>
+    <p>Déposez un fichier JSON de replay ici ou choisissez-le</p>
+    <label>Choisir un fichier <input type="file" id="file-input" accept=".json"></label>
+    <p id="load-error" style="color:#e08080"></p>
   </div>
 
   <script src="/js/hexGrid.js"></script>
@@ -128,17 +130,48 @@
     let playInterval = null;
     let camX = 0, camY = 0, zoom = 0.45;
     let isDragging = false, dragStartX = 0, dragStartY = 0, camAtDragX = 0, camAtDragY = 0;
-    let terrainData = {}, segmentData = {};
+    let terrainData = {}, segmentData = {}, mapHexKeys = [], mapBg = null, mapObjectives = [];
+    let loadedMapId = null;
 
     const canvas = document.getElementById('replay-canvas');
     const ctx = canvas.getContext('2d');
     const mapImage = new Image();
-    mapImage.src = '/assets/img/map.webp';
     mapImage.onload = () => render();
 
-    // Load terrain & segment data
-    fetch('/data/terrain.json').then(r => r.json()).then(d => { terrainData = d; render(); }).catch(() => {});
-    fetch('/data/segments.json').then(r => r.json()).then(d => { segmentData = d; render(); }).catch(() => {});
+    function escapeHtml(s) {
+      return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    // Map of the battle: registry /api/maps/<id>, fallback to the legacy /data/*.json files for 'default'
+    async function fetchMapDoc(id) {
+      try {
+        const res = await fetch(`/api/maps/${encodeURIComponent(id)}`);
+        if (res.ok) return await res.json();
+      } catch (e) { /* static hosting */ }
+      if (id !== 'default') throw new Error('Carte introuvable : ' + id);
+      const [terrain, segments, height] = await Promise.all(['terrain', 'segments', 'height'].map(n => fetch(`/data/${n}.json`).then(r => r.json())));
+      return { id: 'default', terrain, segments, height, objectives: [], background: { image: '/assets/img/map.webp', hexSize: MAP_HEX_SIZE, origX: MAP_ORIG_X, origY: MAP_ORIG_Y, width: MAP_IMG_W, height: MAP_IMG_H } };
+    }
+
+    async function loadMap(id) {
+      id = id || 'default';
+      if (loadedMapId === id) return;
+      loadedMapId = id;
+      try {
+        const doc = await fetchMapDoc(id);
+        mapHexKeys = Object.keys(doc.height || doc.terrain || {});
+        terrainData = {};
+        for (const k of mapHexKeys) terrainData[k] = (doc.terrain || {})[k] || 'plain';
+        for (const [k, t] of Object.entries(doc.terrain || {})) terrainData[k] = t;
+        segmentData = doc.segments || {};
+        mapObjectives = (doc.objectives || []).map(o => ({ ...o, id: o.id || `${o.q},${o.r}` }));
+        mapBg = doc.background && doc.background.image ? doc.background : null;
+        if (mapBg) mapImage.src = mapBg.image;
+      } catch (e) {
+        console.error(e);
+      }
+      render();
+    }
 
     const TERRAIN_COLORS = {
       forest: 'rgba(30,100,20,0.5)', river: 'rgba(40,120,220,0.5)',
@@ -151,6 +184,8 @@
     };
     const SEGMENT_EDGE_DIRS = [[1,0],[0,1],[-1,1],[-1,0],[0,-1],[1,-1]];
     const PLAYER_COLORS = { p1: '#4a90d9', p2: '#d94a4a' };
+    const STANCE_NAMES = { marche: 'Marche', combat: 'Combat', charge: 'Charge', percee: 'Percée', defense_combat: 'Déf. combat', defense_distance: 'Déf. distance', repos: 'Repos' };
+    const END_REASONS = { elimination: 'général tué', points: 'points de victoire', max_turns: 'limite de tours' };
     // === FILE LOADING ===
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
@@ -169,7 +204,19 @@
     const urlParams = new URLSearchParams(window.location.search);
     const replayPath = urlParams.get('file');
     if (replayPath) {
-      fetch(replayPath).then(r => r.json()).then(data => { initReplay(data); }).catch(e => console.error('Failed to load replay:', e));
+      fetch(replayPath).then(r => r.json()).then(data => { initReplay(data); }).catch(e => showLoadError('Impossible de charger le replay : ' + e.message));
+    } else if (urlParams.get('local')) {
+      try {
+        const raw = localStorage.getItem('kb_last_replay');
+        if (raw) initReplay(JSON.parse(raw));
+        else showLoadError('Aucun replay enregistré dans ce navigateur.');
+      } catch (e) { showLoadError('Replay local illisible : ' + e.message); }
+    } else {
+      loadMap('default');
+    }
+
+    function showLoadError(msg) {
+      document.getElementById('load-error').textContent = msg;
     }
 
     function loadFile(file) {
@@ -178,30 +225,128 @@
         try {
           const data = JSON.parse(e.target.result);
           initReplay(data);
-        } catch (err) { alert('Invalid replay JSON: ' + err.message); }
+        } catch (err) { showLoadError('Replay JSON invalide : ' + err.message); }
       };
       reader.readAsText(file);
     }
 
-    function initReplay(data) {
+    // ---- server replays (format kb-replay-1, see game/replay.js) -> frames { type, turn, manche, currentPlayerId, units, action, ... }
+    function convertServerReplay(rep) {
+      const roster = new Map((rep.roster || []).map(u => [u.id, u]));
+      const fromTuple = ([id, q, r, vitality, morale, facing, stance, flags]) => {
+        const base = roster.get(id) || { id, name: '?', maxVitality: vitality || 1 };
+        return { ...base, id, q, r, vitality, morale, facing, stance, isFleeing: !!(flags & 1) };
+      };
+      const keyframes = (rep.keyframes || []).slice().sort((a, b) => a.e - b.e);
+      const events = rep.events || [];
+      const frames = [];
+      let units = [];
+      let owners = {};
+      let scores = {};
+      let winner = null, reason = null;
+      let ctxState = { turn: 1, manche: 1, currentPlayerId: null, timeOfDay: null, isNight: false };
+      const snapshot = (type, extra = {}) => frames.push({
+        type, ...ctxState, units: units.map(u => ({ ...u })), owners: { ...owners }, scores: { ...scores }, winner, reason, ...extra,
+      });
+      const find = (id) => units.find(u => u.id === id);
+      const nameOf = (id) => (find(id) || roster.get(id) || {}).name || '?';
+      let k = 0;
+      for (let i = 0; i <= events.length; i++) {
+        while (k < keyframes.length && keyframes[k].e <= i) {
+          const kf = keyframes[k];
+          units = (kf.units || []).map(fromTuple);
+          ctxState = { turn: kf.turn, manche: kf.manche, currentPlayerId: kf.currentPlayerId, timeOfDay: kf.timeOfDay, isNight: !!kf.isNight };
+          snapshot(k === 0 ? 'battle_start' : 'end_turn');
+          k++;
+        }
+        if (i === events.length) break;
+        const ev = events[i];
+        ctxState = { ...ctxState, turn: ev.turn ?? ctxState.turn, manche: ev.manche ?? ctxState.manche };
+        let action = null;
+        if (ev.k === 'move') {
+          const u = find(ev.u);
+          const path = ev.path || [];
+          if (u && path.length) {
+            const last = path[path.length - 1];
+            if (path.length > 1) u.facing = hexFacingClient(path[path.length - 2][0], path[path.length - 2][1], last[0], last[1]);
+            u.q = last[0]; u.r = last[1];
+          }
+          action = { type: 'move', unitId: ev.u, unitName: nameOf(ev.u), toQ: path.length ? path[path.length - 1][0] : null, toR: path.length ? path[path.length - 1][1] : null, path, ambush: ev.ambush ? nameOf(ev.ambush) : null };
+        } else if (ev.k === 'combat') {
+          const log = ev.log || {};
+          const a = find(log.attackerId), t = find(log.targetId);
+          if (t && log.targetVitalityLeft != null) t.vitality = log.targetVitalityLeft;
+          if (t && log.targetMoraleLeft != null) t.morale = log.targetMoraleLeft;
+          if (a && log.attackerVitalityLeft != null) a.vitality = log.attackerVitalityLeft;
+          if (log.targetKilled) units = units.filter(u => u.id !== log.targetId);
+          if (log.attackerKilled) units = units.filter(u => u.id !== log.attackerId);
+          action = { type: log.duel ? 'duel' : 'attack', unitName: log.attackerName, targetName: log.targetName, combatLog: log };
+        } else if (ev.k === 'stance') {
+          const u = find(ev.u); if (u) u.stance = ev.s;
+          action = { type: 'stance', unitName: nameOf(ev.u), to: ev.s };
+        } else if (ev.k === 'facing') {
+          const u = find(ev.u); if (u) u.facing = ev.f;
+          action = { type: 'facing', unitName: nameOf(ev.u) };
+        } else if (ev.k === 'motivate') {
+          action = { type: 'motivate', unitName: nameOf(ev.u), success: ev.success, count: ev.count };
+        } else if (ev.k === 'ability') {
+          action = { type: 'ability', unitName: nameOf(ev.u), name: ev.name, effects: ev.effects || [] };
+        } else if (ev.k === 'fled') {
+          const names = (ev.units || []).map(nameOf);
+          units = units.filter(u => !(ev.units || []).includes(u.id));
+          action = { type: 'fled', names };
+        } else if (ev.k === 'capture') {
+          owners[ev.id] = ev.owner;
+          const o = mapObjectives.find(x => x.id === ev.id);
+          action = { type: 'capture', id: ev.id, name: o ? o.name : ev.id, owner: ev.owner };
+        } else if (ev.k === 'score') {
+          scores = { ...(ev.scores || {}) };
+          action = { type: 'score', scores };
+        } else if (ev.k === 'turn') {
+          ctxState = { ...ctxState, currentPlayerId: ev.currentPlayerId ?? ctxState.currentPlayerId, timeOfDay: ev.timeOfDay ?? ctxState.timeOfDay, isNight: ev.isNight ?? ctxState.isNight };
+        } else if (ev.k === 'end') {
+          winner = ev.winnerId ?? null; reason = ev.reason || null;
+          action = { type: 'end', winnerId: winner, reason };
+        }
+        if (action) snapshot('action', { action });
+      }
+      if (frames.length && (winner !== null || reason)) {
+        const last = frames[frames.length - 1];
+        last.winner = winner; last.reason = reason; last.phase = 'ended';
+      }
+      return {
+        format: rep.format, mapId: rep.mapId, players: rep.players || [], settings: rep.settings || {},
+        winner, reason, isDraw: !!reason && winner === null, truncated: !!rep.truncated, frames,
+      };
+    }
+
+    async function initReplay(data) {
+      if (data && data.format === 'kb-replay-1') {
+        loadedMapId = null;
+        await loadMap(data.mapId || 'default');
+        data = convertServerReplay(data);
+      } else {
+        await loadMap('default');
+      }
+      if (!data || !Array.isArray(data.frames) || !data.frames.length) { showLoadError('Replay vide ou format inconnu.'); return; }
       replay = data;
       currentFrame = 0;
       dropZone.classList.add('hidden');
 
       // Update UI
-      const g1 = replay.players[0], g2 = replay.players[1];
-      document.getElementById('matchup-info').innerHTML =
-        `<strong>${g1.name}</strong> (${g1.generalId}) vs <strong>${g2.name}</strong> (${g2.generalId}) — Budget: ${replay.budget}`;
-      document.getElementById('result-info').innerHTML = replay.isDraw
-        ? '<strong style="color:#c8960c;">DRAW</strong>'
-        : `Winner: <strong style="color:#ffd700;">${replay.winner === 'p1' ? g1.name : g2.name}</strong>`;
+      const players = replay.players || [];
+      for (const p of players) PLAYER_COLORS[p.id] = p.color || PLAYER_COLORS[p.id] || '#888';
+      document.getElementById('matchup-info').innerHTML = players
+        .map(p => `<strong style="color:${escapeHtml(PLAYER_COLORS[p.id])}">${escapeHtml(p.name)}</strong> (${escapeHtml(p.generalId)})`).join(' contre ')
+        + (replay.budget ? ` — Budget : ${replay.budget}` : '');
+      const winnerP = players.find(p => p.id === replay.winner);
+      document.getElementById('result-info').innerHTML = replay.isDraw || (!winnerP && replay.reason)
+        ? '<strong style="color:#c8960c;">MATCH NUL</strong>'
+        : winnerP ? `Vainqueur : <strong style="color:#ffd700;">${escapeHtml(winnerP.name)}</strong>${replay.reason ? ` (${END_REASONS[replay.reason] || replay.reason})` : ''}${replay.truncated ? ' — replay tronqué' : ''}` : '';
 
       const timeline = document.getElementById('timeline');
       timeline.max = replay.frames.length - 1;
       timeline.value = 0;
-
-      PLAYER_COLORS.p1 = g1.color || '#4a90d9';
-      PLAYER_COLORS.p2 = g2.color || '#d94a4a';
 
       buildTurnIndex();
 
@@ -259,6 +404,8 @@
     document.getElementById('btn-prev').onclick = () => { goToFrame(prevTurnFrame(currentFrame)); };
     document.getElementById('btn-next').onclick = () => { goToFrame(nextTurnFrame(currentFrame)); };
     document.getElementById('btn-end').onclick = () => { goToFrame(replay ? replay.frames.length - 1 : 0); };
+    document.getElementById('btn-step-prev').onclick = () => { goToFrame(currentFrame - 1); };
+    document.getElementById('btn-step-next').onclick = () => { goToFrame(currentFrame + 1); };
     document.getElementById('btn-play').onclick = togglePlay;
     document.getElementById('timeline').oninput = e => { goToFrame(parseInt(e.target.value)); };
     document.getElementById('speed-select').onchange = () => { if (playing) { stopPlay(); startPlay(); } };
@@ -299,16 +446,22 @@
       const frame = replay.frames[currentFrame];
       const turnIdx = turnFrames.indexOf(currentFrame);
       const totalTurns = turnFrames.length;
-      let label = turnIdx >= 0 ? `Turn ${turnIdx + 1} / ${totalTurns}` : `Frame ${currentFrame + 1}`;
-      if (frame.turn) label += ` — Round ${frame.turn}`;
+      let label = turnIdx >= 0 ? `Étape ${turnIdx + 1} / ${totalTurns}` : `Image ${currentFrame + 1} / ${replay.frames.length}`;
+      if (frame.turn) label += ` — Tour ${frame.turn}`;
+      if (frame.manche) label += ` · Manche ${frame.manche}`;
       if (frame.currentPlayerId && replay.players) {
         const p = replay.players.find(p => p.id === frame.currentPlayerId);
         if (p) label += ` — ${p.name}`;
       }
-      if (frame.type === 'deployment') label += ' [deployment]';
-      else if (frame.type === 'battle_start') label += ' [battle start]';
-      else if (frame.winner) label += ` [${frame.winner === 'p1' ? replay.players[0].name : replay.players[1].name} wins]`;
+      if (frame.type === 'deployment') label += ' [déploiement]';
+      else if (frame.type === 'battle_start') label += ' [début de la bataille]';
+      else if (frame.winner) label += ` [victoire de ${replay.players.find(p => p.id === frame.winner)?.name || '?'}]`;
       document.getElementById('frame-info').textContent = label;
+      const ti = document.getElementById('time-info');
+      if (frame.timeOfDay != null) {
+        const h = Math.floor(frame.timeOfDay), m = Math.round((frame.timeOfDay - h) * 60);
+        ti.textContent = `${frame.isNight ? '☾' : '☀'} ${String(h).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+      } else ti.textContent = '';
     }
 
     // === RENDERING ===
@@ -332,11 +485,16 @@
       ctx.translate(canvas.width / 2 + camX, canvas.height / 2 + camY);
       ctx.scale(zoom, zoom);
 
-      // Draw map
-      if (mapImage.complete && mapImage.naturalWidth) {
-        ctx.drawImage(mapImage,
-          -MAP_ORIG_X * MAP_SCALE, -MAP_ORIG_Y * MAP_SCALE,
-          MAP_IMG_W * MAP_SCALE, MAP_IMG_H * MAP_SCALE);
+      // Draw map (calibrated background, or plain hexes when the map has none)
+      if (mapBg && mapImage.complete && mapImage.naturalWidth) {
+        const scale = HEX_SIZE / mapBg.hexSize;
+        ctx.drawImage(mapImage, -mapBg.origX * scale, -mapBg.origY * scale, mapBg.width * scale, mapBg.height * scale);
+      } else if (!mapBg) {
+        for (const k of mapHexKeys) {
+          const [q, r] = k.split(',').map(Number);
+          const { x, y } = hexToPixel(q, r);
+          drawHex(ctx, x, y, '#3d4a2a', 'transparent', 1);
+        }
       }
 
       // Draw hex grid
@@ -345,12 +503,21 @@
       // Draw segments
       drawSegments();
 
+      const frame = replay && replay.frames[currentFrame];
+      drawObjectives(frame ? frame.owners || {} : {});
+
       // Draw units
-      if (replay && replay.frames[currentFrame]) {
-        drawUnits(replay.frames[currentFrame].units);
+      if (frame) {
+        drawUnits(frame.units);
+        const a = frame.action;
+        if (a && a.type === 'move' && a.path && a.path.length > 1) drawPath(a.path);
       }
 
       ctx.restore();
+      if (frame && frame.isNight) {
+        ctx.fillStyle = 'rgba(10,15,45,0.35)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
     }
 
     function drawHexGrid() {
@@ -397,6 +564,32 @@
         ctx.lineTo(c2.x, c2.y);
         ctx.stroke();
       }
+      ctx.restore();
+    }
+
+    function drawObjectives(owners) {
+      for (const o of mapObjectives) {
+        const { x, y } = hexToPixel(o.q, o.r);
+        const owner = owners[o.id];
+        const color = owner ? (PLAYER_COLORS[owner] || '#ffd700') : '#d8c9a0';
+        drawHex(ctx, x, y, 'transparent', color, 1, 3);
+        ctx.save();
+        ctx.strokeStyle = '#3b2a1a'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(x - 8, y + 10); ctx.lineTo(x - 8, y - 14); ctx.stroke();
+        ctx.fillStyle = color;
+        ctx.beginPath(); ctx.moveTo(x - 8, y - 14); ctx.lineTo(x + 8, y - 9); ctx.lineTo(x - 8, y - 4); ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    function drawPath(path) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,215,0,0.8)';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([6, 5]);
+      ctx.beginPath();
+      path.forEach(([q, r], i) => { const { x, y } = hexToPixel(q, r); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
+      ctx.stroke();
       ctx.restore();
     }
 
@@ -459,7 +652,7 @@
         const barWidth = radius * 2.2;
         const barHeight = 3;
         const barY = y + radius + 5;
-        const hpRatio = u.vitality / u.maxVitality;
+        const hpRatio = Math.max(0, Math.min(1, u.vitality / (u.maxVitality || 1)));
         const hpColor = hpRatio > 0.5 ? '#4a4' : hpRatio > 0.25 ? '#aa4' : '#a44';
         ctx.fillStyle = 'rgba(0,0,0,0.6)';
         ctx.fillRect(x - barWidth / 2, barY, barWidth, barHeight);
@@ -498,19 +691,38 @@
     }
 
     // === SIDEBAR ===
+    const playerName = (id) => escapeHtml((replay?.players || []).find(p => p.id === id)?.name || '?');
+
     function formatAction(a) {
-      if (a.type === 'move') return `${a.unitName} moved to (${a.toQ},${a.toR})`;
+      const n = (s) => escapeHtml(s);
+      if (a.type === 'move') return `${n(a.unitName)} se déplace en (${a.toQ},${a.toR})${a.ambush ? ` — <b style="color:#f84">embuscade de ${n(a.ambush)} !</b>` : ''}`;
       if (a.type === 'attack') {
-        const hit = a.combatLog?.hit ? 'HIT' : 'MISS';
-        const dmg = a.combatLog?.dmgReceived || 0;
-        let desc = `${a.unitName} &rarr; ${a.targetName} [${hit}${dmg ? ', -' + dmg + ' HP' : ''}]`;
-        if (a.combatLog?.targetKilled) desc += ' KILLED!';
+        const log = a.combatLog || {};
+        const hit = log.hit ? 'TOUCHÉ' : 'RATÉ';
+        const dmg = log.dmgReceived || 0;
+        let desc = `${n(a.unitName)} &rarr; ${n(a.targetName)} [${hit}${dmg ? ', -' + dmg + ' PV' : ''}]`;
+        if (log.counterDmgReceived) desc += ` riposte -${log.counterDmgReceived} PV`;
+        if (log.targetKilled) desc += ' — éliminé !';
+        if (log.attackerKilled) desc += ` — ${n(a.unitName)} éliminé !`;
         return desc;
       }
-      if (a.type === 'stance') return `${a.unitName} stance: ${a.from} &rarr; ${a.to}`;
-      if (a.type === 'motivate') return `${a.unitName} motivates (${a.success ? 'success' : 'fail'})`;
-      return a.type;
+      if (a.type === 'duel') {
+        const d = a.combatLog.duel;
+        const rounds = d.rounds.map(rd => rd.attacker ? `${rd.attacker === d.attackerId ? n(a.unitName) : n(a.targetName)} -${rd.dmg}` : 'parade').join(', ');
+        const w = d.winnerId === d.attackerId ? a.unitName : d.winnerId === d.defenderId ? a.targetName : null;
+        return `Duel ${n(a.unitName)} contre ${n(a.targetName)} : ${rounds} — ${w ? `<b>${n(w)}</b> l'emporte` : 'égalité'}${a.combatLog.generalKilled ? ' (général tué)' : ''}`;
+      }
+      if (a.type === 'stance') return `${n(a.unitName)} : posture ${n(STANCE_NAMES[a.to] || a.to)}`;
+      if (a.type === 'facing') return `${n(a.unitName)} pivote`;
+      if (a.type === 'motivate') return `${n(a.unitName)} motive ses troupes (${a.success ? `réussi, ${a.count} unité(s)` : 'échec'})`;
+      if (a.type === 'ability') return `${n(a.unitName)} : ${n(a.name)} — ${(a.effects || []).map(n).join(', ')}`;
+      if (a.type === 'fled') return `En fuite hors de la carte : ${a.names.map(n).join(', ')}`;
+      if (a.type === 'capture') return `${playerName(a.owner)} prend l'objectif ${n(a.name)}`;
+      if (a.type === 'score') return `Scores : ${Object.entries(a.scores).map(([id, s]) => `${playerName(id)} ${s}`).join(' · ')}`;
+      if (a.type === 'end') return a.winnerId ? `Victoire de ${playerName(a.winnerId)} (${END_REASONS[a.reason] || a.reason})` : `Match nul (${END_REASONS[a.reason] || a.reason || ''})`;
+      return n(a.type);
     }
+    const ACTION_LABELS = { move: 'mouvement', attack: 'attaque', duel: 'duel', stance: 'posture', facing: 'pivot', motivate: 'motivation', ability: 'capacité', fled: 'fuite', capture: 'objectif', score: 'points', end: 'fin' };
 
     function collectTurnActions(frameIdx) {
       const actions = [];
@@ -534,38 +746,45 @@
       const actionDiv = document.getElementById('action-list');
 
       if (frame.type === 'deployment') {
-        actionDiv.innerHTML = '<div class="action-log"><span class="action-type">[deployment]</span> Initial positions</div>';
+        actionDiv.innerHTML = '<div class="action-log"><span class="action-type">[déploiement]</span> Positions initiales</div>';
       } else if (frame.type === 'battle_start') {
-        actionDiv.innerHTML = `<div class="action-log"><span class="action-type">[battle]</span> Battle begins! Order: ${frame.turnOrder?.join(', ')}</div>`;
+        actionDiv.innerHTML = `<div class="action-log"><span class="action-type">[bataille]</span> La bataille commence !${frame.turnOrder ? ` Ordre : ${frame.turnOrder.map(playerName).join(', ')}` : ''}</div>`;
       } else {
         const actions = collectTurnActions(currentFrame);
         if (actions.length > 0) {
           actionDiv.innerHTML = actions.map(a =>
-            `<div class="action-log"><span class="action-type">[${a.type}]</span> ${formatAction(a)}</div>`
+            `<div class="action-log"><span class="action-type">[${ACTION_LABELS[a.type] || escapeHtml(a.type)}]</span> ${formatAction(a)}</div>`
           ).join('');
         } else {
-          const who = frame.currentPlayerId && replay.players
-            ? (replay.players.find(p => p.id === frame.currentPlayerId)?.name || '?')
-            : '?';
-          actionDiv.innerHTML = `<div class="action-log"><span class="action-type">[turn]</span> ${who}'s turn (no actions)</div>`;
+          const who = frame.currentPlayerId ? playerName(frame.currentPlayerId) : '?';
+          actionDiv.innerHTML = `<div class="action-log"><span class="action-type">[manche]</span> Manche de ${who} (aucune action)</div>`;
         }
       }
 
-      // Unit cards
-      for (const pid of ['p1', 'p2']) {
-        const container = document.getElementById(pid + '-units');
-        const units = frame.units.filter(u => u.playerId === pid);
-        container.innerHTML = units.map(u => {
+      const sp = document.getElementById('scores-panel');
+      const scores = frame.scores || {};
+      if (mapObjectives.length || Object.keys(scores).length) {
+        sp.innerHTML = '<h3>Objectifs</h3>' + mapObjectives.map(o => {
+          const owner = (frame.owners || {})[o.id];
+          return `<div class="action-log">⚑ ${escapeHtml(o.name || o.id)} (${o.points ?? 1} pt) — ${owner ? `<span style="color:${escapeHtml(PLAYER_COLORS[owner])}">${playerName(owner)}</span>` : 'neutre'}</div>`;
+        }).join('') + (Object.keys(scores).length ? `<div class="action-log">Scores : ${Object.entries(scores).map(([id, s]) => `${playerName(id)} ${s}`).join(' · ')}</div>` : '');
+      } else sp.innerHTML = '';
+
+      // Unit cards, one list per player
+      const players = replay.players && replay.players.length ? replay.players : [{ id: 'p1', name: 'Joueur 1' }, { id: 'p2', name: 'Joueur 2' }];
+      document.getElementById('players-units').innerHTML = players.map(p => {
+        const units = frame.units.filter(u => u.playerId === p.id);
+        return `<h3 style="color:${escapeHtml(PLAYER_COLORS[p.id] || '#ffd700')}">${escapeHtml(p.name)}</h3>` + units.map(u => {
           const dead = u.vitality <= 0 || u.q === null;
-          const hpPct = Math.round((u.vitality / u.maxVitality) * 100);
-          const morale = u.morale !== null ? ` M:${u.morale}` : '';
+          const hpPct = Math.round((u.vitality / (u.maxVitality || 1)) * 100);
+          const morale = u.morale != null ? ` M:${u.morale}` : '';
           return `<div class="unit-card${dead ? ' dead' : ''}${u.isGeneral ? ' general' : ''}">
-            <div class="dot" style="background:${PLAYER_COLORS[pid]}"></div>
-            <span class="name">${u.name}</span>
+            <div class="dot" style="background:${escapeHtml(PLAYER_COLORS[p.id] || '#888')}"></div>
+            <span class="name">${escapeHtml(u.name)}</span>
             <span class="hp">${u.vitality}/${u.maxVitality} (${hpPct}%)${morale}</span>
           </div>`;
         }).join('');
-      }
+      }).join('');
     }
 
     // === PAN & ZOOM ===

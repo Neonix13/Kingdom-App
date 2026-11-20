@@ -192,6 +192,38 @@ function setMode(mode) {
   KBNet.send('set_mode', { mode });
 }
 
+const SETTING_KEYS = ['turnsPerHalfDay', 'maxTurns', 'victoryPoints', 'turnTimer', 'spectatorVision'];
+
+function setSetting(el) {
+  const key = el.dataset.setting;
+  let value = el.value;
+  if (key !== 'spectatorVision') {
+    value = parseInt(value, 10);
+    const lim = window.KBRules && KBRules.RULES.settings[key];
+    if (!Number.isInteger(value) || (lim && (value < lim.min || value > lim.max))) {
+      notify(lim ? `Valeur invalide (${lim.min} à ${lim.max}).` : 'Valeur invalide.');
+      if (lastLobby) renderSettings(lastLobby);
+      return;
+    }
+    if (key === 'turnTimer' && value > 0 && value < 15) {
+      notify('Minuteur : 0 (désactivé) ou au moins 15 secondes.');
+      if (lastLobby) renderSettings(lastLobby);
+      return;
+    }
+  }
+  KBNet.send('set_settings', { settings: { [key]: value } });
+}
+
+function renderGameSettings(data, host) {
+  const settings = data.settings || (window.KBRules ? KBRules.defaultSettings() : {});
+  for (const key of SETTING_KEYS) {
+    const el = document.getElementById(`set-${key}`);
+    if (!el) continue;
+    if (document.activeElement !== el && settings[key] !== undefined) el.value = settings[key];
+    el.disabled = !host;
+  }
+}
+
 function pickColor(hex) {
   KBNet.send('set_player_color', { color: hex });
 }
@@ -381,6 +413,7 @@ function renderSettings(data) {
   modeSel.innerHTML = modes.map(m => `<option value="${escapeHtml(m.id)}"${m.available ? '' : ' disabled'}>${escapeHtml(m.name)}</option>`).join('');
   modeSel.value = data.mode || 'sequential';
   modeSel.disabled = !host;
+  renderGameSettings(data, host);
   document.getElementById('settings-hint').textContent = host ? 'Vous êtes l\'hôte : les paramètres s\'appliquent à tous.' : 'Seul l\'hôte peut modifier les paramètres.';
   const startBtn = document.getElementById('start-btn');
   startBtn.style.display = host ? 'block' : 'none';
@@ -559,7 +592,29 @@ function lobbyDispatch(event, data) {
   }
 }
 
+// Stats from the balance tables (GET /api/balance, local server only); the arrays above stay as fallback
+// and keep the client-only fields (images, ability texts) the API does not provide.
+async function loadBalanceData() {
+  try {
+    const res = await fetch('/api/balance');
+    if (!res.ok) return;
+    const { tables } = await res.json();
+    const merge = (list, rows) => {
+      for (const row of rows) {
+        if (!row || !row.id) continue;
+        const cur = list.find(x => x.id === row.id);
+        if (cur) Object.assign(cur, row);
+        else list.push({ ...row });
+      }
+    };
+    if (tables && tables.units) merge(UNITS_DATA, Array.isArray(tables.units) ? tables.units : Object.values(tables.units));
+    if (tables && tables.generals) merge(GENERALS_DATA, Array.isArray(tables.generals) ? tables.generals : Object.values(tables.generals));
+    if (lastLobby) renderGenerals(lastLobby.takenGenerals || []);
+  } catch (e) { /* static hosting: hardcoded data */ }
+}
+
 function initLobby() {
+  loadBalanceData();
   KBNet.mountIndicator();
   const params = new URLSearchParams(location.search);
   const joinCode = (params.get('join') || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
