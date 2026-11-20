@@ -1,0 +1,22 @@
+{
+ "format": "kb-music-1",
+ "states": {
+  "battle": {
+   "folder": "bataille",
+   "bpm": 96,
+   "phraseBars": 8,
+   "tailBars": 2,
+   "preRoll": 0.625,
+   "phrases": 24,
+   "layers": [
+    "melodie",
+    "pipa",
+    "leger",
+    "lourd"
+   ],
+   "intro": null,
+   "ext": "m4a",
+   "gain": 1
+  }
+ }
+}

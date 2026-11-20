@@ -93,7 +93,8 @@ function importState(key, st, phraseBarsDefault) {
     for (const w of wavs) if (w.sr !== sr) throw new Error(`${st.folder} : fréquences d'échantillonnage différentes (${w.sr} / ${sr})`);
     const needed = Math.round(st.totalBars * barSec * sr);
     const shortest = Math.min(...wavs.map((w) => w.frames));
-    if (shortest < needed - barSec * sr * 0.5) throw new Error(`${st.folder} : rendu trop court (${(shortest / sr).toFixed(1)} s au lieu de ${(needed / sr).toFixed(1)} s, soit ${st.totalBars} mesures à ${st.bpm} BPM)`);
+    if (shortest < needed - barSec * sr * 0.5 && shortest >= needed - tail * barSec * sr) console.warn(`  ⚠ ${layer} : rendu plus court de ${((needed - shortest) / sr).toFixed(1)} s (fin de la queue de la dernière phrase), complété par du silence`);
+    else if (shortest < needed - barSec * sr * 0.5) throw new Error(`${st.folder} : rendu trop court (${(shortest / sr).toFixed(1)} s au lieu de ${(needed / sr).toFixed(1)} s, soit ${st.totalBars} mesures à ${st.bpm} BPM)`);
     let sumSq = 0, count = 0, peak = 0, preE = 0, phraseE = 0;
     for (const slot of st.slots) {
       const phraseStart = slot.phraseBar * barSec;
