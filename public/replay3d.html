@@ -4,25 +4,36 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Kingdom Battleground — Replay 3D</title>
+<link rel="stylesheet" href="/css/ink-d.css">
+<link rel="stylesheet" href="/css/hud.css">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { overflow: hidden; background: #0b0d10; font-family: 'Segoe UI', system-ui, sans-serif; color: #e8d5a0; }
+  body { overflow: hidden; background: var(--ink-bg); font-family: var(--ink-body); color: var(--ink-text); }
   #stage { position: fixed; inset: 0; }
   #c3d { display: block; width: 100%; height: 100%; outline: none; }
-  #controls { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 50; display: flex; gap: 6px; align-items: center;
-    background: rgba(14,9,4,0.82); border: 1px solid rgba(200,150,40,0.4); border-radius: 999px; padding: 6px 12px; font-size: 12px; }
-  #controls button { background: #2a1408; color: #e8d5a0; border: 1px solid #5a3c10; border-radius: 999px; width: 30px; height: 26px; cursor: pointer; }
-  #controls button:hover { border-color: #c8960c; }
-  #controls input[type=range] { width: 260px; accent-color: #c8960c; }
-  #controls select { background: #1a0e05; color: #e8d5a0; border: 1px solid #5a3c10; border-radius: 4px; }
-  #controls .info { min-width: 260px; color: #cfbf90; }
-  #title { position: fixed; top: 12px; left: 14px; z-index: 50; font-size: 13px; letter-spacing: 3px; color: #d9bf78; background: rgba(14,9,4,0.6); padding: 6px 12px; border-radius: 8px; }
-  #title a { color: #9a8a60; font-size: 11px; letter-spacing: 0; margin-left: 10px; }
-  #drop { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: radial-gradient(ellipse at 50% 40%, #1b1a16 0%, #0a0a0c 70%); }
+  #controls { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 50; width: min(1100px, calc(100vw - 28px));
+    display: flex; flex-direction: column; gap: 4px; background: var(--ink-panel); border-top: 1px solid var(--ink-line); box-shadow: 0 14px 36px rgba(0,0,0,.5); padding: 10px 16px 8px; }
+  #controls .rc-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  #controls .rc-info { flex: 1; min-width: 220px; font-size: 12px; color: var(--ink-soft); display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+  #controls .rc-info .n { font: 400 17px var(--ink-display); color: var(--ink-text); }
+  #controls .rc-info .c { margin-left: auto; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+  #controls .rc-lab { font: 700 11px var(--ink-body); letter-spacing: 1px; text-transform: uppercase; color: var(--ink-muted); display: inline-flex; align-items: center; gap: 6px; }
+  #title { position: fixed; top: 14px; left: 14px; z-index: 50; display: flex; align-items: center; gap: 12px; background: #0E0D0C; padding: 8px 14px 8px 8px; box-shadow: 0 2px 0 var(--ink-red); }
+  #title .seal { width: 30px; height: 30px; border-radius: 50%; background: var(--ink-red); color: var(--ink-bg); font: 18px var(--ink-brush); display: inline-flex; align-items: center; justify-content: center; }
+  #title b { font: 400 16px var(--ink-display); letter-spacing: 3px; }
+  #title a { color: var(--ink-muted); font-size: 12px; font-weight: 700; text-decoration: none; border: 1px solid var(--ink-line-strong); border-radius: 999px; padding: 4px 10px; }
+  #title a:hover { color: var(--ink-red-text); border-color: var(--ink-red); }
+  #drop { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: radial-gradient(ellipse at 50% 40%, #1d1b18 0%, #0a0a0c 70%); text-align: center; padding: 20px; }
   #drop.hidden { display: none; }
-  #drop .box { border: 2px dashed #5a3c10; border-radius: 12px; padding: 30px 40px; text-align: center; }
-  #drop .bar { width: 280px; height: 2px; background: rgba(217,191,120,.15); }
-  #drop .bar i { display: block; height: 100%; width: 0; background: #d9bf78; }
+  #drop .seal { width: 72px; height: 72px; border-radius: 50%; background: var(--ink-red); color: var(--ink-bg); font: 42px var(--ink-brush); display: flex; align-items: center; justify-content: center; }
+  #drop h2 { font: 400 26px var(--ink-display); letter-spacing: 3px; }
+  #drop .box { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  #drop #msg { font-size: 13px; color: var(--ink-muted); }
+  #drop .pick { background: var(--ink-red); color: #fff; padding: 12px 28px; border-radius: 999px; cursor: pointer; font: 700 14px var(--ink-body); }
+  #drop .pick:hover { background: var(--ink-red-hi); }
+  #drop .pick input { display: none; }
+  #drop .bar { width: 280px; height: 3px; background: rgba(239,232,216,.15); }
+  #drop .bar i { display: block; height: 100%; width: 0; background: var(--ink-red); }
   body.v3-photo #controls, body.v3-photo #title { display: none; }
 </style>
 <script type="importmap">
@@ -31,13 +42,14 @@
 </head>
 <body>
 <div id="stage"><canvas id="c3d" tabindex="0"></canvas></div>
-<div id="title">REPLAY 3D <a href="/replay.html?local=1">vue 2D</a><a href="/">menu</a></div>
+<div id="title"><span class="seal">録</span><b>REPLAY 3D</b><a id="link-2d" href="/replay.html?local=1">Vue 2D</a><a href="/">Menu</a></div>
 <div id="controls"></div>
 <div id="drop">
   <div class="box">
-    <div style="font-size:15px;letter-spacing:3px;margin-bottom:8px">REPLAY 3D</div>
-    <div id="msg" style="font-size:12px;opacity:.7">Déposez un fichier de replay (.json) ou choisissez-le</div>
-    <input type="file" accept=".json,application/json" style="margin-top:12px">
+    <div class="seal">録</div>
+    <h2>REPLAY 3D</h2>
+    <div id="msg">Déposez un fichier de replay (.json) ou choisissez-le</div>
+    <label class="pick">Choisir un fichier <input type="file" accept=".json,application/json"></label>
   </div>
   <div class="bar"><i></i></div>
 </div>
@@ -68,6 +80,7 @@ if (params.has('local')) {
   try { const raw = localStorage.getItem('kb_last_replay'); if (raw) start(JSON.parse(raw)); else msg.textContent = 'Aucun replay enregistré dans ce navigateur.'; }
   catch (e) { msg.textContent = 'Replay illisible.'; }
 } else if (params.get('file')) {
+  document.getElementById('link-2d').href = '/replay.html?file=' + encodeURIComponent(params.get('file'));
   fetch(params.get('file')).then((r) => r.json()).then(start).catch(() => { msg.textContent = 'Impossible de charger le replay.'; });
 }
 const readFile = (f) => f && f.text().then((t) => start(JSON.parse(t))).catch(() => { msg.textContent = 'Fichier invalide.'; });

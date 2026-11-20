@@ -1,5 +1,7 @@
 import { createWorld } from './world.js';
 import { createGameUI } from './gameUI.js';
+import { createCombatSplash } from '../hud/combatSplash.js';
+import { generalPortrait, unitPortrait, unitKanji } from '../portraits.js';
 
 const HEX_DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
 const facingBetween = (q1, r1, q2, r2) => {
@@ -69,6 +71,13 @@ export async function mountReplay3d(rep, { container, canvas, onProgress, contro
   const gens = Object.fromEntries((rep.players || []).map((p) => [p.id, KINGDOM_OF[p.generalId]]));
   const { createUnitLayer } = await import('./units3d.js');
   const units3d = createUnitLayer(world, { getPlayerColor, getPlayerEmblem: (id) => gens[id] });
+  const generalOf = Object.fromEntries((rep.players || []).map((p) => [p.id, p.generalId]));
+  const splash = createCombatSplash({
+    bridge: { get state() { return { units: [...state.units.values()] }; }, getPlayerColor },
+    portrait: (u) => (u.isGeneral ? generalPortrait(generalOf[u.playerId]) : unitPortrait(u.typeId)),
+    kanji: unitKanji,
+    isActive: () => true,
+  });
 
   let state = model.stateAt(0);
   const bridgeLike = { get state() { return { timeOfDay: state.timeOfDay, turn: state.turn, manche: state.manche, units: [...state.units.values()] }; }, selectedUnit: null };
@@ -87,7 +96,7 @@ export async function mountReplay3d(rep, { container, canvas, onProgress, contro
     ui.applyHour();
   }
 
-  let index = 0, playing = false, speed = 1, follow = true;
+  let index = 0, playing = false, speed = 1, follow = true, cards = true;
   let busyUntil = 0;
   const wait = (ms) => new Promise((r) => setTimeout(r, ms / speed));
 
@@ -127,8 +136,8 @@ export async function mountReplay3d(rep, { container, canvas, onProgress, contro
         const impact = units3d.playAttack(a.id, t.id, { ranged: !!log.ranged }) || 0.5;
         units3d.playHit(t.id, { delay: impact });
         if (log.dmgReceived != null) ui.floatText(anchor(t).clone(), log.hit === false ? 'Raté' : `-${log.dmgReceived}`, log.hit === false ? 'miss' : '', impact);
-        if (log.duel) ui.floatText(anchor(t).clone().setY(anchor(t).y + 0.6), 'DUEL', 'kill');
-        await wait((impact + 0.6) * 1000);
+        if (cards) splash.show(log, { playback: speed > 1 });
+        await wait((impact + 0.6) * 1000 + (cards && speed === 1 ? 2200 : 0));
       }
       model.apply(state, ev);
       syncAll();
@@ -159,27 +168,58 @@ export async function mountReplay3d(rep, { container, canvas, onProgress, contro
   }
 
   // --- Controls ---
+  const PLAY = '<svg class="ink-ic fill" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z"/></svg>', PAUSE = '<svg class="ink-ic fill" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>';
   controlsEl.innerHTML = `
-    <button data-a="start" title="Début">⏮</button><button data-a="prev" title="Tour précédent">⏪</button>
-    <button data-a="play" title="Lecture/Pause">▶</button><button data-a="next" title="Tour suivant">⏩</button>
-    <input type="range" min="0" value="0" step="1">
-    <select data-a="speed"><option value="1">×1</option><option value="2">×2</option><option value="4">×4</option></select>
-    <label><input type="checkbox" data-a="follow" checked> Suivre</label>
-    <span class="info"></span>`;
+    <div class="rc-row">
+      <button class="ink-btn" data-a="start" title="Début" aria-label="Début"><svg class="ink-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5v14M18 6l-9 6 9 6z"/></svg></button>
+      <button class="ink-btn" data-a="prev" title="Tour précédent" aria-label="Tour précédent"><svg class="ink-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6l-8 6 8 6zM20 6l-8 6 8 6z"/></svg></button>
+      <button class="ink-btn big" data-a="play" title="Lecture / pause (Espace)" aria-label="Lecture">${PLAY}</button>
+      <button class="ink-btn" data-a="next" title="Tour suivant" aria-label="Tour suivant"><svg class="ink-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6l8 6-8 6zM4 6l8 6-8 6z"/></svg></button>
+      <span class="rc-info info"></span>
+      <label class="rc-lab">Vitesse <select class="ink-select" data-a="speed"><option value="1">×1</option><option value="2">×2</option><option value="4">×4</option></select></label>
+      <label class="ink-check"><input type="checkbox" data-a="follow" checked> Suivre</label>
+      <label class="ink-check"><input type="checkbox" data-a="cards" checked> Fiches de combat</label>
+    </div>
+    <div class="ink-track"><div class="ink-ticks"></div><input type="range" min="0" value="0" step="1" aria-label="Chronologie"></div>`;
   const slider = controlsEl.querySelector('input[type=range]');
   slider.max = model.events.length;
   const playBtn = controlsEl.querySelector('[data-a=play]');
   const info = controlsEl.querySelector('.info');
-  const turnStarts = model.events.map((e, i) => (e.k === 'turn' ? i : -1)).filter((i) => i >= 0);
+  // Turn boundaries: 'turn' events when present, otherwise the keyframes (recorded at each manche)
+  const marks = model.events.some((e) => e.k === 'turn')
+    ? model.events.map((e, i) => (e.k === 'turn' ? { i, turn: e.turn, night: !!e.isNight } : null)).filter(Boolean)
+    : [...(rep.keyframes || [])].sort((x, y) => x.e - y.e).map((k) => ({ i: k.e, turn: k.turn, night: !!k.isNight }));
+  const turnStarts = [...new Set(marks.map((m) => m.i))].filter((i) => i > 0 && i < model.events.length);
+  {
+    const ticks = controlsEl.querySelector('.ink-ticks');
+    const n = Math.max(1, model.events.length);
+    let lastNight = null, lastTurn = null, labelled = -100;
+    for (const m of marks) {
+      const pct = (m.i / n) * 100;
+      const tick = document.createElement('i');
+      tick.style.left = pct + '%';
+      if (lastNight !== null && m.night !== lastNight) tick.className = 'day';
+      lastNight = m.night;
+      ticks.append(tick);
+      if (m.turn != null && m.turn !== lastTurn && pct - labelled >= 5) {
+        const b = document.createElement('b');
+        b.style.left = pct + '%';
+        b.textContent = m.turn;
+        ticks.append(b);
+        labelled = pct;
+      }
+      lastTurn = m.turn;
+    }
+  }
   function render() {
     slider.value = index;
-    playBtn.textContent = playing ? '⏸' : '▶';
+    playBtn.innerHTML = playing ? PAUSE : PLAY;
     const cur = (rep.players || []).find((p) => p.id === state.currentPlayerId);
     const h = state.timeOfDay != null ? `${String(Math.floor(state.timeOfDay)).padStart(2, '0')}h${String(Math.round((state.timeOfDay % 1) * 60)).padStart(2, '0')}` : '';
-    info.innerHTML = `Tour ${state.turn || 1} · Manche ${state.manche || 1} · ${cur ? `<b style="color:${getPlayerColor(cur.id)}">${cur.name}</b>` : ''} · ${h}${state.isNight ? ' 🌙' : ''} · ${index}/${model.events.length}`;
+    info.innerHTML = `<b class="n">TOUR ${state.turn || 1}</b> Manche ${state.manche || 1} · ${cur ? `<b style="color:${getPlayerColor(cur.id)}">${cur.name}</b> · ` : ''}${h}${state.isNight ? ' · nuit' : ''} <span class="c">${index} / ${model.events.length}</span>`;
   }
   controlsEl.addEventListener('click', (e) => {
-    const a = e.target.dataset?.a;
+    const a = e.target.closest('[data-a]')?.dataset.a;
     if (!a) return;
     if (a === 'play') { if (playing) playing = false; else { if (index >= model.events.length) jump(0); playing = true; loop(); } render(); }
     else if (a === 'start') { playing = false; jump(0); }
@@ -189,6 +229,12 @@ export async function mountReplay3d(rep, { container, canvas, onProgress, contro
   slider.addEventListener('input', () => { playing = false; jump(parseInt(slider.value, 10)); });
   controlsEl.querySelector('[data-a=speed]').addEventListener('change', (e) => { speed = parseFloat(e.target.value); });
   controlsEl.querySelector('[data-a=follow]').addEventListener('change', (e) => { follow = e.target.checked; });
+  controlsEl.querySelector('[data-a=cards]').addEventListener('change', (e) => { cards = e.target.checked; if (!cards) splash.hide(); });
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'Space' || splash.shown || /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement?.tagName || '')) return;
+    e.preventDefault();
+    playBtn.click();
+  });
 
   world.controls.mouseButtons = { LEFT: T.MOUSE.PAN, MIDDLE: T.MOUSE.DOLLY, RIGHT: T.MOUSE.ROTATE };
   world.controls.screenSpacePanning = false;

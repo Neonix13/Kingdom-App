@@ -1,0 +1,51 @@
+@import url('https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Yuji+Boku&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=Zen+Old+Mincho:wght@700;900&display=swap');
+/* Style D shared tokens for secondary pages (replays, demos, tutorial coach). */
+:root {
+  --ink-bg: #0E0D0C;
+  --ink-panel: rgba(16, 15, 13, .92);
+  --ink-raised: #22201d;
+  --ink-line: rgba(239, 232, 216, .16);
+  --ink-line-strong: rgba(239, 232, 216, .38);
+  --ink-paper: #EFE8D8;
+  --ink-paper-2: #F4EFE4;
+  --ink-text: #EFE8D8;
+  --ink-soft: #D9D1BF;
+  --ink-muted: #B3AA98;
+  --ink-red: #D8352A;
+  --ink-red-hi: #E5513F;
+  --ink-red-text: #F0705A;
+  --ink-display: 'Dela Gothic One', 'Zen Kaku Gothic New', sans-serif;
+  --ink-mincho: 'Zen Old Mincho', Georgia, serif;
+  --ink-body: 'Zen Kaku Gothic New', 'Segoe UI', system-ui, sans-serif;
+  --ink-brush: 'Yuji Boku', 'Zen Old Mincho', serif;
+}
+.ink-ic { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.ink-ic.fill { fill: currentColor; stroke: none; }
+
+/* Round icon buttons */
+.ink-btn { width: 40px; height: 40px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; padding: 0;
+  background: rgba(14, 13, 12, .8); border: 1px solid var(--ink-line-strong); color: var(--ink-text); cursor: pointer; transition: border-color .15s, color .15s, background .15s; }
+.ink-btn:hover { border-color: var(--ink-red); color: var(--ink-red-text); }
+.ink-btn:disabled { opacity: .3; cursor: default; }
+.ink-btn.big { width: 52px; height: 52px; background: var(--ink-red); border-color: var(--ink-red); color: #fff; box-shadow: 0 0 0 4px rgba(14, 13, 12, .9), 0 0 0 5px var(--ink-line-strong); }
+.ink-btn.big:hover { background: var(--ink-red-hi); color: #fff; }
+.ink-btn.big .ink-ic { width: 22px; height: 22px; }
+.ink-btn:focus-visible { outline: 2px solid var(--ink-red); outline-offset: 2px; }
+
+.ink-select { background: rgba(0, 0, 0, .4); color: var(--ink-text); border: 1px solid var(--ink-line); border-bottom: 2px solid var(--ink-line-strong); border-radius: 0; padding: 6px 8px; font: 700 13px var(--ink-body); }
+.ink-select option { background: #1a1815; }
+.ink-check { display: inline-flex; align-items: center; gap: 6px; font: 500 12px var(--ink-body); color: var(--ink-muted); cursor: pointer; }
+.ink-check input { accent-color: var(--ink-red); }
+
+/* Timeline with turn ticks */
+.ink-track { position: relative; height: 26px; display: flex; align-items: center; }
+.ink-track input[type=range] { position: relative; z-index: 2; width: 100%; height: 26px; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; cursor: pointer; }
+.ink-track input[type=range]::-webkit-slider-runnable-track { height: 4px; background: var(--ink-line-strong); }
+.ink-track input[type=range]::-moz-range-track { height: 4px; background: var(--ink-line-strong); }
+.ink-track input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; margin-top: -6px; border-radius: 50%; background: var(--ink-red); border: 3px solid var(--ink-bg); box-shadow: 0 0 0 1px var(--ink-paper); }
+.ink-track input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--ink-red); border: 3px solid var(--ink-bg); }
+.ink-track input[type=range]:focus-visible { outline: 2px solid var(--ink-red); outline-offset: 2px; }
+.ink-ticks { position: absolute; left: 8px; right: 8px; top: 0; bottom: 0; pointer-events: none; z-index: 1; }
+.ink-ticks i { position: absolute; top: 6px; width: 2px; height: 14px; margin-left: -1px; background: rgba(239, 232, 216, .35); }
+.ink-ticks i.day { background: var(--ink-red); height: 18px; top: 4px; }
+.ink-ticks b { position: absolute; top: -12px; transform: translateX(-50%); font: 400 10px var(--ink-display); color: var(--ink-muted); }
