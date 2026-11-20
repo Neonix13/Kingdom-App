@@ -16,6 +16,9 @@ import { patchLit, G } from './shaderPatches.js';
 //   layer.getAnchor(id, out?) -> THREE.Vector3 | null
 //   layer.update(dt, t)                       auto-registered in world.frameHooks unless autoUpdate:false
 //   layer.dispose()
+// While a formation marches or fights it is simulated soldier by soldier ("free" mode): each one follows the
+// leader's trail, turns before walking, slows on slopes and in water, keeps its spacing; in melee the front ranks
+// pair off into duels along the contact line, archers shoot at individual soldiers. Back to a rigid formation at rest.
 // Draw calls: foot (regular + irregular kits), rider, horse, chariot, banner cloth, contact blobs
 // (+ arrows during volleys, + selection/hover rings).
 
@@ -952,6 +955,167 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
   const gaitOf = (f) => (f.lungeGait != null ? f.lungeGait : f.moving ? (f.u.isFleeing ? 2 : 1) : 0);
   const glowOf = (f) => (f.id === selId ? 1 : f.id === hovId ? 0.45 : 0);
 
+  // --- choreography (free mode: soldier-by-soldier simulation while marching or fighting) ---
+  const TIERS = {
+    Ultra: { free: true, pairs: 14, sep: true }, High: { free: true, pairs: 12, sep: true },
+    Medium: { free: true, pairs: 9, sep: true }, Low: { free: true, pairs: 6, sep: false }, Minimum: { free: false, pairs: 0, sep: false },
+  };
+  function tier() {
+    const L = world.LEVELS, g = world.governor;
+    return (L && g && L[g.level] && TIERS[L[g.level].name]) || TIERS.High;
+  }
+  const _sw = { x: 0, z: 0, yaw: 0 };
+  const _tp = { x: 0, z: 0, h: 0 };
+  const isCav = (m) => m.t.rig === 'cav' || m.t.rig === 'chariot' || m.t.rig === 'cart';
+  function slotWorld(f, m, out) {
+    const h = f.heading, ch = Math.cos(h), sh = Math.sin(h);
+    let bx = f.px + f.lungeX, bz = f.pz + f.lungeZ;
+    if (f.press && !m.duel) { bx += f.press.dx; bz += f.press.dz; }
+    out.x = bx + m.tx * ch + m.tz * sh; out.z = bz - m.tx * sh + m.tz * ch; out.yaw = h + m.tyaw;
+    return out;
+  }
+  function depthOf(f) {
+    let d = 0;
+    for (const t of f.tpls) d = Math.max(d, -t.lz);
+    return d + 0.3;
+  }
+  function trailReset(f) {
+    const fx = Math.sin(f.heading), fz = Math.cos(f.heading), depth = depthOf(f);
+    f.trail = [];
+    for (let s = -Math.ceil(depth / 0.1) * 0.1; s <= 1e-6; s += 0.1) f.trail.push({ x: f.px + fx * s, z: f.pz + fz * s, h: f.heading, s });
+  }
+  function trailPush(f) {
+    const tr = f.trail, last = tr[tr.length - 1];
+    const d = Math.hypot(f.px - last.x, f.pz - last.z);
+    if (d < 0.04) { last.h = f.heading; return; }
+    tr.push({ x: f.px, z: f.pz, h: f.heading, s: last.s + d });
+    const keep = last.s + d - depthOf(f) - 0.3;
+    let cut = 0;
+    while (cut < tr.length - 2 && tr[cut + 1].s < keep) cut++;
+    if (cut) tr.splice(0, cut);
+  }
+  function trailPoint(f, back, out) {
+    const tr = f.trail, head = tr[tr.length - 1];
+    if (back <= 0) { out.x = f.px + Math.sin(f.heading) * -back; out.z = f.pz + Math.cos(f.heading) * -back; out.h = f.heading; return out; }
+    const s = head.s - back;
+    let i = tr.length - 1;
+    while (i > 0 && tr[i - 1].s > s) i--;
+    if (i === 0) {
+      const a = tr[0], k = a.s - s;
+      out.x = a.x - Math.sin(a.h) * k; out.z = a.z - Math.cos(a.h) * k; out.h = a.h;
+      return out;
+    }
+    const a = tr[i - 1], b = tr[i], k = (s - a.s) / ((b.s - a.s) || 1);
+    out.x = a.x + (b.x - a.x) * k; out.z = a.z + (b.z - a.z) * k; out.h = a.h + wrapA(b.h - a.h) * k;
+    return out;
+  }
+  function enterFree(f) {
+    if (f.free || !tier().free) return f.free;
+    const p = { x: 0, z: 0 };
+    for (const m of f.members) {
+      if (!m) continue;
+      memberWorld(f, m, p);
+      m.wx = p.x; m.wz = p.z; m.wyaw = f.heading + m.yaw; m.v = 0; m.gw = -1;
+    }
+    f.free = true;
+    f.relayout = false;
+    trailReset(f);
+    active.add(f);
+    return true;
+  }
+  function exitFree(f) {
+    f.free = false;
+    for (const m of f.members) {
+      if (!m) continue;
+      m.lx = m.tx; m.lz = m.tz; m.yaw = m.tyaw; m.v = 0; m.gw = -1; m.duel = null; m.kick = null; m.sched = null;
+      writeMemberAttrs(f, m);
+    }
+    f.dirty = true;
+  }
+  function memberAim(f, m, t, marching, out) {
+    const d = m.duel;
+    if (d && t >= d.t0 && t < d.end) {
+      const back = t > d.end - 0.4;
+      out.x = back ? d.rx : d.x; out.z = back ? d.rz : d.z; out.yaw = d.yaw;
+      return back ? 1.1 : d.run;
+    }
+    if (marching) {
+      const sq = onDeck(f.px, f.pz) ? 0.35 : 1;
+      trailPoint(f, -m.tz, _tp);
+      const ch = Math.cos(_tp.h), sh = Math.sin(_tp.h), lx = m.tx * sq;
+      out.x = _tp.x + lx * ch; out.z = _tp.z - lx * sh; out.yaw = _tp.h + m.tyaw;
+      return Math.max(0.9, f.spd * 1.25);
+    }
+    slotWorld(f, m, out);
+    return 1.3;
+  }
+  const _aim = { x: 0, z: 0, yaw: 0 };
+  function stepFree(f, dt) {
+    const t = now(), tr = tier();
+    const marching = !!f.ov || f.moving;
+    if (marching) trailPush(f);
+    if (f.press && t > f.press.end) f.press = null;
+    let busy = marching || !!f.lunge || !!f.press;
+    const ms = f.members;
+    for (const m of ms) {
+      if (!m) continue;
+      if (m.sched) {
+        let w = false;
+        while (m.sched.length && t >= m.sched[0].at - 0.02) {
+          const e = m.sched.shift();
+          if (e.aT != null) m.aT = e.aT;
+          if (e.hT != null) m.hT = e.hT;
+          w = true;
+        }
+        if (!m.sched.length) m.sched = null;
+        if (w) writeMemberAttrs(f, m);
+      }
+      if (m.duel && t >= m.duel.end) { m.duel = null; m.aT = null; }
+      const cav = isCav(m);
+      let maxS = memberAim(f, m, t, marching, _aim) * m.smul * (cav ? 1.5 : 1);
+      if (t >= m.tmulAt) {
+        m.tmulAt = t + 0.2 + Math.random() * 0.1;
+        const fx = Math.sin(m.wyaw) * 0.15, fz = Math.cos(m.wyaw) * 0.15;
+        const g0 = world.groundHeight(m.wx, m.wz), slope = (world.groundHeight(m.wx + fx, m.wz + fz) - g0) / 0.15;
+        m.tmul = Math.max(0.5, Math.min(1, 1 - Math.max(0, slope) * 1.3)) * (g0 < -0.05 && !onDeck(m.wx, m.wz) ? 0.6 : 1);
+      }
+      maxS *= m.tmul;
+      const dx = _aim.x - m.wx, dz = _aim.z - m.wz, dist = Math.hypot(dx, dz);
+      const arrive = cav ? 0.03 : 0.015;
+      const want = dist > arrive ? Math.atan2(dx, dz) : _aim.yaw;
+      const dy = wrapA(want - m.wyaw), turn = (cav ? 4 : 7.5) * dt;
+      m.wyaw += Math.max(-turn, Math.min(turn, dy));
+      const align = dist > arrive ? Math.max(0, Math.cos(dy)) : 0;
+      const vT = Math.min(maxS, dist * 3.5) * align * align;
+      m.v += (vT - m.v) * Math.min(1, dt * (cav ? 3 : 8));
+      m.wx += Math.sin(m.wyaw) * m.v * dt; m.wz += Math.cos(m.wyaw) * m.v * dt;
+      if (m.kick) {
+        const e = t - m.kick.t0;
+        if (e >= 0 && e < 0.3) { const k = (1 - e / 0.3) * dt / 0.15; m.wx += m.kick.x * k; m.wz += m.kick.z * k; }
+        else if (e >= 0.3) m.kick = null;
+      }
+      const g = Math.min(2, m.v / (cav ? 1.8 : 1.25));
+      if (Math.abs(g - m.gw) > 0.12 || (g === 0 && m.gw !== 0)) { m.gw = g < 0.06 ? 0 : Math.round(g * 10) / 10; writeMemberAttrs(f, m); }
+      if (dist > 0.012 || m.v > 0.03 || Math.abs(dy) > 0.03 || m.duel || m.kick || m.sched) busy = true;
+    }
+    if (tr.sep) {
+      for (let i = 0; i < ms.length; i++) {
+        const a = ms[i];
+        if (!a) continue;
+        const ra = isCav(a) ? 0.21 : 0.11;
+        for (let j = i + 1; j < ms.length; j++) {
+          const b = ms[j];
+          if (!b) continue;
+          const dx = b.wx - a.wx, dz = b.wz - a.wz, d2 = dx * dx + dz * dz, r = (ra + (isCav(b) ? 0.21 : 0.11)) / 2;
+          if (d2 >= r * r || d2 < 1e-10) continue;
+          const d = Math.sqrt(d2), push = (r - d) * 0.5 / d;
+          a.wx -= dx * push; a.wz -= dz * push; b.wx += dx * push; b.wz += dz * push;
+        }
+      }
+    }
+    return busy;
+  }
+
   // --- members ---
   function memberTarget(f, m, i) {
     const t = m.t;
@@ -964,7 +1128,10 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
   }
   function makeMember(f, i) {
     const t = f.tpls[i], rig = RIGS[t.rig];
-    const m = { t, rig, parts: [], cloth: -1, blob: -1, phase: f.rnd() * TAU, dieT: 0, lx: 0, lz: 0, yaw: 0, tx: 0, tz: 0, tyaw: 0 };
+    const m = {
+      t, rig, parts: [], cloth: -1, blob: -1, phase: f.rnd() * TAU, dieT: 0, lx: 0, lz: 0, yaw: 0, tx: 0, tz: 0, tyaw: 0,
+      wx: 0, wz: 0, wyaw: 0, v: 0, gw: -1, smul: 0.88 + f.rnd() * 0.24, tmul: 1, tmulAt: 0, aT: null, hT: null, duel: null, kick: null, sched: null,
+    };
     for (const p of rig.parts) {
       const pool = pools[p.pool];
       m.parts.push({ pool, slot: pool.alloc(), ox: p.ox, oy: p.oy, oz: p.oz, kit: t[p.kit] || 0, variant: p.coat != null ? (t.coats ? t.coats[p.coat] : 0) : 0, ph: p.ph || 0 });
@@ -973,13 +1140,15 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
     m.blob = pools.blob.alloc();
     memberTarget(f, m, i);
     m.lx = m.tx; m.lz = m.tz; m.yaw = m.tyaw;
+    if (f.free) { slotWorld(f, m, _sw); m.wx = _sw.x; m.wz = _sw.z; m.wyaw = _sw.yaw; }
     writeMemberAttrs(f, m);
     return m;
   }
   function writeMemberAttrs(f, m) {
-    const g = gaitOf(f), tc = f.team, glow = glowOf(f), des = f.desat;
+    const g = f.free && f.lungeGait == null && m.gw >= 0 ? m.gw : gaitOf(f), tc = f.team, glow = glowOf(f), des = f.desat;
+    const aT = m.aT != null ? m.aT : f.actT, hT = m.hT != null && m.hT > f.hitT - 0.6 ? m.hT : f.hitT;
     for (const p of m.parts) {
-      p.pool.set('iA', p.slot, m.phase + p.ph, g, f.actT, f.hitT);
+      p.pool.set('iA', p.slot, m.phase + p.ph, g, aT, hT);
       p.pool.set('iB', p.slot, tc.r, tc.g, tc.b, m.dieT);
       p.pool.set('iC', p.slot, p.kit, des, glow, p.variant);
     }
@@ -990,14 +1159,18 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
     }
     pools.blob.set('iB', m.blob, 0, 0, 0, m.dieT);
   }
+  const onDeck = (x, z) => world.deckClamp && world.walkHeight(x, z) > world.groundHeight(x, z) + 0.05;
   function writeMemberMatrix(f, m, bx, bz, h) {
     const ch = Math.cos(h), sh = Math.sin(h);
     let mx = bx + m.lx * ch + m.lz * sh, mz = bz - m.lx * sh + m.lz * ch;
-    if (world.deckClamp && world.walkHeight(bx, bz) > world.groundHeight(bx, bz) + 0.05) {
+    if (onDeck(bx, bz)) {
       const c = world.deckClamp(mx, mz, 0.26); // crossing a bridge: the formation narrows onto the deck
       if (c) { mx = c.x; mz = c.z; }
     }
-    const yaw = h + m.yaw, cy = Math.cos(yaw), sy = Math.sin(yaw), sc = m.t.sc || 1;
+    writeMemberAt(m, mx, mz, h + m.yaw);
+  }
+  function writeMemberAt(m, mx, mz, yaw) {
+    const cy = Math.cos(yaw), sy = Math.sin(yaw), sc = m.t.sc || 1;
     let g0 = NaN;
     for (const p of m.parts) {
       const wx = mx + (p.ox * cy + p.oz * sy) * sc, wz = mz + (-p.ox * sy + p.oz * cy) * sc;
@@ -1028,7 +1201,8 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
   // --- formations ---
   function writeFormation(f) {
     const bx = f.px + f.lungeX, bz = f.pz + f.lungeZ;
-    for (const m of f.members) if (m) writeMemberMatrix(f, m, bx, bz, f.heading);
+    if (f.free) for (const m of f.members) { if (m) writeMemberAt(m, m.wx, m.wz, m.wyaw); }
+    else for (const m of f.members) if (m) writeMemberMatrix(f, m, bx, bz, f.heading);
     if (f.id === selId) selRing.place(f.px, f.pz);
     if (f.id === hovId) hovRing.place(f.px, f.pz);
   }
@@ -1046,18 +1220,48 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
     const ratio = Math.max(0, Math.min(1, (u.vitality ?? max) / max));
     return Math.max(1, Math.min(n, Math.ceil(n * ratio - 1e-6)));
   }
+  // Soldiers who were fighting (duel, arrow hit) fall first; a soldier from the rear steps up into their place.
+  const engaged = (m, t) => (m.duel && t < m.duel.end + 1) || (m.hT != null && m.hT > t - 2.5 && m.hT < t + 3);
+  function retarget(f, m, j) {
+    const t = f.tpls[j];
+    m.t = t;
+    m.rig.parts.forEach((def, k) => {
+      const p = m.parts[k];
+      p.kit = t[def.kit] || 0;
+      p.variant = def.coat != null ? (t.coats ? t.coats[def.coat] : 0) : 0;
+    });
+    memberTarget(f, m, j);
+    writeMemberAttrs(f, m);
+  }
   function applyCount(f) {
     const want = wantCount(f), t = now();
     const recent = t - f.lastHit < 3.5;
     const base = Math.max(t, f.lastHit > t ? f.lastHit : t);
-    for (let i = 0; i < f.tpls.length; i++) {
+    const dieAt = () => (recent ? base + Math.random() * 0.35 : t + Math.random() * 0.3);
+    let swapped = false;
+    for (let i = f.tpls.length - 1; i >= 0; i--) {
       const m = f.members[i];
-      if (i < want && !m) f.members[i] = makeMember(f, i);
-      else if (i >= want && m) {
-        killMember(f, m, recent ? base + Math.random() * 0.35 : t + Math.random() * 0.3);
+      if (i >= want && m) {
+        let j = -1;
+        if (m.cloth < 0 && m.t.cloth == null) {
+          for (let k = 0; k < want; k++) {
+            const o = f.members[k];
+            if (o && o.rig === m.rig && o.cloth < 0 && o.t.cloth == null && f.tpls[k].cloth == null && engaged(o, t)) { j = k; break; }
+          }
+        }
+        if (j >= 0) {
+          const victim = f.members[j];
+          f.members[j] = m;
+          retarget(f, m, j);
+          m.duel = null; m.sched = null; m.aT = null;
+          killMember(f, victim, Math.max(dieAt(), victim.hT && victim.hT > t ? victim.hT : 0));
+          swapped = true;
+        } else killMember(f, m, dieAt());
         f.members[i] = null;
       }
     }
+    for (let i = 0; i < want; i++) if (!f.members[i]) f.members[i] = makeMember(f, i);
+    if (swapped && !enterFree(f)) { f.relayout = true; active.add(f); }
   }
   function buildTemplates(f) {
     f.rnd = rngFrom(hashStr(String(f.id) + ':' + f.key));
@@ -1073,6 +1277,7 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
       moving: false, lungeGait: null, lunge: null, lungeX: 0, lungeZ: 0,
       actT: 0, hitT: 0, lastHit: -1e9, desat: 0, team: new THREE.Color(), colorStr: null,
       glyph: emblemFor(u.playerId), flee: !!u.isFleeing, relayout: false, dirty: true,
+      free: false, trail: null, spd: 0, press: null,
     };
     setTeam(f);
     f.desat = u.hasMoved && u.isMine ? 1 : 0;
@@ -1149,6 +1354,8 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
     let changed = f.dirty, busy = false;
     f.dirty = false;
     const tx = f.ov ? f.ov.x : f.hx, tz = f.ov ? f.ov.z : f.hz;
+    if (f.ov && dt > 0) f.spd += (Math.hypot(tx - f.px, tz - f.pz) / dt - f.spd) * Math.min(1, dt * 6);
+    else f.spd *= Math.exp(-dt * 4);
     if (f.px !== tx || f.pz !== tz) {
       if (f.ov) { f.px = tx; f.pz = tz; }
       else {
@@ -1165,7 +1372,7 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
       if (f.heading !== f.tHeading) busy = true;
       changed = true;
     }
-    if (f.relayout) {
+    if (f.relayout && !f.free) {
       const k = 1 - Math.exp(-dt * 3.5);
       let any = false;
       for (const m of f.members) {
@@ -1182,7 +1389,9 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
     if (f.lunge) {
       const L = f.lunge, e = now() - L.t0;
       let d, stage;
-      if (e < 0.35) { const x = e / 0.35; d = 1 - (1 - x) * (1 - x); stage = 0; }
+      if (L.charge && e < 0.42) { const x = e / 0.42; d = x * x * 1.12; stage = 0; }
+      else if (L.charge && e < 1.15) { const x = Math.min(1, (e - 0.42) / 0.2); d = 1.12 - 0.12 * x * x * (3 - 2 * x) + 0.04 * Math.sin((e - 0.42) * 12); stage = 1; }
+      else if (e < 0.35) { const x = e / 0.35; d = 1 - (1 - x) * (1 - x); stage = 0; }
       else if (e < 1.15) { d = 1 + 0.06 * Math.sin((e - 0.35) * 14); stage = 1; }
       else if (e < 1.65) { const x = (e - 1.15) / 0.5; d = 1 - x * x * (3 - 2 * x); stage = 2; }
       else { d = 0; stage = 3; }
@@ -1194,6 +1403,12 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
         writeFormationAttrs(f);
       }
       busy = true;
+      changed = true;
+    }
+    if (f.free) {
+      const b = stepFree(f, dt);
+      busy = busy || b;
+      if (!b && !busy) exitFree(f);
       changed = true;
     }
     if (changed) writeFormation(f);
@@ -1227,6 +1442,7 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
     const f = forms.get(id);
     if (!f) return;
     if (x == null || z == null) { clearDisplayPosition(id); return; }
+    enterFree(f);
     const prev = f.ov || { x: f.px, z: f.pz };
     if (heading != null) f.tHeading = heading;
     else if (Math.hypot(x - prev.x, z - prev.z) > 1e-3) f.tHeading = Math.atan2(x - prev.x, z - prev.z);
@@ -1244,9 +1460,12 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
     const f = forms.get(id);
     if (!f || f.moving === !!on) return;
     f.moving = !!on;
+    if (on) enterFree(f);
+    active.add(f);
     writeFormationAttrs(f);
   }
   function memberWorld(f, m, out) {
+    if (f.free) { out.x = m.wx; out.z = m.wz; out.y = groundHeight(out.x, out.z); return out; }
     const h = f.heading, ch = Math.cos(h), sh = Math.sin(h);
     const bx = f.px + f.lungeX, bz = f.pz + f.lungeZ;
     out.x = bx + m.lx * ch + m.lz * sh; out.z = bz - m.lx * sh + m.lz * ch;
@@ -1264,39 +1483,109 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
     arrowsUntil = Math.max(arrowsUntil, t0 + dur * 1.85);
     arrows.visible = true;
   }
+  function aliveSorted(f, ox, oz, dx, dz) {
+    const p = { x: 0, z: 0 }, out = [];
+    for (const m of f.members) {
+      if (!m) continue;
+      memberWorld(f, m, p);
+      out.push({ m, x: p.x, z: p.z, proj: (p.x - ox) * dx + (p.z - oz) * dz, lat: (p.x - ox) * dz - (p.z - oz) * dx });
+    }
+    return out.sort((u, v) => v.proj - u.proj);
+  }
+  // Melee: front ranks pair off into duels on the contact line, the rest presses forward; horses charge with momentum.
+  function stageMelee(a, b, t) {
+    const T = tier();
+    const bx = b ? b.px : a.px + Math.sin(a.heading) * 1.7, bz = b ? b.pz : a.pz + Math.cos(a.heading) * 1.7;
+    let dx = bx - a.px, dz = bz - a.pz;
+    const dist = Math.hypot(dx, dz) || 1;
+    dx /= dist; dz /= dist;
+    const mounted = a.key === 'char' || a.key === 'general' || a.key === 'cavalier_lourd' || a.key === 'cavalier_leger';
+    if (!T.free || mounted || dist > 3.2) {
+      if (!a.ov) a.tHeading = Math.atan2(dx, dz);
+      const reach = Math.min(mounted ? 0.85 : 0.62, dist * (mounted ? 0.48 : 0.36));
+      a.lunge = { t0: t, dx: dx * reach, dz: dz * reach, stage: -1, charge: mounted };
+      a.actT = t + 0.3;
+      writeFormationAttrs(a);
+      active.add(a);
+      if (b && T.free && enterFree(b)) {
+        for (const e of aliveSorted(b, b.px, b.pz, -dx, -dz).slice(0, Math.max(3, T.pairs))) {
+          const at = t + 0.38 + Math.random() * 0.12;
+          e.m.kick = { t0: at, x: dx * (0.1 + Math.random() * 0.08), z: dz * (0.1 + Math.random() * 0.08) };
+          e.m.sched = [{ at, hT: at }];
+        }
+      }
+      return mounted ? 0.4 : 0.45;
+    }
+    enterFree(a);
+    if (b) enterFree(b);
+    const cx = a.px + dx * dist * 0.5, cz = a.pz + dz * dist * 0.5;
+    const A = aliveSorted(a, a.px, a.pz, dx, dz);
+    const D = b ? aliveSorted(b, b.px, b.pz, -dx, -dz) : [];
+    const k = Math.max(1, Math.min(T.pairs, A.length, b ? D.length : T.pairs));
+    const fa = A.slice(0, k).sort((u, v) => u.lat - v.lat);
+    const fd = D.slice(0, k).sort((u, v) => v.lat - u.lat);
+    const W = Math.min(0.55, 0.075 * k + 0.08), gap = 0.065;
+    const yawA = Math.atan2(dx, dz), yawD = Math.atan2(-dx, -dz);
+    for (let i = 0; i < k; i++) {
+      const lat = -W + ((i + 0.5) * 2 * W) / k + (Math.random() - 0.5) * 0.04;
+      const px = cx + dz * lat, pz = cz - dx * lat;
+      const t0 = t + Math.random() * 0.3, end = t0 + 1.75 + Math.random() * 0.25;
+      const am = fa[i].m;
+      am.duel = { t0, end, x: px - dx * gap, z: pz - dz * gap, rx: px - dx * 0.3, rz: pz - dz * 0.3, yaw: yawA, run: 2.4 };
+      const parryA = Math.random() < 0.5;
+      am.sched = [{ at: t0 + 0.42, aT: t0 + 0.42 }, { at: t0 + 1.12, hT: parryA ? null : t0 + 1.12, aT: parryA ? t0 + 1.08 : null }];
+      if (fd[i]) {
+        const dm = fd[i].m;
+        dm.duel = { t0: t0 + 0.05, end, x: px + dx * gap, z: pz + dz * gap, rx: px + dx * 0.28, rz: pz + dz * 0.28, yaw: yawD, run: 1.6 };
+        const parryD = Math.random() < 0.45;
+        dm.sched = [{ at: t0 + 0.55, hT: parryD ? null : t0 + 0.55, aT: parryD ? t0 + 0.5 : null }, { at: t0 + 0.92, aT: t0 + 0.92 }];
+      }
+    }
+    a.press = { end: t + 2.0, dx: dx * 0.14, dz: dz * 0.14 };
+    active.add(a);
+    if (b) active.add(b);
+    return 0.55;
+  }
+  // Volley: every archer looses its own arrows at individual soldiers, front rank first.
+  function stageVolley(a, b, t) {
+    const tx = b ? b.px : a.px + Math.sin(a.heading) * 1.7, tz = b ? b.pz : a.pz + Math.cos(a.heading) * 1.7;
+    let dx = tx - a.px, dz = tz - a.pz;
+    const dist = Math.hypot(dx, dz) || 1;
+    dx /= dist; dz /= dist;
+    if (!a.ov) a.tHeading = Math.atan2(dx, dz);
+    active.add(a);
+    const targets = b ? aliveSorted(b, b.px, b.pz, -dx, -dz) : [];
+    const shooters = aliveSorted(a, a.px, a.pz, dx, dz);
+    const p = new THREE.Vector3();
+    let sum = 0, n = 0;
+    shooters.forEach((s, idx) => {
+      const m = s.m;
+      const rank = shooters.length > 1 ? idx / (shooters.length - 1) : 0;
+      const release = t + 0.25 + rank * 0.35 + Math.random() * 0.2;
+      m.aT = release - 0.2;
+      writeMemberAttrs(a, m);
+      memberWorld(a, m, p);
+      const shots = m.t.rig === 'chariot' ? 3 : 2;
+      for (let k2 = 0; k2 < shots; k2++) {
+        const tg = targets.length ? targets[Math.floor(Math.random() * Math.min(targets.length, 8 + targets.length / 2))] : null;
+        const ang = Math.random() * TAU, rr = tg ? Math.random() * 0.07 : Math.sqrt(Math.random()) * 0.5;
+        const ex = (tg ? tg.x : tx) + Math.cos(ang) * rr, ez = (tg ? tg.z : tz) + Math.sin(ang) * rr;
+        const t0 = release + k2 * (0.35 + Math.random() * 0.15);
+        const dur = 0.7 + dist * 0.07;
+        spawnArrow(p.x, p.y + 0.22, p.z, ex, groundHeight(ex, ez) + 0.02, ez, t0, dur);
+        if (tg && rr < 0.05 && b) {
+          const hit = t0 + dur;
+          if (!(tg.m.hT > t)) { tg.m.hT = hit; writeMemberAttrs(b, tg.m); }
+        }
+        sum += t0 + dur; n++;
+      }
+    });
+    return n ? sum / n - t : 0;
+  }
   function playAttack(attId, tgtId, { ranged = false } = {}) {
     const a = forms.get(attId), b = forms.get(tgtId);
     if (!a) return 0;
-    const t = now();
-    const tx = b ? b.px : a.px + Math.sin(a.heading) * 1.7, tz = b ? b.pz : a.pz + Math.cos(a.heading) * 1.7;
-    const dx = tx - a.px, dz = tz - a.pz, dist = Math.hypot(dx, dz) || 1;
-    if (!a.ov) a.tHeading = Math.atan2(dx, dz);
-    active.add(a);
-    if (!ranged) {
-      const reach = Math.min(0.62, dist * 0.36);
-      a.lunge = { t0: t, dx: (dx / dist) * reach, dz: (dz / dist) * reach, stage: -1 };
-      a.actT = t + 0.3;
-      writeFormationAttrs(a);
-      return 0.45;
-    }
-    a.actT = t;
-    writeFormationAttrs(a);
-    const p = new THREE.Vector3();
-    let latest = 0, sum = 0, n = 0;
-    for (const m of a.members) {
-      if (!m) continue;
-      memberWorld(a, m, p);
-      const shots = m.t.rig === 'foot' || m.t.rig === 'footB' ? 2 : m.t.rig === 'chariot' ? 3 : 2;
-      for (let k = 0; k < shots; k++) {
-        const ang = Math.random() * TAU, rr = Math.sqrt(Math.random()) * 0.5;
-        const ex = tx + Math.cos(ang) * rr, ez = tz + Math.sin(ang) * rr;
-        const t0 = t + 0.3 + Math.random() * 0.35;
-        const dur = 0.7 + dist * 0.07;
-        spawnArrow(p.x, p.y + 0.22, p.z, ex, groundHeight(ex, ez) + 0.02, ez, t0, dur);
-        latest = Math.max(latest, t0 + dur); sum += t0 + dur; n++;
-      }
-    }
-    return n ? (sum / n) - t : 0;
+    return ranged ? stageVolley(a, b, now()) : stageMelee(a, b, now());
   }
   function playHit(id, { delay = 0 } = {}) {
     const f = forms.get(id);
