@@ -267,7 +267,7 @@ class AIAgent {
   _getReachableHexes(room, unit) {
     const reachable = new Map(); // hexKey -> { q, r, cost }
     const vis = this._visibleCache || room.getVisibleHexes(this.playerId);
-    const { dist } = rules.reachable(rules.MOVE_TABLE, {
+    const { dist } = rules.reachable(room.moveTable(), {
       start: { q: unit.q, r: unit.r },
       maxCost: unit.speedRemaining,
       mounted: rules.isMounted(unit),

@@ -171,6 +171,7 @@ test('embuscade : unité en forêt cachée sauf adjacence / espion à 2 cases / 
   assert.equal(room.canSee('p1', hidden), true);
   room.endTurn(); // p1 -> round 2
   assert.equal(room.turn, 2);
+  room.turnOrder = ['p0', 'p1']; room.currentTurnIndex = 0;
   assert.equal(room.canSee('p1', hidden), true, 'toujours visible pendant le tour suivant');
   room.endTurn(); // p0 ends turn 2
   assert.equal(room.canSee('p1', hidden), false, 'cachée à nouveau');

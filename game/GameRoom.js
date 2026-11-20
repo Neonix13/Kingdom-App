@@ -12,7 +12,9 @@ const { RULES } = rules;
 
 const MAP_RADIUS = 70;
 // Derived from the map or rebuilt on load: never serialized
-const TRANSIENT = new Set(['map', 'hexMap', 'unitMap', 'terrainData', 'segmentData', 'heightData', 'mapCenter', '_events']);
+const TRANSIENT = new Set(['map', 'hexMap', 'unitMap', 'terrainData', 'segmentData', 'heightData', 'mapCenter', '_events', '_moveTable']);
+
+const clone = (o) => JSON.parse(JSON.stringify(o));
 
 function generalAbility(generalData) {
   if (!generalData) return null;
@@ -54,8 +56,18 @@ class GameRoom {
     this.recordReplay = !!options.record;
     this.replay = null;
     this.spectatorSnapshots = [];
+    this.balance = null; // terrain / segment / stance tables frozen at battle start (balance edits do not change running games)
     this._events = [];
     this._loadMap();
+  }
+
+  _terrains() { return this.balance ? this.balance.terrains : TERRAINS; }
+  _segments() { return this.balance ? this.balance.segments : SEGMENTS; }
+
+  moveTable() {
+    if (!this.balance) return rules.MOVE_TABLE;
+    if (!this._moveTable) this._moveTable = rules.movementTable(this.balance.segments);
+    return this._moveTable;
   }
 
   // Events produced by the rules (captures, ambushes, nightfall...) for the protocol to broadcast
@@ -417,6 +429,8 @@ class GameRoom {
       .filter(o => o && Number.isInteger(o.q) && Number.isInteger(o.r) && this.hexMap[hexKey(o.q, o.r)])
       .map(o => ({ id: o.id || hexKey(o.q, o.r), q: o.q, r: o.r, name: o.name || 'Objectif', type: o.type || 'flag', points: Number.isFinite(o.points) ? o.points : RULES.objectives.defaultPoints, owner: null }));
     this.scores = Object.fromEntries(this.players.map(p => [p.id, 0]));
+    this.balance = { terrains: clone(TERRAINS), segments: clone(SEGMENTS), stances: clone(rules.stanceList()) };
+    this._moveTable = null;
     this._initStats();
     this.turns.start(this);
     if (this.recordReplay) { this.replay = replay.createReplay(this); replay.keyframe(this.replay, this); }
@@ -573,7 +587,7 @@ class GameRoom {
           const nk = hexKey(nq, nr);
           if (visited.has(nk)) continue;
           const edgeK = segmentEdgeKey(q, r, nq, nr);
-          const segDef = sd[edgeK] ? SEGMENT_DEFS[sd[edgeK]] : null;
+          const segDef = sd[edgeK] ? this._segments()[sd[edgeK]] : null;
           if (segDef?.infranchissable) { visited.set(nk, maxRange + 1); continue; }
           visited.set(nk, d + 1);
           queue.push({ q: nq, r: nr, d: d + 1 });
@@ -657,7 +671,7 @@ class GameRoom {
       ...this.timeState(),
       objectives: this.objectives,
       scores: this.scores,
-      movementRules: rules.MOVE_TABLE,
+      movementRules: this.moveTable(),
       recap: this.phase === 'ended' ? this.getRecap() : null,
     };
   }
@@ -739,7 +753,7 @@ class GameRoom {
       const occ = this.unitMap[k];
       return !!occ && this.canSee(playerId, occ, occ.q, occ.r, vis);
     };
-    const found = findPathCost(this.hexMap, this.unitMap, unit.q, unit.r, targetQ, targetR, unit.speedRemaining, unit, this.segmentData, blocked);
+    const found = findPathCost(this.hexMap, this.unitMap, unit.q, unit.r, targetQ, targetR, unit.speedRemaining, unit, this.segmentData, blocked, this.moveTable());
     if (found === null) return { error: 'Chemin inaccessible.' };
 
     const fromQ = unit.q, fromR = unit.r;
@@ -786,7 +800,7 @@ class GameRoom {
     let cost = 0;
     let pq = fromQ, pr = fromR;
     for (const [nq, nr] of path) {
-      cost = rules.snap(cost + rules.stepCost(rules.MOVE_TABLE, this.hexMap[hexKey(pq, pr)], this.hexMap[hexKey(nq, nr)], this.segmentData[segmentEdgeKey(pq, pr, nq, nr)] || null, mounted));
+      cost = rules.snap(cost + rules.stepCost(this.moveTable(), this.hexMap[hexKey(pq, pr)], this.hexMap[hexKey(nq, nr)], this.segmentData[segmentEdgeKey(pq, pr, nq, nr)] || null, mounted));
       pq = nq; pr = nr;
     }
     return cost;
@@ -795,10 +809,12 @@ class GameRoom {
   // Terrain and stance helpers
   _getTerrainMods(q, r) {
     const type = this.terrainData[`${q},${r}`];
-    return TERRAINS[type] || TERRAINS['plain'];
+    const t = this._terrains();
+    return t[type] || t.plain;
   }
 
   _getStanceMods(unit) {
+    if (this.balance) return this.balance.stances[unit.stance] || this.balance.stances.marche;
     return rules.getStance(unit.stance) || rules.getStance('marche');
   }
 
@@ -890,7 +906,7 @@ class GameRoom {
   }
 
   changeStance(playerId, unitId, stanceId) {
-    if (!rules.hasStance(stanceId)) return { error: 'Posture invalide.' };
+    if (this.balance ? !Object.prototype.hasOwnProperty.call(this.balance.stances, stanceId) : !rules.hasStance(stanceId)) return { error: 'Posture invalide.' };
     const player = this.getPlayer(playerId);
     if (!player) return { error: 'Joueur introuvable.' };
     const unit = player.units.find(u => u.id === unitId);
@@ -1149,7 +1165,7 @@ class GameRoom {
   _getSegmentDef(q1, r1, q2, r2) {
     const edgeK = segmentEdgeKey(q1, r1, q2, r2);
     const segType = this.segmentData[edgeK];
-    return segType ? (SEGMENTS[segType] || null) : null;
+    return segType ? (this._segments()[segType] || null) : null;
   }
 
   _resolveCombat(attacker, target, isCac, defenseChoice) {
