@@ -155,10 +155,10 @@ export class Music {
     lfo.connect(vib); vib.connect(osc.detune);
     const amp = ctx.createGain(); amp.gain.value = 0;
     const noise = ctx.createBufferSource(); noise.buffer = this.e.noise; noise.loop = true;
-    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 5;
-    const bg = ctx.createGain(); bg.gain.value = 0.1;
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 2.5;
+    const bg = ctx.createGain(); bg.gain.value = 0.9;
     const air = ctx.createBiquadFilter(); air.type = 'highpass'; air.frequency.value = 5000;
-    const ag = ctx.createGain(); ag.gain.value = 0.012;
+    const ag = ctx.createGain(); ag.gain.value = 0.04;
     noise.connect(bp); bp.connect(bg); bg.connect(amp);
     noise.connect(air); air.connect(ag); ag.connect(amp);
     const tone = ctx.createGain(); tone.gain.value = 1;
@@ -184,8 +184,8 @@ export class Music {
         amp.gain.linearRampToValueAtTime(gain, n.t + 0.07);
       }
       bp.frequency.setValueAtTime(f, n.t);
-      bg.gain.setValueAtTime(0.32, n.t);
-      bg.gain.setTargetAtTime(0.1, n.t, 0.05);
+      bg.gain.setValueAtTime(2.4, n.t);
+      bg.gain.setTargetAtTime(0.9, n.t, 0.05);
       vib.gain.setValueAtTime(0, n.t);
       if (n.dur > 0.6) {
         vib.gain.setValueAtTime(0, n.t + n.dur * 0.35);

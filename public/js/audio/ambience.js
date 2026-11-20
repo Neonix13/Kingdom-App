@@ -53,6 +53,7 @@ export class Ambience {
     const social = smoothstep(6.5, 8.5, t) * (1 - smoothstep(21, 23, t));
     return {
       lp: 16000 * Math.pow(0.1, h),
+      near: { amb_forest: F, amb_river: W, amb_crickets: 0.5 + 0.5 * F, amb_murmur: V },
       beds: {
         amb_wind_low: on * (0.45 + 0.55 * h) * (1 + 0.15 * night),
         amb_wind_whistle: on * (0.12 + 0.88 * h * h),
@@ -103,7 +104,7 @@ export class Ambience {
       const b = this.ensureBed(name);
       if (!b) { this.e.bank.render(name); continue; }
       this.setParam(name, b.gain.gain, target, 1.2, immediate);
-      if (cfg.ground) this.setParam(name + ':lp', b.lp.frequency, m.lp, 1.2, immediate);
+      if (cfg.ground) this.setParam(name + ':lp', b.lp.frequency, m.lp * Math.pow(0.12, 1 - clamp(m.near[name] ?? 1, 0, 1)), 1.2, immediate);
       if (cfg.panKey) this.setParam(name + ':pan', b.pan.pan, clamp(this.p[cfg.panKey], -1, 1) * 0.7, 0.8, immediate);
     }
   }

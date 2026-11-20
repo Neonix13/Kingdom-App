@@ -145,12 +145,12 @@ export async function renderOffline(seconds, setup, o = {}) {
   const timeline = [...(o.timeline || [])].sort((a, b) => a[0] - b[0]);
   if (setup) await setup(api);
   if (ambOn) amb.update(true);
-  const step = 0.25;
+  const step = 0.1;
   for (let t = 0; t < seconds; t += step) {
     engine.vnow = t;
     while (timeline.length && timeline[0][0] <= t) timeline.shift()[1](api);
-    if (ambOn) { amb.update(); amb.scheduleWindow(t, t + step); }
-    music.scheduleWindow(t, t + step);
+    if (ambOn) { amb.update(); amb.scheduleWindow(t, t + 1.0); }
+    music.scheduleWindow(t, t + 1.5);
   }
   return ctx.startRendering();
 }

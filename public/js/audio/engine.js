@@ -1,7 +1,7 @@
 import { softClipCurve, reverbIR, rng, dbToGain, clamp } from './dsp.js';
 
 const MAX_SFX = 28;
-const MAX_MUSIC = 40;
+const MAX_MUSIC = 64;
 
 export class Engine {
   constructor(ctx, bank) {
@@ -128,6 +128,13 @@ export class Engine {
     } catch (e) { }
   }
 
+  oldestStarted(list) {
+    const t = this.now();
+    let best = null;
+    for (const v of list) if (v.t <= t && !v.killed && (!best || v.t < best.t)) best = v;
+    return best;
+  }
+
   prune(list) {
     const t = this.now();
     for (let i = list.length - 1; i >= 0; i--) if (list[i].done || list[i].killed || list[i].end < t) list.splice(i, 1);
@@ -143,8 +150,8 @@ export class Engine {
     this.lastPlay[name] = t;
     this.prune(this.sfxVoices);
     const same = this.sfxVoices.filter((v) => v.name === name);
-    if (same.length >= (meta.maxVoices || 4)) this.kill(same[0]);
-    if (this.sfxVoices.length >= MAX_SFX) this.kill(this.sfxVoices[0]);
+    if (same.length >= (meta.maxVoices || 4)) { const v = this.oldestStarted(same); if (v) this.kill(v); }
+    if (this.sfxVoices.length >= MAX_SFX) { const v = this.oldestStarted(this.sfxVoices); if (v) this.kill(v); }
     const jitter = meta.detune ?? 0.03;
     const v = this.voice(this.pickVariant(name, list), {
       name, when: t, pan: o.pan, distance: o.distance,
@@ -204,7 +211,7 @@ export class Engine {
     const list = this.bank.get(name);
     if (!list) { this.bank.render(name); return null; }
     this.prune(this.musicVoices);
-    if (this.musicVoices.length >= MAX_MUSIC) this.kill(this.musicVoices[0], 0.08);
+    if (this.musicVoices.length >= MAX_MUSIC) { const v = this.oldestStarted(this.musicVoices); if (v) this.kill(v, 0.08); }
     const v = this.voice(list[0], { name, when: t, rate, pan: o.pan, gain: o.gain ?? 0.5, bus: o.bus || this.buses.music, send: o.send || 0, distance: o.distance });
     if (o.bend) {
       const [at, semis, dur] = o.bend;
