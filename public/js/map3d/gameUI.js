@@ -26,6 +26,7 @@ body.v3-photo #v3-photo-bar { display:flex; }
 #v3-tip { position:absolute; z-index:5; pointer-events:none; display:none; padding:7px 9px; border-radius:6px; max-width:230px;
   background:rgba(14,9,4,0.92); border:1px solid #7a2a10; color:#e8d5a0; font:11px/1.45 'Segoe UI',system-ui,sans-serif; }
 #v3-tip b { color:#ffd700; }
+#v3-tip .note { margin-top:4px; font-size:11px; color:#e8735a; }
 #v3-tip .vs { display:grid; grid-template-columns:1fr auto 1fr; gap:2px 8px; margin-top:4px; }
 #v3-tip .vs span:nth-child(3n+2) { color:#8e7a50; text-align:center; }
 `;
@@ -261,11 +262,22 @@ export function createGameUI({ world, container, bridge, getView }) {
     const rect = container.getBoundingClientRect();
     const ranged = (att.range || 1) > 1;
     const row = (label, a, b) => `<span>${a ?? '–'}</span><span>${label}</span><span>${b ?? '–'}</span>`;
+    const R = window.KBRules, types = window.gameBridge && window.gameBridge.unitTypes;
+    const abA = R && R.ability(att, types), abT = R && R.ability(tgt, types);
+    const notes = [];
+    const cav = R ? R.RULES.abilities.antiCavalryCategories : [];
+    if (!ranged && abA && abA.type === 'anti_cavalry' && cav.includes(tgt.category)) notes.push(`Lanciers : +${abA.value} attaque`);
+    if (!ranged && abT && abT.type === 'anti_cavalry' && cav.includes(att.category)) notes.push(`Lanciers en face : +${abT.value} défense`);
+    if (!ranged && abA && abA.type === 'charge_bonus' && att.stance === 'charge') notes.push(`Charge lourde : +${abA.value} puissance`);
+    if (abA && abA.type === 'ambush') notes.push('Assassin : avantage si premier coup du jour');
+    if (ranged && abT && abT.type === 'defend_ranged') notes.push('Phalange : peut lever les boucliers');
+    if (ranged && !(abT && abT.type === 'defend_ranged')) notes.push('Tir : pas de jet de défense');
+    if (!ranged && abA && abA.type === 'trample') notes.push('Char : frappe aussi l\'unité derrière');
     tip.innerHTML = `<b>${ranged ? 'Tir' : 'Attaque'}</b> : ${att.name} → ${tgt.name}<div class="vs">
       ${row('Attaque / Défense', att.attack ?? att.force, tgt.defense ?? '–')}
       ${row('Puissance / Armure', att.power, tgt.armor)}
       ${row('Vitalité', att.vitality, tgt.vitality)}
-      ${row('Moral', att.morale ?? '–', tgt.morale ?? '–')}</div>`;
+      ${row('Moral', att.morale ?? '–', tgt.morale ?? '–')}</div>${notes.map((n) => `<div class="note">${n}</div>`).join('')}`;
     tip.style.display = 'block';
     tip.style.left = Math.min(rect.width - 240, e.clientX - rect.left + 16) + 'px';
     tip.style.top = Math.max(8, e.clientY - rect.top - 10) + 'px';

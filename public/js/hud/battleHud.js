@@ -354,10 +354,11 @@ export function mountBattleHud(bridge, view) {
       let label = a.label;
       if (a.id === 'btn-move' && sel && sel.speedRemaining != null) label += ` ${fmtSpeed(sel.speedRemaining)}`;
       if (a.id === 'btn-ability' && sel?.activeAbility?.name) label = sel.activeAbility.name;
-      const on = (a.id === 'btn-attack' && mode === 'attack') || (a.id === 'btn-move' && mode === 'move');
+      if (a.id === 'btn-ability' && $('btn-ability')?.dataset.label) label = $('btn-ability').dataset.label;
+      const on = (a.id === 'btn-attack' && mode === 'attack') || (a.id === 'btn-move' && mode === 'move') || (a.id === 'btn-ability' && mode === 'ability');
       return `<button class="hud-act ${a.cls}${on ? ' on' : ''}" data-act="${a.id}" title="${esc(label)} (${a.hint})"><span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(label.toUpperCase())}</span><span class="hud-kbd">${a.hint}</span></span></button>`;
     }).join('');
-    const labels = { attack: 'MODE ATTAQUE', motivate: 'MOTIVER : CHOISIR UNE UNITÉ', move: 'MODE DÉPLACEMENT' };
+    const labels = { attack: 'MODE ATTAQUE', motivate: 'MOTIVER : CHOISIR UNE UNITÉ', move: 'MODE DÉPLACEMENT', ability: 'CAPACITÉ : CHOISIR UNE CASE VOISINE' };
     el.mode.textContent = sim ? '' : (labels[mode] || '');
     el.mode.style.bottom = `${26 + vis.length * 55 + 6}px`;
   }

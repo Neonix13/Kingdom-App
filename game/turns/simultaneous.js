@@ -11,6 +11,8 @@
 //                        | { type: 'attack' | 'charge', targetId }     (target visible when ordered; shooters fire, melee units close in)
 //                        | { type: 'hold' } | { type: 'motivate' }     (motivate: generals)
 //                        + optional stance: stanceId (-2 speed), facing: 0-5 (-1 speed, applied at the end), ability: { targetId? } (generals)
+//                        + optional unitAbility: { kind: 'sabotage'|'build'|'vanish', q?, r?, build? } (espion, bâtisseurs, assassin;
+//                          ability cost in speed, applied at the start of the resolution)
 //                  -> orders_update { turn, orders, commandPoints: { max, used }, committed }   (to the sender only)
 //   commit_orders  {}  -> commit_status to everyone; when every living player has committed (or is absent for
 //                         absentTurnMs), or when the planning timer expires, the turn resolves.
@@ -98,6 +100,27 @@ function validateOrder(room, playerId, unit, raw) {
       order.ability = { targetId };
     } else order.ability = {};
   }
+  if (raw.unitAbility) {
+    const ua = raw.unitAbility;
+    const want = { sabotage: 'sabotage', build: 'build', vanish: 'ambush' }[ua && ua.kind];
+    const ab = room.ability(unit);
+    if (!want || !ab || ab.type !== want) return { error: 'Cette unité n\'a pas cette capacité.' };
+    if (budget < ab.cost) return { error: `Il faut ${ab.cost} de vitesse pour la capacité.` };
+    const out = { kind: ua.kind };
+    if (ua.kind !== 'vanish') {
+      if (!isInt(ua.q) || !isInt(ua.r) || hexDistance(unit.q, unit.r, ua.q, ua.r) !== 1 || !room.hexMap[hexKey(ua.q, ua.r)]) return { error: 'Choisissez une case voisine.' };
+      out.q = ua.q; out.r = ua.r;
+    }
+    if (ua.kind === 'build') {
+      if (!Object.prototype.hasOwnProperty.call(RULES.abilities.build_kinds, ua.build)) return { error: 'Construction inconnue.' };
+      const opts = rules.buildOptions(room.segmentData[segmentEdgeKey(unit.q, unit.r, ua.q, ua.r)] || null, room.terrainData[hexKey(ua.q, ua.r)]);
+      if (!opts.some(o => o.id === ua.build)) return { error: 'Construction impossible ici.' };
+      out.build = ua.build;
+    }
+    if (ua.kind === 'sabotage' && !rules.sabotageOption(room.segmentData[segmentEdgeKey(unit.q, unit.r, ua.q, ua.r)] || null, room.terrainData[hexKey(ua.q, ua.r)])) return { error: 'Rien à saboter ici.' };
+    order.unitAbility = out;
+    budget = Math.max(0, rules.snap(budget - ab.cost));
+  }
   // a shooter's attack order may carry the path to its firing position (it fires as soon as the target is in range)
   const rangedApproach = order.type === 'attack' && (unit.range || 1) > 1 && Array.isArray(raw.path) && raw.path.length > 0;
   if (order.type === 'move' || rangedApproach) {
@@ -127,7 +150,7 @@ function validateOrder(room, playerId, unit, raw) {
   } else if (order.type === 'motivate') {
     if (!unit.isGeneral) return { error: 'Seul un général peut motiver.' };
   }
-  if (order.type === 'hold' && !order.stance && order.facing == null && !order.ability) return { order: null };
+  if (order.type === 'hold' && !order.stance && order.facing == null && !order.ability && !order.unitAbility) return { order: null };
   return { order };
 }
 

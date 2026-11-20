@@ -259,8 +259,38 @@ function armyGoal(world) {
   return world.enemyGuess;
 }
 
+// Unit abilities the bot uses: an assassin vanishes when no enemy is in sight nearby; bâtisseurs put chevaux de frise
+// on the edge facing the nearest enemy when it comes close (espions only scout: their sight already reveals ambushes)
+function unitAbilityPlan(world, u) {
+  const { room } = world;
+  const ab = room.ability(u);
+  if (!ab || u.isFleeing || (u.speedRemaining || 0) < ab.cost) return null;
+  if (ab.type === 'ambush') {
+    if (u.vanishedDay === room.dayNumber()) return null;
+    if (world.enemies.some(e => hexDistance(e.q, e.r, u.q, u.r) <= ab.range)) return null;
+    return { kind: 'vanish' };
+  }
+  if (ab.type === 'build') {
+    const near = nearestEnemy(world, u);
+    if (!near.enemy || near.dist > 4 || near.dist <= 1) return null;
+    let best = null, bd = Infinity;
+    for (const [dq, dr] of rules.DIRS) {
+      const q = u.q + dq, r = u.r + dr;
+      if (!room.hexMap[keyOf(q, r)]) continue;
+      const opts = rules.buildOptions(room.segmentData[segmentEdgeKey(u.q, u.r, q, r)] || null, room.terrainData[keyOf(q, r)]);
+      if (!opts.some(o => o.id === 'chevaux_de_frise')) continue;
+      const d = hexDistance(q, r, near.enemy.q, near.enemy.r);
+      if (d < bd) { bd = d; best = { q, r }; }
+    }
+    return best && bd < near.dist ? { kind: 'build', build: 'chevaux_de_frise', q: best.q, r: best.r } : null;
+  }
+  return null;
+}
+
 function planTroop(world, profile, u, rng, blunder, objectives) {
   const { room } = world;
+  const ua = blunder ? null : unitAbilityPlan(world, u);
+  if (ua) return ua.kind === 'vanish' ? act('unit_vanish', { unitId: u.id }, 'vanish') : act('unit_build', { unitId: u.id, q: ua.q, r: ua.r, kind: ua.build }, 'build');
   const objective = objectives.get(u.id);
   const onObjective = objective && objective.q === u.q && objective.r === u.r;
   const targets = u.hasAttacked ? [] : world.enemies.filter(t => inRange(world, u, u.q, u.r, t));
@@ -387,5 +417,5 @@ function chooseDefense(room, attackId, pending, profile) {
 module.exports = {
   planBattleStep, chooseDefense, strike, reachFrom, USABLE_ABILITIES,
   // helpers shared with the simultaneous planner
-  abilityStep, assignObjectives, armyGoal, approachDest, targetScore, attackStance, nearestEnemy, isRanged,
+  abilityStep, assignObjectives, armyGoal, approachDest, targetScore, attackStance, nearestEnemy, isRanged, unitAbilityPlan,
 };

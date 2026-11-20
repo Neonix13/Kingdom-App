@@ -181,6 +181,22 @@ function run(room, ordersByPlayer, seed) {
         sendSeen(u, { k: 'stance', u: u.id, s: u.stance });
       }
       if (o.facing != null) c.budget = Math.max(0, rules.snap(c.budget - S.facingCost));
+      if (o.unitAbility && !u.isGeneral) {
+        const ua = o.unitAbility;
+        u.speedRemaining = c.budget;
+        const res = ua.kind === 'vanish' ? room.vanish(c.owner, u.id)
+          : ua.kind === 'sabotage' ? room.sabotage(c.owner, u.id, ua.q, ua.r)
+            : room.build(c.owner, u.id, ua.q, ua.r, ua.build);
+        if (res.ok) {
+          c.budget = u.speedRemaining;
+          if (ua.kind !== 'vanish') {
+            const ev = { k: 'map_edit', kind: res.kind, target: res.target, q1: res.q1, r1: res.r1, q: res.q, r: res.r, from: res.from, to: res.to };
+            for (const id of recipients) send(id, id === c.owner || id === ALL ? { ...ev, u: u.id } : ev);
+          } else {
+            for (const id of recipients) if (id === c.owner || id === ALL) send(id, { k: 'vanish', u: u.id });
+          }
+        } else if (recipients.includes(c.owner)) send(c.owner, { k: 'ability_failed', u: u.id, reason: res.error });
+      }
       if (o.ability && u.isGeneral) {
         const res = room.useGeneralAbility(c.owner, null, o.ability.targetId || null);
         if (res.ok) {

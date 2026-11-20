@@ -29,6 +29,20 @@ let gridColorRGB = '180,140,60';
 
 // Chargement des segments
 let segmentData = {};
+let UNIT_TYPES = {};
+
+// Map changes made during the battle (espions, bâtisseurs): game_state.mapEdits over the map document
+function applyMapEdits() {
+  if (!mapDoc) return;
+  const ed = gameState && gameState.mapEdits;
+  segmentData = { ...(mapDoc.segments || {}) };
+  terrainData = Object.fromEntries(Object.entries(mapDoc.terrain || {}).filter(([, t]) => t && t !== 'plain'));
+  if (ed) {
+    for (const [k, t] of Object.entries(ed.seg || {})) { if (t) segmentData[k] = t; else delete segmentData[k]; }
+    for (const [k, t] of Object.entries(ed.ter || {})) { if (!t || t === 'plain') delete terrainData[k]; else terrainData[k] = t; }
+  }
+  if (window.view3d && window.view3d.onMapEdits) window.view3d.onMapEdits(ed || null);
+}
 
 async function fetchMapDoc(id) {
   try {
@@ -49,8 +63,7 @@ function ensureMap(id) {
     if (mapId !== id) return;
     mapDoc = doc;
     mapHeight = doc.height || {};
-    terrainData = Object.fromEntries(Object.entries(doc.terrain || {}).filter(([, t]) => t && t !== 'plain'));
-    segmentData = doc.segments || {};
+    applyMapEdits();
     mapHexes = Object.keys(mapHeight).map(k => { const [q, r] = k.split(',').map(Number); return { q, r, key: k }; });
     mapBg = doc.background && doc.background.image ? doc.background : null;
     if (mapBg) { mapImage.onload = () => render(); mapImage.src = mapBg.image; }
@@ -100,7 +113,10 @@ function movementTable() {
 function clientReachable(unit) {
   const maxSpeed = unit.speedRemaining != null ? unit.speedRemaining : unit.speed;
   const occupied = new Set((gameState?.units || []).map(u => `${u.q},${u.r}`));
+  const ab = KBRules.ability(unit, UNIT_TYPES);
+  const drive = !!ab && ab.type === 'trample';
   return KBRules.reachable(movementTable(), {
+    transit: drive ? (k) => occupied.has(k) && !!gameState && gameState.visibleHexes.has(k) : null,
     start: { q: unit.q, r: unit.r },
     maxCost: maxSpeed,
     minStep: KBRules.hasFullSpeed(unit),
@@ -179,6 +195,7 @@ Object.assign(STANCES_DATA, KBRules.RULES.extraStances);
 // (game_state.balanceTables, sent at battle start and on resync). The hardcoded copies above are the fallback.
 function applyBalanceTables(t) {
   if (!t) return;
+  if (t.units) UNIT_TYPES = t.units;
   for (const [k, v] of Object.entries(t.terrains || {})) TERRAINS_DATA[k] = { ...(TERRAINS_DATA[k] || {}), ...v };
   for (const [k, v] of Object.entries(t.segments || {})) {
     const special = SEGMENT_DEFS_CLIENT[k]?.special;
@@ -191,7 +208,7 @@ function applyBalanceTables(t) {
   if (selectedUnit) showUnitDetail(selectedUnit);
 }
 
-fetch('/api/balance').then(r => (r.ok ? r.json() : null)).then((d) => { if (d && d.tables && !gameState?.balanceTables) applyBalanceTables(d.tables); }).catch(() => {});
+fetch('/api/balance').then(r => (r.ok ? r.json() : null)).then((d) => { if (d && d.tables && d.tables.units) UNIT_TYPES = d.tables.units; if (d && d.tables && !gameState?.balanceTables) applyBalanceTables(d.tables); }).catch(() => {});
 for (const s of stanceList) {
   if (!stanceIconFiles[s]) continue;
   const img = new Image();
@@ -406,6 +423,7 @@ let mode = 'select'; // select | move | attack | deploy
 let selectedUnit = null;
 let hoveredHex = null;
 let movableTiles = new Set();
+let abilityTiles = new Map();   // hex key -> unit ability options (espion, bâtisseurs) in mode 'ability'
 let attackableTiles = new Set();
 let approachAttacks = new Map(); // enemy hex -> { targetId, q, r, path }: out of range, reachable by moving first (one action)
 let rangeTiles = new Set();
@@ -492,6 +510,7 @@ function render() {
       let fill = isVisible ? 'rgba(0,0,0,0)' : 'rgba(0,0,0,0.72)';
       let stroke = isVisible ? `rgba(${gridColorRGB},${gridOpacity})` : 'rgba(0,0,0,0)';
       if (isVisible && movableTiles.has(key)) fill = 'rgba(40,120,20,0.35)';
+      if (abilityTiles.has(key)) fill = 'rgba(40,110,200,0.42)';
       if (isVisible && attackableTiles.has(key)) fill = approachAttacks.has(key) ? 'rgba(220,110,20,0.4)' : 'rgba(180,30,10,0.35)';
       if (isHovered && isVisible) stroke = '#c8960c';
       drawHex(ctx, x, y, fill, stroke, 1, gridThickness);
@@ -1019,6 +1038,14 @@ function handleHexClick(hex) {
   }
   if (window.KBSim && KBSim.active()) { KBSim.click(hex); return; }
 
+  if (selectedUnit && mode === 'ability') {
+    const opts = abilityTiles.get(key);
+    if (opts) { pickUnitAbilityOption(hex, opts); return; }
+    setMode('select');
+    render();
+    return;
+  }
+
   if (selectedUnit) {
     // Clic sur case de déplacement → déplacer
     if (movableTiles.has(key)) {
@@ -1146,7 +1173,8 @@ function selectUnit(unit) {
 
 function computeMovableTiles(unit) {
   const { dist } = clientReachable(unit);
-  for (const k of dist.keys()) movableTiles.add(k);
+  const occupied = new Set((gameState?.units || []).map(u => `${u.q},${u.r}`));
+  for (const k of dist.keys()) if (!occupied.has(k)) movableTiles.add(k);
   movableTiles.delete(`${unit.q},${unit.r}`);
 }
 
@@ -1167,7 +1195,7 @@ function computeAttackableTiles(unit) {
       attackableTiles.add(`${u.q},${u.r}`);
     } else if (canApproach) {
       reach = reach || clientReachable(unit);
-      const best = KBRules.bestAttackHex(reach, { start: unit, target: u, range: unit.range || 1, heightAt: (k) => hd[k] || 0 });
+      const best = KBRules.bestAttackHex(reach, { start: unit, target: u, range: unit.range || 1, heightAt: (k) => hd[k] || 0, canStand: (k) => k === `${unit.q},${unit.r}` || !gameState.units.some(o => `${o.q},${o.r}` === k) });
       if (best && best.path.length) {
         attackableTiles.add(`${u.q},${u.r}`);
         approachAttacks.set(`${u.q},${u.r}`, { targetId: u.id, q: best.q, r: best.r, path: [[unit.q, unit.r], ...best.path] });
@@ -1253,7 +1281,8 @@ function computeMotivateTiles(unit) {
 function setMode(newMode) {
   mode = newMode;
   const indicator = document.getElementById('mode-indicator');
-  const labels = { select: 'Sélection', move: 'Déplacement', attack: 'Attaque', motivate: 'Motiver', deploy: 'Déploiement' };
+  const labels = { select: 'Sélection', move: 'Déplacement', attack: 'Attaque', motivate: 'Motiver', deploy: 'Déploiement', ability: 'Capacité' };
+  if (newMode !== 'ability') abilityTiles.clear();
   indicator.textContent = `Mode : ${labels[newMode] || newMode}`;
   if (newMode !== 'move') movableTiles.clear();
   if (newMode !== 'attack') {
@@ -1274,10 +1303,15 @@ function updateActionButtons() {
   const isGeneral = hasUnit && selectedUnit.isGeneral;
   const canAbility = isGeneral && isMyTurn && !!selectedUnit.activeAbility && !selectedUnit.hasUsedAbility && !(selectedUnit.abilityCooldown > 0);
   const canMotivate = isGeneral && isMyTurn && !selectedUnit.hasAttacked;
+  const uab = hasUnit && isMyTurn && !isFleeing && gameState?.phase === 'battle' ? unitActionOf(selectedUnit) : null;
+  const canUnitAbility = !!uab && selectedUnit.speedRemaining >= uab.cost && !(uab.type === 'ambush' && selectedUnit.vanishedDay === gameState?.day);
+  const abilityBtn = document.getElementById('btn-ability');
+  abilityBtn.textContent = canUnitAbility ? `${uab.label} (${uab.cost})` : 'Capacité active';
+  abilityBtn.dataset.label = canUnitAbility ? uab.label : '';
 
   document.getElementById('btn-move').style.display = canMove ? 'block' : 'none';
   document.getElementById('btn-attack').style.display = canAttack ? 'block' : 'none';
-  document.getElementById('btn-ability').style.display = canAbility ? 'block' : 'none';
+  abilityBtn.style.display = canAbility || canUnitAbility ? 'block' : 'none';
   document.getElementById('btn-motivate').style.display = canMotivate ? 'block' : 'none';
   const endDisplay = isMyTurn ? 'block' : 'none';
   const deployDisplay = (mode === 'deploy') ? 'block' : 'none';
@@ -1631,7 +1665,58 @@ function motivateAll() {
   wsSend('motivate_unit', { roomCode, generalId: selectedUnit.id });
 }
 
+const UNIT_ACTIONS = { sabotage: 'Saboter', build: 'Construire', ambush: 'Disparaître' };
+function unitActionOf(unit) {
+  if (!unit || unit.isGeneral) return null;
+  const ab = KBRules.ability(unit, UNIT_TYPES);
+  return ab && UNIT_ACTIONS[ab.type] ? { ...ab, label: UNIT_ACTIONS[ab.type] } : null;
+}
+
+// Espion / bâtisseurs: highlight the neighbours where the ability can act; assassin: vanish at once
+function useUnitAbility(unit, ab) {
+  if (ab.type === 'ambush') { wsSend('unit_vanish', { roomCode, unitId: unit.id }); return; }
+  abilityTiles.clear();
+  for (const [dq, dr] of KBRules.DIRS) {
+    const nq = unit.q + dq, nr = unit.r + dr, nk = `${nq},${nr}`;
+    if (!(nk in mapHeight)) continue;
+    const seg = segmentData[segmentEdgeKey(unit.q, unit.r, nq, nr)] || null;
+    const ter = terrainData[nk] || 'plain';
+    let opts = [];
+    if (ab.type === 'build') opts = KBRules.buildOptions(seg, ter);
+    else { const o = KBRules.sabotageOption(seg, ter); if (o) opts = [{ id: 'sabotage', ...o }]; }
+    if (opts.length) abilityTiles.set(nk, opts);
+  }
+  if (!abilityTiles.size) { notify(ab.type === 'build' ? 'Rien à construire ni à brûler à côté de cette unité.' : 'Aucune infrastructure à saboter à côté de cette unité.', 'info'); return; }
+  setMode('ability');
+  render();
+}
+
+function sendUnitAbility(hex, opt) {
+  if (!selectedUnit) return;
+  if (opt.id === 'sabotage') wsSend('unit_sabotage', { roomCode, unitId: selectedUnit.id, q: hex.q, r: hex.r });
+  else wsSend('unit_build', { roomCode, unitId: selectedUnit.id, q: hex.q, r: hex.r, kind: opt.id });
+  setMode('select');
+  render();
+}
+
+function pickUnitAbilityOption(hex, opts) {
+  if (opts.length === 1) { sendUnitAbility(hex, opts[0]); return; }
+  const box = document.getElementById('ability-targets');
+  document.getElementById('ability-target-title').textContent = 'Construire';
+  box.innerHTML = '';
+  for (const o of opts) {
+    const b = document.createElement('button');
+    b.className = 'btn';
+    b.textContent = KBRules.RULES.abilities.build_kinds[o.id]?.label || o.id;
+    b.onclick = () => { closeAbilityTarget(); sendUnitAbility(hex, o); };
+    box.appendChild(b);
+  }
+  document.getElementById('overlay-ability-target').style.display = 'flex';
+}
+
 function useAbility() {
+  const uab = unitActionOf(selectedUnit);
+  if (uab) { useUnitAbility(selectedUnit, uab); return; }
   if (!selectedUnit || !selectedUnit.isGeneral || !selectedUnit.activeAbility) return;
   const ability = selectedUnit.activeAbility;
   if (ability.target !== 'enemy_army') { wsSend('use_ability', { roomCode }); return; }
@@ -1806,6 +1891,8 @@ function addCombatLog(log) {
     text += log.hit ? `${dmg} dégâts` : 'Manqué';
     if (log.targetKilled) text += ` (${log.targetName} éliminé!)`;
     if (log.generalKilled) text += ` ⚠ GÉNÉRAL TUÉ!`;
+    if (log.trample) text = `Piétinement : ${text}`;
+    if (log.bonuses && log.bonuses.length) text += ` — ${log.bonuses.map(b => b.text).join(' ; ')}`;
   }
   entry.textContent = text;
   container.insertBefore(entry, container.firstChild);
@@ -2552,8 +2639,10 @@ function wsDispatch(event, data) {
       if (data.phase !== 'deployment') { deployState = null; if (mode === 'deploy') setMode('select'); }
       if (data.balanceTables) applyBalanceTables(data.balanceTables);
       else if (gameState?.balanceTables) data.balanceTables = gameState.balanceTables;
+      const editsChanged = JSON.stringify(gameState?.mapEdits || null) !== JSON.stringify(data.mapEdits || null);
       gameState = data;
       gameState.visibleHexes = new Set(data.visibleHexes);
+      if (editsChanged) applyMapEdits();
       renderTopInfo();
       renderSpectatorBar();
       if (data.phase === 'ended' && data.winner !== undefined) document.getElementById('btn-end-turn-center').style.display = 'none';
@@ -2643,6 +2732,15 @@ function wsDispatch(event, data) {
     case 'initiative_rolled':
       showInitiativeModal(data.rolls, data.turnOrder, data.turn);
       break;
+    case 'map_edit': {
+      const SEG = { bridge: 'un pont', passerelle: 'une passerelle', barriere: 'une barrière', chevaux_de_frise: 'des chevaux de frise', echelle: 'une échelle', river: 'la rivière', cliff: 'la falaise' };
+      let text;
+      if (data.kind === 'sabotage') text = `Sabotage : ${SEG[data.from] || 'une infrastructure'} détruit${data.from === 'barriere' || data.from === 'passerelle' || data.from === 'echelle' ? 'e' : ''}.`;
+      else if (data.kind === 'bruler') text = 'Une forêt part en fumée.';
+      else text = `Construction : ${SEG[data.to] || data.to}.`;
+      notify(text, 'info');
+      break;
+    }
     case 'combat_result': {
       const log = data.combatLog || data;
       addCombatLog(log);
@@ -2773,6 +2871,9 @@ window.gameBridge = {
   get mode() { return mode; },
   get selectedUnit() { return selectedUnit; },
   get movableTiles() { return movableTiles; },
+  get abilityTiles() { return abilityTiles; },
+  get unitTypes() { return UNIT_TYPES; },
+  get mapEdits() { return gameState ? gameState.mapEdits || null : null; },
   get attackableTiles() { return attackableTiles; },
   approachAt,
   // Approach + strike preview against target: { q, r, path: [[q, r]...] (origin included) } or null

@@ -341,3 +341,23 @@ test('simultané : Percée — arrêtée au contact, l\'unité attaque et, si el
   assert.ok(moves.some(m => m.t === 3), 'repart au tick suivant après la mêlée gagnée');
   assert.ok(A[0].q >= 7);
 });
+
+test('simultané : capacités d\'unité en ordre (bâtisseurs, assassin) au début de la résolution ; char qui piétine', () => {
+  const { room, A, B, T } = setup({ p0: [{ typeId: 'batisseurs', count: 1 }, { typeId: 'assassin', count: 1 }, { typeId: 'char', count: 1 }], p1: [{ typeId: 'soldats', count: 2 }] });
+  const b = A.find(u => u.typeId === 'batisseurs'), a = A.find(u => u.typeId === 'assassin'), c = A.find(u => u.typeId === 'char');
+  put(room, b, 2, 2); put(room, a, 0, 1); put(room, c, 4, 4); put(room, B[0], 5, 4); put(room, B[1], 6, 4);
+  assert.ok(room.turns.setOrders(room, 'p0', { [b.id]: { type: 'hold', unitAbility: { kind: 'build', build: 'pont', q: 3, r: 2 } } }).error, 'pas de rivière ici');
+  order(room, 'p0', {
+    [b.id]: { type: 'hold', unitAbility: { kind: 'build', build: 'barriere', q: 3, r: 2 } },
+    [a.id]: { type: 'hold', unitAbility: { kind: 'vanish' } },
+    [c.id]: { type: 'attack', targetId: B[0].id },
+  });
+  const res = T.resolve(room, 11);
+  const { segmentEdgeKey } = require('../game/HexUtils');
+  assert.equal(room.segmentData[segmentEdgeKey(2, 2, 3, 2)], 'barriere');
+  assert.ok(events(res, 'p0').some(e => e.k === 'map_edit'));
+  assert.equal(a.vanishedDay, room.dayNumber());
+  const tr = combats(res, 'p0').filter(e => e.log.trample);
+  assert.equal(tr.length, 1);
+  assert.equal(tr[0].log.targetId, B[1].id);
+});

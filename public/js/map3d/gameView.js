@@ -1,5 +1,6 @@
 import { createWorld } from './world.js';
 import { createPathPreview, createOrdersLayer } from './pathPreview.js';
+import { createMapEditsLayer } from './mapEdits3d.js';
 import { createGameUI } from './gameUI.js';
 import { KANJI } from '../hud/battleHud.js';
 
@@ -87,6 +88,9 @@ export async function mountGameView(bridge, { container }) {
 
   const preview = createPathPreview(world);
   const ordersLayer = createOrdersLayer(world);
+  const editsLayer = createMapEditsLayer(world);
+  const baseMap = () => (bridge.mapDoc ? { seg: bridge.mapDoc.segments || {}, ter: bridge.mapDoc.terrain || {} } : { seg: {}, ter: {} });
+  editsLayer.update(bridge.mapEdits, baseMap().seg, baseMap().ter);
   let view = null;
   const ui = createGameUI({ world, container, bridge, getView: () => view });
 
@@ -190,6 +194,7 @@ export async function mountGameView(bridge, { container }) {
       outlines.push({ keys, center: null, color: 'rgba(170,255,110,0.95)', width: 0.14 });
     }
     fills.push({ keys: bridge.movableTiles, color: 'rgba(60,170,40,0.42)', edge: 'rgba(150,255,100,0.9)' });
+    if (bridge.abilityTiles && bridge.abilityTiles.size) fills.push({ keys: new Set(bridge.abilityTiles.keys()), color: 'rgba(40,110,200,0.5)', edge: 'rgba(120,190,255,0.95)' });
     fills.push({ keys: bridge.attackableTiles, color: 'rgba(200,40,20,0.5)', edge: 'rgba(255,120,80,0.95)' });
     if (bridge.approachAt) {
       const approach = new Set([...bridge.attackableTiles].filter((k) => bridge.approachAt(k)));
@@ -210,7 +215,7 @@ export async function mountGameView(bridge, { container }) {
     shownUnits = currentUnits().filter((u) => u.q != null);
     if (bridge.simultaneous && !bridge.playback) ordersLayer.show(bridge.plannedOrders || [], bridge.getPlayerColor(bridge.myId), (id) => { const u = shownUnits.find((x) => x.id === id); return u ? anchorOf(u).clone().setY(anchorOf(u).y - 0.3) : null; });
     else ordersLayer.clear();
-    world.layers.setOccupied(new Set(shownUnits.map((u) => hexKey(u.q, u.r))));
+    world.layers.setOccupied(new Set([...shownUnits.map((u) => hexKey(u.q, u.r)), ...editsLayer.clearedHexes(bridge.mapEdits, baseMap().ter)]));
     if (units3d) {
       units3d.sync(shownUnits);
       units3d.setSelected(sel ? sel.id : null);
@@ -393,6 +398,7 @@ export async function mountGameView(bridge, { container }) {
     active: false,
     world,
     markDirty() { dirty = true; },
+    onMapEdits(ed) { editsLayer.update(ed, baseMap().seg, baseMap().ter); dirty = true; },
     focusHex(q, r) { world.focusHex(q, r, 0.9); },
     // true when the hex is well inside the screen (not near the borders)
     hexOnScreen(q, r, margin = 0.12) {

@@ -50,6 +50,7 @@
     let b = unit.speedRemaining || 0;
     if (order && order.stance && order.stance !== unit.stance) b -= S.stanceCost;
     if (order && order.facing != null) b -= S.facingCost;
+    if (order && order.unitAbility) { const ab = KBRules.ability(unit, window.gameBridge && window.gameBridge.unitTypes); if (ab) b -= ab.cost; }
     return Math.max(0, KBRules.snap(b));
   }
 
@@ -119,6 +120,7 @@
     if (order.stance) parts.push(`posture ${stanceNames[order.stance] || order.stance}`);
     if (order.facing != null) parts.push('orientation');
     if (order.ability) parts.push('capacité');
+    if (order.unitAbility) parts.push(order.unitAbility.kind === 'vanish' ? 'disparaître' : order.unitAbility.kind === 'sabotage' ? 'sabotage' : `construire : ${(KBRules.RULES.abilities.build_kinds[order.unitAbility.build] || {}).label || ''}`);
     return parts.join(' · ');
   }
 
@@ -309,6 +311,28 @@
       html += `<button data-a="ability" class="${o && o.ability ? 'active' : ''}" ${cd ? 'disabled' : ''} title="${escapeHtml(unit.activeAbility.description || '')}">${escapeHtml(unit.activeAbility.name)}${cd ? ` (${unit.abilityCooldown})` : ''}</button>`;
     }
     html += `<button data-a="clear">Annuler l'ordre</button></div>`;
+    const uab = !unit.isGeneral && KBRules.ability(unit, window.gameBridge && window.gameBridge.unitTypes);
+    if (uab && ['sabotage', 'build', 'ambush'].includes(uab.type)) {
+      const cur = o && o.unitAbility;
+      const DIR_NAMES = ['E', 'NE', 'NO', 'O', 'SO', 'SE'];
+      const opts = [];
+      if (uab.type === 'ambush') opts.push({ kind: 'vanish', label: 'Disparaître pour la journée' });
+      else KBRules.DIRS.forEach(([dq, dr], i) => {
+        const nq = unit.q + dq, nr = unit.r + dr, nk = `${nq},${nr}`;
+        if (!(nk in mapHeight)) return;
+        const seg = segmentData[segmentEdgeKey(unit.q, unit.r, nq, nr)] || null, ter = terrainData[nk] || 'plain';
+        if (uab.type === 'sabotage') { if (KBRules.sabotageOption(seg, ter)) opts.push({ kind: 'sabotage', q: nq, r: nr, label: `Saboter (${DIR_NAMES[i]})` }); }
+        else for (const b of KBRules.buildOptions(seg, ter)) opts.push({ kind: 'build', build: b.id, q: nq, r: nr, label: `${KBRules.RULES.abilities.build_kinds[b.id].label} (${DIR_NAMES[i]})` });
+      });
+      html += `<div class="sim-label">Capacité (coût ${uab.cost} vitesse, au début de la résolution)</div><div class="sim-row">`;
+      if (!opts.length) html += '<span class="sim-desc">Rien à faire à côté de cette unité.</span>';
+      opts.forEach((op, i) => {
+        const on = cur && cur.kind === op.kind && cur.q === op.q && cur.r === op.r && cur.build === op.build;
+        html += `<button data-ua="${i}" class="${on ? 'active' : ''}">${escapeHtml(op.label)}</button>`;
+      });
+      html += '</div>';
+      st.uaOpts = opts;
+    }
     if (!unit.isGeneral) {
       html += `<div class="sim-label">Posture (coût ${S.stanceCost} vitesse, au début de la résolution)</div><div class="sim-row">`;
       for (const s of stanceList) {
@@ -337,6 +361,14 @@
     panel.querySelectorAll('button[data-facing]').forEach(b => {
       const f = Number(b.dataset.facing);
       b.onclick = () => patchOrder(unit, { facing: o && o.facing === f ? undefined : f });
+    });
+    panel.querySelectorAll('button[data-ua]').forEach(b => {
+      const op = st.uaOpts[Number(b.dataset.ua)];
+      b.onclick = () => {
+        const cur = o && o.unitAbility;
+        const same = cur && cur.kind === op.kind && cur.q === op.q && cur.r === op.r && cur.build === op.build;
+        patchOrder(unit, { unitAbility: same ? undefined : { kind: op.kind, q: op.q, r: op.r, build: op.build } });
+      };
     });
     panel.querySelectorAll('button[data-ability-target]').forEach(b => {
       b.onclick = () => { st.tool = null; patchOrder(unit, { ability: { targetId: b.dataset.abilityTarget } }); };

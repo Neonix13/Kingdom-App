@@ -63,6 +63,7 @@ export function createCombatSplash({ bridge, portrait, kanji, isActive }) {
     if (dc === 'counter') foot = log.defenseSuccess ? `${DEF_LABEL.counter} réussie : <b>−${log.counterDmgReceived ?? 0}</b> pour ${esc(A.name)}${log.counterMoralDmg ? ` · −${log.counterMoralDmg} moral` : ''}` : `${DEF_LABEL.counter} ratée`;
     else if (dc === 'absorb') foot = `${DEF_LABEL.absorb} : <b>${log.counterDmgReceived ?? 0}</b> PV absorbés`;
     else if (dc) foot = DEF_LABEL[dc] || esc(dc);
+    for (const bn of log.bonuses || []) rows.push(['Capacité', esc(bn.text)]);
     if (log.attackerKilled) foot += `${foot ? ' · ' : ''}<b>${esc(A.name)} détruit</b>`;
     if (log.generalKilled && log.eliminatedPlayer) foot += `${foot ? ' · ' : ''}<b>${esc(log.eliminatedPlayer)} perd son général</b>`;
     return { verdict, rows, lines, foot };
@@ -100,7 +101,7 @@ export function createCombatSplash({ bridge, portrait, kanji, isActive }) {
       <div class="sp-stage">
         <div class="sp-comic">${side(A, 'att', duel ? 'Général' : 'Attaquant')}${side(T, 'def', duel ? 'Général' : 'Défenseur')}</div>
         <div class="sp-kanji hud-brush">${kj}</div>
-        ${duel ? '<div class="sp-shout hud-dela">DUEL !</div>' : log.ranged ? '<div class="sp-shout hud-dela">TIR !</div>' : ''}
+        ${duel ? '<div class="sp-shout hud-dela">DUEL !</div>' : log.trample ? '<div class="sp-shout hud-dela">PIÉTINEMENT !</div>' : log.ranged ? '<div class="sp-shout hud-dela">TIR !</div>' : ''}
         ${result}
       </div>`;
   }

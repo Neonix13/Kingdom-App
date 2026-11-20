@@ -202,7 +202,7 @@ class GameRoom {
     if (unit.vanishedDay === this.dayNumber()) return { error: 'Déjà disparu pour la journée.' };
     for (const p of this.players) {
       if (p.id === playerId) continue;
-      for (const e of p.units) if (e.q !== null && hexDistance(e.q, e.r, unit.q, unit.r) <= ab.range) return { error: `Un ennemi est à moins de ${ab.range} cases.` };
+      for (const e of p.units) if (e.q !== null && hexDistance(e.q, e.r, unit.q, unit.r) <= ab.range && this.canSee(playerId, e)) return { error: `Un ennemi est à moins de ${ab.range} cases.` };
     }
     unit.vanishedDay = this.dayNumber();
     unit.revealedUntilRound = null;

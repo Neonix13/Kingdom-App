@@ -86,6 +86,12 @@ function planOrders(room, playerId, profile) {
       if (ability) cands.push({ unitId: u.id, prio: 75, order: { type: 'hold', ...abilityOrder } });
       continue;
     }
+    const ua = blunder ? null : B.unitAbilityPlan(world, u);
+    if (ua) {
+      const unitAbility = ua.kind === 'build' ? { kind: 'build', build: ua.build, q: ua.q, r: ua.r } : { kind: 'vanish' };
+      cands.push({ unitId: u.id, prio: 60, order: { type: 'hold', unitAbility } });
+      continue;
+    }
     // Strike: a visible target within reach this turn (shooters fire, melee units close in)
     const strikeReach = (u.speedRemaining || 0) + (u.range || 1);
     let targets = world.enemies.filter(t => hexDistance(u.q, u.r, t.q, t.r) <= strikeReach || inRange(world, u, u.q, u.r, t));
