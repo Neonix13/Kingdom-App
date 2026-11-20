@@ -67,7 +67,7 @@ export function createGameUI({ world, container, bridge, getView }) {
     <label>Vitesse caméra <input type="range" data-k="camSpeed" min="0.4" max="2.5" step="0.1"></label>
     <label>Mise en scène des combats <input type="checkbox" data-k="staging"></label>
     <label>Fiche de combat <select data-k="combatCard"><option value="full">Grande</option><option value="small">Petite</option><option value="off">Aucune</option></select></label>
-    <label>Suivre la résolution <input type="checkbox" data-k="followPlayback"></label>
+    <label>Caméra qui suit l'action <input type="checkbox" data-k="followPlayback"></label>
     <label>Dés 3D <input type="checkbox" data-k="dice"></label>
     <div class="row"><button data-act="photo">Mode photo (P)</button><button data-act="top">Vue du dessus (T)</button></div>
     <div class="hint">Clic gauche : sélection · glisser : déplacer la vue · clic droit glissé : pivoter · molette : zoom<br>
@@ -102,7 +102,9 @@ export function createGameUI({ world, container, bridge, getView }) {
     if (settings.hour === 'auto') {
       const st = bridge.state;
       let h;
-      if (st && typeof st.timeOfDay === 'number') h = st.timeOfDay;
+      const dh = bridge.displayHour;
+      if (typeof dh === 'number') h = dh;
+      else if (st && typeof st.timeOfDay === 'number') h = st.timeOfDay;
       else h = 8 + (((st?.turn || 1) - 1) * 1.6 + ((st?.manche || 1) - 1) * 0.3) % 13;
       if (Math.abs(world.hour - h) > 0.05) animateHour(h);
     } else {

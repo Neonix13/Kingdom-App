@@ -523,6 +523,7 @@
   }
 
   function onState(data) {
+    if (st.hourHeldForTurn != null && (data.turn > st.hourHeldForTurn || data.phase !== 'battle')) { st.hourHeldForTurn = null; setHour(null); }
     if (!isSim()) { const bar = document.getElementById('sim-bar'); if (bar) bar.style.display = 'none'; return; }
     applyPlanning(data.planning);
     const p = me();
@@ -574,6 +575,13 @@
     return S.playback.tickMs + (tk.events.some(e => e.k === 'combat') ? S.playback.combatMs : 0);
   }
 
+  // The hour flows through the resolution, from this turn's hour to the next one (see displayHour in game.js)
+  function setHour(h) { if (window.gameBridge && window.gameBridge.setHourOverride) window.gameBridge.setHourOverride(h); }
+  function playbackHour(pb, k) {
+    const t0 = pb.restore && pb.restore.timeOfDay, hpt = pb.restore && pb.restore.hoursPerTurn;
+    return t0 == null || !hpt ? null : (t0 + hpt * Math.min(1, Math.max(0, k))) % 24;
+  }
+
   function startPlayback(data) {
     if (!gameState) return;
     if (st.playback) finishPlayback(true);
@@ -586,7 +594,14 @@
     st.playback = { data, restore, deferred: [], index: 0, timer: null, killTimers: [] };
     document.getElementById('top-current-player').textContent = `Résolution du tour ${data.turn}`;
     renderBar(); renderPanel();
-    emitLocal('playback_start', { turn: data.turn, ticks: data.ticks.length, seed: data.seed });
+    // every hex where something happens during the resolution (moves from/to, combats weigh more), for the camera
+    const hexes = [];
+    for (const tk of data.ticks) for (const e of tk.events) {
+      if ((e.k === 'move' || e.k === 'flee') && e.from && e.to) hexes.push([e.from[0], e.from[1], 1], [e.to[0], e.to[1], 1]);
+      else if (e.k === 'combat' && e.log) for (const id of [e.log.attackerId, e.log.targetId]) { const u = id && units.find(x => x.id === id); if (u && u.q != null) hexes.push([u.q, u.r, 3]); }
+      else if (e.k === 'ambush' && e.q != null) hexes.push([e.q, e.r, 3]);
+    }
+    emitLocal('playback_start', { turn: data.turn, ticks: data.ticks.length, seed: data.seed, hexes });
     // reconnection: jump over the ticks already played
     let skip = data.elapsedMs || 0;
     while (st.playback.index < data.ticks.length && skip >= tickDuration(data.ticks[st.playback.index])) {
@@ -594,6 +609,7 @@
       applyTick(data.ticks[st.playback.index], false);
       st.playback.index++;
     }
+    setHour(playbackHour(st.playback, st.playback.index / Math.max(1, data.ticks.length)));
     render();
     nextTick();
   }
@@ -603,6 +619,7 @@
     if (!pb) return;
     if (pb.index >= pb.data.ticks.length) { pb.timer = setTimeout(() => finishPlayback(false), 400); return; }
     const tk = pb.data.ticks[pb.index++];
+    setHour(playbackHour(pb, pb.index / pb.data.ticks.length));
     emitLocal('playback_tick', { turn: pb.data.turn, t: tk.t, index: pb.index - 1 });
     applyTick(tk, true);
     pb.timer = setTimeout(nextTick, tickDuration(tk));
@@ -707,6 +724,8 @@
     clearTimeout(pb.timer);
     for (const k of pb.killTimers) clearTimeout(k.t);
     st.playback = null;
+    setHour(playbackHour(pb, 1));
+    st.hourHeldForTurn = pb.data.turn;
     gameState = pb.restore;
     for (const id of Object.keys(unitAnimations)) delete unitAnimations[id];
     emitLocal('playback_end', { turn: pb.data.turn, skipped: !!skipped });

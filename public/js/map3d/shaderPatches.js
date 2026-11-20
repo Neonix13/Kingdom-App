@@ -31,14 +31,16 @@ uniform vec4 uVisBounds;
 vec3 applyWarFog( vec3 c, vec3 wp, float t, sampler2D noiseTex ) {
   if ( uFogOn < 0.5 ) return c;
   vec2 vuv = ( wp.xz - uVisBounds.xy ) / uVisBounds.zw;
-  float vis = mix( texture2D( uVisA, vuv ).r, texture2D( uVisB, vuv ).r, uVisMix );
-  float hidden = 1.0 - vis;
+  // r: visible, g: closeness to the visible area (1 at its edge, 0 several hexes away)
+  vec2 vv = mix( texture2D( uVisA, vuv ).rg, texture2D( uVisB, vuv ).rg, uVisMix );
+  float hidden = 1.0 - vv.r;
   if ( hidden < 0.002 ) return c;
+  float near = smoothstep( 0.0, 1.0, vv.g );
   float l = dot( c, vec3( 0.3, 0.59, 0.11 ) );
-  vec3 fogged = mix( vec3( l ), c, 0.2 ) * 0.38 + vec3( 0.012, 0.018, 0.03 );
+  vec3 fogged = mix( vec3( l ), c, 0.15 ) * mix( 0.085, 0.27, near ) + mix( vec3( 0.004, 0.006, 0.011 ), vec3( 0.008, 0.012, 0.022 ), near );
   float mist = texture2D( noiseTex, wp.xz * 0.045 + t * vec2( 0.012, 0.007 ) ).g * 0.6
              + texture2D( noiseTex, wp.xz * 0.11 - t * vec2( 0.009, 0.014 ) ).b * 0.4;
-  fogged += vec3( 0.09, 0.1, 0.12 ) * smoothstep( 0.35, 0.85, mist );
+  fogged += vec3( 0.06, 0.068, 0.085 ) * smoothstep( 0.35, 0.85, mist ) * mix( 0.45, 1.0, near );
   return mix( c, fogged, hidden );
 }
 `;

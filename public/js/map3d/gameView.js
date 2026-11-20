@@ -3,6 +3,8 @@ import { createPathPreview, createOrdersLayer } from './pathPreview.js';
 import { createMapEditsLayer } from './mapEdits3d.js';
 import { createGameUI } from './gameUI.js';
 import { createDice3d } from './dice3d.js';
+import { createCameraDirector } from './cameraDirector.js';
+import { createCorpseLayer } from './corpses3d.js';
 import { KANJI } from '../hud/battleHud.js';
 
 const PLATE_CSS = `
@@ -95,6 +97,9 @@ export async function mountGameView(bridge, { container }) {
   let view = null;
   const ui = createGameUI({ world, container, bridge, getView: () => view });
   const dice = createDice3d(world);
+  const director = createCameraDirector(world, { container, enabled: () => ui.followPlayback() });
+  const corpses = createCorpseLayer(world);
+  if (window.KBCorpses) window.KBCorpses.onChange((list) => corpses.set(list));
 
   // --- Input: click vs drag, hover, context menu ---
   let down = null;
@@ -330,6 +335,7 @@ export async function mountGameView(bridge, { container }) {
       }
     }
     ui.update(dt);
+    director.update();
     preview.update(dt);
     const camDist = world.camera.position.distanceTo(world.controls.target);
     const pm = ui.platesMode();
@@ -348,27 +354,6 @@ export async function mountGameView(bridge, { container }) {
   }
   world.frameHooks.push(frame);
 
-  let lastStageCam = 0;
-  // Simultaneous playback: keep the hexes where something happens in this tick on screen
-  let followPts = null, followTimer = null;
-  function followAction(pts) {
-    if (!pts.length || performance.now() - lastStageCam < 300) return;
-    const w = canvas.clientWidth, h = canvas.clientHeight, m = 0.18;
-    const center = new THREE.Vector3();
-    let off = false;
-    for (const [q, r] of pts) {
-      const p = world.hexToWorld(q, r);
-      const v = new THREE.Vector3(p.x, world.groundHeight(p.x, p.z), p.z);
-      center.add(v);
-      const sp = world.projectToScreen(v);
-      if (!sp.visible || sp.x < w * m || sp.x > w * (1 - m) || sp.y < h * m || sp.y > h * (1 - m)) off = true;
-    }
-    if (!off) return;
-    center.divideScalar(pts.length);
-    const camOff = world.camera.position.clone().sub(world.controls.target);
-    if (camOff.length() > 26) camOff.setLength(26);
-    world.flyTo(center.clone().add(camOff), center, 0.7);
-  }
   // General duel: close camera, alternating strikes per exchange, damage per round
   function stageDuel(log) {
     const d = log.duel;
@@ -420,16 +405,20 @@ export async function mountGameView(bridge, { container }) {
       if (!view.active) return;
       dice.enabled = ui.dice();
       dice.onEvent(event, data, { colorOf: (id) => bridge.getPlayerColor(id), at: diceAt(data && (data.combatLog || data)) });
-      if (event === 'playback_tick') {
-        followPts = [];
-        clearTimeout(followTimer);
-        followTimer = setTimeout(() => { const pts = followPts || []; followPts = null; if (ui.followPlayback()) followAction(pts); }, 0);
-      } else if (event === 'unit_move_anim' && data.playback && followPts && data.path && data.path.length) {
-        followPts.push(data.path[data.path.length - 1]);
+      // Automatic camera: frame where units are and where they go (see cameraDirector.js)
+      if (event === 'playback_start' && data.hexes && data.hexes.length) {
+        director.frame(data.hexes.map(([q, r, w]) => ({ q, r, w: w || 1 })), { force: true });
+      } else if (event === 'unit_move_anim' && data.path && data.path.length) {
+        const end = data.path[data.path.length - 1];
+        director.observe([{ q: data.fromQ, r: data.fromR }, { q: end[0], r: end[1] }]);
+      } else if (event === 'ambush') {
+        director.observe([{ q: data.q, r: data.r, w: 3 }]);
       }
       if (event === 'combat_result') {
         const log = data.combatLog || data;
-        if (data.playback && followPts && log) for (const id of [log.attackerId, log.targetId]) { const u = id != null && shownUnits.find((x) => x.id === id); if (u && u.q != null) followPts.push([u.q, u.r]); }
+        const pts = [];
+        if (log) for (const id of [log.attackerId, log.targetId]) { const u = id != null && shownUnits.find((x) => x.id === id); if (u && u.q != null) pts.push({ q: u.q, r: u.r, w: 3 }); }
+        if (pts.length && !(log && log.duel)) director.observe(pts, { closeUp: !data.playback && ui.staging() });
         if (log && log.duel && log.attackerId != null && log.targetId != null) {
           stageDuel(log);
         } else if (log && log.attackerId != null && log.targetId != null) {
@@ -440,17 +429,6 @@ export async function mountGameView(bridge, { container }) {
             const r = units3d.playAttack(log.attackerId, log.targetId, { ranged: !!log.ranged });
             if (typeof r === 'number') impact = r;
             units3d.playHit(log.targetId, { delay: impact });
-          }
-          const now = performance.now();
-          const allowCam = !data.playback || now - lastStageCam > 2500;
-          if (att && tgt && ui.staging() && allowCam) {
-            lastStageCam = now;
-            const a = anchorOf(att).clone(), b = anchorOf(tgt).clone();
-            const mid = a.clone().lerp(b, 0.5);
-            mid.y = world.groundHeight(mid.x, mid.z);
-            const off = world.camera.position.clone().sub(world.controls.target);
-            if (off.length() > 22) off.setLength(22);
-            world.flyTo(mid.clone().add(off), mid, 0.8);
           }
           if (tgt) {
             const tA = anchorOf(tgt).clone();
@@ -467,7 +445,6 @@ export async function mountGameView(bridge, { container }) {
         const p = world.hexToWorld(data.q, data.r);
         ui.floatText(new THREE.Vector3(p.x, world.groundHeight(p.x, p.z) + 0.8, p.z), 'Embuscade !', 'kill');
         if (u && units3d) units3d.playHit(u.id, { delay: 0.1 });
-        if (ui.staging()) world.focusHex(data.q, data.r, 0.7);
       } else if (event === 'objective_captured') {
         world.layers.addPing(data.q, data.r, data.owner ? bridge.getPlayerColor(data.owner) : '#ffd700');
         const p = world.hexToWorld(data.q, data.r);
