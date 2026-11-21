@@ -402,7 +402,7 @@ body.lobby-d { font-family: var(--ld-body); background: radial-gradient(ellipse 
 .lobby-d .ld-ready-btn { min-height: 44px; }
 .lobby-d .ld-ready-btn[aria-pressed="true"] { background: #2a4a2a; border-color: #8fd18f; color: #fff; }
 .lobby-d .ld-army-host { display: flex; align-items: center; gap: 8px; }
-.lobby-d .ld-army-host input { width: 110px; min-height: 40px; }
+.lobby-d .ld-army-host input { width: 110px; min-height: 40px; background: #141210; }
 .lobby-d .ld-nations { display: flex; gap: 8px; flex-wrap: wrap; }
 .lobby-d .ld-nation { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border: 1px solid var(--ld-line); border-radius: 999px; font-size: 12px; color: var(--ld-muted); }
 .lobby-d .ld-nation.ready { border-color: #8fd18f; color: #cfeacf; }
