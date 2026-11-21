@@ -15,7 +15,7 @@ export function createUnitRing(bridge, root) {
   function state() {
     const u = bridge.selectedUnit;
     const st = bridge.state;
-    if (!u || u.q == null || !u.isMine || u.isFleeing || !st || st.phase !== 'battle' || bridge.mode === 'deploy') return null;
+    if (!u || u.q == null || !(u.isMine || u.playerId === bridge.myId) || u.isFleeing || !st || st.phase !== 'battle' || bridge.mode === 'deploy') return null;
     if (document.body.classList.contains('v3-photo')) return null;
     const sim = !!bridge.simultaneous;
     if (sim) {
