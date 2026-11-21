@@ -43,11 +43,12 @@ const GradeShader = {
   `,
 };
 
-const LUT_KINGDOM = [[0.0, 0.0618, 0.1472, 0.2444, 0.3504, 0.4598, 0.5398, 0.6181, 0.6924, 0.7607, 0.7958, 0.876, 0.9762, 1.0, 1.0, 1.0, 1.0], [0.0, 0.0252, 0.0712, 0.1308, 0.2014, 0.3148, 0.4065, 0.4883, 0.5627, 0.6332, 0.7056, 0.7815, 0.8937, 1.0, 1.0, 1.0, 1.0], [0.0, 0.0319, 0.0901, 0.1656, 0.2549, 0.3436, 0.4162, 0.489, 0.5412, 0.5878, 0.6586, 0.7345, 0.8482, 0.9743, 1.0, 1.0, 1.0]];
+const LUT_KINGDOM = [[0.0, 0.0618, 0.1472, 0.2444, 0.3504, 0.4598, 0.5398, 0.6181, 0.6924, 0.7607, 0.7958, 0.8633, 0.9163, 0.9556, 0.9818, 0.996, 1.0], [0.0, 0.0252, 0.0712, 0.1308, 0.2014, 0.3148, 0.4065, 0.4883, 0.5627, 0.6332, 0.7056, 0.8029, 0.8793, 0.9359, 0.9737, 0.9943, 1.0], [0.0, 0.0319, 0.0901, 0.1656, 0.2549, 0.3436, 0.4162, 0.489, 0.5412, 0.5878, 0.6586, 0.7714, 0.8601, 0.9257, 0.9695, 0.9934, 1.0]];
 
 // Display-referred grade, applied after tone mapping (OutputPass): per-channel curves (17-point LUT), saturation,
 // light unsharp mask. "kingdom" was fitted on a frame graded by the user (warm, deeper blacks, brighter highlights,
-// fewer green tones), with a softened toe so night scenes keep their shadow detail.
+// fewer green tones; both images converted from Display P3 to sRGB first), with a softened toe so dark scenes keep
+// their shadow detail and a soft shoulder so bright midday scenes don't clip.
 export const COLOR_PRESETS = {
   kingdom: { lut: LUT_KINGDOM, saturation: 0.82, sharpen: 0.35 },
   naturel: null,

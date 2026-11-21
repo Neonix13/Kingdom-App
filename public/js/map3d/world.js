@@ -1102,6 +1102,7 @@ function setTimeOfDay(hour, { env = true } = {}) {
   scene.background.copy(fog);
   skyU.uHorizonColor.value.copy(fog);
   renderer.toneMappingExposure = lerp(1.0, 1.08, golden) * (1 - night) + 1.45 * night;
+  gradeNight = night;
   skyU.rayleigh.value = lerp(1.4, 2.4, golden);
   skyU.turbidity.value = lerp(4.5, 7, golden);
 
@@ -1595,6 +1596,7 @@ const post = createPost(renderer, scene, renderCam);
 let viewCam = renderCam;
 let usePost = true;
 let colorPreset = 'kingdom';
+var gradeNight; // set by the time-of-day update, which can run before this line (no initializer: hoisted, never reset)
 // Cameras stay out of the scenery (walls, roofs, trees, relief): highest surface baked once from above
 const obstacleTop = bakeObstacleHeights(renderer, scene, { x0: bx0 - 15, z0: bz0 - 15, x1: bx1 + 15, z1: bz1 + 15 },
   { hide: [sky, clouds, stars, moon, birds, grassMesh, flowerMesh, wheatMesh, ...nightFx] });
@@ -1827,6 +1829,8 @@ function animate() {
   moon.position.copy(vp).addScaledVector(MOON_DIR, 800);
   clouds.position.set(vp.x, G.uCloudHeight.value, vp.z);
   const t0 = performance.now();
+  // the warm grade is eased off at night so moonlight keeps its blue and the shadows stay readable
+  post.display.uniforms.uStrength.value = 1 - 0.7 * (gradeNight || 0);
   if (usePost) post.composer.render(dt);
   else renderer.render(scene, viewCam);
   perf.cpu = perf.cpu * 0.95 + (performance.now() - t0) * 0.05;
