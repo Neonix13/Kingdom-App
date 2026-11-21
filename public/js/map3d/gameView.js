@@ -2,6 +2,7 @@ import { createWorld } from './world.js';
 import { createPathPreview, createOrdersLayer } from './pathPreview.js';
 import { createMapEditsLayer } from './mapEdits3d.js';
 import { createGameUI } from './gameUI.js';
+import { createMapMode } from './mapMode.js';
 import { createDice3d } from './dice3d.js';
 import { createCameraDirector } from './cameraDirector.js';
 import { createCorpseLayer } from './corpses3d.js';
@@ -98,8 +99,9 @@ export async function mountGameView(bridge, { container }) {
   editsLayer.update(bridge.mapEdits, baseMap().seg, baseMap().ter);
   let view = null;
   const ui = createGameUI({ world, container, bridge, getView: () => view });
+  const mapMode = createMapMode(world, { onChange: (on) => window.dispatchEvent(new CustomEvent('kb-mapmode', { detail: on })) });
   const dice = createDice3d(world);
-  const killCam = createKillCam(world, { enabled: () => ui.killCam(), blocked: () => ui.photo || !view || !view.active });
+  const killCam = createKillCam(world, { enabled: () => ui.killCam(), blocked: () => ui.photo || !view || !view.active || mapMode.active });
   const director = createCameraDirector(world, { container, enabled: () => ui.followPlayback() && !killCam.active });
   const corpses = createCorpseLayer(world);
   if (window.KBCorpses) window.KBCorpses.onChange((list) => corpses.set(list));
@@ -358,7 +360,7 @@ export async function mountGameView(bridge, { container }) {
     preview.update(dt);
     const camDist = world.camera.position.distanceTo(world.controls.target);
     const pm = ui.platesMode();
-    const showPlates = !ui.photo && (pm === 'always' || (pm === 'auto' && camDist < 48));
+    const showPlates = !ui.photo && (pm === 'always' || (pm === 'auto' && (camDist < 48 || mapMode.active)));
     plates.classList.toggle('names', camDist < 14);
     plates.style.display = showPlates ? '' : 'none';
     if (showPlates) {
@@ -367,7 +369,7 @@ export async function mountGameView(bridge, { container }) {
         const s = world.projectToScreen(anchorOf(u));
         if (!s.visible) { el.style.display = 'none'; continue; }
         el.style.display = '';
-        el.style.transform = `translate(${s.x.toFixed(1)}px, ${s.y.toFixed(1)}px) translate(-50%, -100%)`;
+        el.style.transform = `translate(${s.x.toFixed(1)}px, ${s.y.toFixed(1)}px) translate(-50%, ${mapMode.active ? '-50%' : '-100%'})`;
       }
     }
   }
@@ -412,6 +414,8 @@ export async function mountGameView(bridge, { container }) {
     markDirty() { dirty = true; },
     onMapEdits(ed) { editsLayer.update(ed, baseMap().seg, baseMap().ter); dirty = true; },
     focusHex(q, r) { world.focusHex(q, r, 0.9); },
+    toggleMapMode() { mapMode.toggle(); },
+    get mapMode() { return mapMode.active; },
     // true when the hex is well inside the screen (not near the borders)
     hexOnScreen(q, r, margin = 0.12) {
       const p = world.hexToWorld(q, r);
@@ -486,6 +490,7 @@ export async function mountGameView(bridge, { container }) {
     },
     killCam,
     setActive(on) {
+      if (!on) mapMode.exit(true);
       view.active = on;
       ui.hide(!on);
       canvas.style.display = on ? '' : 'none';

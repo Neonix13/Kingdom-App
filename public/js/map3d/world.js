@@ -1535,6 +1535,7 @@ await setProgress(92, 'Compiling shaders...');
 
 // --- Post-processing + adaptive quality ---
 const post = createPost(renderer, scene, camera);
+let viewCam = camera;
 let usePost = true;
 // Cameras stay out of the scenery (walls, roofs, trees, relief): highest surface baked once from above
 const obstacleTop = bakeObstacleHeights(renderer, scene, { x0: bx0 - 15, z0: bz0 - 15, x1: bx1 + 15, z1: bz1 + 15 },
@@ -1588,6 +1589,7 @@ function applyQuality(l) {
   for (const fn of qualityHooks) fn(l);
 }
 const qualityHooks = [];
+const resizeHooks = [];
 qualityHooks.push((l) => birdSys.setQuality(l));
 const _px = new Uint8Array(4);
 function measureFrameCost() {
@@ -1597,7 +1599,7 @@ function measureFrameCost() {
   for (let i = 0; i < 2; i++) {
     const t0 = performance.now();
     if (usePost) post.composer.render(0.016);
-    else renderer.render(scene, camera);
+    else renderer.render(scene, viewCam);
     gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, _px);
     best = Math.min(best, performance.now() - t0);
   }
@@ -1629,7 +1631,9 @@ await setProgress(100, 'Ready');
 // --- Intro fly-in ---
 const ease = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
 const _s0 = new THREE.Spherical(), _s1 = new THREE.Spherical(), _sv = new THREE.Vector3();
+let flyFilter = null;
 function flyTo(toPos, toTarget, dur = 1.2, fromHigh = false) {
+  if (flyFilter) { const f = flyFilter(toPos, toTarget); if (!f) return; toPos = f.p; toTarget = f.t; fromHigh = false; }
   const from = { p: camera.position.clone(), t: controls.target.clone() };
   if (fromHigh) {
     const sph = new THREE.Spherical().setFromVector3(toPos.clone().sub(toTarget));
@@ -1689,7 +1693,7 @@ function worldToHex(x, z) {
 function pickPoint(clientX, clientY) {
   const rect = canvas.getBoundingClientRect();
   _ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
-  raycaster.setFromCamera(_ndc, camera);
+  raycaster.setFromCamera(_ndc, viewCam);
   const { origin: o, direction: d } = raycaster.ray;
   if (d.y > -1e-4) return null;
   // March the ray through the CPU heightfield (cheap, no triangle tests)
@@ -1719,13 +1723,14 @@ function pickHex(clientX, clientY) {
   return allHexes.has(`${h.q},${h.r}`) ? h : null;
 }
 function projectToScreen(v, out = new THREE.Vector3()) {
-  out.copy(v).project(camera);
+  out.copy(v).project(viewCam);
   return { x: (out.x * 0.5 + 0.5) * W(), y: (-out.y * 0.5 + 0.5) * H(), visible: out.z < 1 && out.z > -1 };
 }
 
 function resize() {
   camera.aspect = W() / H();
   camera.updateProjectionMatrix();
+  for (const fn of resizeHooks) fn(W(), H());
   applyQuality(LEVELS[governor.level]);
 }
 
@@ -1763,7 +1768,7 @@ function animate() {
   clouds.position.set(camera.position.x, G.uCloudHeight.value, camera.position.z);
   const t0 = performance.now();
   if (usePost) post.composer.render(dt);
-  else renderer.render(scene, camera);
+  else renderer.render(scene, viewCam);
   perf.cpu = perf.cpu * 0.95 + (performance.now() - t0) * 0.05;
   perf.frame = perf.frame * 0.95 + dt * 1000 * 0.05;
   governor.frame(rawDt * 1000);
@@ -1785,17 +1790,23 @@ return {
   applyView, DEFAULT_VIEW, flyTo, focusHex, resize, start, setRunning,
   setTimeOfDay, previewTimeOfDay, commitTimeOfDay, get hour() { return timeState.hour; }, timeState,
   setTimeScale(k) { timeScale = Math.max(0.01, Math.min(4, k)); }, get timeScale() { return timeScale; },
-  // render through another camera (slow-motion shots); null = the orbit camera
-  setViewCamera(cam) { post.renderPass.camera = cam || camera; }, get viewCamera() { return post.renderPass.camera; },
+  // camera used for rendering / picking / projections: the orbit camera, a slow-motion shot camera or the
+  // orthographic map camera (mapMode.js); null = the orbit camera
+  get viewCamera() { return viewCam; },
+  setViewCamera(cam) { viewCam = cam || camera; post.renderPass.camera = viewCam; },
+  setFlyFilter(fn) { flyFilter = fn; },
+  stopFly() { intro.active = false; },
+  clouds, aspect: () => W() / H(),
   get usePost() { return usePost; },
   dof: {
     setEnabled(v) { dofState.user = !!v; refreshDof(); },
     setFocus(point) { dofState.point = point || null; },
     setBoost(k) { dofState.boost = Math.max(0, Math.min(1, k)); },
     get active() { return post.dof.enabled; },
+    get user() { return dofState.user; },
   },
   camGuard, surfaceHeight: (x, z) => camGuard.surface(x, z),
-  applyQuality, qualityHooks, frameHooks,
+  applyQuality, qualityHooks, frameHooks, resizeHooks,
   setGrid(v) { terrainUniforms.uGrid.value = v; }, get grid() { return terrainUniforms.uGrid.value; },
   sunDir, G, layers: boardLayers, objectives: objectiveMarkers, map: mapDoc,
   // base-camp banners in the colours of the army deployed in each fixed zone: [{ zone, color, emblem }]
