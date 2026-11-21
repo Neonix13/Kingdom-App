@@ -5,6 +5,7 @@ import { createGameUI } from './gameUI.js';
 import { createDice3d } from './dice3d.js';
 import { createCameraDirector } from './cameraDirector.js';
 import { createCorpseLayer } from './corpses3d.js';
+import { createKillCam } from './killCam.js';
 import { KANJI } from '../hud/battleHud.js';
 
 const PLATE_CSS = `
@@ -98,7 +99,8 @@ export async function mountGameView(bridge, { container }) {
   let view = null;
   const ui = createGameUI({ world, container, bridge, getView: () => view });
   const dice = createDice3d(world);
-  const director = createCameraDirector(world, { container, enabled: () => ui.followPlayback() });
+  const killCam = createKillCam(world, { enabled: () => ui.killCam(), blocked: () => ui.photo || !view || !view.active });
+  const director = createCameraDirector(world, { container, enabled: () => ui.followPlayback() && !killCam.active });
   const corpses = createCorpseLayer(world);
   if (window.KBCorpses) window.KBCorpses.onChange((list) => corpses.set(list));
 
@@ -345,6 +347,7 @@ export async function mountGameView(bridge, { container }) {
       }
     }
     ui.update(dt);
+    if (!killCam.active) { const sel = bridge.selectedUnit; world.dof.setFocus(sel && sel.q != null ? anchorOf(sel) : null); }
     director.update();
     preview.update(dt);
     const camDist = world.camera.position.distanceTo(world.controls.target);
@@ -455,6 +458,10 @@ export async function mountGameView(bridge, { container }) {
             if (log.targetKilled) ui.floatText(tA.clone().setY(tA.y + 0.3), 'Détruite !', 'kill', impact + 0.5);
           }
           if (att && log.counterDmgReceived) ui.floatText(anchorOf(att).clone(), `-${log.counterDmgReceived}`, '', impact + 0.6);
+          // slow-motion shot on the unit that is finished off
+          const victim = log.targetKilled ? tgt : log.attackerKilled ? att : null;
+          const killer = victim === tgt ? att : tgt;
+          if (victim) killCam.trigger(anchorOf(victim), killer ? anchorOf(killer) : null, { delay: Math.max(0, impact - 0.25) });
         }
       } else if (event === 'ambush') {
         world.layers.addPing(data.q, data.r, '#ff3020');
@@ -471,6 +478,7 @@ export async function mountGameView(bridge, { container }) {
       }
       dirty = true;
     },
+    killCam,
     setActive(on) {
       view.active = on;
       ui.hide(!on);

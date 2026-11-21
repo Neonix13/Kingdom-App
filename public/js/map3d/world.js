@@ -7,6 +7,7 @@ import { G, installHeightFog, patchLit } from './shaderPatches.js';
 import { createWaterMaterial } from './water.js';
 import * as VEG from './vegetation.js';
 import { createPost, QualityGovernor } from './post.js';
+import { bakeObstacleHeights, createCameraGuard } from './cameraGuard.js';
 import { createCloudLayer } from './clouds.js';
 import { createStars, createMoon, createFireflies, createLightPools } from './night.js';
 import { buildStructures } from './buildings.js';
@@ -1535,10 +1536,28 @@ await setProgress(92, 'Compiling shaders...');
 // --- Post-processing + adaptive quality ---
 const post = createPost(renderer, scene, camera);
 let usePost = true;
+// Cameras stay out of the scenery (walls, roofs, trees, relief): highest surface baked once from above
+const obstacleTop = bakeObstacleHeights(renderer, scene, { x0: bx0 - 15, z0: bz0 - 15, x1: bx1 + 15, z1: bz1 + 15 },
+  { hide: [sky, clouds, stars, moon, birds, grassMesh, flowerMesh, wheatMesh, ...nightFx] });
+const camGuard = createCameraGuard({ camera, controls, top: obstacleTop, groundHeight });
+// Depth of field: focus on a world point (selected unit…) or the orbit target; boosted during slow-motion shots
+const dofState = { user: true, quality: false, point: null, boost: 0, focus: 30 };
+const refreshDof = () => { post.dof.enabled = dofState.user && dofState.quality && usePost; };
+const _dofV = new THREE.Vector3(), _dofF = new THREE.Vector3();
+function updateDof(rawDt) {
+  if (!post.dof.enabled) return;
+  const rc = post.renderPass.camera;
+  rc.getWorldDirection(_dofF);
+  const d = Math.max(1, _dofV.subVectors(dofState.point || controls.target, rc.position).dot(_dofF));
+  dofState.focus += (d - dofState.focus) * Math.min(1, rawDt * 5);
+  post.dof.uniforms.uFocus.value = dofState.focus;
+  post.dof.uniforms.uAperture.value = 0.6 + 1.6 * dofState.boost;
+  post.dof.baseBlur = 4 + 7 * dofState.boost;
+}
 const maxDpr = Math.min(window.devicePixelRatio || 1, 2);
 const LEVELS = [
-  { name: 'Ultra', dpr: maxDpr, samples: maxDpr > 1.6 ? 2 : 4, bloom: true, post: true, grass: true, far: true },
-  { name: 'High', dpr: Math.min(maxDpr, 1.5), samples: 4, bloom: true, post: true, grass: true, far: true },
+  { name: 'Ultra', dpr: maxDpr, samples: maxDpr > 1.6 ? 2 : 4, bloom: true, post: true, grass: true, far: true, dof: true },
+  { name: 'High', dpr: Math.min(maxDpr, 1.5), samples: 4, bloom: true, post: true, grass: true, far: true, dof: true },
   { name: 'Medium', dpr: Math.min(maxDpr, 1.25), samples: 2, bloom: false, post: true, grass: true, far: true },
   { name: 'Low', dpr: Math.min(maxDpr, 1.0), samples: 0, bloom: false, post: true, grass: false, far: true },
   { name: 'Minimum', dpr: 0.75, samples: 0, bloom: false, post: false, grass: false, far: false },
@@ -1557,6 +1576,8 @@ function applyQuality(l) {
   post.composer.setSize(W(), H());
   post.bloom.enabled = l.bloom;
   usePost = l.post;
+  dofState.quality = !!l.dof;
+  refreshDof();
   grassMesh.visible = l.grass;
   flowerMesh.visible = l.grass;
   wheatMesh.visible = l.far;
@@ -1713,12 +1734,16 @@ const clock = new THREE.Clock();
 const perf = { cpu: 0, frame: 16.7 };
 const frameHooks = [(dt) => boardLayers.update(dt), (dt, t) => objectiveMarkers.update(dt, t)];
 let running = true;
+// timeScale < 1 slows every animation and effect (slow-motion shots); game logic and timers are not affected
+let timeScale = 1, simTime = 0;
 function animate() {
   if (!running) return;
   requestAnimationFrame(animate);
   const rawDt = clock.getDelta();
-  const dt = Math.min(rawDt, 0.1);
-  const t = clock.elapsedTime;
+  const dt = Math.min(rawDt, 0.1) * timeScale;
+  simTime += dt;
+  const t = simTime;
+  camGuard.before();
   if (pendingHour !== null) { setTimeOfDay(pendingHour, { env: false }); pendingHour = null; }
   G.uTime.value = t;
   G.uWindStrength.value = 0.75 + 0.35 * Math.sin(t * 0.13) + 0.2 * Math.sin(t * 0.41);
@@ -1730,6 +1755,8 @@ function animate() {
   updateIntro(dt);
   controls.update();
   for (const fn of frameHooks) fn(dt, t);
+  camGuard.after(Math.min(rawDt, 0.1));
+  updateDof(Math.min(rawDt, 0.1));
   sky.position.copy(camera.position);
   stars.position.copy(camera.position);
   moon.position.copy(camera.position).addScaledVector(MOON_DIR, 800);
@@ -1755,6 +1782,17 @@ return {
   bounds: { bx0, bx1, bz0, bz1, BCX, BCZ },
   applyView, DEFAULT_VIEW, flyTo, focusHex, resize, start, setRunning,
   setTimeOfDay, previewTimeOfDay, commitTimeOfDay, get hour() { return timeState.hour; }, timeState,
+  setTimeScale(k) { timeScale = Math.max(0.01, Math.min(4, k)); }, get timeScale() { return timeScale; },
+  // render through another camera (slow-motion shots); null = the orbit camera
+  setViewCamera(cam) { post.renderPass.camera = cam || camera; }, get viewCamera() { return post.renderPass.camera; },
+  get usePost() { return usePost; },
+  dof: {
+    setEnabled(v) { dofState.user = !!v; refreshDof(); },
+    setFocus(point) { dofState.point = point || null; },
+    setBoost(k) { dofState.boost = Math.max(0, Math.min(1, k)); },
+    get active() { return post.dof.enabled; },
+  },
+  camGuard, surfaceHeight: (x, z) => camGuard.surface(x, z),
   applyQuality, qualityHooks, frameHooks,
   setGrid(v) { terrainUniforms.uGrid.value = v; }, get grid() { return terrainUniforms.uGrid.value; },
   sunDir, G, layers: boardLayers, objectives: objectiveMarkers, map: mapDoc,
