@@ -26,7 +26,15 @@ export function attachGameAudio(bridge) {
   btn.innerHTML = '&#128264;';
   const sep = document.createElement('div');
   sep.className = 'tool-separator';
-  if (toolbar) { toolbar.appendChild(sep); toolbar.appendChild(btn); }
+  const tbSon = document.getElementById('tb-son');
+  const SPK = '<svg class="tb-ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"></path><path class="snd-waves" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"></path><path class="snd-mute" d="M16 9l5 6M21 9l-5 6"></path></svg>';
+  if (tbSon) {
+    btn.className = 'tool-btn tb-row';
+    btn.title = 'Volume : général, musique, effets, ambiance';
+    btn.innerHTML = `${SPK}<span>Volume</span>`;
+    btn.classList.toggle('muted', !!(audio.settings || {}).muted);
+    tbSon.appendChild(btn);
+  } else if (toolbar) { toolbar.appendChild(sep); toolbar.appendChild(btn); }
   const pop = document.createElement('div');
   pop.id = 'snd-popup';
   const s = audio.settings || {};
@@ -40,7 +48,10 @@ export function attachGameAudio(bridge) {
     el.addEventListener('input', () => {
       if (el.dataset.k === 'muted') audio.mute(el.checked);
       else audio.setVolumes({ [el.dataset.k]: parseFloat(el.value) });
-      btn.innerHTML = el.dataset.k === 'muted' && el.checked ? '&#128263;' : '&#128264;';
+      if (el.dataset.k === 'muted') {
+        if (tbSon) btn.classList.toggle('muted', el.checked);
+        else btn.innerHTML = el.checked ? '&#128263;' : '&#128264;';
+      }
     });
   }
   document.addEventListener('click', (e) => {

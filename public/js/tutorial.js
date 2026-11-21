@@ -57,7 +57,7 @@
     },
     {
       id: 'select', title: 'Sélectionner une unité',
-      text: () => `Cliquez sur vos <b>Soldats</b> ${at(unitOf('soldats'))}, sur la carte ou dans la liste des unités (à gauche).<br><span class="text-muted">Le bouton <b>Q,R</b> des outils (bouton ≡ en haut à droite) affiche les coordonnées des cases.</span>`,
+      text: () => `Cliquez sur vos <b>Soldats</b> ${at(unitOf('soldats'))}, sur la carte ou dans la liste des unités (à gauche).<br><span class="text-muted">En vue 2D, le bouton <b>Coordonnées</b> des outils (bouton ≡ en haut à droite) les affiche sur chaque case.</span>`,
       highlight: ['#unit-list', '#tool-coords'], hexes: () => [unitOf('soldats')],
       done: (f) => f.selected,
     },
