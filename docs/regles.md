@@ -68,6 +68,14 @@ Puis on ajoute :
 - **Embuscade** : si le chemin rencontre une unité ennemie cachée (§7), l'unité s'arrête net devant elle et perd le reste de sa vitesse pour la manche ; l'embusqué est révélé.
 - Les falaises bloquent le passage mais pas la vue.
 
+### Marche sur plusieurs tours
+
+- On peut donner à une unité une **destination hors de portée ce tour** : un premier clic sur la case montre la route (la partie de ce tour en pointillés blancs, les tours suivants plus pâles, un disque numéroté là où chaque tour s'arrête — estimation avec la vitesse actuelle de l'unité), un second clic donne l'ordre. Les étapes du chemin (Maj+clic / outil Étapes) peuvent elles aussi dépasser la portée du tour : le chemin devient alors une marche.
+- L'unité avance tout de suite de ce que sa vitesse paie (pas minimum compris), puis **reprend seule la route au début de chacune de ses manches** (mode classique), avant que le joueur n'agisse ; la route reste celle choisie (200 cases au plus).
+- La marche **s'arrête** : à l'arrivée ; quand l'unité est au contact d'un ennemi visible (avant de repartir ou après avoir avancé) ; en cas d'embuscade ; quand une unité visible ou un bord devenu infranchissable barre la route ; quand l'unité fuit ; dès qu'on lui donne un autre ordre de déplacement ou d'attaque ; avec le bouton **STOP MARCHE** de la fiche d'unité.
+- La route restante apparaît en pointillés pâles (couleur du joueur) sur la carte, avec les numéros de tour quand l'unité est sélectionnée ; la liste de l'armée et la fiche affichent **MARCHE**. Les autres joueurs ne voient jamais l'ordre de marche (seulement les déplacements qu'ils aperçoivent).
+- Protocole : `move_unit { unitId, targetQ, targetR, march: true, path }` (route complète, origine exclue) ; `cancel_march { unitId }`.
+
 ## 4. Postures
 
 Changer de posture coûte 2 de vitesse (les généraux n'ont pas de posture). Les unités commencent en **Combat**. Chaque posture modifie vitesse, attaque, défense, puissance, intimidation, **courage**, esquive, précision et armure (au corps à corps et au tir) — valeurs dans `data/balance/stances.json`, page `/stances.html` et infobulle de chaque posture. Le **courage** du défenseur (et du terrain) est retranché de l'intimidation de l'attaquant.
@@ -202,6 +210,7 @@ Les modifications de carte (sabotages, constructions, forêts brûlées) sont ga
 - Vous ne recevez que ce que vous voyez : un combat entre d'autres joueurs n'est montré que si vous voyez l'une des deux unités, et l'unité que vous ne voyez pas apparaît comme « Unité inconnue », sans le détail des jets.
 - Les déplacements ennemis ne sont animés que sur la partie visible du trajet.
 - **Spectateurs** (réglage de l'hôte) : vision **complète** (tout en direct), **différée** (positions du tour précédent, sans les combats en direct) ou **aucune**. Après la partie, tout est visible.
+- **Fiches de combat** : réglage « Fermeture des fiches » (réglages 3D) — *manuelle pour mes combats* (par défaut : la fiche d'un combat où l'une de vos unités est engagée reste affichée jusqu'à ✕, Espace, Échap ou un clic ; les autres se ferment seules), *toujours manuelle* ou *automatique*. Chaque combat de la partie se rouvre depuis le journal (bouton **FICHE** sur chaque entrée de l'historique) ou le bouton **Dernier combat** au-dessus du fil d'événements ; ◀ ▶ (ou les flèches du clavier) passent d'un combat à l'autre du même tour. Pendant la lecture du mode simultané, les fiches restent petites et se ferment seules pour ne pas bloquer la lecture.
 
 ## 12. Paramètres de salle (hôte)
 
