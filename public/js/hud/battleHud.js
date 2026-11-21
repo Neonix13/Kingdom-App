@@ -72,6 +72,7 @@ export function mountBattleHud(bridge, view) {
     <div class="hud-route" hidden></div>
     <div class="hud-actions"></div>
     <div class="hud-simslot"></div>
+    <div class="hud-seal-shadow" hidden aria-hidden="true"></div>
     <button class="hud-seal" hidden></button>`;
   document.body.appendChild(root);
   const ring = createUnitRing(bridge, root);
@@ -476,6 +477,8 @@ export function mountBattleHud(bridge, view) {
       }
     }
     sealTarget = cfg && cfg.target ? cfg.target : null;
+    const sealShadow = root.querySelector('.hud-seal-shadow');
+    if (sealShadow) sealShadow.hidden = !cfg;
     if (!cfg) { seal.hidden = true; return; }
     seal.hidden = false;
     seal.className = `hud-seal${cfg.wait ? ' wait' : ''}${cfg.alt ? ' alt' : ''}${cfg.pulse ? ' pulse' : ''}`;

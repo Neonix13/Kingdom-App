@@ -127,7 +127,10 @@ const FOG_COLOR = new THREE.Color(0xbccad6);
 scene.fog = new THREE.FogExp2(FOG_COLOR.getHex(), 0.0034);
 scene.background = FOG_COLOR.clone();
 
+// camera: the DESIRED camera (controls, fly-ins, auto camera, keyboard); renderCam: what is drawn, derived from it
+// every frame by the camera rig (cameraGuard.js: smoothed zoom, collision corrections), never written by the game
 const camera = new THREE.PerspectiveCamera(42, W() / H(), 0.3, 1400);
+const renderCam = new THREE.PerspectiveCamera(42, W() / H(), 0.3, 1400);
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
 controls.dampingFactor = 0.07;
@@ -1713,7 +1716,7 @@ const birdPerches = [];
     for (const t of list) if (rng() < 0.04) birdPerches.push({ x: t.x, y: t.y + top * (t.s || 1) * (t.sy || 1) * 0.97, z: t.z, kind: 'tree' });
   }));
 }
-const birdSys = createBirds({ scene, G, bounds: { bx0, bx1, bz0, bz1 }, groundHeight, surfaceHeight: walkHeight, perches: birdPerches, camera });
+const birdSys = createBirds({ scene, G, bounds: { bx0, bx1, bz0, bz1 }, groundHeight, surfaceHeight: walkHeight, perches: birdPerches, camera: renderCam });
 const birds = birdSys.mesh;
 
 const boardLayers = createBoardLayers({ scene, hexToWorld, groundHeight, walkHeight, decks, bounds: { bx0, bx1, bz0, bz1 } });
@@ -1722,13 +1725,15 @@ const objectiveMarkers = createObjectiveMarkers({ scene, hexToWorld, groundHeigh
 await setProgress(92, 'Compiling shaders...');
 
 // --- Post-processing + adaptive quality ---
-const post = createPost(renderer, scene, camera);
-let viewCam = camera;
+const post = createPost(renderer, scene, renderCam);
+let viewCam = renderCam;
 let usePost = true;
 // Cameras stay out of the scenery (walls, roofs, trees, relief): highest surface baked once from above
 const obstacleTop = bakeObstacleHeights(renderer, scene, { x0: bx0 - 15, z0: bz0 - 15, x1: bx1 + 15, z1: bz1 + 15 },
   { hide: [sky, clouds, stars, moon, birds, grassMesh, flowerMesh, wheatMesh, ...nightFx] });
-const camGuard = createCameraGuard({ camera, controls, top: obstacleTop, groundHeight });
+const camGuard = createCameraGuard({ camera, controls, top: obstacleTop, groundHeight, renderCam,
+  bounds: { x0: bx0 - 15, z0: bz0 - 15, x1: bx1 + 15, z1: bz1 + 15 } });
+camGuard.update(0);
 // Depth of field: focus on a world point (selected unit…) or the orbit target; boosted during slow-motion shots
 const dofState = { user: true, quality: false, point: null, boost: 0, focus: 30 };
 const refreshDof = () => { post.dof.enabled = dofState.user && dofState.quality && usePost; };
@@ -1811,8 +1816,8 @@ function commitTimeOfDay(h) {
   governor.pause(1200);
 }
 
-if (renderer.compileAsync) await renderer.compileAsync(scene, camera);
-else renderer.compile(scene, camera);
+if (renderer.compileAsync) await renderer.compileAsync(scene, renderCam);
+else renderer.compile(scene, renderCam);
 
 await setProgress(100, 'Ready');
 
@@ -1936,7 +1941,6 @@ function animate() {
   const dt = Math.min(rawDt, 0.1) * timeScale;
   simTime += dt;
   const t = simTime;
-  camGuard.before();
   if (pendingHour !== null) { setTimeOfDay(pendingHour, { env: false }); pendingHour = null; }
   G.uTime.value = t;
   G.uWindStrength.value = 0.75 + 0.35 * Math.sin(t * 0.13) + 0.2 * Math.sin(t * 0.41);
@@ -1948,12 +1952,13 @@ function animate() {
   updateIntro(dt);
   controls.update();
   for (const fn of frameHooks) fn(dt, t);
-  camGuard.after(Math.min(rawDt, 0.1));
+  camGuard.update(Math.min(rawDt, 0.1));
   updateDof(Math.min(rawDt, 0.1));
-  sky.position.copy(camera.position);
-  stars.position.copy(camera.position);
-  moon.position.copy(camera.position).addScaledVector(MOON_DIR, 800);
-  clouds.position.set(camera.position.x, G.uCloudHeight.value, camera.position.z);
+  const vp = viewCam.position;
+  sky.position.copy(vp);
+  stars.position.copy(vp);
+  moon.position.copy(vp).addScaledVector(MOON_DIR, 800);
+  clouds.position.set(vp.x, G.uCloudHeight.value, vp.z);
   const t0 = performance.now();
   if (usePost) post.composer.render(dt);
   else renderer.render(scene, viewCam);
@@ -1978,10 +1983,12 @@ return {
   applyView, DEFAULT_VIEW, flyTo, focusHex, resize, start, setRunning,
   setTimeOfDay, previewTimeOfDay, commitTimeOfDay, get hour() { return timeState.hour; }, timeState,
   setTimeScale(k) { timeScale = Math.max(0.01, Math.min(4, k)); }, get timeScale() { return timeScale; },
-  // camera used for rendering / picking / projections: the orbit camera, a slow-motion shot camera or the
-  // orthographic map camera (mapMode.js); null = the orbit camera
-  get viewCamera() { return viewCam; },
-  setViewCamera(cam) { viewCam = cam || camera; post.renderPass.camera = viewCam; },
+  // camera used for rendering / picking / projections: the orbit camera (through the rig), a slow-motion shot
+  // camera or the orthographic map camera (mapMode.js); null or `camera` = the orbit camera
+  get viewCamera() { return viewCam === renderCam ? camera : viewCam; },
+  setViewCamera(cam) { viewCam = !cam || cam === camera ? renderCam : cam; post.renderPass.camera = viewCam; },
+  // the orbit view as actually drawn (collision-corrected, smoothed) and the rig that derives it
+  renderCamera: renderCam, cameraRig: camGuard,
   setFlyFilter(fn) { flyFilter = fn; },
   stopFly() { intro.active = false; },
   clouds, aspect: () => W() / H(),
