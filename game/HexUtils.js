@@ -94,7 +94,7 @@ const DEPLOY_INTER_ZONE_EXCLUSION = 8;
 
 function fixedZones(numPlayers, zones, td) {
   if (!Array.isArray(zones) || zones.length < numPlayers) return null;
-  const picked = zones.slice(0, numPlayers).map((z) => {
+  const picked = zones.slice(0, numPlayers).map((z, i) => {
     const tiles = (z.tiles || [])
       .filter((k) => typeof k === 'string' && td[k] && td[k] !== 'river')
       .map((k) => { const [q, r] = k.split(',').map(Number); return { q, r }; });
@@ -106,7 +106,7 @@ function fixedZones(numPlayers, zones, td) {
       const d = hexDistance(t.q, t.r, Math.round(cq), Math.round(cr));
       if (d < best) { best = d; center = t; }
     }
-    return { q: center.q, r: center.r, tiles };
+    return { q: center.q, r: center.r, tiles, mapZone: i };
   });
   return picked.every(Boolean) ? picked : null;
 }

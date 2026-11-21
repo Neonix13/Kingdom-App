@@ -4,11 +4,12 @@
 // Ramparts are drawn as one continuous wall through the centres of neighbouring rampart hexes (straight where the hexes
 // line up) instead of following the hex outlines; adjacent gate props form one wide gate with several passages.
 export function buildFortifications(api, map) {
-  const { B, W, COL, V, C, beam, hbox, prism, hipRoof, banners, lanternSpots, smokeSources } = api;
-  const { decor, allHexes, hexToWorld, hexCorner, groundHeight, HEX_DIRS, HEX_HEIGHT_STEP } = map;
+  const { B, W, COL, V, C, beam, hbox, prism, hipRoof, banners, lanternSpots, smokeSources, decks } = api;
+  const { decor, segmentData, parseSeg, edgeCorners, allHexes, hexToWorld, hexCorner, groundHeight, HEX_DIRS, HEX_HEIGHT_STEP } = map;
   const ramparts = new Set((decor && decor.ramparts) || []);
   const props = (decor && decor.props) || [];
-  if (!ramparts.size && !props.length) return;
+  const stairSegs = Object.entries(segmentData || {}).filter(([, t]) => t === 'escalier').map(([k]) => parseSeg(k));
+  if (!ramparts.size && !props.length && !stairSegs.length) return;
 
   const K = { stone: C(0xa39582), stoneDark: C(0x7f7467), pave: C(0x8a8070), cloth: C(0xd8ccb0), clothDark: C(0xb9ab8b), red: C(0xa8352a), gold: C(0xb58a3a) };
   const top = (h) => h.height * HEX_HEIGHT_STEP;
@@ -21,6 +22,12 @@ export function buildFortifications(api, map) {
     return { x: (b.x - a.x) / l, z: (b.z - a.z) / l };
   };
   const Vxz = (p, y) => V(p.x, y, p.z);
+  // walkable surface for units (buildings.js decks): a polyline with heights and a half width
+  const addDeck = (pts, hw) => {
+    if (!decks) return;
+    const xs = pts.map((p) => p.x), zs = pts.map((p) => p.z), m = hw + 0.1;
+    decks.push({ pts, hw, x0: Math.min(...xs) - m, x1: Math.max(...xs) + m, z0: Math.min(...zs) - m, z1: Math.max(...zs) + m });
+  };
 
   // --- Rampart graph: links between neighbouring rampart hexes ---
   const nodes = new Map();
@@ -116,11 +123,39 @@ export function buildFortifications(api, map) {
   const runs = gateRuns();
   const gateKeys = new Set(runs.flatMap((r) => r.hexes.map((h) => hk(h.q, h.r))));
 
+  // a run between two walk heights: flat, or climbing in steps (the walk never slopes into the hillside)
+  function steppedRun(pa, pb, ta, tb) {
+    const dh = tb - ta;
+    if (Math.abs(dh) < 0.05) { wallRun(pa, pb, ta, tb); return; }
+    const len = Math.hypot(pb.x - pa.x, pb.z - pa.z);
+    const t = { x: (pb.x - pa.x) / len, z: (pb.z - pa.z) / len };
+    let n = { x: -t.z, z: t.x };
+    if (outerSign({ x: (pa.x + pb.x) / 2, z: (pa.z + pb.z) / 2 }, n) < 0) n = { x: -n.x, z: -n.z };
+    let bot = Infinity;
+    for (let i = 0; i <= 8; i++) {
+      const q = { x: pa.x + (pb.x - pa.x) * i / 8, z: pa.z + (pb.z - pa.z) * i / 8 };
+      for (const d of [WALL_OUT + 0.25, -WALL_IN - 0.2]) bot = Math.min(bot, groundHeight(q.x + n.x * d, q.z + n.z * d));
+    }
+    bot -= 0.5;
+    const N = Math.max(2, Math.round(Math.abs(dh) / 0.16) + 1);
+    const ys = Array.from({ length: N }, (_, i) => ta + dh * i / (N - 1));
+    for (let i = 0; i < N; i++) {
+      const a = { x: pa.x + (pb.x - pa.x) * i / N, z: pa.z + (pb.z - pa.z) * i / N };
+      const b = { x: pa.x + (pb.x - pa.x) * (i + 1) / N, z: pa.z + (pb.z - pa.z) * (i + 1) / N };
+      wallRun(a, b, ys[i], ys[i], {
+        normal: n, bottom: bot, ext: i === 0 || i === N - 1 ? 0.06 : 0.001,
+        openA: i > 0 && ys[i] <= ys[i - 1], openB: i < N - 1 && ys[i] <= ys[i + 1],
+      });
+    }
+  }
   for (const [ka, kb] of wallLinks) {
     if (dropped.has(linkKey(ka, kb))) continue;
     const a = nodes.get(ka), b = nodes.get(kb);
-    wallRun(hexToWorld(a.q, a.r), hexToWorld(b.q, b.r), top(a), top(b));
+    const pa = hexToWorld(a.q, a.r), pb = hexToWorld(b.q, b.r);
+    steppedRun(pa, pb, top(a), top(b));
+    addDeck([{ x: pa.x, y: top(a) + 0.01, z: pa.z }, { x: pb.x, y: top(b) + 0.01, z: pb.z }], 0.85);
   }
+  for (const [k, h] of nodes) if (!linksOf(k).length) { const c = hexToWorld(h.q, h.r); addDeck([{ x: c.x - 0.01, y: top(h) + 0.01, z: c.z }, { x: c.x + 0.01, y: top(h) + 0.01, z: c.z }], 0.85); }
   // joints: a solid block where the wall turns, forks or ends (straight runs need nothing)
   for (const [k, h] of nodes) {
     const ls = linksOf(k);
@@ -158,13 +193,69 @@ export function buildFortifications(api, map) {
         banners.push({ banner: { x: b.x, z: b.z } });
         break;
       }
-      case 'banniere': banners.push({ banner: { x: c.x + 0.15, z: c.z } }); break;
+      case 'banniere': banners.push({ banner: bannerSpot(h, c, p.label) }); break;
       case 'escalier': stairs(at, ax); break;
       case 'feu': campfire(c, gy); break;
       default: break;
     }
   }
   for (const run of runs) gateComplex(run);
+  for (const sg of stairSegs) stoneStairs(sg);
+
+  // where a banner prop stands: on the inner parapet of a wall-walk, else off the hex centre (centres hold units/markers)
+  function bannerSpot(h, c, label) {
+    const k = hk(h.q, h.r);
+    if (nodes.has(k)) {
+      const ls = linksOf(k).map((nk) => { const n = nodes.get(nk); return hexToWorld(n.q, n.r); });
+      let t = { x: 0, z: 1 };
+      if (ls.length) { const l = Math.hypot(ls[0].x - c.x, ls[0].z - c.z); t = { x: (ls[0].x - c.x) / l, z: (ls[0].z - c.z) / l }; }
+      let n = { x: -t.z, z: t.x };
+      if (outerSign(c, n) < 0) n = { x: -n.x, z: -n.z };
+      return { x: c.x - n.x * (WALL_IN - 0.16) + t.x * 0.3, z: c.z - n.z * (WALL_IN - 0.16) + t.z * 0.3, y: top(h) + 0.01, label };
+    }
+    const p = hexCorner(c.x, c.z, 1);
+    const x = c.x + (p.x - c.x) * 0.55, z = c.z + (p.z - c.z) * 0.55;
+    return { x, z, label };
+  }
+
+  // Stone stairs on an 'escalier' edge: a flight running along the face on the low side, rising to a landing at the top.
+  // Between two wall-walk hexes the walk itself climbs in steps (steppedRun), nothing more to draw.
+  function stoneStairs(sg) {
+    const ha = allHexes.get(hk(sg.q1, sg.r1)), hb = allHexes.get(hk(sg.q2, sg.r2));
+    if (!ha || !hb) return;
+    if (nodes.has(hk(ha.q, ha.r)) && nodes.has(hk(hb.q, hb.r))) return;
+    const ec = edgeCorners(sg.q1, sg.r1, sg.q2, sg.r2);
+    if (!ec) return;
+    const [hi, lo] = top(ha) >= top(hb) ? [ha, hb] : [hb, ha];
+    const yHi = top(hi), ch = hexToWorld(hi.q, hi.r), cl = hexToWorld(lo.q, lo.r);
+    const M = { x: (ec[0].x + ec[1].x) / 2, z: (ec[0].z + ec[1].z) / 2 };
+    let d = { x: cl.x - ch.x, z: cl.z - ch.z };
+    const dl = Math.hypot(d.x, d.z);
+    d = { x: d.x / dl, z: d.z / dl };
+    const t = { x: -d.z, z: d.x };
+    const yLo = Math.min(groundHeight(M.x + d.x * 0.45, M.z + d.z * 0.45), top(lo));
+    const dh = Math.max(0.2, yHi - yLo);
+    const Lt = Math.max(0.7, Math.min(1.35, 0.55 + dh * 0.42));
+    const depth = 0.3, half = 0.2;
+    const P = (u, v) => ({ x: M.x + t.x * u + d.x * v, z: M.z + t.z * u + d.z * v });
+    const u1 = 0.42, u0 = u1 - Lt;
+    const nSteps = Math.max(3, Math.ceil(dh / 0.11));
+    const base = yLo - 0.4;
+    for (let k = 0; k < nSteps; k++) {
+      const u = u0 + (k + 0.5) * Lt / nSteps;
+      const c = P(u, depth);
+      hbox(B, c.x, base, yLo + dh * (k + 1) / nSteps, c.z, t, Lt / (2 * nSteps) + 0.004, half, K.pave, 2);
+    }
+    // landing against the face, at the top
+    const L = P(u1 + 0.17, depth / 2 + 0.02);
+    hbox(B, L.x, base, yHi + 0.01, L.z, t, 0.2, depth / 2 + half - 0.05, K.stone, 1);
+    // outer side wall and coping
+    const o0 = P(u0, depth + half + 0.04), o1 = P(u1, depth + half + 0.04);
+    beam(B, V(o0.x, yLo + 0.14, o0.z), V(o1.x, yHi + 0.14, o1.z), 0.06, 0.1, K.stoneDark, 1);
+    hbox(B, P(u0 + Lt / 2, depth + half + 0.04).x, base, yLo + 0.05, P(u0 + Lt / 2, depth + half + 0.04).z, t, Lt / 2, 0.04, K.stoneDark, 1);
+    const f = P(u0, depth), top0 = P(u1, depth);
+    addDeck([{ x: f.x, y: yLo + 0.01, z: f.z }, { x: top0.x, y: yHi + 0.01, z: top0.z }, { x: L.x, y: yHi + 0.01, z: L.z }], half + 0.02);
+  }
 
   // Adjacent porte props -> one gate complex each (a wide gate with several passages, or a single postern)
   function gateRuns() {
@@ -187,6 +278,17 @@ export function buildFortifications(api, map) {
       }
       const ax = dirVec(group[0].q, group[0].r, group[0].rot || 0);
       let tan = { x: -ax.z, z: ax.x };
+      if (group.length === 1) {
+        // a single postern lines up with the wall it pierces: the rampart hexes on either side give its axis
+        const g = group[0], c0 = hexToWorld(g.q, g.r);
+        const rs = HEX_DIRS.map(([dq, dr]) => nodes.get(hk(g.q + dq, g.r + dr))).filter(Boolean).map((h) => hexToWorld(h.q, h.r));
+        if (rs.length) {
+          const a = rs[0], b = rs.find((p) => (p.x - c0.x) * (a.x - c0.x) + (p.z - c0.z) * (a.z - c0.z) < 0);
+          const d = b ? { x: b.x - a.x, z: b.z - a.z } : { x: a.x - c0.x, z: a.z - c0.z };
+          const l = Math.hypot(d.x, d.z);
+          tan = { x: d.x / l, z: d.z / l };
+        }
+      }
       if (group.length > 1) {
         const ws = group.map((g) => hexToWorld(g.q, g.r));
         let best = [ws[0], ws[1]], bd = -1;
@@ -198,7 +300,7 @@ export function buildFortifications(api, map) {
       // passage axis: perpendicular to the wall, pointing the way the first gate faces
       let pax = { x: -tan.z, z: tan.x };
       if (pax.x * ax.x + pax.z * ax.z < 0) pax = { x: -pax.x, z: -pax.z };
-      out.push({ hexes: group.map((g) => allHexes.get(hk(g.q, g.r))), ax: pax, tan });
+      out.push({ hexes: group.map((g) => allHexes.get(hk(g.q, g.r))), ax: pax, tan, label: group.map((g) => g.label).find(Boolean) });
     }
     return out;
   }
@@ -300,9 +402,10 @@ export function buildFortifications(api, map) {
     } else {
       hipRoof(pl, tan, ax, pavL + 0.24, pavW + 0.18, tY + 0.6, 0.36, 0.09, 4);
     }
+    // banners stand on the buttress tops, on the inner side of the gate (never in the passage)
     for (const s of [-1, 1]) {
-      const b = at(s * (half - 0.3), WALL_OUT + 0.7);
-      banners.push({ banner: { x: b.x, z: b.z } });
+      const b = at(s * towerU, -(thick - 0.05));
+      banners.push({ banner: { x: b.x, z: b.z, y: tY + 0.02, label: run.label } });
     }
   }
 
