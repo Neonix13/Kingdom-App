@@ -10,17 +10,17 @@ const td = maps.terrainLookup(map);
 const seg = (q1, r1, q2, r2) => map.segments[rules.edgeKey(q1, r1, q2, r2)] || null;
 
 // Hexes reachable from `start` (unbounded cost). closed: extra edge types treated as impassable
-function reach(start, { mounted = false, closed = [] } = {}) {
+function costs(start, { mounted = false, closed = [] } = {}) {
   const table = rules.MOVE_TABLE;
-  const res = rules.reachable(table, {
+  return rules.reachable(table, {
     start,
     maxCost: 1e6,
     mounted,
     hexAt: (k) => (map.height[k] === undefined ? null : { terrain: td[k], height: map.height[k] }),
     segAt: (q1, r1, q2, r2) => { const s = seg(q1, r1, q2, r2); return closed.includes(s) ? 'cliff' : s; },
-  });
-  return new Set(res.dist.keys());
+  }).dist;
 }
+const reach = (start, opts) => new Set(costs(start, opts).keys());
 const parse = (k) => { const [q, r] = k.split(',').map(Number); return { q, r }; };
 
 test('Col de Kankoku : carte valide, zones et objectifs', () => {
@@ -48,7 +48,7 @@ test('Col de Kankoku : carte valide, zones et objectifs', () => {
   assert.ok(map.decor.ramparts.length >= 3);
 });
 
-test('Col de Kankoku : la porte et le sentier sont les seuls passages entre les deux camps', () => {
+test('Col de Kankoku : la porte, le défilé nord (escalier) et le sentier sud (échelle) sont les seuls passages', () => {
   const qin = parse(map.zones[0].tiles[0]);
   const coal = map.zones[1].tiles;
   const gate = map.objectives.find((o) => o.id === 'porte');
@@ -56,10 +56,12 @@ test('Col de Kankoku : la porte et le sentier sont les seuls passages entre les 
   const all = reach(qin);
   for (const z of map.zones) for (const k of z.tiles) assert.ok(all.has(k), `zone injoignable ${k}`);
   for (const o of map.objectives) assert.ok(all.has(`${o.q},${o.r}`), `objectif injoignable ${o.name}`);
-  // without the gate barriers: only the ladder (infantry) links the two sides
-  const noGate = reach(qin, { closed: ['barriere'] });
-  assert.ok(coal.some((k) => noGate.has(k)), 'le sentier doit contourner la porte');
-  const sealed = reach(qin, { closed: ['barriere', 'echelle'] });
+  // without the gates: the north defile (stone stairs) and the south trail (ladder) each link the two sides on foot
+  const viaStairs = reach(qin, { closed: ['barriere', 'echelle'] });
+  assert.ok(coal.some((k) => viaStairs.has(k)), 'le défilé nord doit contourner la porte');
+  const viaLadder = reach(qin, { closed: ['barriere', 'escalier'] });
+  assert.ok(coal.some((k) => viaLadder.has(k)), 'le sentier sud doit contourner la porte');
+  const sealed = reach(qin, { closed: ['barriere', 'echelle', 'escalier'] });
   assert.ok(!coal.some((k) => sealed.has(k)), 'aucun autre passage ne doit franchir la ligne des remparts');
   // cavalry: the ladder is closed to them, the gate is their only way
   const horses = reach(qin, { mounted: true });
@@ -67,6 +69,24 @@ test('Col de Kankoku : la porte et le sentier sont les seuls passages entre les 
   const horsesNoGate = reach(qin, { mounted: true, closed: ['barriere'] });
   assert.ok(!coal.some((k) => horsesNoGate.has(k)), 'la cavalerie ne doit pas passer par le sentier');
   assert.ok(all.has(`${gate.q},${gate.r}`));
+});
+
+test('Col de Kankoku : les défilés coûtent cher, le chemin de ronde est réservé aux fantassins', () => {
+  const coal = parse(map.zones[1].tiles[0]);
+  const qinTiles = map.zones[0].tiles;
+  const best = (dist) => Math.min(...qinTiles.map((k) => dist.get(k) ?? Infinity));
+  const viaGate = best(costs(coal));
+  const viaNorth = best(costs(coal, { closed: ['barriere', 'echelle'] }));
+  const viaSouth = best(costs(coal, { closed: ['barriere', 'escalier'] }));
+  assert.ok(Number.isFinite(viaNorth) && Number.isFinite(viaSouth));
+  assert.ok(viaNorth >= viaGate + 10, `défilé nord trop rapide (${viaNorth} contre ${viaGate} par la porte)`);
+  assert.ok(viaSouth >= viaGate + 10, `sentier sud trop rapide (${viaSouth} contre ${viaGate} par la porte)`);
+  // the wall-walk: reached on foot by the stone stairs from the courtyard, never on horseback
+  const qin = parse(qinTiles[0]);
+  const foot = reach(qin), horse = reach(qin, { mounted: true });
+  assert.ok(map.decor.ramparts.some((k) => foot.has(k)), 'chemin de ronde inaccessible à pied');
+  assert.ok(!map.decor.ramparts.some((k) => horse.has(k)), 'la cavalerie ne doit pas monter sur les remparts');
+  assert.ok(Object.values(map.segments).filter((t) => t === 'escalier').length >= 5, 'escaliers vers le chemin de ronde');
 });
 
 test('Col de Kankoku : chaque case de déploiement permet de bouger', () => {

@@ -870,6 +870,7 @@ class GameRoom {
         connected: p.connected !== false,
         unitCount: p.units.length,
         color: p.color || '#4a90d9',
+        mapZone: p.startingZone && Number.isInteger(p.startingZone.mapZone) ? p.startingZone.mapZone : null,
       })),
       spectators: this.publicSpectators(),
       turnOrder: this.turnOrder,

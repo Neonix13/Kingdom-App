@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { G, patchLit } from './shaderPatches.js';
 import { makeRng } from './noise.js';
 import * as VEG from './vegetation.js';
+import { createBanners } from './banners3d.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -824,6 +825,7 @@ export function buildStructures(ctx) {
     for (const [segKey, type] of Object.entries(segmentData)) {
       if (type !== 'barriere' && type !== 'chevaux_de_frise') continue;
       const s = parseSeg(segKey);
+      if (ctx.isGateHex && (ctx.isGateHex(s.q1, s.r1) || ctx.isGateHex(s.q2, s.r2))) continue; // the gate's own doors close it
       const ec = edgeCorners(s.q1, s.r1, s.q2, s.r2);
       if (!ec) continue;
       const pts = [];
@@ -840,7 +842,7 @@ export function buildStructures(ctx) {
   }
 
   // Map-specific structures (fortifications.js: ramparts, gatehouses, towers, camps) drawn with the same buffers
-  if (ctx.decorate) ctx.decorate({ B, R, W, COL, V, C, box, beam, hbox, prism, tube, hipRoof, banners: gateInfo, lanternSpots, smokeSources });
+  if (ctx.decorate) ctx.decorate({ B, R, W, COL, V, C, box, beam, hbox, prism, tube, hipRoof, banners: gateInfo, lanternSpots, smokeSources, decks });
 
   if (W.count) {
     const wm = new THREE.MeshStandardMaterial({ color: 0x24170c, emissive: 0xffa24a, emissiveIntensity: 0, roughness: 0.8, side: THREE.DoubleSide });
@@ -861,33 +863,14 @@ export function buildStructures(ctx) {
     scene.add(m);
   }
 
-  // Banners flying downwind at compound gateways
-  {
-    const items = [], cloths = [];
-    const wd = G.uWindDir.value;
-    const ry = Math.atan2(-wd.y, wd.x);
-    for (const { banner } of gateInfo) {
-      const { x, z } = banner;
-      const y = groundHeight(x, z) - 0.05;
-      items.push({ x, y, z, s: 1 });
-      cloths.push({ x, y: y + 1.45, z, s: 1, ry });
-    }
-    if (items.length) {
-      const poleMat = patchLit(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, metalness: 0.1 }), {}, null, 'pole');
-      vegGroup.add(VEG.instanced(VEG.makeBannerGeometry(), poleMat, items, { castShadow: true }));
-      const clothMat = patchLit(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, side: THREE.DoubleSide }), {}, (shader) => {
-        shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
-          {
-            float ph = instanceMatrix[ 3 ].x * 1.3 + instanceMatrix[ 3 ].z * 0.7;
-            float u = clamp( position.x / 0.55, 0.0, 1.0 );
-            float w = sin( position.x * 9.0 - uTime * 6.5 + ph ) * 0.05 + sin( position.x * 5.0 - uTime * 3.7 + ph * 2.0 ) * 0.03;
-            transformed.z += w * u * ( 0.6 + 0.4 * uWindStrength );
-            transformed.y -= u * u * 0.06 * ( 1.2 - uWindStrength * 0.5 );
-          }`);
-      }, 'cloth');
-      vegGroup.add(VEG.instanced(VEG.makeClothGeometry(), clothMat, cloths, { castShadow: false }));
-    }
-  }
+  // War banners (nobori) at compound gateways and on map features (fortifications.js)
+  const bannerSet = createBanners({
+    parent: vegGroup,
+    items: gateInfo.map(({ banner }) => {
+      const y = banner.y ?? groundHeight(banner.x, banner.z) - 0.05;
+      return { x: banner.x, y, z: banner.z, label: banner.label, color: banner.color, zone: ctx.bannerZoneOf ? ctx.bannerZoneOf(banner.x, banner.z) : null };
+    }),
+  });
 
   // Lanterns (glow at dusk/night, bloom picks them up)
   if (lanternSpots.length) {
@@ -896,5 +879,5 @@ export function buildStructures(ctx) {
     vegGroup.add(VEG.instanced(new THREE.SphereGeometry(0.055, 8, 6), m, lanternSpots.map(p => ({ x: p.x, y: p.y, z: p.z, s: 1 }))));
   }
 
-  return { waterwheels, smokeSources, lanternSpots, windowSpots, decks };
+  return { waterwheels, smokeSources, lanternSpots, windowSpots, decks, banners: bannerSet };
 }

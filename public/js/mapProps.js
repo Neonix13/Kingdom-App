@@ -1,6 +1,8 @@
 // Kingdom Battleground — decorative map features stored in map.decor (purely visual, no rule effect):
 //   decor.ramparts: ["q,r", ...]                      wall-walk hexes; their drops get masonry walls and battlements in 3D
 //   decor.props:    [{ type, q, r, rot?, label? }]    point features (tower, gatehouse, tents, banner, stairs, campfire)
+//                   banners are vertical war banners (nobori), never confused with objective pennants; in a fixed
+//                   deployment zone they take the colours of the army deployed there (3D, map3d/banners3d.js)
 // Rules come only from height, terrain and segments (cliffs under the walls, barriers on the gate...).
 // Shared by the server (validation), the game (2D drawing), the map editor and the 3D view (fortifications.js).
 (function (root, factory) {
@@ -128,15 +130,18 @@
           break;
         }
         case 'banniere': {
+          // vertical war banner (nobori) beside the hex centre, unlike the objective pennants
+          const bx = c.x + s * 0.3, by = c.y - s * 0.05;
           ctx.strokeStyle = '#111';
-          ctx.beginPath(); ctx.moveTo(c.x, c.y + s * 0.4); ctx.lineTo(c.x, c.y - s * 0.45); ctx.stroke();
-          ctx.fillStyle = '#d8352a';
-          ctx.fillRect(c.x, c.y - s * 0.45, s * 0.42, s * 0.3);
+          ctx.beginPath(); ctx.moveTo(bx, by + s * 0.45); ctx.lineTo(bx, by - s * 0.55); ctx.lineTo(bx + s * 0.22, by - s * 0.55); ctx.stroke();
+          ctx.fillStyle = '#a8352a';
+          ctx.fillRect(bx + s * 0.02, by - s * 0.52, s * 0.18, s * 0.6);
+          ctx.strokeRect(bx + s * 0.02, by - s * 0.52, s * 0.18, s * 0.6);
           if (p.label) {
             // fixed 20px glyph scaled to the hex size (fonts below ~1px are clamped by some browsers)
             ctx.save();
-            ctx.translate(c.x + s * 0.21, c.y - s * 0.3);
-            ctx.scale(s / 80, s / 80);
+            ctx.translate(bx + s * 0.11, by - s * 0.38);
+            ctx.scale(s / 110, s / 110);
             ctx.fillStyle = '#fff';
             ctx.font = 'bold 20px sans-serif';
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle';

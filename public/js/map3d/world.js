@@ -10,6 +10,7 @@ import { createPost, QualityGovernor } from './post.js';
 import { createCloudLayer } from './clouds.js';
 import { createStars, createMoon, createFireflies, createLightPools } from './night.js';
 import { buildStructures } from './buildings.js';
+import { createBirds } from './birds.js';
 import { buildFortifications } from './fortifications.js';
 import { createBoardLayers } from './overlays.js';
 import { createObjectiveMarkers } from './objectives3d.js';
@@ -48,6 +49,9 @@ for (const [segKey, segType] of Object.entries(segmentData)) segSet.set(segKey, 
 function getSegType(q1, r1, q2, r2) {
   return segSet.get(`${q1},${r1}|${q2},${r2}`) || segSet.get(`${q2},${r2}|${q1},${r1}`) || null;
 }
+// edges drawn as a vertical step in the terrain: cliffs, and stone stairs (escalier.js-style flights stand against them)
+const VERTICAL_SEGS = new Set(['cliff', 'escalier']);
+const isVerticalEdge = (q1, r1, q2, r2) => VERTICAL_SEGS.has(getSegType(q1, r1, q2, r2));
 
 await setProgress(12, 'Processing hex grid...');
 
@@ -181,6 +185,15 @@ const TEX_UV_SCALE = 0.5;
 // --- Visual type per hex ---
 const fieldSet = new Set(decor.fields || []);
 const rampartSet = new Set(decor.ramparts || []);
+// fortified ground (walls, gates, stairs): no boulders or scree there
+const gateHexSet = new Set((decor.props || []).filter((p) => p.type === 'porte').map((p) => `${p.q},${p.r}`));
+const stairHexSet = new Set();
+for (const [k, t] of Object.entries(segmentData)) if (t === 'escalier') for (const hk of k.split('|')) stairHexSet.add(hk);
+function nearFort(q, r) {
+  const k = `${q},${r}`;
+  if (rampartSet.has(k) || gateHexSet.has(k) || stairHexSet.has(k)) return true;
+  return HEX_DIRS.some(([dq, dr]) => gateHexSet.has(`${q + dq},${r + dr}`));
+}
 function isWaterHex(h) { return h.terrain === 'river' || h.terrain === 'bridge'; }
 // high open ground drawn as continuous mountain slopes rather than stepped hex plateaus
 function isMountain(h) {
@@ -498,12 +511,24 @@ const cornerHeights = new Map();
     return idx;
   }
 
+  // Terrain under a wall-walk hex is sunk below the lowest walk around it (the wall's mass hides it): the walk, which
+  // climbs from hex centre to hex centre, then never has rock showing through it.
+  const sunk = new Map();
+  for (const k of rampartSet) {
+    const h = allHexes.get(k);
+    if (!h) continue;
+    let m = effH(h);
+    for (const [dq, dr] of HEX_DIRS) { const nk = `${h.q + dq},${h.r + dr}`; if (rampartSet.has(nk)) m = Math.min(m, effH(allHexes.get(nk))); }
+    sunk.set(k, m - 0.3);
+  }
+  const surfH = (h) => { const v = sunk.get(`${h.q},${h.r}`); return v === undefined ? effH(h) : v; };
+
   // Step 1: per-edge transition widths
   const hexInfo = new Map();
   for (const [key, hex] of allHexes) {
     let needsRing = false;
     const edgeTransitions = [0, 0, 0, 0, 0, 0];
-    const hexH = effH(hex);
+    const hexH = surfH(hex);
     for (let i = 0; i < 6; i++) {
       const [dq, dr] = HEX_DIRS[i];
       const nq = hex.q + dq, nr = hex.r + dr;
@@ -512,9 +537,9 @@ const cornerHeights = new Map();
       if (!neighbor) {
         needsRing = true;
         edgeTransitions[geoEdge] = 0.55;
-      } else if (Math.abs(hexH - effH(neighbor)) > 0.01) {
+      } else if (Math.abs(hexH - surfH(neighbor)) > 0.01) {
         needsRing = true;
-        const cliff = getSegType(hex.q, hex.r, nq, nr) === 'cliff';
+        const cliff = isVerticalEdge(hex.q, hex.r, nq, nr);
         // mountain slopes run from centre to centre (no flat tops / stepped blocks); elsewhere a flat with a bevel
         edgeTransitions[geoEdge] = cliff ? 0.1 : (isMountain(hex) && isMountain(neighbor) ? 0.93 : 0.7);
       }
@@ -534,7 +559,7 @@ const cornerHeights = new Map();
   for (const [key, hex] of allHexes) {
     const wp = hexToWorld(hex.q, hex.r);
     const ti = hexTex(hex);
-    centerMap.set(key, addVertex(wp.x, effH(hex), wp.z, hexColor(hex), [ti, ti, ti], [1, 0, 0]));
+    centerMap.set(key, addVertex(wp.x, surfH(hex), wp.z, hexColor(hex), [ti, ti, ti], [1, 0, 0]));
   }
 
   // Step 3/4: shared corners + inner rings
@@ -542,7 +567,7 @@ const cornerHeights = new Map();
   for (const [key, hex] of allHexes) {
     const centerIdx = centerMap.get(key);
     const wp = hexToWorld(hex.q, hex.r);
-    const hexY = effH(hex);
+    const hexY = surfH(hex);
     const info = hexInfo.get(key);
     const myColor = hexColor(hex);
     const myTi = hexTex(hex);
@@ -562,7 +587,7 @@ const cornerHeights = new Map();
         if (neighbor) {
           blendColors.push(hexColor(neighbor));
           cornerTerrains.push(hexTex(neighbor));
-          heightSum += effH(neighbor);
+          heightSum += surfH(neighbor);
           heightCount++;
         }
       }
@@ -570,11 +595,22 @@ const cornerHeights = new Map();
       const [n1dq, n1dr] = neighborOffsets[1];
       const n0q = hex.q + n0dq, n0r = hex.r + n0dr;
       const n1q = hex.q + n1dq, n1r = hex.r + n1dr;
-      const cornerIsCliff = getSegType(hex.q, hex.r, n0q, n0r) === 'cliff'
-        || getSegType(hex.q, hex.r, n1q, n1r) === 'cliff'
-        || getSegType(n0q, n0r, n1q, n1r) === 'cliff';
+      const cornerIsCliff = isVerticalEdge(hex.q, hex.r, n0q, n0r)
+        || isVerticalEdge(hex.q, hex.r, n1q, n1r)
+        || isVerticalEdge(n0q, n0r, n1q, n1r);
       const isStream = streamCornerKeys.has(cornerKey);
       let cornerY = heightSum / heightCount;
+      {
+        // corners under a wall never rise above its walk; inside a gate passage they stay at the passage floor
+        let walk = rampartSet.has(key) ? hexY : Infinity;
+        let gateFloor = gateHexSet.has(key) ? hexY : Infinity;
+        for (const [dq, dr] of neighborOffsets) {
+          const nk = `${hex.q + dq},${hex.r + dr}`;
+          if (rampartSet.has(nk)) walk = Math.min(walk, surfH(allHexes.get(nk)));
+          if (gateHexSet.has(nk)) gateFloor = Math.min(gateFloor, effH(allHexes.get(nk)));
+        }
+        cornerY = Math.min(cornerY, walk, gateFloor);
+      }
 
       let blended, bIds, bWts;
       if (isStream) {
@@ -1198,9 +1234,10 @@ for (const [key, hex] of allHexes) {
     }
   } else if (vt === 'rocky') {
     // mountains: a few outcrops on the steep parts only (none on gentle slopes), alpine grass, sparse pines low down
+    const fortified = nearFort(hex.q, hex.r);
     let slope = 0;
     for (const [dq, dr] of HEX_DIRS) { const n = allHexes.get(`${hex.q + dq},${hex.r + dr}`); if (n) slope = Math.max(slope, Math.abs(n.height - hex.height)); }
-    const n = slope >= 2 ? 1 + (rng() < 0.4 ? 1 : 0) : (rng() < 0.18 ? 1 : 0);
+    const n = fortified ? 0 : slope >= 2 ? 1 + (rng() < 0.4 ? 1 : 0) : (rng() < 0.18 ? 1 : 0);
     for (let i = 0; i < n; i++) {
       const [x, z] = randomInHex(wp.x, wp.z, rng, 0.85);
       const sc = 0.18 + rng() * (slope >= 2 ? 0.3 : 0.16);
@@ -1229,7 +1266,7 @@ for (const [segKey, type] of Object.entries(segmentData)) {
   const ha = allHexes.get(`${s.q1},${s.r1}`), hb = allHexes.get(`${s.q2},${s.r2}`);
   const ec = edgeCorners(s.q1, s.r1, s.q2, s.r2);
   if (!ha || !hb || !ec) continue;
-  if (rampartSet.has(`${s.q1},${s.r1}`) || rampartSet.has(`${s.q2},${s.r2}`)) continue;
+  if (nearFort(s.q1, s.r1) || nearFort(s.q2, s.r2)) continue;
   const rng = makeRng(s.q1 * 31 + s.r1 * 17 + s.q2 * 13 + s.r2 * 7 + 1);
   const [hi, lo] = effH(ha) >= effH(hb) ? [ha, hb] : [hb, ha];
   const ph = hexToWorld(hi.q, hi.r), pl = hexToWorld(lo.q, lo.r);
@@ -1332,12 +1369,17 @@ vegGroup.add(grassMesh, wheatMesh, flowerMesh);
 
 await setProgress(78, 'Raising villages...');
 
-const { waterwheels, smokeSources, lanternSpots, windowSpots, decks } = buildStructures({
+// fixed deployment zone (index in map.zones) a point stands in: base-camp banners take that army's colours
+const zoneOfHex = new Map();
+(mapDoc.zones || []).forEach((z, i) => { for (const k of z.tiles || []) if (!zoneOfHex.has(k)) zoneOfHex.set(k, i); });
+const bannerZoneOf = (x, z) => { const h = worldToHex(x, z); return h ? (zoneOfHex.get(`${h.q},${h.r}`) ?? null) : null; };
+
+const { waterwheels, smokeSources, lanternSpots, windowSpots, decks, banners: bannerSet } = buildStructures({
   scene, vegGroup, allHexes, hexesByType, segmentData, getSegType, parseSeg, edgeCorners,
   hexToWorld, hexCorner, groundHeight, effH, isWaterHex, footbridges, gateways,
   HEX_DIRS, DIR_TO_GEO_EDGE, CORNER_NEIGHBORS, HEX_HEIGHT_STEP, WATER_LEVEL, RIVERBED_HEIGHT,
-  lanternMats, windowMats,
-  decorate: (api) => buildFortifications(api, { decor, allHexes, hexToWorld, hexCorner, edgeCorners, groundHeight, effH, getSegType, HEX_DIRS, HEX_HEIGHT_STEP }),
+  lanternMats, windowMats, bannerZoneOf, isGateHex: (q, r) => gateHexSet.has(`${q},${r}`),
+  decorate: (api) => buildFortifications(api, { decor, segmentData, parseSeg, allHexes, hexToWorld, hexCorner, edgeCorners, groundHeight, effH, getSegType, HEX_DIRS, HEX_HEIGHT_STEP }),
 });
 
 // Height where units stand: the ground, or the deck of a bridge they are crossing
@@ -1464,52 +1506,19 @@ const smokeMat = new THREE.ShaderMaterial({
   scene.add(smoke);
 }
 
-// --- Birds ---
-const birdCount = 22;
-const birdGeo = new THREE.BufferGeometry();
-birdGeo.setAttribute('position', new THREE.Float32BufferAttribute([
-  0, 0, 0.12, 0, 0, -0.08, -0.32, 0.0, -0.02,
-  0, 0, 0.12, 0.32, 0.0, -0.02, 0, 0, -0.08,
-], 3));
-birdGeo.setAttribute('wing', new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 0], 1));
-const birdMat = new THREE.MeshBasicMaterial({ color: 0x1d1b1a, side: THREE.DoubleSide });
-birdMat.onBeforeCompile = (shader) => {
-  shader.uniforms.uTime = G.uTime;
-  shader.vertexShader = shader.vertexShader
-    .replace('#include <common>', '#include <common>\nuniform float uTime;\nattribute float wing;')
-    .replace('#include <begin_vertex>', `#include <begin_vertex>
-      float ph = uTime * 9.0 + float( gl_InstanceID ) * 1.7;
-      transformed.y += sin( ph ) * 0.22 * wing;
-      transformed.x *= 1.0 - 0.25 * wing * ( 0.5 + 0.5 * sin( ph ) );`);
-};
-const birds = new THREE.InstancedMesh(birdGeo, birdMat, birdCount);
-birds.frustumCulled = false;
-scene.add(birds);
-const birdData = Array.from({ length: birdCount }, (_, i) => ({
-  flock: i < 12 ? 0 : 1,
-  off: new THREE.Vector3((Math.random() - 0.5) * 5, (Math.random() - 0.5) * 1.5, (Math.random() - 0.5) * 5),
-  ph: Math.random() * 10,
-}));
-const _bm = new THREE.Matrix4(), _bq = new THREE.Quaternion(), _bs = new THREE.Vector3(1, 1, 1);
-const _bp = new THREE.Vector3(), _bn = new THREE.Vector3(), _be = new THREE.Euler();
-function flockPos(f, t, out) {
-  const r = f === 0 ? 34 : 22, sp = f === 0 ? 0.035 : -0.05;
-  const a = t * sp + f * 2.1;
-  return out.set(BCX + Math.cos(a) * r + Math.sin(a * 2.3) * 6, 15 + f * 5 + Math.sin(t * 0.21 + f) * 2, BCZ + Math.sin(a) * r * 0.75);
-}
-function updateBirds(t) {
-  for (let i = 0; i < birdCount; i++) {
-    const b = birdData[i];
-    const tt = t + b.ph * 0.15;
-    flockPos(b.flock, tt, _bp).add(b.off);
-    flockPos(b.flock, tt + 0.1, _bn).add(b.off);
-    _be.set(0, Math.atan2(_bn.x - _bp.x, _bn.z - _bp.z), Math.sin(tt * 0.7 + i) * 0.25);
-    _bq.setFromEuler(_be);
-    _bm.compose(_bp, _bq, _bs);
-    birds.setMatrixAt(i, _bm);
+// --- Birds: flocks that roam the valley and perch on wall-walks, summits and fields ---
+const birdPerches = [];
+{
+  const rng = makeRng(777);
+  for (const k of rampartSet) { const h = allHexes.get(k); if (h && rng() < 0.6) { const c = hexToWorld(h.q, h.r); birdPerches.push({ x: c.x, y: walkHeight(c.x, c.z), z: c.z }); } }
+  for (const h of allHexes.values()) {
+    const c = hexToWorld(h.q, h.r);
+    const top = h.height >= 4 && HEX_DIRS.every(([dq, dr]) => { const n = allHexes.get(`${h.q + dq},${h.r + dr}`); return !n || n.height <= h.height; });
+    if ((top && rng() < 0.5) || (fieldSet.has(`${h.q},${h.r}`) && rng() < 0.08)) birdPerches.push({ x: c.x, y: groundHeight(c.x, c.z), z: c.z });
   }
-  birds.instanceMatrix.needsUpdate = true;
 }
+const birdSys = createBirds({ scene, G, bounds: { bx0, bx1, bz0, bz1 }, groundHeight, perches: birdPerches, camera });
+const birds = birdSys.mesh;
 
 const boardLayers = createBoardLayers({ scene, hexToWorld, groundHeight, walkHeight, decks, bounds: { bx0, bx1, bz0, bz1 } });
 const objectiveMarkers = createObjectiveMarkers({ scene, hexToWorld, groundHeight, objectives: mapDoc.objectives || [] });
@@ -1709,7 +1718,7 @@ function animate() {
   smokeMat.uniforms.uWind.value.copy(G.uWindDir.value);
   smokeMat.uniforms.uLight.value = 1 - timeState.night * 0.75;
   for (const ww of waterwheels) ww.rotation.x = t * 0.3;
-  updateBirds(t);
+  if (birds.visible) birdSys.update(dt);
   updateIntro(dt);
   controls.update();
   for (const fn of frameHooks) fn(dt, t);
@@ -1741,5 +1750,9 @@ return {
   applyQuality, qualityHooks, frameHooks,
   setGrid(v) { terrainUniforms.uGrid.value = v; }, get grid() { return terrainUniforms.uGrid.value; },
   sunDir, G, layers: boardLayers, objectives: objectiveMarkers, map: mapDoc,
+  // base-camp banners in the colours of the army deployed in each fixed zone: [{ zone, color, emblem }]
+  setCampColors: (owners) => bannerSet && bannerSet.setZoneColors(owners),
+  // birds scatter when one of these points (unit positions, world x/z) comes near their perch
+  setBirdThreats: (points) => birdSys.setThreats(points),
 };
 }
