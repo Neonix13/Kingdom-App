@@ -43,3 +43,23 @@ test('serveur : les segments de jeu incluent falaises automatiques et murs de re
     for (const [k, t] of Object.entries(map.segments)) if (['escalier', 'echelle', 'bridge', 'passerelle'].includes(t)) assert.strictEqual(sd[k], t);
   }
 });
+
+test('serveur : sur le Col de Kankoku, un fantassin ne monte sur le mur que par l\'escalier', () => {
+  const GameRoom = require('../game/GameRoom');
+  const { findPathCost } = require('../game/HexUtils');
+  const room = new GameRoom('TEST', 'h', { mapId: 'kankoku' });
+  room._loadMap();
+  const unit = { id: 'u', typeId: 'soldats', category: 'Infanterie', q: 23, r: 8 };
+  const path = (q, r) => findPathCost(room.hexMap, {}, 23, 8, q, r, 20, unit, room.segmentData, null, room.moveTable());
+  // 23,8 (courtyard) -> 24,7 (wall walk) is a single edge without stairs: refused directly...
+  const direct = findPathCost(room.hexMap, {}, 23, 8, 24, 7, 1, unit, room.segmentData, null, room.moveTable());
+  assert.strictEqual(direct, null);
+  // ...but reachable through the stairs a few hexes away, and the path climbs on a stair edge
+  const p = path(24, 7);
+  assert.ok(p, 'chemin vers le chemin de ronde');
+  const steps = [[23, 8], ...p.path.map((s) => [s.q ?? s[0], s.r ?? s[1]])];
+  const keyE = (a, b) => require('../game/rules').edgeKey(a[0], a[1], b[0], b[1]);
+  const onto = steps.findIndex((s) => room.map.decor.ramparts.includes(`${s[0]},${s[1]}`));
+  assert.ok(onto > 0);
+  assert.strictEqual(room.segmentData[keyE(steps[onto - 1], steps[onto])], 'escalier');
+});

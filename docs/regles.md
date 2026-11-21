@@ -57,7 +57,11 @@ Puis on ajoute :
 | **Mur** | **infranchissable** |
 | **Échelle** | coût fixe de **3** (pente ignorée) — infanterie et généraux seulement |
 | **Escalier de pierre** | coût fixe de **2** (pente ignorée) — infanterie et généraux seulement ; monte au chemin de ronde des remparts, franchit une marche de rocher. Ne se sabote pas, ne se construit pas. Combattre à travers : attaquant en bas désavantagé (attaque −3 au corps à corps), défenseur avantagé (défense +2) — valeurs dans `data/balance/segments.json` |
+| **Rampe** | pente praticable par tous (coût normal de la pente) posée sur un fort dénivelé pour éviter la falaise automatique |
 | Cavalerie et chars | ne franchissent jamais falaises, murs, échelles ni escaliers |
+
+- **Falaises automatiques** : entre deux cases voisines dont la hauteur diffère de **2 niveaux ou plus**, le bord est une falaise (infranchissable) même sans segment, sauf s'il porte un escalier, une échelle, une rampe, un pont ou une passerelle. Un seul niveau d'écart est une pente douce praticable. Même règle pour le serveur, l'IA, les aperçus, la 2D et la 3D (`KBMapProps.effectiveSegments`, `public/js/mapProps.js`).
+- **Remparts** : on ne monte sur le chemin de ronde (cases `decor.ramparts`) et on n'en descend que par un **escalier de pierre** ou une **échelle** ; tous les autres bords entre une case de rempart et une case voisine hors rempart sont des murs à pic (falaise), quelle que soit la hauteur. Le chemin de ronde reste continu d'une case de rempart à l'autre.
 
 - **Pas minimum** : une unité qui n'a encore rien dépensé de sa vitesse ce tour (ni déplacement, ni posture, ni pivot) peut toujours avancer d'**une case**, même si ce pas coûte plus que sa vitesse (sauf falaise, mur, ou échelle et escalier pour la cavalerie) ; ce pas consomme toute sa vitesse. Personne ne reste ainsi bloqué dans un fleuve (−1 vitesse) ou au pied d'une pente, même de nuit.
 - On ne traverse pas une case occupée par une unité visible.
