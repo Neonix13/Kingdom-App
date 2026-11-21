@@ -1,5 +1,8 @@
-// Combat result card, style D (ink panels): shown in the 3D view after the hit animation, auto-dismissed.
-// Mode from the 3D settings (localStorage kb_view3d_settings.combatCard): 'full' | 'small' | 'off'. Playback combats always use 'small'.
+// Combat result card, style D (ink panels): shown after the hit animation.
+// Settings (localStorage kb_view3d_settings): combatCard 'full' | 'small' | 'off' (playback combats always use 'small');
+// combatClose 'mine' (default: my own combats stay until closed, the others close by themselves) | 'manual' | 'auto'.
+// Every combat of the game can be opened again (open(index), from the journal or the "dernier combat" button),
+// with ◀ ▶ between the combats of the same turn.
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const DEF_LABEL = { counter: 'Contre-attaque', absorb: 'Encaissement', rien: 'Aucune réponse' };
 
@@ -7,28 +10,76 @@ export function createCombatSplash({ bridge, portrait, kanji, isActive }) {
   const root = document.createElement('div');
   root.id = 'hud-splash';
   document.body.appendChild(root);
-  let hideTimer = null, showTimer = null, shown = false;
+  let hideTimer = null, showTimer = null, shown = false, current = null; // current: { index, manual } of the card on screen
+  const mine = new Set(); // ids of my units (combat logs keep the ids of dead units)
 
-  const mode = () => {
-    try { return JSON.parse(localStorage.getItem('kb_view3d_settings') || '{}').combatCard || 'full'; } catch (e) { return 'full'; }
+  const settings = () => {
+    try { return JSON.parse(localStorage.getItem('kb_view3d_settings') || '{}'); } catch (e) { return {}; }
   };
+  const mode = () => settings().combatCard || 'full';
+  const closeMode = () => settings().combatClose || 'mine';
+  const history = () => (bridge.combatHistory || []).filter((e) => e && e.log && !e.log.abilityUsed);
 
   function hide() {
     clearTimeout(hideTimer);
     clearTimeout(showTimer);
     shown = false;
+    current = null;
     root.className = '';
     root.innerHTML = '';
     document.body.classList.remove('hud-splash-on');
   }
-  root.addEventListener('click', hide);
+  root.addEventListener('click', (e) => {
+    const nav = e.target.closest('[data-sp]');
+    if (nav) {
+      e.stopPropagation();
+      if (nav.dataset.sp === 'close') hide(); else step(nav.dataset.sp === 'prev' ? -1 : 1);
+      return;
+    }
+    hide();
+  });
   const editable = (n) => n && (n.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName));
   window.addEventListener('keydown', (e) => {
-    if (!shown || e.code !== 'Space' || editable(document.activeElement)) return;
-    e.preventDefault();
-    e.stopImmediatePropagation();
-    hide();
+    if (!shown || editable(document.activeElement)) return;
+    if (e.code === 'Space' || e.code === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); hide(); return; }
+    if (current && current.manual && (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) {
+      e.preventDefault(); e.stopImmediatePropagation();
+      step(e.code === 'ArrowLeft' ? -1 : 1);
+    }
   }, true);
+
+  function rememberMine() {
+    const st = bridge.state || {};
+    for (const u of [...(st.myUnits || []), ...(st.units || [])]) if (u && (u.isMine || u.playerId === bridge.myId)) mine.add(u.id);
+  }
+  const isMine = (log) => mine.has(log.attackerId) || mine.has(log.targetId);
+
+  // Combats of the same turn as history entry i: { list (indices), pos }
+  function siblings(i) {
+    const all = bridge.combatHistory || [];
+    const e = all[i];
+    if (!e) return { list: [], pos: -1 };
+    const list = [];
+    all.forEach((x, j) => { if (x && x.log && !x.log.abilityUsed && x.round === e.round) list.push(j); });
+    return { list, pos: list.indexOf(i) };
+  }
+  function step(d) {
+    if (!current || current.index == null) return;
+    const { list, pos } = siblings(current.index);
+    const j = list[pos + d];
+    if (j != null) open(j);
+  }
+  function navHtml(index) {
+    if (index == null) return '';
+    const { list, pos } = siblings(index);
+    const e = (bridge.combatHistory || [])[index];
+    const n = list.length;
+    return `<div class="sp-nav">
+      <button data-sp="prev" ${pos <= 0 ? 'disabled' : ''} aria-label="Combat précédent">◀</button>
+      <span>Tour ${esc(e ? e.round : '')} · combat ${pos + 1} / ${n}</span>
+      <button data-sp="next" ${pos >= n - 1 ? 'disabled' : ''} aria-label="Combat suivant">▶</button>
+      <button data-sp="close" class="x" aria-label="Fermer">✕</button></div>`;
+  }
 
   function unit(id, name, hidden) {
     const st = bridge.state || {};
@@ -100,7 +151,7 @@ export function createCombatSplash({ bridge, portrait, kanji, isActive }) {
     return { verdict, rows, lines, foot };
   }
 
-  function render(log, m) {
+  function render(log, m, index = null, manual = false) {
     const A = unit(log.attackerId, log.attackerName, log.attackerHidden);
     const T = unit(log.targetId, log.targetName, log.targetHidden);
     const duel = !!log.duel;
@@ -111,7 +162,8 @@ export function createCombatSplash({ bridge, portrait, kanji, isActive }) {
     const result = `<div class="sp-result">
         <div class="sp-head"><span class="sp-verdict hud-dela ${verdictCls}">${body.verdict}</span><div class="sp-lines">${body.lines.map((l) => `<div>${l}</div>`).join('')}</div></div>
         ${rows ? `<div class="sp-rows">${rows}</div>` : ''}
-        <div class="sp-foot"><span>${body.foot || '&nbsp;'}</span><span class="sp-skip">Continuer <span class="hud-kbd">Espace</span></span></div>
+        <div class="sp-foot"><span>${body.foot || '&nbsp;'}</span><span class="sp-skip">${manual ? 'Fermer' : 'Continuer'} <span class="hud-kbd">Espace</span></span></div>
+        ${manual ? navHtml(index) : ''}
       </div>`;
     if (m === 'small') {
       return `<div class="sp-small"><div class="sp-title hud-dela">${duel ? 'DUEL · ' : ''}${esc(A.name)} <i>→</i> ${esc(T.name)}</div>${result}</div>`;
@@ -125,11 +177,24 @@ export function createCombatSplash({ bridge, portrait, kanji, isActive }) {
       </div>`;
   }
 
+  function paint(log, mm, index, manual) {
+    root.innerHTML = render(log, mm, index, manual);
+    root.className = `on ${mm}${log.duel ? ' duel' : ''}${manual ? ' manual' : ''}`;
+    shown = true;
+    current = { index, manual };
+    document.body.classList.add('hud-splash-on');
+  }
+
   function show(log, { playback = false } = {}) {
     if (!log || log.abilityUsed || !isActive()) return;
     if (log.attackerName == null && log.targetName == null) return;
+    rememberMine();
+    // a card I opened myself (journal) stays until I close it
+    if (current && current.manual && current.opened) return;
     const m = playback ? 'small' : mode();
     if (m === 'off') return;
+    const cm = closeMode();
+    const manual = !playback && (cm === 'manual' || (cm === 'mine' && isMine(log)));
     const rounds = log.duel ? (log.duel.rounds || []).length : 0;
     const delay = playback ? 0 : log.duel ? 1100 + rounds * 1150 + 300 : log.ranged ? 1000 : 650;
     const dur = playback ? 2200 : m === 'small' ? 4500 : log.duel ? Math.min(6000, 3000 + rounds * 500) : (log.targetKilled || log.attackerKilled ? 4200 : 3400);
@@ -137,15 +202,30 @@ export function createCombatSplash({ bridge, portrait, kanji, isActive }) {
     clearTimeout(hideTimer);
     showTimer = setTimeout(() => {
       if (!isActive() || document.body.classList.contains('v3-photo')) return;
+      if (current && current.manual && current.opened) return;
       const modal = [...document.querySelectorAll('.overlay')].some((o) => o.style.display && o.style.display !== 'none');
       const mm = modal ? 'small' : m;
-      root.innerHTML = render(log, mm);
-      root.className = `on ${mm}${log.duel ? ' duel' : ''}`;
-      shown = true;
-      document.body.classList.add('hud-splash-on');
-      hideTimer = setTimeout(hide, dur);
+      const index = (bridge.combatHistory || []).findIndex((e) => e && e.log === log);
+      paint(log, mm, index >= 0 ? index : null, manual);
+      if (!manual) hideTimer = setTimeout(hide, dur);
     }, delay);
   }
 
-  return { show, hide, get shown() { return shown; } };
+  // Opens combat i of the history again (full card, closed by hand, ◀ ▶ within its turn)
+  function open(i) {
+    const e = (bridge.combatHistory || [])[i];
+    if (!e || !e.log || !isActive()) return;
+    rememberMine();
+    clearTimeout(showTimer);
+    clearTimeout(hideTimer);
+    paint(e.log, mode() === 'small' ? 'small' : 'full', i, true);
+    current.opened = true;
+  }
+  function openLast() {
+    const all = bridge.combatHistory || [];
+    for (let i = all.length - 1; i >= 0; i--) if (all[i] && all[i].log && !all[i].log.abilityUsed) { open(i); return true; }
+    return false;
+  }
+
+  return { show, hide, open, openLast, get count() { return history().length; }, get shown() { return shown; } };
 }

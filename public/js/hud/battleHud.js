@@ -66,6 +66,7 @@ export function mountBattleHud(bridge, view) {
     <div class="hud-roster"></div>
     <div class="hud-orders hud-panel" hidden></div>
     <div class="hud-feed"></div>
+    <button class="hud-lastcombat" title="Rouvrir la fiche du dernier combat (journal : toutes les fiches)">撃 DERNIER COMBAT</button>
     <div class="hud-card hud-panel hud-hatch" hidden></div>
     <div class="hud-mode"></div>
     <div class="hud-route" hidden></div>
@@ -238,6 +239,7 @@ export function mountBattleHud(bridge, view) {
         cls += placed ? ' placed' : ' todo';
         status = `<span class="s">${placed ? 'PLACÉ' : 'À PLACER'}</span>`;
       } else if (u.isFleeing) { cls += ' flee'; status = '<span class="s">FUITE</span>'; }
+      else if (u.march && u.march.route && u.march.route.length && !(sim && orders.has(String(u.id)))) status = '<span class="s">MARCHE</span>';
       else if (sim && orders.has(String(u.id))) status = '<span class="s">ORDRE</span>';
       else if (!sim && u.hasMoved && u.hasAttacked) { cls += ' done'; status = '<span class="s">JOUÉ</span>'; }
       else status = `<span class="v">${u.vitality ?? ''}</span>`;
@@ -324,6 +326,7 @@ export function mountBattleHud(bridge, view) {
     if (u.stunned) meta.push('<span class="flag">SONNÉ</span>');
     if (u.isMine && !deploying && !sim && u.hasMoved) meta.push('DÉPLACÉ');
     if (u.isMine && !deploying && !sim && u.hasAttacked) meta.push('A ATTAQUÉ');
+    if (u.isMine && u.march && u.march.route && u.march.route.length) meta.push(`<span class="flag ok">MARCHE · ${u.march.route.length} CASE${u.march.route.length > 1 ? 'S' : ''}</span>`);
     const pct = u.maxVitality ? Math.max(0, Math.min(100, (u.vitality / u.maxVitality) * 100)) : 0;
     const stanceShown = !sim && $('stance-panel')?.style.display === 'block';
     const sty = (s) => (window.stanceStyle ? window.stanceStyle(s) : { k: '', svg: '', c: '#000', name: names[s] || s, short: names[s] || s });
@@ -354,7 +357,7 @@ export function mountBattleHud(bridge, view) {
           ${u.isGeneral ? `<div class="stat inv"><span>${esc((u.weapon || 'ARME').toUpperCase())}</span><b>${u.power ?? '—'}</b></div>` : `<div class="stat inv"><span>MORAL</span><b>${u.morale ?? '—'}</b></div>`}</div>
         <div class="stances" ${stanceShown ? '' : 'hidden'}>${stanceBtns}</div>
       </div>
-      <div class="tools"><button data-card="sheet" title="Fiche complète (double-clic sur l'unité)">FICHE</button></div>`;
+      <div class="tools">${u.isMine && u.march && u.march.route && u.march.route.length ? '<button data-card="unmarch" title="Annuler la marche sur plusieurs tours">STOP MARCHE</button>' : ''}<button data-card="sheet" title="Fiche complète (double-clic sur l'unité)">FICHE</button></div>`;
   }
   el.card.addEventListener('click', (e) => {
     const sb = e.target.closest('[data-stance]');
@@ -362,6 +365,11 @@ export function mountBattleHud(bridge, view) {
       if (window.hideStanceTooltip) window.hideStanceTooltip();
       const legacy = document.querySelectorAll('#stance-list .stance-btn')[Number(sb.dataset.stance)];
       if (legacy) legacy.click();
+      return;
+    }
+    if (e.target.closest('[data-card=unmarch]')) {
+      const cu = bridge.selectedUnit;
+      if (cu && bridge.cancelMarch) bridge.cancelMarch(cu.id);
       return;
     }
     if (e.target.closest('[data-card=sheet]')) {
@@ -477,6 +485,9 @@ export function mountBattleHud(bridge, view) {
   el.seal.addEventListener('click', () => { if (sealTarget && !sealTarget.disabled) sealTarget.click(); });
 
   function renderFeed() {
+    const fights = (bridge.combatHistory || []).filter((e) => e && e.log && !e.log.abilityUsed).length;
+    const lc = root.querySelector('.hud-lastcombat');
+    if (lc) lc.classList.toggle('on', fights > 0);
     const log = $('combat-log');
     const entries = log ? [...log.children].slice(0, 4) : [];
     el.feed.innerHTML = entries.map((n, i) => {
@@ -586,6 +597,8 @@ export function mountBattleHud(bridge, view) {
   if (area && window.ResizeObserver) new ResizeObserver(resizeView).observe(area);
 
   const splash = createCombatSplash({ bridge, portrait, kanji: unitKanji, isActive: () => active });
+  window.hudOpenCombat = (i) => splash.open(i);
+  root.querySelector('.hud-lastcombat').addEventListener('click', () => splash.openLast());
   const gameOver = createGameOver({ bridge });
 
   // ---- 2D view: attack tooltip on hoverable targets (the 3D view has its own, same content) ----

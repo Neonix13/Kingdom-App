@@ -35,6 +35,7 @@ const { hexDistance, hexKey, segmentEdgeKey } = require('../HexUtils');
 
 const { RULES } = rules;
 const ORDER_TYPES = ['move', 'attack', 'charge', 'hold', 'motivate'];
+const MARCH_MAX_STEPS = 200;
 
 function alivePlayers(room) {
   return room.players.filter(p => !p.isEliminated);
@@ -49,10 +50,46 @@ function beginRound(room, first) {
   const sim = ensureSim(room);
   sim.orders = {};
   sim.committed = {};
+  sim.marchPaused = {};
   for (const p of alivePlayers(room)) {
     for (const u of p.units) {
       if (!first) room._applyTurnRegen(u);
       room._initUnitSpeedForTurn(u);
+    }
+  }
+  if (!first) prefillMarches(room);
+}
+
+// Standing marches become this turn's move orders (they use command points; when none is left the march waits).
+// The player can edit or remove them: a march whose order is gone or replaced ends after the resolution.
+function prefillMarches(room) {
+  const sim = ensureSim(room);
+  for (const p of alivePlayers(room)) {
+    const max = commandPoints(room, p.id);
+    for (const u of p.units) {
+      if (!u.march || u.q === null) continue;
+      if (u.isFleeing || room.marchContact(p.id, u)) { u.march = null; continue; }
+      const res = validateOrder(room, p.id, u, { type: 'move', path: u.march.route, march: true });
+      if (res.error || !res.order) { if (!(u.speedRemaining > 0)) sim.marchPaused[u.id] = true; else u.march = null; continue; }
+      const mine = sim.orders[p.id] || (sim.orders[p.id] = {});
+      if (Object.keys(mine).length >= max) { sim.marchPaused[u.id] = true; continue; }
+      mine[u.id] = res.order;
+    }
+  }
+}
+
+// After the resolution: a march goes on when its unit walked this turn's part of it and is not in contact
+function updateMarches(room, orders) {
+  const sim = ensureSim(room);
+  for (const p of room.players) {
+    const mine = (orders && orders[p.id]) || {};
+    for (const u of p.units) {
+      const o = mine[u.id];
+      if (!o) { if (u.march && !(sim.marchPaused && sim.marchPaused[u.id])) u.march = null; continue; }
+      if (!o.marchRest || u.q === null || u.isFleeing || o.type !== 'move') { u.march = null; continue; }
+      const end = o.path[o.path.length - 1];
+      if (u.q !== end[0] || u.r !== end[1] || room.marchContact(p.id, u)) { u.march = null; continue; }
+      u.march = { route: o.marchRest.map(s => s.slice()), dest: o.marchRest[o.marchRest.length - 1].slice() };
     }
   }
 }
@@ -125,11 +162,15 @@ function validateOrder(room, playerId, unit, raw) {
   // an attack / charge order may carry a route: a shooter walks it to its firing position (it fires as soon as the
   // target is in range); a melee unit follows it first, then closes in on its target
   const routed = (order.type === 'attack' || order.type === 'charge') && Array.isArray(raw.path) && raw.path.length > 0;
+  // march: a move whose route goes beyond this turn's budget — this turn walks the part the budget pays for,
+  // the rest (order.marchRest) carries over to the next plannings (prefilled, see beginRound)
+  const march = order.type === 'move' && raw.march === true;
   if (order.type === 'move' || routed) {
     const path = raw.path;
-    if (!Array.isArray(path) || path.length < 1 || path.length > 60) return { error: 'Chemin invalide.' };
+    if (!Array.isArray(path) || path.length < 1 || path.length > (march ? MARCH_MAX_STEPS : 60)) return { error: 'Chemin invalide.' };
     let q = unit.q, r = unit.r, cost = 0;
     const out = [];
+    let fitted = -1;
     for (const step of path) {
       if (!Array.isArray(step) || !isInt(step[0]) || !isInt(step[1])) return { error: 'Chemin invalide.' };
       const [nq, nr] = step;
@@ -139,10 +180,18 @@ function validateOrder(room, playerId, unit, raw) {
       cost = rules.snap(cost + c);
       out.push([nq, nr]);
       q = nq; r = nr;
+      const firstStep = out.length === 1 && budget > 0 && budget === unit.speedRemaining && rules.hasFullSpeed(unit);
+      if (cost <= budget + 1e-9 || firstStep) fitted = out.length;
     }
-    const minStep = out.length === 1 && budget > 0 && budget === unit.speedRemaining && rules.hasFullSpeed(unit);
-    if (cost > budget + 1e-9 && !minStep) return { error: `Chemin trop long (coût ${cost}, vitesse ${budget}).` };
-    order.path = out;
+    if (march) {
+      if (fitted < 1) return { error: 'Pas assez de vitesse pour avancer ce tour.' };
+      order.path = out.slice(0, fitted);
+      if (fitted < out.length) order.marchRest = out.slice(fitted);
+    } else {
+      const minStep = out.length === 1 && budget > 0 && budget === unit.speedRemaining && rules.hasFullSpeed(unit);
+      if (cost > budget + 1e-9 && !minStep) return { error: `Chemin trop long (coût ${cost}, vitesse ${budget}).` };
+      order.path = out;
+    }
   }
   if (order.type === 'attack' || order.type === 'charge') {
     const target = typeof raw.targetId === 'string' ? room.findUnit(raw.targetId) : null;
@@ -247,6 +296,7 @@ const simultaneous = {
     }
     const all = units.map(u => room._slimUnit(u, room.getPlayer(u.playerId)));
     const res = resolveRules.resolveTurn(room, sim.orders, seed);
+    updateMarches(room, sim.orders);
 
     if (room.phase === 'battle') {
       for (const p of alivePlayers(room)) room.onPlayerTurnEnd(p.id);

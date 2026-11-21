@@ -1,5 +1,6 @@
 const GENERALS = require('./data/generals');
 const UNITS = require('./data/units');
+const MARCH_MAX_STEPS = 200;
 const { hexDistance, hexKey, buildHexMap, findPathCost, getStartingZones, segmentEdgeKey, SEGMENT_DEFS, hexFacing, hexFacingRanged } = require('./HexUtils');
 const TERRAINS = require('./data/terrains');
 const SEGMENTS = require('./data/segments');
@@ -957,7 +958,7 @@ class GameRoom {
       for (const p of this.players) {
         for (const u of p.units) {
           if (u.q === null) continue;
-          units.push({ ...u, isMine: false, playerId: p.id });
+          units.push({ ...u, march: undefined, isMine: false, playerId: p.id });
         }
       }
     } else if (vision === 'delayed') {
@@ -996,7 +997,7 @@ class GameRoom {
         if (p.id === playerId) {
           visibleUnits.push({ ...u, isMine: true, playerId: p.id, concealed: concealedOf(u) });
         } else if (player.isEliminated || this.canSee(playerId, u, u.q, u.r, visibleHexes)) {
-          visibleUnits.push({ ...u, isMine: false, isAlly: this.areAllies(playerId, p.id), playerId: p.id });
+          visibleUnits.push({ ...u, march: undefined, isMine: false, isAlly: this.areAllies(playerId, p.id), playerId: p.id });
         }
       }
     }
@@ -1022,10 +1023,11 @@ class GameRoom {
 
   // route: optional path chosen by the player ([[q, r], ...], origin excluded, ending on (targetQ, targetR));
   // without it the cheapest path is used
-  moveUnit(playerId, unitId, targetQ, targetR, route = null) {
+  moveUnit(playerId, unitId, targetQ, targetR, route = null, opts = {}) {
     const player = this.getPlayer(playerId);
     const unit = player?.units.find(u => u.id === unitId);
     if (!unit || unit.q === null) return { error: 'Unité introuvable.' };
+    if (!opts.keepMarch) unit.march = null;
     if (!Number.isInteger(targetQ) || !Number.isInteger(targetR) || !this.hexMap[hexKey(targetQ, targetR)]) return { error: 'Case invalide.' };
     if (unit.isFleeing) return { error: 'Unité en fuite.' };
     if (unit.speedRemaining <= 0) return { error: 'Plus de déplacement disponible.' };
@@ -1107,6 +1109,112 @@ class GameRoom {
     }
 
     return { ok: true, unitId: unit.id, fromQ, fromR, path, ambush, trampledAttacks };
+  }
+
+  // ---- Standing march orders: a destination beyond this turn's reach (docs/regles.md, "Marche sur plusieurs tours") ----
+  // unit.march = { route: [[q, r], ...] (steps still to walk, origin excluded), dest: [q, r] }. Hidden from other players.
+
+  // A march route: adjacent steps on the map over passable edges (units on the way are dealt with turn by turn)
+  _checkMarchRoute(unit, route) {
+    if (!Array.isArray(route) || !route.length || route.length > MARCH_MAX_STEPS) return { error: 'Chemin invalide.' };
+    const mounted = rules.isMounted(unit);
+    let q = unit.q, r = unit.r;
+    const path = [];
+    for (const step of route) {
+      const [nq, nr] = step || [];
+      const k = hexKey(nq, nr);
+      if (!Number.isInteger(nq) || !Number.isInteger(nr) || hexDistance(q, r, nq, nr) !== 1 || !this.hexMap[k]) return { error: 'Chemin invalide.' };
+      const c = rules.stepCost(this.moveTable(), this.hexMap[hexKey(q, r)], this.hexMap[k], this.segmentData[segmentEdgeKey(q, r, nq, nr)] || null, mounted);
+      if (!isFinite(c)) return { error: 'Chemin infranchissable.' };
+      path.push([nq, nr]);
+      q = nq; r = nr;
+    }
+    return { path };
+  }
+
+  // A visible enemy next to the unit: the march stops (contact)
+  marchContact(playerId, unit, vis = null) {
+    const v = vis || this.getVisibleHexes(playerId);
+    return this.players.some(p => p.id !== playerId && !p.isEliminated && !this.areAllies(playerId, p.id)
+      && p.units.some(e => e.q !== null && hexDistance(e.q, e.r, unit.q, unit.r) === 1 && this.canSee(playerId, e, e.q, e.r, v)));
+  }
+
+  // Walks the part of the march this turn's speed pays for (one step is always allowed with full speed).
+  // Returns the move result, or null when the unit did not move; updates or clears unit.march.
+  _marchStep(playerId, unit) {
+    if (!unit.march || unit.q === null) return null;
+    if (unit.isFleeing) { unit.march = null; return null; }
+    const vis = this.getVisibleHexes(playerId);
+    if (this.marchContact(playerId, unit, vis)) { unit.march = null; return null; }
+    const route = unit.march.route;
+    const mounted = rules.isMounted(unit);
+    const fresh = rules.hasFullSpeed(unit);
+    let q = unit.q, r = unit.r, cost = 0, blockedAhead = false;
+    const pre = [];
+    for (const [nq, nr] of route) {
+      const occ = this.unitMap[hexKey(nq, nr)];
+      if (occ && this.canSee(playerId, occ, occ.q, occ.r, vis)) { blockedAhead = true; break; }
+      const c = rules.stepCost(this.moveTable(), this.hexMap[hexKey(q, r)], this.hexMap[hexKey(nq, nr)], this.segmentData[segmentEdgeKey(q, r, nq, nr)] || null, mounted);
+      if (!isFinite(c)) { blockedAhead = true; break; }
+      const next = rules.snap(cost + c);
+      const minStep = !pre.length && fresh && unit.speedRemaining > 0;
+      if (next > unit.speedRemaining + 1e-9 && !minStep) break;
+      cost = next;
+      pre.push([nq, nr]);
+      q = nq; r = nr;
+      if (next > unit.speedRemaining + 1e-9) break;
+    }
+    if (!pre.length) {
+      if (blockedAhead) unit.march = null; // a visible unit or an impassable edge on the way: the march is over
+      return null;
+    }
+    const end = pre[pre.length - 1];
+    const res = this.moveUnit(playerId, unit.id, end[0], end[1], pre, { keepMarch: true });
+    if (!res || res.error) { unit.march = null; return null; }
+    if (res.ambush || res.path.length < pre.length) unit.march = null;
+    else {
+      const rest = route.slice(pre.length);
+      unit.march = rest.length ? { route: rest, dest: unit.march.dest } : null;
+    }
+    if (unit.march && this.marchContact(playerId, unit)) unit.march = null;
+    return res;
+  }
+
+  // move_unit with march: the unit walks what it can now and keeps the rest of the route for its next turns
+  marchUnit(playerId, unitId, route) {
+    const player = this.getPlayer(playerId);
+    const unit = player?.units.find(u => u.id === unitId);
+    if (!unit || unit.q === null) return { error: 'Unité introuvable.' };
+    if (unit.isFleeing) return { error: 'Unité en fuite.' };
+    const chk = this._checkMarchRoute(unit, route);
+    if (chk.error) return chk;
+    unit.march = { route: chk.path, dest: chk.path[chk.path.length - 1].slice() };
+    const move = unit.speedRemaining > 0 ? this._marchStep(playerId, unit) : null;
+    return { ok: true, unitId, move, march: unit.march ? { route: unit.march.route.map(s => s.slice()), dest: unit.march.dest.slice() } : null };
+  }
+
+  cancelMarch(playerId, unitId) {
+    const unit = this.getPlayer(playerId)?.units.find(u => u.id === unitId);
+    if (!unit) return { error: 'Unité introuvable.' };
+    unit.march = null;
+    const order = this.sim && this.sim.orders && this.sim.orders[playerId] && this.sim.orders[playerId][unitId];
+    if (order) delete order.marchRest; // simultaneous: this turn's order stays, the march does not go on
+    if (this.sim && this.sim.marchPaused) delete this.sim.marchPaused[unitId];
+    return { ok: true };
+  }
+
+  // Start of the owner's turn (sequential mode): every standing march goes on
+  runMarches(playerId) {
+    const player = this.getPlayer(playerId);
+    if (!player || player.isEliminated || this.phase !== 'battle') return [];
+    const out = [];
+    for (const u of [...player.units]) {
+      if (!u.march) continue;
+      const res = this._marchStep(playerId, u);
+      if (res) out.push(res);
+      if (this.phase !== 'battle') break;
+    }
+    return out;
   }
 
   // A route chosen by the player: adjacent steps on the map, passable edges, no hex held by a unit the mover can see
@@ -1206,6 +1314,7 @@ class GameRoom {
     const fled = [];
     for (const unit of [...player.units]) {
       if (!unit.isFleeing || unit.q === null) continue;
+      unit.march = null;
       // Move away from the map center toward the nearest edge
       const c = this.mapCenter || { q: 0, r: 0 };
       const dist = hexDistance(c.q, c.r, unit.q, unit.r);
@@ -1351,6 +1460,7 @@ class GameRoom {
     if (!attacker || attacker.q === null) return { error: 'Unité attaquante introuvable.' };
     if (attacker.hasAttacked) return { error: 'Cette unité a déjà attaqué ce tour.' };
     if (attacker.isFleeing) return { error: 'Unité en fuite.' };
+    attacker.march = null;
 
     let targetPlayer = null, target = null;
     for (const p of this.players) {

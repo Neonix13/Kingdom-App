@@ -185,8 +185,75 @@ function seqRouteReach(unit) {
 function seqRoute(unit) {
   if (!unit || unit.q == null) return null;
   let R = composeRoute(unit, unit.speedRemaining || 0, seqRouteReach(unit));
-  if (!R && routeWaypoints(unit).length) { resetRoute(); R = composeRoute(unit, unit.speedRemaining || 0, seqRouteReach(unit)); }
+  if (!R && routeWaypoints(unit).length) {
+    // waypoints beyond this turn's reach: the route becomes a march over several turns
+    const M = marchRoute(unit);
+    if (M) return M;
+    resetRoute(); R = composeRoute(unit, unit.speedRemaining || 0, seqRouteReach(unit));
+  }
   return R;
+}
+
+// ---- MARCH: a destination beyond this turn's reach; the unit walks what it can and goes on over the next turns ----
+// Shared by the classic turn and the simultaneous planning (budget = what this turn can pay).
+const MARCH_BUDGET = 400;
+function marchReach(unit) {
+  return (start) => clientReachable(unit, { start, maxCost: MARCH_BUDGET, minStep: false });
+}
+// Route through the waypoints with no speed limit (R.march = true), or null
+function marchRoute(unit) {
+  if (!unit || unit.q == null) return null;
+  const R = composeRoute(unit, MARCH_BUDGET, marchReach(unit));
+  if (R) R.march = true;
+  return R;
+}
+// Hexes a march can reach from the unit (through the waypoints)
+let marchReachCache = { sig: null, keys: new Set() };
+function marchTargets(unit) {
+  if (!unit || unit.q == null) return new Set();
+  const sig = `${unit.id}|${unit.q},${unit.r}|${routeWaypoints(unit).join(';')}|${(gameState?.units || []).length}`;
+  if (marchReachCache.sig === sig) return marchReachCache.keys;
+  const R = marchRoute(unit);
+  const keys = new Set(R ? R.reach.dist.keys() : []);
+  keys.delete(`${unit.q},${unit.r}`);
+  marchReachCache = { sig, keys };
+  return keys;
+}
+// Turn boundaries along a path (origin included): index of the last hex reached on each turn.
+// first = what this turn can still pay (with the one-step rule when fresh), then turnSpeed per turn (an estimate:
+// terrain, stance and night change the real speed turn by turn).
+function marchTurns(unit, path, costs, first, fresh) {
+  const per = Math.max(1, unit.turnSpeed || unit.speed || 1);
+  const ends = [];
+  let budget = first, used = 0, minStep = !!fresh;
+  if (!(first > 0)) { ends.push(0); budget = per; minStep = true; }
+  for (let i = 1; i < path.length; i++) {
+    const c = KBRules.snap((costs[i] || 0) - (costs[i - 1] || 0));
+    if (used + c <= budget + 1e-9) { used = KBRules.snap(used + c); minStep = false; continue; }
+    if (used === 0 && minStep) { used = budget; minStep = false; continue; } // one step is always allowed with full speed
+    ends.push(i - 1);
+    budget = per;
+    used = c <= budget + 1e-9 ? c : budget; // a new turn always pays its first step
+    minStep = false;
+  }
+  ends.push(path.length - 1);
+  return ends;
+}
+// March plan to (tq, tr): { path (origin included), costs, cost, turnEnds, turns, march: true } or null.
+// budget / fresh: what this turn can pay (classic: speedRemaining; planning: the order budget).
+function marchPlan(unit, tq, tr, budget, fresh) {
+  if (!unit || unit.q == null || !marchTargets(unit).has(`${tq},${tr}`)) return null;
+  const R = marchRoute(unit);
+  const full = extendRoute(R, tq, tr);
+  if (!full || full.path.length < 2) return null;
+  const turnEnds = marchTurns(unit, full.path, full.costs, budget, fresh);
+  if (turnEnds.length < 2) return null; // reachable this turn: an ordinary move
+  return { ...full, turnEnds, turns: turnEnds.length, march: true };
+}
+let pendingMarch = null; // { unitId, key }: first click on a far hex shows the march, the second one confirms it
+function marchLabel(plan) {
+  const n = plan.turns;
+  return n <= 1 ? 'Marche' : `Marche · ${n} tours`;
 }
 function refreshRouteTiles() {
   if (window.KBSim && KBSim.active()) { KBSim.refresh(); return; }
@@ -203,7 +270,7 @@ function routeInfo() {
   const u = selectedUnit;
   if (!u || !u.isMine || gameState?.currentPlayerId !== myId || !(u.speedRemaining > 0)) return null;
   const R = seqRoute(u);
-  return R ? { waypoints: routeWaypoints(u), cost: R.cost, left: R.left, budget: u.speedRemaining, tool: route.tool } : null;
+  return R ? { waypoints: routeWaypoints(u), cost: R.cost, left: R.march ? 0 : R.left, budget: u.speedRemaining, tool: route.tool, march: !!R.march } : null;
 }
 document.addEventListener('keydown', (e) => {
   const t = e.target;
@@ -912,6 +979,7 @@ function render() {
 
   if (gameState) drawObjectives(ctx);
   if (window.KBSim) KBSim.draw(ctx);
+  drawMarches(ctx);
   drawRoutePreview(ctx);
   drawApproachPreview(ctx);
 
@@ -1414,7 +1482,7 @@ function handleHexClick(hex, opts = {}) {
 
   if (selectedUnit) {
     // Étapes du chemin : Maj+clic (ou outil Étapes) ajoute une étape, clic sur une étape coupe le chemin jusqu'à elle
-    if (selectedUnit.isMine && gameState?.currentPlayerId === myId && routeClick(selectedUnit, hex, !!opts.shiftKey || route.tool, movableTiles, refreshRouteTiles)) return;
+    if (selectedUnit.isMine && gameState?.currentPlayerId === myId && routeClick(selectedUnit, hex, !!opts.shiftKey || route.tool, { has: (k) => movableTiles.has(k) || marchTargets(selectedUnit).has(k) }, refreshRouteTiles)) return;
     // Clic sur case de déplacement → déplacer (le long des étapes s'il y en a)
     if (movableTiles.has(key)) {
       const full = routeWaypoints(selectedUnit).length ? extendRoute(seqRoute(selectedUnit), hex.q, hex.r) : null;
@@ -1452,6 +1520,28 @@ function handleHexClick(hex, opts = {}) {
     if (foe && selectedUnit.isMine !== false && gameState.currentPlayerId === myId && !selectedUnit.hasAttacked && !selectedUnit.isFleeing) {
       notify(`${foe.name} est hors d'atteinte ce tour : ${selectedUnit.name} ne peut pas s'en approcher assez pour attaquer.`, 'info');
       return;
+    }
+
+    // Case hors d'atteinte ce tour : marche sur plusieurs tours (1er clic = aperçu, 2e clic = confirmation)
+    if (selectedUnit.isMine && gameState?.currentPlayerId === myId && !selectedUnit.isFleeing && !gameState.units.some(u => u.q === hex.q && u.r === hex.r)) {
+      const plan = marchPlan(selectedUnit, hex.q, hex.r, selectedUnit.speedRemaining || 0, KBRules.hasFullSpeed(selectedUnit));
+      if (plan) {
+        if (plan.path.length - 1 > 200) { notify('Destination trop lointaine pour une seule marche.', 'info'); return; }
+        if (pendingMarch && pendingMarch.unitId === selectedUnit.id && pendingMarch.key === key) {
+          wsSend('move_unit', { roomCode, unitId: selectedUnit.id, targetQ: hex.q, targetR: hex.r, march: true, path: plan.path.slice(1) });
+          pendingMarch = null;
+          resetRoute();
+          movableTiles.clear();
+          attackableTiles.clear();
+          rangeTiles.clear(); rangeCenter = null; motivateTiles.clear(); motivateCenter = null;
+          render();
+          return;
+        }
+        pendingMarch = { unitId: selectedUnit.id, key };
+        notify(`${marchLabel(plan)} : cliquez à nouveau sur la case pour donner l'ordre.`, 'info');
+        render();
+        return;
+      }
     }
 
     // Clic sur une autre unité alliée → changer de sélection
@@ -1529,6 +1619,7 @@ function handleDeployClick(hex) {
 function selectUnit(unit) {
   if (window.KBSim && KBSim.active()) { KBSim.select(unit); return; }
   if (!unit || route.unitId !== unit.id) { route.unitId = null; route.waypoints = []; }
+  pendingMarch = null;
   selectedUnit = unit;
   movableTiles.clear();
   attackableTiles.clear();
@@ -1555,7 +1646,7 @@ function selectUnit(unit) {
 
 function computeMovableTiles(unit) {
   const R = seqRoute(unit);
-  if (!R) return;
+  if (!R || R.march) return;
   const occupied = new Set((gameState?.units || []).map(u => `${u.q},${u.r}`));
   for (const k of R.reach.dist.keys()) if (!occupied.has(k)) movableTiles.add(k);
   movableTiles.delete(`${unit.q},${unit.r}`);
@@ -1592,7 +1683,7 @@ function computeAttackableTiles(unit) {
 // With waypoints: every strike starts at the end of the route (then, if needed, the cheapest approach from there)
 function computeRoutedAttacks(unit) {
   const R = seqRoute(unit);
-  if (!R) return;
+  if (!R || R.march) return;
   const hd = mapHeight;
   const E = R.end;
   const occupied = (k) => gameState.units.some(o => `${o.q},${o.r}` === k);
@@ -1618,14 +1709,88 @@ function approachAt(key) {
 }
 
 // Route being chosen: waypoints (numbered), path to the hovered hex, cumulative cost on each step and cost / speed at the end
+// March preview for the hovered hex (classic turn or planning), or null
+function marchPlanFor(unit, q, r) {
+  if (!unit || !unit.isMine || unit.isFleeing || q == null) return null;
+  if (window.KBSim && KBSim.active()) return KBSim.marchPlan ? KBSim.marchPlan(unit, q, r) : null;
+  if (gameState?.currentPlayerId !== myId || gameState?.phase !== 'battle') return null;
+  if (movableTiles.has(`${q},${r}`) || (gameState.units || []).some(u => u.q === q && u.r === r)) return null;
+  return marchPlan(unit, q, r, unit.speedRemaining || 0, KBRules.hasFullSpeed(unit));
+}
+
+// Draws a march: this turn's part like a route, the next turns fainter, a numbered marker where each turn ends
+function drawMarchPath(ctx, path, turnEnds, { color = '#fff', alpha = 1, label = null, numbers = true } = {}) {
+  if (!path || path.length < 2) return;
+  const pts = path.map(([q, r]) => hexToPixel(q, r));
+  const first = Math.max(0, turnEnds && turnEnds.length ? turnEnds[0] : pts.length - 1);
+  const seg = (a, b) => { ctx.beginPath(); for (let i = a; i <= b; i++) (i === a ? ctx.moveTo(pts[i].x, pts[i].y) : ctx.lineTo(pts[i].x, pts[i].y)); };
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  if (first > 0) {
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 6; seg(0, first); ctx.stroke();
+    ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.setLineDash([8, 6]); seg(0, first); ctx.stroke();
+  }
+  if (first < pts.length - 1) {
+    ctx.globalAlpha = alpha * 0.6;
+    ctx.setLineDash([]);
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 4; seg(first, pts.length - 1); ctx.stroke();
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.setLineDash([3, 7]); seg(first, pts.length - 1); ctx.stroke();
+    ctx.globalAlpha = alpha;
+  }
+  ctx.setLineDash([]);
+  ctx.font = `bold ${Math.round(HEX_SIZE * 0.3)}px 'Dela Gothic One', 'Zen Kaku Gothic New', sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  if (numbers) (turnEnds || []).forEach((idx, n) => {
+    if (idx <= 0) return;
+    const p = pts[idx];
+    ctx.fillStyle = n === 0 ? '#fff' : '#000'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(p.x, p.y, HEX_SIZE * 0.22, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = n === 0 ? '#000' : '#fff'; ctx.fillText(String(n + 1), p.x, p.y + 1);
+  });
+  if (label) {
+    const pe = pts[pts.length - 1];
+    ctx.font = `bold ${Math.round(HEX_SIZE * 0.32)}px 'Zen Kaku Gothic New', sans-serif`;
+    const w = ctx.measureText(label).width + 12;
+    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
+    ctx.fillRect(pe.x - w / 2, pe.y - HEX_SIZE * 0.85, w, HEX_SIZE * 0.42); ctx.strokeRect(pe.x - w / 2, pe.y - HEX_SIZE * 0.85, w, HEX_SIZE * 0.42);
+    ctx.fillStyle = '#000'; ctx.fillText(label, pe.x, pe.y - HEX_SIZE * 0.64);
+  }
+  ctx.restore();
+}
+
+// Standing marches of my units: the rest of their route, faint, numbered by turn for the selected unit
+function drawMarches(ctx) {
+  for (const u of gameState?.units || []) {
+    if (!u.isMine || !u.march || !u.march.route || !u.march.route.length || u.q == null) continue;
+    const path = [[u.q, u.r], ...u.march.route];
+    const costs = [0];
+    const mounted = KBRules.isMounted(u);
+    for (let i = 1; i < path.length; i++) {
+      const a = `${path[i - 1][0]},${path[i - 1][1]}`, b = `${path[i][0]},${path[i][1]}`;
+      const c = KBRules.stepCost(movementTable(), { terrain: terrainData[a] || 'plain', height: mapHeight[a] || 0 }, { terrain: terrainData[b] || 'plain', height: mapHeight[b] || 0 }, segmentData[segmentEdgeKey(path[i - 1][0], path[i - 1][1], path[i][0], path[i][1])] || null, mounted);
+      costs.push(KBRules.snap(costs[i - 1] + (isFinite(c) ? c : 1)));
+    }
+    const sel = selectedUnit && selectedUnit.id === u.id;
+    const ends = marchTurns(u, path, costs, 0, false).slice(1);
+    drawMarchPath(ctx, path, [0, ...ends], { color: getPlayerColor(u.playerId || myId), alpha: sel ? 0.95 : 0.55, numbers: sel, label: sel ? `Marche · ${ends.length} tour${ends.length > 1 ? 's' : ''}` : null });
+  }
+}
+
 function drawRoutePreview(ctx) {
   const unit = selectedUnit;
   if (!unit || !unit.isMine) return;
   const sim = !!(window.KBSim && KBSim.active());
+  const hk = hoveredHex ? `${hoveredHex.q},${hoveredHex.r}` : null;
+  const mp = hk && !movableTiles.has(hk) ? marchPlanFor(unit, hoveredHex.q, hoveredHex.r) : null;
+  if (mp) {
+    const confirm = pendingMarch && pendingMarch.unitId === unit.id && pendingMarch.key === hk;
+    drawMarchPath(ctx, mp.path, mp.turnEnds, { label: `${marchLabel(mp)}${confirm ? ' · cliquez pour confirmer' : ''}` });
+    return;
+  }
   const info = sim ? KBSim.routeInfo() : routeInfo();
   if (!info) return;
   const wps = info.waypoints || [];
-  const hk = hoveredHex ? `${hoveredHex.q},${hoveredHex.r}` : null;
   let res = null;
   if (hk && movableTiles.has(hk)) res = sim ? KBSim.pathTo(unit, hoveredHex.q, hoveredHex.r) : extendRoute(seqRoute(unit), hoveredHex.q, hoveredHex.r);
   else if (wps.length) res = sim ? KBSim.routePath() : seqRoute(unit);
@@ -2630,17 +2795,18 @@ function appendChatMessage({ authorName, text, isMine, isSystem, authorId, isSpe
 
 let combatHistoryEntries = [];
 function addCombatHistory(log, round) {
-  combatHistoryEntries.push({ log, round });
+  const idx = combatHistoryEntries.length;
+  combatHistoryEntries.push({ log, round, idx });
   const container = document.getElementById('combat-history');
   if (!container) return;
   const entry = document.createElement('div');
-  entry.innerHTML = formatHistoryEntry({ log, round });
+  entry.innerHTML = formatHistoryEntry({ log, round, idx });
   container.appendChild(entry.firstElementChild);
   container.scrollTop = container.scrollHeight;
 }
 
 let historyCounter = 0;
-function formatHistoryEntry({ log, round }) {
+function formatHistoryEntry({ log, round, idx = null }) {
   if (!log) return '';
   const id = `h${historyCounter++}`;
   const b = log.breakdown || {};
@@ -2663,6 +2829,7 @@ function formatHistoryEntry({ log, round }) {
     ${hitBadge}
     ${log.targetKilled ? `<span class="h-badge h-dead">DÉTRUIT</span>` : ''}
     ${log.attackerKilled ? `<span class="h-badge h-dead">ATTAQUANT DÉTRUIT</span>` : ''}
+    ${idx != null && !log.abilityUsed ? `<button class="h-open" title="Rouvrir la fiche de ce combat" onclick="event.stopPropagation(); window.hudOpenCombat && window.hudOpenCombat(${idx})">FICHE</button>` : ''}
   </div>`;
 
   const sign = n => n >= 0 ? `+${n}` : `${n}`;
@@ -3506,6 +3673,11 @@ window.gameBridge = {
     if (!movableTiles.has(`${tq},${tr}`)) return null;
     return extendRoute(seqRoute(unit), tq, tr);
   },
+  // March over several turns to a hex beyond this turn's reach: { path (origin included), turnEnds, turns, ... } or null
+  get combatHistory() { return combatHistoryEntries; },
+  marchPlan(unit, tq, tr) { return marchPlanFor(unit, tq, tr); },
+  get pendingMarch() { return pendingMarch; },
+  cancelMarch(unitId) { wsSend('cancel_march', { roomCode, unitId }); },
   get routeWaypoints() { return window.KBSim && KBSim.active() ? KBSim.routeWaypoints() : routeWaypoints(selectedUnit); },
   get routeInfo() { return routeInfo(); },
   toggleRouteTool() {
