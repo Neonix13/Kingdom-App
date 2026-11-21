@@ -1062,7 +1062,7 @@ function setTimeOfDay(hour, { env = true } = {}) {
   for (const m of windowMats) m.emissiveIntensity = 5.5 * glow;
   const starA = smoothstep(0.35, 1, night);
   stars.material.uniforms.uNight.value = starA;
-  birds.visible = night < 0.5;
+  birdSys.setNight(night);
   moon.material.opacity = starA;
   for (const fx of nightFx) {
     if (fx.material.uniforms.uNight) fx.material.uniforms.uNight.value = starA;
@@ -1506,18 +1506,25 @@ const smokeMat = new THREE.ShaderMaterial({
   scene.add(smoke);
 }
 
-// --- Birds: flocks that roam the valley and perch on wall-walks, summits and fields ---
+// --- Birds: flocks that roam the valley and perch on wall-walks, roofs, tree tops, summits and fields ---
 const birdPerches = [];
 {
   const rng = makeRng(777);
-  for (const k of rampartSet) { const h = allHexes.get(k); if (h && rng() < 0.6) { const c = hexToWorld(h.q, h.r); birdPerches.push({ x: c.x, y: walkHeight(c.x, c.z), z: c.z }); } }
+  for (const k of rampartSet) { const h = allHexes.get(k); if (h && rng() < 0.6) { const c = hexToWorld(h.q, h.r); birdPerches.push({ x: c.x, y: walkHeight(c.x, c.z), z: c.z, kind: 'wall' }); } }
   for (const h of allHexes.values()) {
     const c = hexToWorld(h.q, h.r);
     const top = h.height >= 4 && HEX_DIRS.every(([dq, dr]) => { const n = allHexes.get(`${h.q + dq},${h.r + dr}`); return !n || n.height <= h.height; });
-    if ((top && rng() < 0.5) || (fieldSet.has(`${h.q},${h.r}`) && rng() < 0.08)) birdPerches.push({ x: c.x, y: groundHeight(c.x, c.z), z: c.z });
+    if (top && rng() < 0.5) birdPerches.push({ x: c.x, y: groundHeight(c.x, c.z), z: c.z, kind: 'summit' });
+    else if (fieldSet.has(`${h.q},${h.r}`) && rng() < 0.08) birdPerches.push({ x: c.x, y: groundHeight(c.x, c.z), z: c.z, kind: 'field' });
   }
+  for (const s of smokeSources) birdPerches.push({ x: s.x, y: s.y - 0.08, z: s.z, kind: 'roof' });
+  const treeTop = (make, v) => { const g = make(v); g.computeBoundingBox(); const y = g.boundingBox.max.y; g.dispose(); return y; };
+  [[conifers, VEG.makeConiferGeometry], [broads, VEG.makeBroadleafGeometry]].forEach(([sets, make]) => sets.forEach((list, v) => {
+    const top = treeTop(make, v);
+    for (const t of list) if (rng() < 0.04) birdPerches.push({ x: t.x, y: t.y + top * (t.s || 1) * (t.sy || 1) * 0.97, z: t.z, kind: 'tree' });
+  }));
 }
-const birdSys = createBirds({ scene, G, bounds: { bx0, bx1, bz0, bz1 }, groundHeight, perches: birdPerches, camera });
+const birdSys = createBirds({ scene, G, bounds: { bx0, bx1, bz0, bz1 }, groundHeight, surfaceHeight: walkHeight, perches: birdPerches, camera });
 const birds = birdSys.mesh;
 
 const boardLayers = createBoardLayers({ scene, hexToWorld, groundHeight, walkHeight, decks, bounds: { bx0, bx1, bz0, bz1 } });
@@ -1560,6 +1567,7 @@ function applyQuality(l) {
   for (const fn of qualityHooks) fn(l);
 }
 const qualityHooks = [];
+qualityHooks.push((l) => birdSys.setQuality(l));
 const _px = new Uint8Array(4);
 function measureFrameCost() {
   const gl = renderer.getContext();
@@ -1754,5 +1762,6 @@ return {
   setCampColors: (owners) => bannerSet && bannerSet.setZoneColors(owners),
   // birds scatter when one of these points (unit positions, world x/z) comes near their perch
   setBirdThreats: (points) => birdSys.setThreats(points),
+  birds: birdSys,
 };
 }
