@@ -51,12 +51,12 @@ export function createBoardLayers(world) {
   }
 
   // Hidden hexes grouped by distance (1..FOG_STEPS) to the nearest visible hex
-  const FOG_STEPS = 6;
+  const FOG_STEPS = 100;
   function fogRings(visibleKeys) {
     const seen = new Set(visibleKeys);
     const rings = [[]];
     let frontier = visibleKeys.map((k) => k.split(',').map(Number));
-    for (let d = 1; d <= FOG_STEPS; d++) {
+    for (let d = 1; d <= FOG_STEPS && frontier.length; d++) {
       const next = [];
       for (const [q, r] of frontier) {
         for (const [dq, dr] of DIRS) {
@@ -89,8 +89,8 @@ export function createBoardLayers(world) {
     const rings = fogRings(arr);
     ctx.filter = `blur(${(0.6 * VIS_PPU).toFixed(1)}px)`;
     for (let d = FOG_STEPS; d >= 1; d--) {
-      if (!rings[d].length) continue;
-      ctx.fillStyle = `rgb(0,${Math.round(255 * (1 - d / (FOG_STEPS + 1)))},0)`;
+      if (!rings[d] || !rings[d].length) continue;
+      ctx.fillStyle = `rgb(0,${Math.round(255 * (1 - (d - 1) / FOG_STEPS))},0)`;
       ctx.beginPath();
       for (const [q, r] of rings[d]) hexPath(ctx, visP, q, r, 1.08);
       ctx.fill();

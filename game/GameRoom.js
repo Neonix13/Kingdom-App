@@ -1543,6 +1543,14 @@ class GameRoom {
   // Generals: (Force - d20 + 80) × Power / 5 × ratio / 2 and (Charisma - d20 + 80) × Intimidation / 100.
   // Angle of attack (defender stance + facing), courage, segments, night, effects, abilities.
   // extra (simultaneous mode): { attack, power } added to the attacker (charge bonus / malus)
+  // The response actually applied: against a shot only a phalange may absorb (a counter becomes absorb), and never against archers
+  effectiveDefense(attacker, target, isCac, choice) {
+    if (isCac) return choice;
+    const ab = this.ability(target);
+    const canAbsorb = !!ab && ab.type === 'defend_ranged' && !RULES.combat.archerTypes.includes(attacker.typeId);
+    return canAbsorb && (choice === 'absorb' || choice === 'counter') ? 'absorb' : 'rien';
+  }
+
   _resolveCombat(attacker, target, isCac, defenseChoice, extra = null) {
     const C = RULES.combat;
     const type = isCac ? 'cac' : 'tir';
@@ -1627,10 +1635,7 @@ class GameRoom {
     else moralDmg = Math.max(0, attReussite * effectiveIntimidation);
 
     // Defence — against a shot only a phalange may absorb, and never against archers
-    if (!isCac) {
-      const canAbsorb = !!abD && abD.type === 'defend_ranged' && !C.archerTypes.includes(attacker.typeId);
-      defenseChoice = canAbsorb && (defenseChoice === 'absorb' || defenseChoice === 'counter') ? 'absorb' : 'rien';
-    }
+    defenseChoice = this.effectiveDefense(attacker, target, isCac, defenseChoice);
     const defends = defenseChoice === 'counter' || defenseChoice === 'absorb';
     const isAbsorb = defenseChoice === 'absorb';
     let defReussite = 0, defenseSuccess = false, counterDmgReceived = 0, counterMoralDmg = 0;

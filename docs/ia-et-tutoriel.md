@@ -38,6 +38,14 @@ L'IA ne lit jamais les positions qu'elle ne voit pas : ennemis = unités visible
 
 Défense : phalange « Encaisser » contre les tirs ; au corps à corps, contre-attaque si la défense est bonne et l'unité en forme, sinon encaisse (Recrue : parfois au hasard).
 
+### Tactique (`game/bots/tactics.js`, réglage `tactics` des profils : Recrue 0, Vétéran 0,5, Stratège 1)
+- **Angles** : l'estimation d'un coup tient compte de l'angle d'attaque (flanc, dos : bonus d'attaque et de puissance, armure réduite) et du bonus de charge ; elle retranche la riposte attendue (contre-attaque en séquentiel ; en simultané, la réaction de la posture du défenseur).
+- **Mode simultané** : chaque unité de mêlée liste les cases de contact atteignables ce tour **sans être arrêtée par une zone de contrôle** (chemin qui ne longe aucun autre ennemi), avec l'échange attendu ; les frappes sont attribuées en commençant par les meilleures, avec un bonus pour frapper une cible déjà visée (supériorité locale) jusqu'à ce qu'elle soit condamnée. Ordre **Charger** quand l'élan (2 cases) apporte le bonus, jamais contre des lanciers ou une Défense de combat ; le chemin choisi est transmis avec l'ordre.
+- **Sans frappe intéressante**, une unité menacée se met en garde au lieu de s'avancer : Défense de combat contre la cavalerie (annule la charge, pas de flanc), Combat sinon, et s'oriente vers la menace quand son flanc ou son dos est exposé. Les unités brisées (moral < 30 % ou vitalité < 25 %) se replient vers le général. Les tireurs restent derrière une unité de mêlée et attendent en Défense à distance quand rien n'est à portée.
+- **Général** : reste derrière ses troupes (centre de l'armée décalé à l'opposé de l'ennemi), hors de portée des tireurs (portée + 2) et de la cavalerie ennemie, dans les deux modes.
+- **Séquentiel** : mêmes estimations ; Défense de combat face à la cavalerie quand l'unité attend ; orientation face à la menace avec la vitesse restante.
+- **Arène** : `node scripts/bots/arena.js --games 30 --pairs stratege:veteran --modes simultaneous,sequential --maps default,kankoku` joue des parties IA contre IA par le protocole (horloge simulée). Un niveau suffixé `_old` joue avec une copie d'une ancienne version (`--old <dossier>`), pour mesurer un changement ; `--kills 1` compte les généraux tués par camp, `--trace 1` affiche les ordres tour par tour.
+
 ### Rythme et exécution
 - **Serveur local** : une action à la fois, après une pause (minuterie de la salle, `nextDeadline`). Début de manche : pause un peu plus longue. `config.botPace` multiplie les pauses (0 en test).
 - **Lambda** : pas de minuterie ; à chaque message reçu (et au `tick` client toutes les 15 s), l'IA joue tout ce qu'elle peut sans pause (au plus `botBurst` actions).
@@ -104,6 +112,17 @@ Mesures précédentes :
 - **Contre un joueur immobile** (15 parties par niveau, 30 tours) : contact établi dans environ 2 parties sur 3 (Recrue 14/15, Vétéran 10/15, Stratège 11/15 lors d'une mesure ; les zones étant tirées au hasard, les chiffres varient d'une série à l'autre). Un joueur qui avance rencontre l'IA bien plus tôt.
 
 **Capacités d'unités** (`unitAbilityPlan` dans `battle.js`, utilisé aussi en mode simultané) : un assassin disparaît dès qu'il ne voit aucun ennemi à 6 cases ; des bâtisseurs posent des chevaux de frise sur l'arête tournée vers l'ennemi le plus proche quand il arrive à 4 cases ou moins. Les espions ne sabotent pas (ils servent d'éclaireurs : leur présence révèle les embuscades à 2 cases) ; l'IA ne construit ni pont ni échelle et ne brûle pas de forêt.
+
+## 5 bis. Mesures après la tactique (arène, 30 parties par paire, budget 5000, 30 tours max, nouvelle IA contre l'ancienne)
+
+| Carte, mode | Stratège / ancien | Vétéran / ancien | Recrue / ancienne | Morts de généraux (nouveau / ancien, Stratège) |
+|---|---|---|---|---|
+| défaut, simultané | 20 – 10 | 20 – 10 | 17 – 13 | 2 / 11 |
+| défaut, séquentiel | 16 – 14 | 21 – 9 | 14 – 16 | 5 / 14 |
+| Kankoku, simultané | 23 – 7 | 25 – 5 | 15 – 15 | 1 / 13 |
+| Kankoku, séquentiel | 15 – 15 | 18 – 12 | 20 – 10 | 7 / 14 |
+
+Échelle des niveaux (nouvelle IA) : Stratège bat Vétéran 22 – 8 (défaut, simultané), 20 – 10 (défaut, séquentiel), 16 – 14 (Kankoku, simultané), 23 – 7 (Kankoku, séquentiel) ; Stratège bat Recrue 26 à 30 sur 30 ; Vétéran bat Recrue 23 à 29 sur 30. Aucune partie nulle, aucune erreur d'IA ; temps de planification moyen 2 à 6 ms par décision (pointe 170 ms).
 
 ## 6. Limites connues
 - Lambda : l'IA joue toute sa manche d'un coup à la réception d'un message (pas de pause possible sans minuterie).
