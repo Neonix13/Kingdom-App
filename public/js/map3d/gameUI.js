@@ -1,5 +1,6 @@
 // 3D game view chrome: settings panel, photo mode, keyboard camera, floating combat text
 import { attackTipHtml } from '../hud/attackTip.js';
+import { createWalker } from './walker.js';
 const CSS = `
 #v3-gear { font-size:15px; }
 #v3-settings { position:absolute; top:52px; left:64px; z-index:60; width:250px; padding:12px 14px; display:none;
@@ -70,8 +71,9 @@ export function createGameUI({ world, container, bridge, getView }) {
     <label>Caméra qui suit l'action <input type="checkbox" data-k="followPlayback"></label>
     <label>Dés 3D <input type="checkbox" data-k="dice"></label>
     <div class="row"><button data-act="photo">Mode photo (P)</button><button data-act="top">Vue du dessus (T)</button></div>
+    <div class="row"><button data-act="walk">Promenade sur le terrain (B)</button></div>
     <div class="hint">Clic gauche : sélection · glisser : déplacer la vue · clic droit glissé : pivoter · molette : zoom<br>
-    ZQSD / WASD / flèches : déplacer · A/E : pivoter · Espace : centrer sur l’unité · Échap : désélectionner</div>`;
+    ZQSD / WASD / flèches : déplacer · A/E : pivoter · Espace : centrer sur l’unité · Échap : désélectionner · B : promenade</div>`;
   container.appendChild(panel);
   gear.addEventListener('click', (e) => { e.stopPropagation(); panel.classList.toggle('open'); });
   document.addEventListener('pointerdown', (e) => { if (!panel.contains(e.target) && e.target !== gear) panel.classList.remove('open'); });
@@ -88,6 +90,7 @@ export function createGameUI({ world, container, bridge, getView }) {
   }
   panel.querySelector('[data-act=photo]').addEventListener('click', () => setPhoto(true));
   panel.querySelector('[data-act=top]').addEventListener('click', () => toggleTopDown());
+  panel.querySelector('[data-act=walk]').addEventListener('click', () => { panel.classList.remove('open'); walker.enter(); });
 
   function apply(k) {
     if (!k || k === 'quality') {
@@ -143,7 +146,18 @@ export function createGameUI({ world, container, bridge, getView }) {
   hourSlider.addEventListener('change', () => world.commitTimeOfDay(parseFloat(hourSlider.value)));
   photoBar.querySelector('[data-act=exit]').addEventListener('click', () => setPhoto(false));
   photoBar.querySelector('[data-act=shot]').addEventListener('click', screenshot);
+  const walkBtn = document.createElement('button');
+  walkBtn.type = 'button';
+  walkBtn.textContent = 'Promenade (B)';
+  walkBtn.addEventListener('click', () => walker.enter());
+  photoBar.querySelector('[data-act=exit]').before(walkBtn);
   let photo = false;
+  let photoBeforeWalk = false;
+  const walker = createWalker(world, {
+    container,
+    onEnter: () => { photoBeforeWalk = photo; if (!photo) setPhoto(true); },
+    onExit: () => { if (!photoBeforeWalk) setPhoto(false); },
+  });
   const savedLimits = { maxPolar: controls.maxPolarAngle, maxDist: controls.maxDistance, min: controls.minDistance };
   function setPhoto(on) {
     photo = on;
@@ -188,6 +202,8 @@ export function createGameUI({ world, container, bridge, getView }) {
       if (e.code.startsWith('Arrow')) e.preventDefault();
       return;
     }
+    if (walker.active) return;
+    if (e.code === 'KeyB') { walker.enter(); return; }
     if (k === 'p') setPhoto(!photo);
     else if (k === 'escape') { if (photo) setPhoto(false); else bridge.deselect && bridge.deselect(); }
     else if (k === 't') toggleTopDown();
@@ -203,7 +219,7 @@ export function createGameUI({ world, container, bridge, getView }) {
   const fwd = new THREE.Vector3(), right = new THREE.Vector3(), move = new THREE.Vector3();
 
   function update(dt) {
-    if (!keys.size) return;
+    if (!keys.size || walker.active) return;
     const dist = camera.position.distanceTo(controls.target);
     const sp = dist * 0.9 * settings.camSpeed * dt;
     camera.getWorldDirection(fwd);
@@ -280,8 +296,9 @@ export function createGameUI({ world, container, bridge, getView }) {
     get photo() { return photo; },
     platesMode() { return settings.plates; },
     staging() { return !!settings.staging; },
-    followPlayback() { return settings.followPlayback !== false; },
+    followPlayback() { return settings.followPlayback !== false && !walker.active; },
+    walker,
     dice() { return settings.dice !== false; },
-    hide(on) { gear.style.display = on ? 'none' : ''; sep.style.display = on ? 'none' : ''; if (on) { panel.classList.remove('open'); setPhoto(false); } },
+    hide(on) { gear.style.display = on ? 'none' : ''; sep.style.display = on ? 'none' : ''; if (on) { walker.exit(); panel.classList.remove('open'); setPhoto(false); } },
   };
 }
