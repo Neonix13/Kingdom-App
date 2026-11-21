@@ -495,3 +495,5 @@ body.hud-gameover-on #hud-splash { display: none !important; }
 #hud-root .hud-ring .hud-ring-stances button:hover:not(:disabled) { transform: scale(1.12); }
 #hud-root .hud-ring .hud-ring-stances button:disabled { opacity: .35; cursor: not-allowed; }
 .hud-act:disabled { opacity: .45; cursor: not-allowed; }
+.st-chip .st-ico { width: 72%; height: 72%; display: block; }
+#hud-root .hud-ring .hud-ring-stances button .st-ico { width: 18px; height: 18px; display: block; }

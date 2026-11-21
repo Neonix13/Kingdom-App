@@ -100,6 +100,7 @@ export function createGameUI({ world, container, bridge, getView }) {
   }
   function applyHour() {
     if (settings.hour === 'auto') {
+      if (bridge.clockMoving) return;
       const st = bridge.state;
       let h;
       const dh = bridge.displayHour;
@@ -121,7 +122,26 @@ export function createGameUI({ world, container, bridge, getView }) {
     if (to - from > 12) { world.commitTimeOfDay(target); return; }
     hourAnim = { from, to, t: 0, dur: Math.min(3, 0.6 + (to - from) * 0.4) };
   }
+  // While the game clock flows (resolution playback, eased hour changes), the sun follows it continuously;
+  // light-only previews ~10 times a second, environment map refreshed once when the clock stops.
+  let followAcc = 0, following = false;
   function updateHour(dt) {
+    if (settings.hour === 'auto' && bridge.clockMoving) {
+      hourAnim = null;
+      following = true;
+      followAcc += dt;
+      if (followAcc >= 0.1) {
+        followAcc = 0;
+        const h = bridge.displayHour;
+        if (typeof h === 'number' && Math.abs(h - world.hour) > 1e-4) world.previewTimeOfDay(h);
+      }
+      return;
+    }
+    if (following) {
+      following = false;
+      const h = bridge.displayHour;
+      if (settings.hour === 'auto' && typeof h === 'number') world.commitTimeOfDay(h);
+    }
     if (!hourAnim) return;
     hourAnim.t += dt / hourAnim.dur;
     const k = Math.min(1, hourAnim.t);

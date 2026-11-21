@@ -390,7 +390,7 @@
       for (const s of stanceList) {
         const active = (o && o.stance) ? o.stance === s : unit.stance === s;
         const sst = stanceStyle(s);
-        html += `<button data-stance="${s}" class="${active ? 'active' : ''}"><i class="st-chip" style="background:${sst.c}">${sst.k}</i> ${escapeHtml(stanceNames[s] || s)}</button>`;
+        html += `<button data-stance="${s}" class="${active ? 'active' : ''}"><i class="st-chip" style="background:${sst.c}">${sst.svg || ''}</i> ${escapeHtml(stanceNames[s] || s)}</button>`;
       }
       html += '</div>';
     }
@@ -634,6 +634,13 @@
     const t0 = pb.restore && pb.restore.timeOfDay, hpt = pb.restore && pb.restore.hoursPerTurn;
     return t0 == null || !hpt ? null : (t0 + hpt * Math.min(1, Math.max(0, k))) % 24;
   }
+  // Continuous flow over the whole playback (real time), so the clock and the sun never step from tick to tick
+  function playbackFlow(pb, elapsedMs) {
+    const t0 = pb.restore && pb.restore.timeOfDay, hpt = pb.restore && pb.restore.hoursPerTurn;
+    if (t0 == null || !hpt) return null;
+    const total = pb.data.ticks.reduce((a, tk) => a + tickDuration(tk), 0) || 1;
+    return { from: t0, span: hpt, start: performance.now() - Math.min(total, elapsedMs), dur: total };
+  }
 
   function startPlayback(data) {
     if (!gameState) return;
@@ -662,7 +669,7 @@
       applyTick(data.ticks[st.playback.index], false);
       st.playback.index++;
     }
-    setHour(playbackHour(st.playback, st.playback.index / Math.max(1, data.ticks.length)));
+    setHour(playbackFlow(st.playback, (data.elapsedMs || 0) - skip));
     render();
     nextTick();
   }
@@ -672,7 +679,6 @@
     if (!pb) return;
     if (pb.index >= pb.data.ticks.length) { pb.timer = setTimeout(() => finishPlayback(false), 400); return; }
     const tk = pb.data.ticks[pb.index++];
-    setHour(playbackHour(pb, pb.index / pb.data.ticks.length));
     emitLocal('playback_tick', { turn: pb.data.turn, t: tk.t, index: pb.index - 1 });
     applyTick(tk, true);
     pb.timer = setTimeout(nextTick, tickDuration(tk));
