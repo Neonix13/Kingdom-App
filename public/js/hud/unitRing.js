@@ -1,5 +1,5 @@
 // On-unit controls (2D and 3D): around the selected unit of mine, the 6 facing arrows (1 speed) and the stance chips
-// (kanji + colour). In simultaneous planning they set the order's final facing / stance. Positions follow the camera
+// (pictogram + colour). In simultaneous planning they set the order's final facing / stance. Positions follow the camera
 // every frame through bridge.hexScreen(q, r) (viewport pixels), so the arrows always point at the real neighbouring hexes.
 const DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
 
@@ -42,7 +42,7 @@ export function createUnitRing(bridge, root) {
       chips = bridge.stanceChoices().map((c) => {
         const on = c.id === stance;
         const off = !sim && !on && speed < costs.stance;
-        return `<button class="hud-ring-stance${on ? ' on' : ''}" data-stance="${c.id}" style="--st:${c.color}" ${off ? 'disabled' : ''} title="${c.name}${on ? ' (actuelle)' : ` — −${costs.stance} vitesse${sim ? ', au début de la résolution' : ''}`}${off ? ' — plus assez de vitesse' : ''}"><span>${c.kanji}</span></button>`;
+        return `<button class="hud-ring-stance${on ? ' on' : ''}" data-stance="${c.id}" style="--st:${c.color}" ${off ? 'disabled' : ''} title="${c.name}${on ? ' (actuelle)' : ` — −${costs.stance} vitesse${sim ? ', au début de la résolution' : ''}`}${off ? ' — plus assez de vitesse' : ''}">${c.svg || ''}</button>`;
       }).join('');
       chips = `<div class="hud-ring-stances">${chips}</div>`;
     }

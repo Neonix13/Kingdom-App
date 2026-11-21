@@ -922,11 +922,13 @@ uniform int uCutN;`)
   if (B.count) {
     const m = new THREE.Mesh(B.geometry(), buildMat);
     m.castShadow = m.receiveShadow = true;
+    m.userData.kbCollider = true;
     scene.add(m);
   }
   if (R.count) {
     const m = new THREE.Mesh(R.geometry(), roofMat);
     m.castShadow = m.receiveShadow = true;
+    m.userData.kbCollider = true;
     scene.add(m);
   }
 

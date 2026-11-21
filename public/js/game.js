@@ -276,19 +276,41 @@ const STANCES_DATA = {
   defense_distance: { vitesse:0, attack_cac:-3, attack_tir:0, defense_cac:-2, defense_tir:0, puissance_cac:-2, puissance_tir:0, intimidation_cac:-2, intimidation_tir:-1, courage_cac:-1, courage_tir:1, esquive_cac:2, esquive_tir:4, precision_cac:-2, precision_tir:-1, armure:0, armure_tour:0, moral_tour:0, vitalite_tour:0 },
 };
 
-// ---- Stance display (kanji + colour on tokens, plates, HUD card, attack tip and combat card) ----
+// ---- Stance display (pictogram + colour on tokens, plates, HUD card, attack tip and combat card) ----
+// Icons: 24x24 stroke paths (drawn white on the stance colour), shared by the HTML chips and the 2D canvas
 const STANCE_STYLE = {
-  marche: { k: '行', c: '#5f5f5f' },
-  combat: { k: '闘', c: '#111111' },
-  charge: { k: '突', c: '#D8352A' },
-  repos: { k: '休', c: '#3b78b8' },
-  defense_combat: { k: '守', c: '#a8790c' },
-  defense_distance: { k: '避', c: '#2a8270' },
+  marche: { c: '#5f5f5f', icon: 'M8 4.5a1.6 1.6 0 1 0 .01 0M7 8l-2 5 3 1M7.5 8.5l3 3.5 3 1M6.5 14l-1.5 6M8 14l3 3v3M14 9h6M17 6l3 3-3 3' },
+  combat: { c: '#111111', icon: 'M5 5l12 12M19 5L7 17M15 19l4-4M5 15l4 4M3 21l2-2M21 21l-2-2' },
+  charge: { c: '#D8352A', icon: 'M3 12h7M8 6l6 6-6 6M14 6l6 6-6 6' },
+  repos: { c: '#3b78b8', icon: 'M19 14.5A8 8 0 1 1 9.5 5a6.2 6.2 0 0 0 9.5 9.5zM15 4h4l-4 4h4' },
+  defense_combat: { c: '#a8790c', icon: 'M12 3l7.5 3v5.5c0 5-3.5 8-7.5 9.5-4-1.5-7.5-4.5-7.5-9.5V6zM12 7v10M8 11h8' },
+  defense_distance: { c: '#2a8270', icon: 'M13 4l7 2.7v5c0 4.6-3.2 7.4-7 8.8-3.8-1.4-7-4.2-7-8.8M3 3l7 7M3 3v3.5M3 3h3.5' },
 };
+const STANCE_PATHS2D = {};
+function stanceIconSvg(id, size = 14, color = '#fff') {
+  const d = (STANCE_STYLE[id] || {}).icon;
+  if (!d) return '';
+  return `<svg class="st-ico" viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true"><path d="${d}" fill="none" stroke="${color}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>`;
+}
+function drawStanceIcon(c2d, id, cx, cy, size, color = '#fff') {
+  const d = (STANCE_STYLE[id] || {}).icon;
+  if (!d || typeof Path2D === 'undefined') return;
+  const path = STANCE_PATHS2D[id] || (STANCE_PATHS2D[id] = new Path2D(d));
+  const k = size / 24;
+  c2d.save();
+  c2d.translate(cx - size / 2, cy - size / 2);
+  c2d.scale(k, k);
+  c2d.strokeStyle = color;
+  c2d.lineWidth = 2.6;
+  c2d.lineCap = 'round';
+  c2d.lineJoin = 'round';
+  c2d.stroke(path);
+  c2d.restore();
+}
 const STANCE_FULL_NAMES = { defense_combat: 'Défense de combat', defense_distance: 'Défense à distance' };
 function stanceStyle(id) {
-  const st = STANCE_STYLE[id] || { k: '?', c: '#444' };
-  return { ...st, name: STANCE_FULL_NAMES[id] || stanceNames[id] || id, short: stanceNames[id] || id };
+  const st = STANCE_STYLE[id] || { c: '#444' };
+  return { ...st, k: '', svg: stanceIconSvg(id), name: STANCE_FULL_NAMES[id] || stanceNames[id] || id, short: stanceNames[id] || id };
 }
 // Non-zero modifiers of a stance: [{ label, v, key }]; kind 'cac' | 'tir' keeps the general ones plus that kind only
 const STANCE_FIELDS = [
@@ -594,14 +616,15 @@ function frameHexes2D(hexes, margin = 0.14) {
   return true;
 }
 
-// Fog of war: distance (1..6) of each hidden hex to the visible area, darker farther away (cached per vision set)
+// Fog of war: distance (1..16) of each hidden hex to the visible area, darker farther away, black at 16 (cached per vision set)
+const FOG_DIST_MAX = 100;
 let fogDistCache = { src: null, map: new Map() };
 function fogDistances(visible) {
   if (!visible || fogDistCache.src === visible) return fogDistCache.map;
   const map = new Map();
   let frontier = [...visible].map(k => k.split(',').map(Number));
   const seen = new Set(visible);
-  for (let d = 1; d <= 6 && frontier.length; d++) {
+  for (let d = 1; d <= FOG_DIST_MAX && frontier.length; d++) {
     const next = [];
     for (const [q, r] of frontier) for (const [dq, dr] of SEGMENT_EDGE_DIRS) {
       const k = `${q + dq},${r + dr}`;
@@ -698,7 +721,7 @@ function render() {
       const { x, y } = hexToPixel(q, r);
       const isVisible = visibleSet.has(key);
       const isHovered = hoveredHex && hoveredHex.q === q && hoveredHex.r === r;
-      let fill = isVisible ? 'rgba(0,0,0,0)' : `rgba(8,7,6,${(0.8 + 0.028 * (fogDist.get(key) || 6)).toFixed(3)})`;
+      let fill = isVisible ? 'rgba(0,0,0,0)' : `rgba(4,3,3,${(0.8 + 0.2 * Math.min(1, ((fogDist.get(key) || FOG_DIST_MAX) - 1) / (FOG_DIST_MAX - 1))).toFixed(3)})`;
       let stroke = isVisible ? `rgba(${gridColorRGB},${gridOpacity})` : 'rgba(0,0,0,0)';
       if (isVisible && movableTiles.has(key)) fill = 'rgba(255,255,255,0.22)';
       if (abilityTiles.has(key)) fill = 'rgba(47,95,168,0.45)';
@@ -1101,7 +1124,7 @@ function drawUnit(ctx, x, y, unit, playerId, isSelected = false) {
   ctx.fillStyle = hpRatio > 0.3 ? '#ffffff' : '#D8352A';
   ctx.fillRect(bx, by, barW * hpRatio, barH);
 
-  // Stance badge (bottom-right of hex) — all non-general units: stance colour + kanji
+  // Stance badge (bottom-right of hex) — all non-general units: stance colour + pictogram
   if (unit.stance && !unit.isGeneral) {
     const sst = stanceStyle(unit.stance);
     const iconX = x + HEX_SIZE * 0.46;
@@ -1117,11 +1140,7 @@ function drawUnit(ctx, x, y, unit, playerId, isSelected = false) {
     ctx.strokeStyle = unit.isMine ? '#ffffff' : '#D8352A';
     ctx.lineWidth = 1.5;
     ctx.stroke();
-    ctx.fillStyle = '#fff';
-    ctx.font = `${Math.round(HEX_SIZE * 0.27)}px 'Yuji Boku', 'Zen Old Mincho', serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(sst.k, iconX, iconY + 1);
+    drawStanceIcon(ctx, unit.stance, iconX, iconY, r * 1.45);
   }
 
   ctx.restore();
@@ -2146,21 +2165,59 @@ function closeAbilityTarget() {
 // ---- TOP BAR: time of day, scores, turn timer ----
 // Displayed hour: time flows during the round instead of jumping at its start.
 // Sequential: the round's hours are spread over the manches; simultaneous: the resolution playback sets an override per tick.
+// hourOverride: a fixed hour, or a flow { from, span, start, dur } that advances continuously in real time (resolution playback).
+// The shown hour is eased toward the target (no visible steps), and the HUD clock / 3D sun read it every frame.
 let hourOverride = null;
-function displayHour() {
+let shownHour = null, shownAnim = null, clockTimer = null, lastClockText = '';
+function targetHour() {
   if (!gameState || gameState.timeOfDay == null) return null;
-  if (hourOverride != null) return hourOverride;
+  if (hourOverride != null) {
+    if (typeof hourOverride !== 'object') return hourOverride;
+    const f = hourOverride;
+    const k = f.dur > 0 ? Math.min(1, Math.max(0, (performance.now() - f.start) / f.dur)) : 1;
+    return (f.from + f.span * k) % 24;
+  }
   const n = (gameState.turnOrder || []).length;
   if (gameState.mode === 'simultaneous' || n < 2 || !gameState.hoursPerTurn || gameState.phase !== 'battle') return gameState.timeOfDay;
   const i = Math.min(n - 1, Math.max(0, (gameState.manche || 1) - 1));
   return (gameState.timeOfDay + gameState.hoursPerTurn * i / n) % 24;
+}
+function displayHour() {
+  const t = targetHour();
+  if (t == null) { shownHour = null; shownAnim = null; return null; }
+  const now = performance.now();
+  if (shownHour == null || (hourOverride && typeof hourOverride === 'object')) { shownHour = t; shownAnim = null; return t; }
+  const diff = (((t - shownHour) % 24) + 24) % 24;
+  if (diff < 1e-4 || diff > 12) { shownHour = t; shownAnim = null; return t; }
+  if (!shownAnim || shownAnim.to !== t) shownAnim = { from: shownHour, span: diff, to: t, t0: now, dur: Math.min(6000, 1500 + diff * 6000) };
+  const k = Math.min(1, (now - shownAnim.t0) / shownAnim.dur);
+  const e = k * k * (3 - 2 * k);
+  shownHour = (shownAnim.from + shownAnim.span * e) % 24;
+  if (k >= 1) { shownHour = t; shownAnim = null; }
+  ensureClockTicker();
+  return shownHour;
+}
+function clockMoving() { return !!shownAnim || !!(hourOverride && typeof hourOverride === 'object' && performance.now() < hourOverride.start + hourOverride.dur + 200); }
+function clockText() {
+  return `${gameState.isNight ? 'Nuit ·' : ''} Jour ${gameState.day || 1} · ${KBRules.formatHour(displayHour())}`;
+}
+// While the clock moves, refresh only the clock text (minutes), not the whole top bar
+function ensureClockTicker() {
+  if (clockTimer || !clockMoving()) return;
+  clockTimer = setInterval(() => {
+    const el = document.getElementById('top-time');
+    if (el && gameState && gameState.timeOfDay != null) { const txt = clockText(); if (txt !== lastClockText) { lastClockText = txt; el.textContent = txt; } }
+    if (!clockMoving()) { clearInterval(clockTimer); clockTimer = null; }
+  }, 120);
 }
 
 function renderTopInfo() {
   const el = document.getElementById('top-time');
   if (!el) return;
   if (!gameState || gameState.timeOfDay == null) { el.textContent = ''; return; }
-  el.textContent = `${gameState.isNight ? 'Nuit ·' : ''} Jour ${gameState.day || 1} · ${KBRules.formatHour(displayHour())}`;
+  lastClockText = clockText();
+  el.textContent = lastClockText;
+  ensureClockTicker();
   el.style.color = gameState.isNight ? '#9fb4ff' : '#e8c060';
   const sc = document.getElementById('top-scores');
   const objs = gameState.objectives || [];
@@ -3313,6 +3370,7 @@ window.gameBridge = {
   get roomCode() { return roomCode; },
   frameHexes2D,
   setHourOverride(h) { hourOverride = h; renderTopInfo(); if (window.view3d) window.view3d.markDirty(); },
+  get clockMoving() { return clockMoving(); },
   get mapDoc() { return mapDoc; },
   get mapLoading() { return mapLoading; },
   get deployState() { return deployState; },
@@ -3384,7 +3442,8 @@ window.gameBridge = {
   setUnitStance(unit, s) { setUnitStance(unit, s); },
   simOrderOf(unit) { return window.KBSim && KBSim.orderOf ? KBSim.orderOf(unit) : null; },
   orientCosts() { const S = KBRules.RULES.simultaneous || {}; return { facing: S.facingCost ?? 1, stance: S.stanceCost ?? 2 }; },
-  stanceChoices() { return stanceList.map((id) => { const st = stanceStyle(id); return { id, kanji: st.k, color: st.c, name: st.name }; }); },
+  stanceChoices() { return stanceList.map((id) => { const st = stanceStyle(id); return { id, svg: st.svg, color: st.c, name: st.name }; }); },
+  stanceIconSvg(id, size, color) { return stanceIconSvg(id, size, color); },
   hexOnScreen2D(q, r, margin = 0.12) {
     const p = hexToPixel(q, r);
     const sx = canvas.width / 2 + camX + p.x * zoom, sy = canvas.height / 2 + camY + p.y * zoom;

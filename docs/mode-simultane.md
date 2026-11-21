@@ -32,9 +32,9 @@ Il n'y a ni initiative ni manches : un tour = une planification + une résolutio
 
 ## Résolution
 
-Tous les dés viennent d'un générateur initialisé par la **graine** du tour. Dans chaque phase, le serveur parcourt les unités par **numéro d'identifiant croissant** (`u_1`, `u_2`…). Les identifiants sont attribués à la validation des armées : la première armée validée a les plus petits.
+Tous les dés viennent d'un générateur initialisé par la **graine** du tour. Dans chaque phase, le serveur parcourt les unités dans un **ordre de priorité tiré au sort à chaque tour** à partir de la graine (aucune armée n'est favorisée d'un tour sur l'autre ; même graine = même ordre).
 
-**Tick 0 (préparation)** : d'abord, les unités en fuite de tous les joueurs fuient vers le bord. Puis chaque unité, dans l'ordre des identifiants, applique son changement de posture, le coût de l'orientation, sa capacité d'unité, la capacité du général et la motivation. Enfin, le serveur repère les tireurs en **tir de réaction** (voir plus bas).
+**Tick 0 (préparation)** : d'abord, les unités en fuite de tous les joueurs fuient vers le bord. Puis chaque unité applique, dans l'ordre de priorité du tour, son changement de posture, le coût de l'orientation, sa capacité d'unité, la capacité du général et la motivation. Enfin, le serveur repère les tireurs en **tir de réaction** (voir plus bas).
 
 **Puis, à chaque tick (1 à 40)** :
 
@@ -47,8 +47,8 @@ La résolution s'arrête au premier tick sans déplacement ni combat, et au plus
 
 ### Conflits de case (phase B, calculés en boucle jusqu'à stabilité)
 
-- **Deux ennemis visent la même case** au même tick : aucun n'y entre et ils livrent une **mêlée de rencontre**. S'il y a plus de deux unités, toutes restent sur place et chaque unité livre au plus une rencontre : le serveur forme les paires d'ennemis par identifiant.
-- **Deux alliés** (ou deux unités du même joueur) visent la même case : celle qui a la plus grande **vitesse du tour** passe (la vitesse en début de tour, avant le coût de posture) ; à égalité, l'identifiant le plus petit. L'autre ne perd rien et réessaie au tick suivant.
+- **Deux ennemis visent la même case** au même tick : aucun n'y entre et ils livrent une **mêlée de rencontre**. S'il y a plus de deux unités, toutes restent sur place et chaque unité livre au plus une rencontre : le serveur forme les paires d'ennemis dans l'ordre de priorité du tour.
+- **Deux alliés** (ou deux unités du même joueur) visent la même case : celle qui a la plus grande **vitesse du tour** passe (la vitesse en début de tour, avant le coût de posture) ; à égalité, la première dans l'ordre de priorité du tour. L'autre ne perd rien et réessaie au tick suivant.
 - **Croisement** (A va sur la case de B et B sur celle de A) : entre ennemis, rencontre et chacun reste ; entre alliés, l'échange se fait. Les rotations (A→B→C→A) passent aussi.
 - Une unité peut entrer dans une case **libérée au même tick** : une colonne avance d'un bloc. Une case tenue par une unité qui ne bouge pas, ou dont le pas vient d'être annulé, bloque toute la file derrière elle :
   - **allié** : l'unité attend (elle réessaie au tick suivant) ;
@@ -60,7 +60,7 @@ La résolution s'arrête au premier tick sans déplacement ni combat, et au plus
 
 - Une unité qui **arrive au contact** d'un ennemi visible qui n'était pas déjà adjacent à sa case précédente s'arrête. Le contrôle ne joue qu'à l'arrivée : une unité qui commence le tour au contact peut partir ou longer l'ennemi.
   - ordre **Déplacer** : elle s'arrête sans attaquer ;
-  - ordre **Attaquer / Charger** : si sa cible est au contact, elle la frappe. Sinon elle prend pour cible l'ennemi qui l'a arrêtée (le plus petit identifiant s'il y en a plusieurs) et le frappe dans la même phase D. Un tireur qui approche change de cible de la même façon, mais ne frappe qu'en phase A du tick suivant (une mêlée, puisque la cible est au contact).
+  - ordre **Attaquer / Charger** : si sa cible est au contact, elle la frappe. Sinon elle prend pour cible l'ennemi qui l'a arrêtée (la première dans l'ordre de priorité du tour s'il y en a plusieurs) et le frappe dans la même phase D. Un tireur qui approche change de cible de la même façon, mais ne frappe qu'en phase A du tick suivant (une mêlée, puisque la cible est au contact).
 - **Embuscade** : en phase B, une unité qui veut entrer sur la case d'un ennemi invisible s'arrête devant lui. En phase C, une unité qui découvre en arrivant un ennemi **caché à couvert** (forêt, bâtiment) qu'elle ne voyait pas avant le pas tombe aussi dans une embuscade. Dans les deux cas, elle perd le reste de sa vitesse et ses ordres, se tourne vers l'embusqué, et l'embusqué est révélé. L'embuscade ne déclenche aucun combat.
 
 ### Combats
@@ -81,9 +81,9 @@ Les jets sont ceux du mode classique (`GameRoom._resolveCombat`, détail dans [p
 - **Contre un tir** (distance ≥ 2), la réponse devient « rien », sauf pour la phalange face à un attaquant qui n'est pas un archer (elle encaisse). En mode simultané, cela n'arrive jamais : les seuls tireurs sont des archers, et une unité de mêlée frappe toujours au contact.
 - Un tireur au **contact** de sa cible (distance 1) livre une **mêlée** : colonnes `_cac`, la cible riposte selon sa posture.
 - **Charge** (+2 attaque, +3 puissance pour l'attaquant). Elle s'applique au premier combat de mêlée de l'unité dans le tour, si elle a parcouru **au moins 2 cases** et qu'elle a l'ordre Charger ou la **posture Charge**. Avec la posture Charge, n'importe quel ordre qui mène à une mêlée compte : attaque, rencontre, unité qui bute sur un ennemi. La charge ne sert qu'une fois par tour, même si elle est arrêtée ou annulée. Contre des **lanciers**, le bonus devient **−2 attaque** (« arrêtée ») ; ce cas est vérifié en premier. Contre un défenseur en **Défense de combat**, le bonus est annulé.
-- **Qui attaque dans une rencontre** : en déplacement (même case, croisement), l'unité qui charge (ordre Charger ou posture Charge) est l'attaquant. Si les deux chargent ou qu'aucune ne charge, un tirage à pile ou face (graine du tour) décide. Pour deux unités qui s'attaquent mutuellement au contact, l'attaquant est celle dont l'identifiant est le plus petit : sa posture Charge et celle de l'adversaire n'y changent rien. Le serveur ne vérifie que la charge de l'attaquant. Chaque rencontre donne **un seul combat**, où le défenseur contre-attaque.
-- **Tir de réaction** : un tireur (pas un général) en posture Défense à distance après le tick 0, **sans ordre ou avec un ordre Tenir**, tire une fois par tour sur un ennemi visible qui **entre** à sa portée. Celui-ci est entré à portée en se déplaçant ou est devenu visible à portée pendant le tick précédent. Le tir part au début du tick suivant, avant que la cible ne bouge à nouveau. Le tireur vise le plus proche, puis le plus petit identifiant. Les ennemis déjà à portée au début du tour ne déclenchent rien.
-- **Simultanéité** : tous les combats d'une phase sont calculés sur l'état du début de la phase (vitalité, nombre de dés, positions), puis appliqués dans cet ordre : rencontres, unités qui butent, ordres d'attaque, chacun par identifiant croissant. Quand vient son tour, une frappe est annulée si son attaquant est mort ou en fuite, ou si sa cible est morte. Une cible frappée plusieurs fois riposte à chaque attaquant avec sa force du début de phase.
+- **Qui attaque dans une rencontre** : en déplacement (même case, croisement), l'unité qui charge (ordre Charger ou posture Charge) est l'attaquant. Si les deux chargent ou qu'aucune ne charge, un tirage à pile ou face (graine du tour) décide. Pour deux unités qui s'attaquent mutuellement au contact, l'attaquant est celle qui charge (ordre Charger ou posture Charge) si une seule des deux charge ; sinon la première dans l'ordre de priorité du tour. Chaque rencontre donne **un seul combat**, où le défenseur contre-attaque.
+- **Tir de réaction** : un tireur (pas un général) en posture Défense à distance après le tick 0, **sans ordre ou avec un ordre Tenir**, tire une fois par tour sur un ennemi visible qui **entre** à sa portée. Celui-ci est entré à portée en se déplaçant ou est devenu visible à portée pendant le tick précédent. Le tir part au début du tick suivant, avant que la cible ne bouge à nouveau. Le tireur vise le plus proche, puis le premier dans l'ordre de priorité du tour. Les ennemis déjà à portée au début du tour ne déclenchent rien.
+- **Simultanéité** : tous les combats d'une phase sont calculés sur l'état du début de la phase (vitalité, nombre de dés, positions), puis appliqués dans cet ordre : rencontres, unités qui butent, ordres d'attaque, chacun dans l'ordre de priorité du tour. Quand vient son tour, une frappe est annulée si son attaquant est mort ou en fuite, ou si sa cible est morte. Une cible frappée plusieurs fois riposte à chaque attaquant avec sa force du début de phase.
 - **Duel** : un général qui attaque (ou rencontre) le général adverse au contact livre un duel (règles du mode classique, §8 de regles.md).
 - Une unité qui attaque est révélée. Une unité qui riposte au corps à corps est révélée aussi. Une unité dont le moral tombe à 0 s'enfuit et n'exécute plus ses ordres. Une unité frappe au plus une fois par tour. Le cavalier léger ne repart pas après son attaque, contrairement au mode classique.
 
@@ -104,7 +104,7 @@ Captures d'objectifs (unité sur l'objectif à la fin de la résolution), fin de
 
 ## Déterminisme
 
-Chaque résolution tire une **graine** (`crypto.randomInt`, notée dans le journal serveur, la chronologie et le replay). Même salle + mêmes ordres + même graine = même résultat (tests `tests/simultaneous.test.js`). Les égalités se départagent par identifiant ou par le générateur de la graine, jamais par l'ordre d'arrivée des messages.
+Chaque résolution tire une **graine** (`crypto.randomInt`, notée dans le journal serveur, la chronologie et le replay). Même salle + mêmes ordres + même graine = même résultat (tests `tests/simultaneous.test.js`). Les égalités se départagent par l'ordre de priorité tiré de la graine ou par le générateur de la graine, jamais par l'ordre d'arrivée des messages.
 
 ## Réglages de salle
 
@@ -131,8 +131,9 @@ Les autres réglages (tours par demi-journée, tours max, points de victoire, vi
 - Mode par équipe : les alliés ne s'affrontent pas (pas de rencontre ni d'attaque entre eux, ils peuvent se croiser).
 - Le char ne traverse pas les unités en mode simultané. Le cavalier léger ne repart pas après avoir frappé.
 
-## Points connus à corriger (code)
+## Corrections récentes
 
-- **Tir sur une cible qui contre-attaquerait ou encaisserait en mêlée** : la cible se tourne vers le tireur et le journal de combat indique `defenseChoice: 'counter'` ou `'absorb'`. Pourtant le calcul (`breakdown.defenseChoice`) a bien utilisé « rien ». En mode classique, la cible d'un tir ne se tourne pas (`resolveStrikes` transmet la réponse de posture avant que `_resolveCombat` la ramène à « rien »).
-- **Archer au contact** : le combat est une mêlée normale avec riposte, alors que la capacité des archers dit « aucun jet de défense ». L'événement de chronologie garde `kind: 'ranged'` alors que `log.ranged` vaut `false`.
-- **Ordre d'application** : priorité par identifiant. La première armée validée a les plus petits identifiants, donc elle gagne les égalités entre alliés, devient l'attaquant dans les attaques mutuelles et frappe en premier dans chaque phase. Si elle tue ou met en fuite une unité adverse plus tôt dans la phase, la frappe de cette unité est annulée.
+- **Tir** : la cible d'un tir ne se tourne plus vers le tireur, et le journal indique la réponse réellement appliquée (« rien », ou « encaisser » pour une phalange face à un tireur qui n'est pas un archer).
+- **Archer au contact** : c'est une mêlée normale (riposte possible), affichée comme telle partout (`kind: 'melee'`, `ranged: false`).
+- **Priorité** : ordre tiré au sort à chaque tour (graine), au lieu des identifiants qui favorisaient la première armée validée.
+- **Portée** : le bonus de hauteur ne vaut que pour les tireurs ; la mêlée frappe toujours à 1 case (aussi en mode classique).

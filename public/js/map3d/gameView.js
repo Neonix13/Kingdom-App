@@ -5,6 +5,7 @@ import { createGameUI } from './gameUI.js';
 import { createDice3d } from './dice3d.js';
 import { createCameraDirector } from './cameraDirector.js';
 import { createCorpseLayer } from './corpses3d.js';
+import { createKillCam } from './killCam.js';
 import { KANJI } from '../hud/battleHud.js';
 
 const PLATE_CSS = `
@@ -27,7 +28,7 @@ const PLATE_CSS = `
 .u3-plate.concealed::after, .u3-plate.stunned::after { font:400 12px 'Yuji Boku','Zen Old Mincho',serif; margin-left:1px; }
 .u3-plate.concealed::after { content:'伏'; color:#9fd09a; }
 .u3-plate.stunned::after { content:'暈'; color:#ffcf40; }
-.u3-plate .st { display:flex; align-items:center; justify-content:center; width:16px; height:16px; border:1.5px solid #fff; font:400 11px 'Yuji Boku','Zen Old Mincho',serif; line-height:1; color:#fff; }
+.u3-plate .st { display:flex; align-items:center; justify-content:center; width:16px; height:16px; border:1.5px solid #fff; line-height:1; color:#fff; }
 .u3-plate .st:empty { display:none; }
 .u3-bars { display:flex; flex-direction:column; gap:2px; }
 .u3-bar { width:32px; height:4px; background:#444; overflow:hidden; }
@@ -98,7 +99,8 @@ export async function mountGameView(bridge, { container }) {
   let view = null;
   const ui = createGameUI({ world, container, bridge, getView: () => view });
   const dice = createDice3d(world);
-  const director = createCameraDirector(world, { container, enabled: () => ui.followPlayback() });
+  const killCam = createKillCam(world, { enabled: () => ui.killCam(), blocked: () => ui.photo || !view || !view.active });
+  const director = createCameraDirector(world, { container, enabled: () => ui.followPlayback() && !killCam.active });
   const corpses = createCorpseLayer(world);
   if (window.KBCorpses) window.KBCorpses.onChange((list) => corpses.set(list));
 
@@ -163,8 +165,8 @@ export async function mountGameView(bridge, { container }) {
     } else moBar.style.display = 'none';
     const st = el.querySelector('.st');
     const sst = u.stance && !u.isGeneral && window.stanceStyle ? window.stanceStyle(u.stance) : null;
-    const stText = sst ? sst.k : '';
-    if (st.textContent !== stText) { st.textContent = stText; st.style.background = sst ? sst.c : ''; st.title = sst ? `Posture : ${sst.name}` : ''; }
+    const stKey = sst ? u.stance : '';
+    if (st.dataset.st !== stKey) { st.dataset.st = stKey; st.innerHTML = sst ? (window.stanceIconSvg ? window.stanceIconSvg(u.stance, 11) : '') : ''; st.style.background = sst ? sst.c : ''; st.title = sst ? `Posture : ${sst.name}` : ''; }
     el.classList.toggle('enemy', !u.isMine && !u.isAlly);
     el.classList.toggle('moved', !!(u.hasMoved && u.isMine));
     el.classList.toggle('fleeing', !!u.isFleeing);
@@ -351,6 +353,7 @@ export async function mountGameView(bridge, { container }) {
       }
     }
     ui.update(dt);
+    if (!killCam.active) { const sel = bridge.selectedUnit; world.dof.setFocus(sel && sel.q != null ? anchorOf(sel) : null); }
     director.update();
     preview.update(dt);
     const camDist = world.camera.position.distanceTo(world.controls.target);
@@ -461,6 +464,10 @@ export async function mountGameView(bridge, { container }) {
             if (log.targetKilled) ui.floatText(tA.clone().setY(tA.y + 0.3), 'Détruite !', 'kill', impact + 0.5);
           }
           if (att && log.counterDmgReceived) ui.floatText(anchorOf(att).clone(), `-${log.counterDmgReceived}`, '', impact + 0.6);
+          // slow-motion shot on the unit that is finished off
+          const victim = log.targetKilled ? tgt : log.attackerKilled ? att : null;
+          const killer = victim === tgt ? att : tgt;
+          if (victim) killCam.trigger(anchorOf(victim), killer ? anchorOf(killer) : null, { delay: Math.max(0, impact - 0.25) });
         }
       } else if (event === 'ambush') {
         world.layers.addPing(data.q, data.r, '#ff3020');
@@ -477,6 +484,7 @@ export async function mountGameView(bridge, { container }) {
       }
       dirty = true;
     },
+    killCam,
     setActive(on) {
       view.active = on;
       ui.hide(!on);
