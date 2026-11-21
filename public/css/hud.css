@@ -481,3 +481,17 @@ body.hud-gameover-on #hud-splash { display: none !important; }
 #hud-splash .sp-st { display: flex; align-items: center; gap: 5px; margin-top: 3px; font: 700 11px var(--hud-body); color: #fff; }
 #hud-splash .sp-st .st-chip { border-color: #fff; }
 #sim-panel .st-chip { width: 16px; height: 16px; font-size: 11px; border-width: 1.5px; margin-right: 2px; }
+
+/* On-unit controls: facing arrows around the selected unit, stance chips above it */
+#hud-root .hud-ring { position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; z-index: 3; }
+#hud-root .hud-ring button { pointer-events: auto; position: absolute; left: 0; top: 0; cursor: pointer; padding: 0; }
+.hud-ring-arrow { width: 30px; height: 30px; border-radius: 50%; border: 3px solid #000; background: #fff; color: #000; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px #fff, 2px 3px 0 2px rgba(0,0,0,.35); }
+.hud-ring-arrow:hover { background: #000; color: #fff; }
+.hud-ring-arrow.on { background: var(--hud-red); color: #fff; }
+.hud-ring-arrow:disabled { opacity: .35; cursor: not-allowed; }
+#hud-root .hud-ring .hud-ring-stances { position: absolute; left: 0; top: 0; display: flex; gap: 4px; padding: 4px 6px; background: #000; border: 2px solid #fff; box-shadow: 3px 3px 0 rgba(0,0,0,.4); pointer-events: auto; }
+#hud-root .hud-ring .hud-ring-stances button { position: static; width: 30px; height: 30px; border-radius: 50%; border: 2px solid #fff; background: var(--st); color: #fff; font: 17px 'Yuji Boku', 'Zen Old Mincho', serif; line-height: 1; display: flex; align-items: center; justify-content: center; }
+#hud-root .hud-ring .hud-ring-stances button.on { box-shadow: 0 0 0 3px var(--hud-red); transform: scale(1.12); }
+#hud-root .hud-ring .hud-ring-stances button:hover:not(:disabled) { transform: scale(1.12); }
+#hud-root .hud-ring .hud-ring-stances button:disabled { opacity: .35; cursor: not-allowed; }
+.hud-act:disabled { opacity: .45; cursor: not-allowed; }

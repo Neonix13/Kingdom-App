@@ -408,6 +408,13 @@ export async function mountGameView(bridge, { container }) {
       return sp.visible && sp.x > w * margin && sp.x < w * (1 - margin) && sp.y > h * margin && sp.y < h * (1 - margin);
     },
     pingHex(q, r, color) { world.layers.addPing(q, r, color); },
+    // Viewport pixels of a hex centre (ground level)
+    hexScreen(q, r) {
+      const p = world.hexToWorld(q, r);
+      const sp = world.projectToScreen(new THREE.Vector3(p.x, world.walkHeight(p.x, p.z), p.z));
+      const rect = canvas.getBoundingClientRect();
+      return { x: rect.left + sp.x, y: rect.top + sp.y, visible: sp.visible };
+    },
     onEvent(event, data) {
       if (!view.active) return;
       dice.enabled = ui.dice();

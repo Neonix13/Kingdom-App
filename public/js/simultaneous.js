@@ -844,5 +844,18 @@
       return pb ? { turn: pb.data.turn, seed: pb.data.seed, tick: pb.index, ticks: pb.data.ticks.length, durationMs: pb.data.durationMs } : null;
     },
     skipPlayback,
+    orderOf: (unit) => (unit ? current(unit) : null),
+    setFacing(unit, f) {
+      const u = unit && myUnit(unit.id);
+      if (!u || !canPlan()) return;
+      const o = current(u);
+      const cur = o && o.facing != null ? o.facing : null;
+      patchOrder(u, { facing: cur === f || (cur == null && f === u.facing) ? undefined : f });
+    },
+    setStance(unit, s) {
+      const u = unit && myUnit(unit.id);
+      if (!u || !canPlan()) return;
+      patchOrder(u, { stance: s === u.stance ? undefined : s });
+    },
   };
 })();

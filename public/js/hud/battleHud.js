@@ -4,6 +4,7 @@
 import { createCombatSplash } from './combatSplash.js';
 import { attackTipHtml } from './attackTip.js';
 import { createGameOver } from './gameOver.js';
+import { createUnitRing } from './unitRing.js';
 export const KANJI = { pietaille: '卒', soldats: '兵', phalange: '盾', lancier: '槍', espion: '諜', assassin: '刺', cavalier_leger: '騎', cavalier_lourd: '騎', archer: '弓', archer_elite: '弓', batisseurs: '工', char: '車' };
 const CAM_CODES = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Equal', 'Minus', 'NumpadAdd', 'NumpadSubtract']);
 const ACTIONS = [
@@ -11,6 +12,7 @@ const ACTIONS = [
   { id: 'btn-attack', key: 'KeyF', hint: 'F', label: 'Attaquer', cls: 'attack' },
   { id: 'btn-ability', key: 'KeyC', hint: 'C', label: 'Capacité', cls: '' },
   { id: 'btn-motivate', key: 'KeyV', hint: 'V', label: 'Motiver', cls: '' },
+  { id: 'btn-facing', key: 'KeyO', hint: 'O', label: 'Orienter −1', cls: '' },
 ];
 const MIRRORS = [
   ['#unit-list', '.hud-roster'], ['#tool-coords', '[data-hud=tools]'], ['#selected-unit-detail', '.hud-card'],
@@ -69,6 +71,7 @@ export function mountBattleHud(bridge, view) {
     <div class="hud-simslot"></div>
     <button class="hud-seal" hidden></button>`;
   document.body.appendChild(root);
+  const ring = createUnitRing(bridge, root);
   const q = (sel) => root.querySelector(sel);
   const el = {
     turn: q('.hud-turn'), sub: q('.hud-sub'), callout: q('.hud-callout'), presence: q('.hud-presence'), scores: q('.hud-scores'), timer: q('.hud-timer'),
@@ -143,6 +146,7 @@ export function mountBattleHud(bridge, view) {
 
   // ---- render ----
   function render() {
+    ring.refresh();
     watchSim();
     const st = bridge.state;
     const ds = bridge.deployState;
@@ -380,10 +384,12 @@ export function mountBattleHud(bridge, view) {
       if (a.id === 'btn-move' && sel && sel.speedRemaining != null) label += ` ${fmtSpeed(sel.speedRemaining)}`;
       if (a.id === 'btn-ability' && sel?.activeAbility?.name) label = sel.activeAbility.name;
       if (a.id === 'btn-ability' && $('btn-ability')?.dataset.label) label = $('btn-ability').dataset.label;
-      const on = (a.id === 'btn-attack' && mode === 'attack') || (a.id === 'btn-move' && mode === 'move') || (a.id === 'btn-ability' && mode === 'ability');
-      return `<button class="hud-act ${a.cls}${on ? ' on' : ''}" data-act="${a.id}" title="${esc(label)} (${a.hint})"><span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(label.toUpperCase())}</span><span class="hud-kbd">${a.hint}</span></span></button>`;
+      const on = (a.id === 'btn-attack' && mode === 'attack') || (a.id === 'btn-move' && mode === 'move') || (a.id === 'btn-ability' && mode === 'ability') || (a.id === 'btn-facing' && mode === 'facing');
+      const dis = !!$(a.id)?.disabled;
+      const tip = (dis || a.id === 'btn-facing') && $(a.id)?.title ? $(a.id).title : label;
+      return `<button class="hud-act ${a.cls}${on ? ' on' : ''}" data-act="${a.id}" ${dis ? 'disabled' : ''} title="${esc(tip)} (${a.hint})"><span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(label.toUpperCase())}</span><span class="hud-kbd">${a.hint}</span></span></button>`;
     }).join('');
-    const labels = { attack: 'MODE ATTAQUE', motivate: 'MOTIVER : CHOISIR UNE UNITÉ', move: 'MODE DÉPLACEMENT', ability: 'CAPACITÉ : CHOISIR UNE CASE VOISINE' };
+    const labels = { attack: 'MODE ATTAQUE', motivate: 'MOTIVER : CHOISIR UNE UNITÉ', move: 'MODE DÉPLACEMENT', ability: 'CAPACITÉ : CHOISIR UNE CASE VOISINE', facing: 'ORIENTER : CLIQUEZ LA CASE VISÉE' };
     el.mode.textContent = sim ? '' : (labels[mode] || '');
     el.mode.style.bottom = `${26 + vis.length * 55 + 6}px`;
   }

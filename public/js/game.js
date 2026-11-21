@@ -1071,6 +1071,23 @@ function drawUnit(ctx, x, y, unit, playerId, isSelected = false) {
   ctx.lineWidth = HEX_SIZE * 0.06;
   ctx.stroke();
 
+  // Front: a wedge on the ring toward the facing direction
+  const fIdx = getAnimatedFacing(unit);
+  if (fIdx != null && FACE_DIRS[fIdx] && unit.q != null) {
+    const c0 = hexToPixel(unit.q, unit.r), n0 = hexToPixel(unit.q + FACE_DIRS[fIdx][0], unit.r + FACE_DIRS[fIdx][1]);
+    const ang = Math.atan2(n0.y - c0.y, n0.x - c0.x);
+    const r0 = tokenR + HEX_SIZE * 0.02, len = HEX_SIZE * 0.26, half = HEX_SIZE * 0.17;
+    const tip = [x + Math.cos(ang) * (r0 + len), y + Math.sin(ang) * (r0 + len)];
+    const l = [x + Math.cos(ang) * r0 - Math.sin(ang) * half, y + Math.sin(ang) * r0 + Math.cos(ang) * half];
+    const rr = [x + Math.cos(ang) * r0 + Math.sin(ang) * half, y + Math.sin(ang) * r0 - Math.cos(ang) * half];
+    ctx.beginPath(); ctx.moveTo(tip[0], tip[1]); ctx.lineTo(l[0], l[1]); ctx.lineTo(rr[0], rr[1]); ctx.closePath();
+    ctx.fillStyle = unit.isMine ? '#ffffff' : '#D8352A';
+    ctx.fill();
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
   // HP bar (white on black, red when low)
   const hpRatio = Math.max(0, Math.min(1, unit.vitality / unit.maxVitality));
   const barW = HEX_SIZE * 1.3;
@@ -1189,6 +1206,34 @@ canvas.addEventListener('contextmenu', (e) => {
   showFacingPopup(unit, e.clientX, e.clientY);
 });
 
+// ---- ORIENTATION / POSTURE as orders (on-unit controls, HUD button, right-click) ----
+const FACE_DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
+// Direction index (0..5) whose neighbour lies closest to the angle toward hex
+function facingToward(unit, hex) {
+  if (!unit || unit.q == null || (hex.q === unit.q && hex.r === unit.r)) return null;
+  const c = hexToPixel(unit.q, unit.r), t = hexToPixel(hex.q, hex.r);
+  const a = Math.atan2(t.y - c.y, t.x - c.x);
+  let best = null, bestD = Infinity;
+  FACE_DIRS.forEach(([dq, dr], i) => {
+    const n = hexToPixel(unit.q + dq, unit.r + dr);
+    let d = Math.abs(Math.atan2(n.y - c.y, n.x - c.x) - a);
+    if (d > Math.PI) d = 2 * Math.PI - d;
+    if (d < bestD) { bestD = d; best = i; }
+  });
+  return best;
+}
+function setUnitFacing(unit, facing) {
+  if (window.KBSim && KBSim.active()) { KBSim.setFacing(unit, facing); return; }
+  if (gameState?.currentPlayerId !== myId) return;
+  if ((unit.speedRemaining || 0) <= 0) { notify('Plus de vitesse disponible.', 'info'); return; }
+  wsSend('rotate_facing', { roomCode, unitId: unit.id, facing });
+}
+function setUnitStance(unit, stanceId) {
+  if (window.KBSim && KBSim.active()) { KBSim.setStance(unit, stanceId); return; }
+  if (gameState?.currentPlayerId !== myId || unit.stance === stanceId) return;
+  wsSend('change_stance', { roomCode, unitId: unit.id, stanceId });
+}
+
 function showFacingPopup(unit, clientX, clientY) {
   document.getElementById('facing-popup')?.remove();
   const popup = document.createElement('div');
@@ -1286,6 +1331,13 @@ function handleHexClick(hex, opts = {}) {
 
   if (mode === 'deploy') {
     handleDeployClick(hex);
+    return;
+  }
+  if (mode === 'facing' && selectedUnit) {
+    const d = facingToward(selectedUnit, hex);
+    if (d != null) setUnitFacing(selectedUnit, d);
+    setMode('select');
+    render();
     return;
   }
   if (window.KBSim && KBSim.active()) { KBSim.click(hex, opts); return; }
@@ -1615,7 +1667,7 @@ function computeMotivateTiles(unit) {
 function setMode(newMode) {
   mode = newMode;
   const indicator = document.getElementById('mode-indicator');
-  const labels = { select: 'Sélection', move: 'Déplacement', attack: 'Attaque', motivate: 'Motiver', deploy: 'Déploiement', ability: 'Capacité' };
+  const labels = { select: 'Sélection', move: 'Déplacement', attack: 'Attaque', motivate: 'Motiver', deploy: 'Déploiement', ability: 'Capacité', facing: 'Orientation' };
   if (newMode !== 'ability') abilityTiles.clear();
   indicator.textContent = `Mode : ${labels[newMode] || newMode}`;
   if (newMode !== 'move') movableTiles.clear();
@@ -1647,6 +1699,13 @@ function updateActionButtons() {
   document.getElementById('btn-attack').style.display = canAttack ? 'block' : 'none';
   abilityBtn.style.display = canAbility || canUnitAbility ? 'block' : 'none';
   document.getElementById('btn-motivate').style.display = canMotivate ? 'block' : 'none';
+  const facingBtn = document.getElementById('btn-facing');
+  if (facingBtn) {
+    const canFace = hasUnit && selectedUnit.isMine !== false && isMyTurn && !isFleeing && gameState?.phase === 'battle';
+    facingBtn.style.display = canFace ? 'block' : 'none';
+    facingBtn.disabled = !(selectedUnit && selectedUnit.speedRemaining >= 1);
+    facingBtn.title = facingBtn.disabled ? 'Plus de vitesse disponible' : 'Orienter l\'unité (−1 vitesse) : cliquez la case vers laquelle elle doit faire face';
+  }
   const endDisplay = isMyTurn ? 'block' : 'none';
   const deployDisplay = (mode === 'deploy') ? 'block' : 'none';
   document.getElementById('btn-end-turn-global').style.display = endDisplay;
@@ -3311,6 +3370,19 @@ window.gameBridge = {
   },
   redraw2D() { resizeCanvas(); },
   panToHex(q, r) { const p = hexToPixel(q, r); smoothPanTo(p.x, p.y); },
+  // Viewport pixels of a hex centre in the active view (2D canvas or 3D)
+  hexScreen(q, r) {
+    if (window.view3d && window.view3d.active && window.view3d.hexScreen) return window.view3d.hexScreen(q, r);
+    const p = hexToPixel(q, r);
+    const rect = canvas.getBoundingClientRect();
+    const x = rect.left + canvas.width / 2 + camX + p.x * zoom, y = rect.top + canvas.height / 2 + camY + p.y * zoom;
+    return { x, y, visible: x > rect.left - 40 && x < rect.right + 40 && y > rect.top - 40 && y < rect.bottom + 40 };
+  },
+  setUnitFacing(unit, f) { setUnitFacing(unit, f); },
+  setUnitStance(unit, s) { setUnitStance(unit, s); },
+  simOrderOf(unit) { return window.KBSim && KBSim.orderOf ? KBSim.orderOf(unit) : null; },
+  orientCosts() { const S = KBRules.RULES.simultaneous || {}; return { facing: S.facingCost ?? 1, stance: S.stanceCost ?? 2 }; },
+  stanceChoices() { return stanceList.map((id) => { const st = stanceStyle(id); return { id, kanji: st.k, color: st.c, name: st.name }; }); },
   hexOnScreen2D(q, r, margin = 0.12) {
     const p = hexToPixel(q, r);
     const sx = canvas.width / 2 + camX + p.x * zoom, sy = canvas.height / 2 + camY + p.y * zoom;
