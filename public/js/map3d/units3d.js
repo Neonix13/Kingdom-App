@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { patchLit, G } from './shaderPatches.js';
+import { createObstacles } from './obstacles.js';
 
 // Army layer: every unit is a small formation of instanced miniatures.
 //
@@ -15,7 +16,13 @@ import { patchLit, G } from './shaderPatches.js';
 //   layer.setSelected(id|null) / layer.setHovered(id|null)
 //   layer.getAnchor(id, out?) -> THREE.Vector3 | null
 //   layer.update(dt, t)                       auto-registered in world.frameHooks unless autoUpdate:false
+//   slow motion: world.setTimeScale(k) scales G.uTime and the dt given to update(), which drive soldiers and arrows
+//   layer.memberPositions(id) -> [{ x, y, z, hidden }]   soldiers' world positions (tests)
 //   layer.dispose()
+// Soldiers stay clear of walls, gates, towers, tents, fences and cliff faces (obstacles.js); a unit inside a house is
+// garrisoned (soldiers not drawn); units on a wall-walk stand on it. The layout of each formation follows the unit's
+// stance (u.stance): column on the march, lines in combat, wedge for a charge, shield wall in defence, open order for
+// ranged defence, loose groups at rest; soldiers walk to their new places when it changes.
 // While a formation marches or fights it is simulated soldier by soldier ("free" mode): each one follows the
 // leader's trail, turns before walking, slows on slopes and in water, keeps its spacing; in melee the front ranks
 // pair off into duels along the contact line, archers shoot at individual soldiers. Back to a rigid formation at rest.
@@ -584,20 +591,22 @@ function arrowMaterial() {
 uniform float uTime;
 attribute vec4 aS;
 attribute vec4 aE;
+attribute vec2 aK;
 void main() {`).replace('#include <project_vertex>', `
+  // aK: arc height above the chord (0 = default) and the point of the arc where the arrow stops (stuck in a wall, a roof...)
   float u = ( uTime - aS.w ) / max( aE.w, 0.01 );
   vec3 wp = vec3( 0.0, -500.0, 0.0 );
   if ( u > 0.0 && u < 1.8 ) {
-    float uc = min( u, 1.0 );
+    float uc = min( u, aK.y > 0.0 ? aK.y : 1.0 );
     vec3 d = aE.xyz - aS.xyz;
-    float hgt = 0.25 * length( d.xz ) + 0.25;
+    float hgt = aK.x > 0.0 ? aK.x : 0.25 * length( d.xz ) + 0.25;
     vec3 P = aS.xyz + d * uc;
     P.y += 4.0 * hgt * uc * ( 1.0 - uc );
     vec3 fw = normalize( d + vec3( 0.0, 4.0 * hgt * ( 1.0 - 2.0 * uc ), 0.0 ) );
     vec3 sd = normalize( cross( vec3( 0.0, 1.0, 0.0 ), fw ) + vec3( 1e-4, 0.0, 0.0 ) );
     vec3 up = cross( fw, sd );
     float k = 1.0 - smoothstep( 1.4, 1.8, u );
-    wp = P + ( sd * position.x + up * position.y + fw * ( position.z - ( u >= 1.0 ? 0.06 : 0.0 ) ) ) * k;
+    wp = P + ( sd * position.x + up * position.y + fw * ( position.z - ( u >= ( aK.y > 0.0 ? aK.y : 1.0 ) ? 0.06 : 0.0 ) ) ) * k;
   }
   vec4 mvPosition = viewMatrix * vec4( wp, 1.0 );
   gl_Position = projectionMatrix * mvPosition;`);
@@ -822,6 +831,96 @@ const SPECS = {
 };
 const CATEGORY_FALLBACK = { Infanterie: 'soldats', Chevaux: 'cavalier_leger', Tireurs: 'archer', Chars: 'char', 'Général': 'general' };
 
+// --- Stance layouts: where each soldier stands for the unit's stance (template index -> { lx, lz, yaw, sink, drop }) ---
+// Undefined entries keep the template slot (the battle lines of the 'combat' stance).
+// Rows are listed front first, left to right; soldiers are matched to them front rank first, so the front stays the front.
+function rowsLayout(widths, sx, sz, zFront, { stagger = 0, jitter = 0, seed = 1 } = {}) {
+  const rnd = rngFrom(seed);
+  const out = [];
+  widths.forEach((w, r) => {
+    for (let c = 0; c < w; c++) {
+      out.push({
+        lx: (c - (w - 1) / 2) * sx + (r % 2 ? stagger * sx : 0) + (rnd() - 0.5) * jitter,
+        lz: zFront - r * sz + (rnd() - 0.5) * jitter, yaw: (rnd() - 0.5) * 0.12, row: r,
+      });
+    }
+  });
+  return out;
+}
+const blockRows = (n, cols) => { const w = []; for (let k = n; k > 0; k -= cols) w.push(Math.min(cols, k)); return w; };
+function wedgeRows(n) { const w = []; let k = n, r = 1; while (k > 0) { w.push(Math.min(r, k)); k -= r; r += 2; } return w; }
+const centred = (widths, sz, front) => front ?? ((widths.length - 1) * sz) / 2 + 0.05;
+function restGroups(n, seed) {
+  const rnd = rngFrom(seed);
+  const groups = Math.max(2, Math.round(n / 5));
+  const out = [];
+  let k = 0;
+  for (let g = 0; g < groups; g++) {
+    const size = Math.round((n - k) / (groups - g));
+    const a = (g / groups) * Math.PI * 2 + 0.6 + (rnd() - 0.5) * 0.5;
+    const cx = Math.sin(a) * 0.4, cz = Math.cos(a) * 0.3 - 0.02;
+    const r = 0.1 + 0.025 * size;
+    for (let i = 0; i < size; i++, k++) {
+      const b = (i / size) * Math.PI * 2 + rnd() * 0.4;
+      const x = cx + Math.sin(b) * r, z = cz + Math.cos(b) * r;
+      out.push({ lx: x, lz: z, yaw: Math.atan2(cx - x, cz - z) + (rnd() - 0.5) * 0.5, sink: i % 2 ? 0.05 : 0 });
+    }
+  }
+  return out;
+}
+function stanceLayout(tpls, stance, key) {
+  const out = new Array(tpls.length);
+  if (key === 'general') {
+    const ring = stance === 'marche'
+      ? [[0, 0.32], [-0.2, -0.12], [0.2, -0.12], [-0.2, -0.52], [0.2, -0.52]]
+      : stance === 'charge'
+        ? [[0, 0.24], [-0.34, 0.02], [0.34, 0.02], [-0.5, -0.22], [0.5, -0.22]]
+        : [[0, 0.06], [-0.42, 0.18], [0.42, 0.18], [-0.32, -0.36], [0.32, -0.36]];
+    tpls.forEach((t, i) => { const [x, z] = ring[i] || [t.lx, t.lz]; out[i] = { lx: x, lz: z, yaw: i ? Math.atan2(x, z) * (stance === 'combat' || stance === 'defense_combat' ? 0.6 : 0.1) : 0 }; });
+    return out;
+  }
+  if (key === 'char') {
+    if (stance === 'marche') tpls.forEach((t, i) => { out[i] = { lx: 0, lz: 0.5 - i * 0.5, yaw: 0 }; });
+    return out;
+  }
+  if (key === 'espion' || key === 'assassin' || key === 'batisseurs' || stance === 'combat' || !stance) return out;
+  const cav = tpls.some((t) => t.rig === 'cav');
+  const isSoldier = (t) => (cav ? t.rig === 'cav' : t.rig === 'foot' || t.rig === 'footB') && t.cloth == null;
+  const idx = tpls.map((t, i) => i).filter((i) => isSoldier(tpls[i]))
+    .sort((a, b) => (tpls[a].rank || 0) - (tpls[b].rank || 0) || tpls[a].lx - tpls[b].lx);
+  const bearer = tpls.findIndex((t) => t.cloth != null);
+  const n = idx.length;
+  const seed = n * 31 + key.length;
+  const archers = key === 'archer' || key === 'archer_elite';
+  let pos, bearerAt;
+  const front = (ps) => Math.max(...ps.map((p) => p.lz));
+  const back = (ps) => Math.min(...ps.map((p) => p.lz));
+  if (cav) {
+    if (stance === 'marche') { const w = blockRows(n, 2); pos = rowsLayout(w, 0.3, 0.42, centred(w, 0.42) - 0.15); bearerAt = { lx: 0, lz: front(pos) + 0.38, yaw: 0 }; }
+    else if (stance === 'charge') { const w = wedgeRows(n); pos = rowsLayout(w, 0.3, 0.4, 0.45); bearerAt = { lx: 0, lz: back(pos) - 0.36, yaw: 0 }; }
+    else if (stance === 'defense_combat') { const w = blockRows(n, Math.min(n, 6)); pos = rowsLayout(w, 0.25, 0.42, centred(w, 0.42) + 0.1); bearerAt = { lx: 0, lz: back(pos) - 0.4, yaw: 0 }; }
+    else if (stance === 'defense_distance') { const w = blockRows(n, Math.ceil(n / 2)); pos = rowsLayout(w, 0.42, 0.44, centred(w, 0.44), { stagger: 0.5, jitter: 0.05, seed }); bearerAt = { lx: -0.1, lz: back(pos) - 0.3, yaw: 0 }; }
+    else if (stance === 'repos') { const w = blockRows(n, 3); pos = rowsLayout(w, 0.38, 0.4, centred(w, 0.4), { jitter: 0.12, seed }); pos.forEach((p, k) => { p.yaw = ((k * 2.39) % 6.28) - 3.14; }); bearerAt = { lx: 0.05, lz: -0.02, yaw: 0.8 }; }
+    else return out;
+  } else {
+    if (stance === 'marche') { const w = blockRows(n, n > 10 ? 3 : 2); pos = rowsLayout(w, 0.16, 0.17, centred(w, 0.17) - 0.1); bearerAt = { lx: 0, lz: front(pos) + 0.2, yaw: 0 }; }
+    else if (stance === 'charge') { const w = wedgeRows(n); pos = rowsLayout(w, 0.16, 0.16, 0.45); bearerAt = { lx: 0, lz: back(pos) - 0.16, yaw: 0 }; }
+    else if (stance === 'defense_combat') {
+      const w = blockRows(n, Math.min(9, Math.ceil(n / 2))); pos = rowsLayout(w, 0.145, 0.15, centred(w, 0.15) + 0.12);
+      pos.forEach((p) => { if (p.row === 0) p.sink = 0.045; p.yaw = 0; });
+      bearerAt = { lx: 0, lz: back(pos) - 0.2, yaw: 0 };
+    } else if (stance === 'defense_distance') {
+      const w = blockRows(n, archers ? 6 : Math.min(6, Math.ceil(n / 3))); pos = rowsLayout(w, 0.26, 0.3, centred(w, 0.3), { stagger: 0.5, jitter: 0.05, seed });
+      bearerAt = { lx: 0, lz: back(pos) - 0.22, yaw: 0 };
+    } else if (stance === 'repos') { pos = restGroups(n, seed); bearerAt = { lx: 0.02, lz: 0.0, yaw: 0.4, drop: 0.12 }; }
+    else return out;
+  }
+  idx.forEach((ti, k) => { if (pos[k]) out[ti] = pos[k]; });
+  if (bearer >= 0 && bearerAt) out[bearer] = bearerAt;
+  return out;
+}
+
+
 const RIGS = {
   foot: { parts: [{ pool: 'foot', ox: 0, oy: 0, oz: 0, kit: 'kit' }], anchor: F_PIV.anchor.map((v) => v * S), bob: 0 },
   footB: { parts: [{ pool: 'footB', ox: 0, oy: 0, oz: 0, kit: 'kit' }], anchor: F_PIV.anchor.map((v) => v * S), bob: 0 },
@@ -911,8 +1010,10 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
   const arrowGeo = buildArrow();
   const aS = new THREE.InstancedBufferAttribute(new Float32Array(ARROW_CAP * 4), 4);
   const aE = new THREE.InstancedBufferAttribute(new Float32Array(ARROW_CAP * 4), 4);
-  aS.setUsage(THREE.DynamicDrawUsage); aE.setUsage(THREE.DynamicDrawUsage);
-  arrowGeo.setAttribute('aS', aS); arrowGeo.setAttribute('aE', aE);
+  const aK = new THREE.InstancedBufferAttribute(new Float32Array(ARROW_CAP * 2), 2);
+  aS.setUsage(THREE.DynamicDrawUsage); aE.setUsage(THREE.DynamicDrawUsage); aK.setUsage(THREE.DynamicDrawUsage);
+  arrowGeo.setAttribute('aS', aS); arrowGeo.setAttribute('aE', aE); arrowGeo.setAttribute('aK', aK);
+  const shotStats = { arrows: 0, raised: 0, blocked: 0 };
   const arrows = new THREE.InstancedMesh(arrowGeo, mats.arrow, ARROW_CAP);
   arrows.count = 0; arrows.frustumCulled = false; arrows.visible = false;
   group.add(arrows);
@@ -926,11 +1027,26 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
     const a = hexToWorld(0, 0), b = hexToWorld(dq, dr);
     return Math.atan2(b.x - a.x, b.z - a.z);
   });
+  // walls, gates, towers, buildings, fences and cliff faces soldiers must stay clear of (and arrows can hit)
+  const obs = createObstacles(world);
+  const levels = new Map();
+  function levelAt(x, z) {
+    const k = `${Math.round(x * 20)},${Math.round(z * 20)}`;
+    let L = levels.get(k);
+    if (!L) {
+      if (levels.size > 6000) levels.clear();
+      L = obs.formationLevel(x, z);
+      levels.set(k, L);
+    }
+    return L;
+  }
+  const _fo = { x: 0, z: 0, hide: false };
   const forms = new Map();
   const active = new Set();
   let dying = [];
   let selId = null, hovId = null;
   let density = 1;
+  // animation time = G.uTime, and update() gets the frame's dt: both already slowed down by world.setTimeScale (kill cams)
   const now = () => G.uTime.value;
   const emblemByPlayer = new Map();
 
@@ -1034,25 +1150,29 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
   }
   function memberAim(f, m, t, marching, out) {
     const d = m.duel;
+    out.trail = false;
     if (d && t >= d.t0 && t < d.end) {
       const back = t > d.end - 0.4;
       out.x = back ? d.rx : d.x; out.z = back ? d.rz : d.z; out.yaw = d.yaw;
       return back ? 1.1 : d.run;
     }
     if (marching) {
+      out.trail = true;
       const sq = onDeck(f.px, f.pz) ? 0.35 : 1;
       trailPoint(f, -m.tz, _tp);
       const ch = Math.cos(_tp.h), sh = Math.sin(_tp.h), lx = m.tx * sq;
       out.x = _tp.x + lx * ch; out.z = _tp.z - lx * sh; out.yaw = _tp.h + m.tyaw;
+      out.cx = _tp.x; out.cz = _tp.z;
       return Math.max(0.9, f.spd * 1.25);
     }
     slotWorld(f, m, out);
     return 1.3;
   }
-  const _aim = { x: 0, z: 0, yaw: 0 };
+  const _aim = { x: 0, z: 0, yaw: 0, trail: false, cx: 0, cz: 0 };
   function stepFree(f, dt) {
     const t = now(), tr = tier();
     const marching = !!f.ov || f.moving;
+    f.L = levelAt(f.px, f.pz);
     if (marching) trailPush(f);
     if (f.press && t > f.press.end) f.press = null;
     let busy = marching || !!f.lunge || !!f.press;
@@ -1073,6 +1193,11 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
       if (m.duel && t >= m.duel.end) { m.duel = null; m.aT = null; }
       const cav = isCav(m);
       let maxS = memberAim(f, m, t, marching, _aim) * m.smul * (cav ? 1.5 : 1);
+      // keep the aim clear of walls and buildings: on the march, around the leader's path (single file through gates)
+      if (_aim.trail) { m.cx = _aim.cx; m.cz = _aim.cz; m.L = levelAt(_aim.cx, _aim.cz); } else { m.cx = f.px; m.cz = f.pz; m.L = f.L; }
+      obs.fit(_aim.x, _aim.z, m.L, m.cx, m.cz, _fo);
+      _aim.x = _fo.x; _aim.z = _fo.z;
+      if (_fo.hide !== !!m.hidden) { m.hidden = _fo.hide; }
       if (t >= m.tmulAt) {
         m.tmulAt = t + 0.2 + Math.random() * 0.1;
         const fx = Math.sin(m.wyaw) * 0.15, fz = Math.cos(m.wyaw) * 0.15;
@@ -1113,13 +1238,32 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
         }
       }
     }
+    // nobody ends a step inside masonry, a house or a cliff face
+    for (const m of ms) {
+      if (!m || m.L == null || obs.free(m.wx, m.wz, m.L, m.cx, m.cz)) continue;
+      obs.fit(m.wx, m.wz, m.L, m.cx, m.cz, _fo);
+      m.wx = _fo.x; m.wz = _fo.z;
+      if (_fo.hide) m.hidden = true;
+    }
     return busy;
   }
 
   // --- members ---
+  function layoutOf(f) {
+    const st = f.u.stance || 'combat';
+    const k = st + '|' + f.tpls.length;
+    if (f.layKey !== k) { f.layKey = k; f.lay = stanceLayout(f.tpls, st, f.key); }
+    return f.lay;
+  }
   function memberTarget(f, m, i) {
     const t = m.t;
-    if (!f.u.isFleeing) { m.tx = t.lx; m.tz = t.lz; m.tyaw = t.yaw; return; }
+    const lay = layoutOf(f)[i];
+    m.sink = (lay && lay.sink) || 0; m.drop = (lay && lay.drop) || 0;
+    if (!f.u.isFleeing) {
+      if (lay) { m.tx = lay.lx; m.tz = lay.lz; m.tyaw = lay.yaw; } else { m.tx = t.lx; m.tz = t.lz; m.tyaw = t.yaw; }
+      return;
+    }
+    m.sink = 0; m.drop = 0;
     const r = rngFrom(hashStr(f.id + ':' + i));
     let x = t.lx * 1.55 + (r() - 0.5) * 0.4, z = t.lz * 1.35 + (r() - 0.5) * 0.4;
     const d = Math.hypot(x, z);
@@ -1167,20 +1311,28 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
       const c = world.deckClamp(mx, mz, 0.26); // crossing a bridge: the formation narrows onto the deck
       if (c) { mx = c.x; mz = c.z; }
     }
-    writeMemberAt(m, mx, mz, h + m.yaw);
+    const L = f.L || (f.L = levelAt(f.px, f.pz));
+    obs.fit(mx, mz, L, f.px, f.pz, _fo);
+    m.hidden = _fo.hide;
+    writeMemberAt(m, _fo.x, _fo.z, h + m.yaw, L, !f.moving && !f.ov && !f.lunge);
   }
-  function writeMemberAt(m, mx, mz, yaw) {
+  // standing height of a soldier: ground, bridge or stairs deck, and the wall-walk only for units up on the wall
+  const standY = (x, z, L) => obs.standHeight(x, z, L);
+  function writeMemberAt(m, mx, mz, yaw, L, rest = true) {
     const cy = Math.cos(yaw), sy = Math.sin(yaw), sc = m.t.sc || 1;
+    // garrisoned in a house or boxed in by walls: not drawn; kneeling or sitting (stance layouts) only when standing still
+    const sink = m.hidden ? -500 : rest && m.sink ? -m.sink : 0;
     let g0 = NaN;
     for (const p of m.parts) {
       const wx = mx + (p.ox * cy + p.oz * sy) * sc, wz = mz + (-p.ox * sy + p.oz * cy) * sc;
-      const gy = p.ox === 0 && p.oz === 0 ? (Number.isNaN(g0) ? (g0 = groundHeight(mx, mz)) : g0) : groundHeight(wx, wz);
-      p.pool.mat(p.slot, wx, gy + p.oy * sc, wz, yaw, sc);
+      const gy = p.ox === 0 && p.oz === 0 ? (Number.isNaN(g0) ? (g0 = standY(mx, mz, L)) : g0) : standY(wx, wz, L);
+      p.pool.mat(p.slot, wx, gy + p.oy * sc + sink, wz, yaw, sc);
     }
-    if (Number.isNaN(g0)) g0 = groundHeight(mx, mz);
+    if (Number.isNaN(g0)) g0 = standY(mx, mz, L);
+    g0 += sink;
     if (m.cloth >= 0) {
       const [ax, ay, az] = m.rig.anchor;
-      pools.cloth.mat(m.cloth, mx + (ax * cy + az * sy) * sc, g0 + ay * sc, mz + (-ax * sy + az * cy) * sc, yaw, sc);
+      pools.cloth.mat(m.cloth, mx + (ax * cy + az * sy) * sc, g0 + ay * sc - (rest && m.drop ? m.drop : 0), mz + (-ax * sy + az * cy) * sc, yaw, sc);
     }
     const [boz, bsx, bsz] = BLOB[m.t.rig];
     pools.blob.mat(m.blob, mx + boz * sy * sc, g0, mz + boz * cy * sc, yaw, bsx * sc, 1, bsz * sc);
@@ -1201,7 +1353,8 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
   // --- formations ---
   function writeFormation(f) {
     const bx = f.px + f.lungeX, bz = f.pz + f.lungeZ;
-    if (f.free) for (const m of f.members) { if (m) writeMemberAt(m, m.wx, m.wz, m.wyaw); }
+    f.L = levelAt(f.px, f.pz);
+    if (f.free) { const still = !f.moving && !f.ov; for (const m of f.members) { if (m) writeMemberAt(m, m.wx, m.wz, m.wyaw, m.L || f.L, still && m.v < 0.05 && !m.duel); } }
     else for (const m of f.members) if (m) writeMemberMatrix(f, m, bx, bz, f.heading);
     if (f.id === selId) selRing.place(f.px, f.pz);
     if (f.id === hovId) hovRing.place(f.px, f.pz);
@@ -1276,7 +1429,7 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
       hx: p.x, hz: p.z, px: p.x, pz: p.z, ov: null, heading: 0, tHeading: 0,
       moving: false, lungeGait: null, lunge: null, lungeX: 0, lungeZ: 0,
       actT: 0, hitT: 0, lastHit: -1e9, desat: 0, team: new THREE.Color(), colorStr: null,
-      glyph: emblemFor(u.playerId), flee: !!u.isFleeing, relayout: false, dirty: true,
+      glyph: emblemFor(u.playerId), flee: !!u.isFleeing, stance: u.stance || 'combat', relayout: false, dirty: true,
       free: false, trail: null, spd: 0, press: null,
     };
     setTeam(f);
@@ -1328,6 +1481,14 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
       let attrs = setTeam(f);
       const p = hexToWorld(u.q, u.r);
       if (p.x !== f.hx || p.z !== f.hz) { f.hx = p.x; f.hz = p.z; active.add(f); }
+      const stance = u.stance || 'combat';
+      if (stance !== f.stance) {
+        // a new stance: the soldiers walk to their places in the new layout
+        f.stance = stance;
+        f.members.forEach((m, i) => { if (m) memberTarget(f, m, i); });
+        if (!enterFree(f)) f.relayout = true;
+        active.add(f);
+      }
       const flee = !!u.isFleeing;
       if (flee !== f.flee) {
         f.flee = flee;
@@ -1431,6 +1592,7 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
     if (arrowHi >= arrowLo) {
       upload(aS, arrowLo * 4, (arrowHi - arrowLo + 1) * 4);
       upload(aE, arrowLo * 4, (arrowHi - arrowLo + 1) * 4);
+      upload(aK, arrowLo * 2, (arrowHi - arrowLo + 1) * 2);
       arrowLo = Infinity; arrowHi = -1;
     }
     if (selRing.mesh.visible) selRing.mesh.material.opacity = selRing.baseAlpha * (0.75 + 0.25 * Math.sin(t * 4));
@@ -1465,18 +1627,22 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
     writeFormationAttrs(f);
   }
   function memberWorld(f, m, out) {
-    if (f.free) { out.x = m.wx; out.z = m.wz; out.y = groundHeight(out.x, out.z); return out; }
+    const L = m.L || f.L || (f.L = levelAt(f.px, f.pz));
+    if (f.free) { out.x = m.wx; out.z = m.wz; out.y = standY(out.x, out.z, L); return out; }
     const h = f.heading, ch = Math.cos(h), sh = Math.sin(h);
     const bx = f.px + f.lungeX, bz = f.pz + f.lungeZ;
     out.x = bx + m.lx * ch + m.lz * sh; out.z = bz - m.lx * sh + m.lz * ch;
-    out.y = groundHeight(out.x, out.z);
+    obs.fit(out.x, out.z, L, f.px, f.pz, _fo);
+    out.x = _fo.x; out.z = _fo.z;
+    out.y = standY(out.x, out.z, L);
     return out;
   }
-  function spawnArrow(sx, sy, sz, ex, ey, ez, t0, dur) {
+  function spawnArrow(sx, sy, sz, ex, ey, ez, t0, dur, hgt = 0, uMax = 1) {
     const i = arrowCursor;
     arrowCursor = (arrowCursor + 1) % ARROW_CAP;
     aS.array.set([sx, sy, sz, t0], i * 4);
     aE.array.set([ex, ey, ez, dur], i * 4);
+    aK.array[i * 2] = hgt; aK.array[i * 2 + 1] = uMax;
     if (i < arrowLo) arrowLo = i;
     if (i > arrowHi) arrowHi = i;
     arrows.count = Math.max(arrows.count, i + 1);
@@ -1557,6 +1723,11 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
     const targets = b ? aliveSorted(b, b.px, b.pz, -dx, -dz) : [];
     const shooters = aliveSorted(a, a.px, a.pz, dx, dz);
     const p = new THREE.Vector3();
+    // arcs clear walls, roofs and the canopy (shooter's and target's own hex aside, unless the target is inside a house)
+    const skip = new Set([obs.hexKey(a.px, a.pz)]);
+    if (!(b && levelAt(b.px, b.pz).garrison)) skip.add(obs.hexKey(tx, tz));
+    const S = { x: 0, y: 0, z: 0 }, E = { x: 0, y: 0, z: 0 };
+    const shotFromWall = levelAt(a.px, a.pz).onWall;
     let sum = 0, n = 0;
     shooters.forEach((s, idx) => {
       const m = s.m;
@@ -1572,8 +1743,20 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
         const ex = (tg ? tg.x : tx) + Math.cos(ang) * rr, ez = (tg ? tg.z : tz) + Math.sin(ang) * rr;
         const t0 = release + k2 * (0.35 + Math.random() * 0.15);
         const dur = 0.7 + dist * 0.07;
-        spawnArrow(p.x, p.y + 0.22, p.z, ex, groundHeight(ex, ez) + 0.02, ez, t0, dur);
-        if (tg && rr < 0.05 && b) {
+        S.x = p.x; S.y = p.y + 0.22; S.z = p.z;
+        if (shotFromWall) {
+          // on a wall-walk the archer shoots over the battlements: the arrow leaves from the parapet facing the target
+          const ux = ex - S.x, uz = ez - S.z, ul = Math.hypot(ux, uz) || 1;
+          for (let d = 0.08; d < 1; d += 0.08) { if (!obs.deckAt(S.x + ux / ul * d, S.z + uz / ul * d, 0, true)) { S.x += ux / ul * (d - 0.08); S.z += uz / ul * (d - 0.08); break; } }
+          S.y = p.y + 0.4;
+        }
+        E.x = ex; E.z = ez; E.y = (tg ? standY(ex, ez, tg.m.L || b.L || levelAt(b.px, b.pz)) : groundHeight(ex, ez)) + 0.02;
+        const plan = obs.planArrow(S, E, skip);
+        shotStats.arrows++;
+        if (!plan.clear) shotStats.blocked++;
+        else if (plan.hgt > 0.25 * Math.hypot(E.x - S.x, E.z - S.z) + 0.26) shotStats.raised++;
+        spawnArrow(S.x, S.y, S.z, E.x, E.y, E.z, t0, dur, plan.hgt, plan.uMax);
+        if (tg && rr < 0.05 && b && plan.clear) {
           const hit = t0 + dur;
           if (!(tg.m.hT > t)) { tg.m.hT = hit; writeMemberAttrs(b, tg.m); }
         }
@@ -1629,11 +1812,18 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
   if (world.qualityHooks) world.qualityHooks.push(onQuality);
   if (autoUpdate && world.frameHooks) world.frameHooks.push(update);
 
+  // soldiers' world positions of a unit (debug / tests): [{ x, y, z, hidden }]
+  function memberPositions(id) {
+    const f = forms.get(id);
+    if (!f) return [];
+    const p = { x: 0, y: 0, z: 0 };
+    return f.members.filter(Boolean).map((m) => { memberWorld(f, m, p); return { x: p.x, y: p.y, z: p.z, hidden: !!m.hidden }; });
+  }
   function stats() {
     const inst = {};
     let total = 0;
     for (const [k, p] of Object.entries(pools)) { inst[k] = p.live; total += p.live; }
-    return { formations: forms.size, instances: inst, total, arrows: arrows.visible ? arrows.count : 0 };
+    return { formations: forms.size, instances: inst, total, arrows: arrows.visible ? arrows.count : 0, shots: { ...shotStats } };
   }
 
   function dispose() {
@@ -1651,7 +1841,7 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
 
   return {
     group, pools, sync, update, setDisplayPosition, clearDisplayPosition, setMoving, playAttack, playHit,
-    setSelected, setHovered, getAnchor, stats, dispose,
+    setSelected, setHovered, getAnchor, memberPositions, stats, dispose,
     get formations() { return forms; },
   };
 }

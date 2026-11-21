@@ -1375,7 +1375,7 @@ const zoneOfHex = new Map();
 (mapDoc.zones || []).forEach((z, i) => { for (const k of z.tiles || []) if (!zoneOfHex.has(k)) zoneOfHex.set(k, i); });
 const bannerZoneOf = (x, z) => { const h = worldToHex(x, z); return h ? (zoneOfHex.get(`${h.q},${h.r}`) ?? null) : null; };
 
-const { waterwheels, smokeSources, lanternSpots, windowSpots, decks, banners: bannerSet, cutaways } = buildStructures({
+const { waterwheels, smokeSources, lanternSpots, windowSpots, decks, solids, banners: bannerSet, cutaways } = buildStructures({
   scene, vegGroup, allHexes, hexesByType, segmentData, getSegType, parseSeg, edgeCorners,
   hexToWorld, hexCorner, groundHeight, effH, isWaterHex, footbridges, gateways,
   HEX_DIRS, DIR_TO_GEO_EDGE, CORNER_NEIGHBORS, HEX_HEIGHT_STEP, WATER_LEVEL, RIVERBED_HEIGHT,
@@ -1778,7 +1778,9 @@ function setRunning(v) {
 return {
   THREE, renderer, scene, camera, controls, canvas, perf, governor, post, LEVELS,
   allHexes, hexesByType, getSegType, effH, isWaterHex,
-  hexToWorld, worldToHex, groundHeight, walkHeight, decks, deckClamp, pickHex, pickPoint, projectToScreen,
+  hexToWorld, worldToHex, groundHeight, walkHeight, deckClamp, pickHex, pickPoint, projectToScreen,
+  // walkable decks (bridges, stairs, wall-walks with wall: true) and solid footprints (walls, towers, gates, tents, fences)
+  decks, solids,
   bounds: { bx0, bx1, bz0, bz1, BCX, BCZ },
   applyView, DEFAULT_VIEW, flyTo, focusHex, resize, start, setRunning,
   setTimeOfDay, previewTimeOfDay, commitTimeOfDay, get hour() { return timeState.hour; }, timeState,

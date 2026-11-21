@@ -4,8 +4,23 @@
 // Ramparts are drawn as one continuous wall through the centres of neighbouring rampart hexes (straight where the hexes
 // line up) instead of following the hex outlines; adjacent gate props form one wide gate with several passages.
 export function buildFortifications(api, map) {
-  const { B, W, COL, V, C, beam, hbox, prism, hipRoof, banners, lanternSpots, smokeSources, decks } = api;
+  const { B, W, COL, V, C, beam, hipRoof, banners, lanternSpots, smokeSources, decks, solids } = api;
   const { decor, segmentData, parseSeg, edgeCorners, allHexes, hexToWorld, hexCorner, groundHeight, HEX_DIRS, HEX_HEIGHT_STEP } = map;
+  // solid masonry standing on the ground is also recorded as a footprint (soldiers walk around it, arrows hit it);
+  // walkable pieces (stairs) and thin parts (doors, rails) are left out
+  let capture = true;
+  const solidFoot = (x, z, y0, y1) => { const g = groundHeight(x, z); return capture && solids && y0 <= g + 0.3 && y1 > g + 0.3; };
+  const hbox = (Bf, x, y0, y1, z, dir, hl, hw, col, k) => {
+    api.hbox(Bf, x, y0, y1, z, dir, hl, hw, col, k);
+    if (Math.min(hl, hw) >= 0.06 && solidFoot(x, z, y0, y1)) {
+      const l = Math.hypot(dir.x, dir.z) || 1;
+      solids.push({ k: 'box', x, z, ux: dir.x / l, uz: dir.z / l, hl, hw, top: y1 });
+    }
+  };
+  const prism = (Bf, x, y0, z, r0, r1, h, col, k, n, rot) => {
+    api.prism(Bf, x, y0, z, r0, r1, h, col, k, n, rot);
+    if (Math.max(r0, r1) >= 0.12 && solidFoot(x, z, y0, y0 + h)) solids.push({ k: 'circ', x, z, r: Math.max(r0, r1), top: y0 + h });
+  };
   const ramparts = new Set((decor && decor.ramparts) || []);
   const props = (decor && decor.props) || [];
   const stairSegs = Object.entries(segmentData || {}).filter(([, t]) => t === 'escalier').map(([k]) => parseSeg(k));
@@ -23,10 +38,10 @@ export function buildFortifications(api, map) {
   };
   const Vxz = (p, y) => V(p.x, y, p.z);
   // walkable surface for units (buildings.js decks): a polyline with heights and a half width
-  const addDeck = (pts, hw) => {
+  const addDeck = (pts, hw, wall = false) => {
     if (!decks) return;
     const xs = pts.map((p) => p.x), zs = pts.map((p) => p.z), m = hw + 0.1;
-    decks.push({ pts, hw, x0: Math.min(...xs) - m, x1: Math.max(...xs) + m, z0: Math.min(...zs) - m, z1: Math.max(...zs) + m });
+    decks.push({ pts, hw, wall, x0: Math.min(...xs) - m, x1: Math.max(...xs) + m, z0: Math.min(...zs) - m, z1: Math.max(...zs) + m });
   };
 
   // --- Rampart graph: links between neighbouring rampart hexes ---
@@ -86,6 +101,7 @@ export function buildFortifications(api, map) {
       bot -= 0.5;
     }
     const yA = ta + 0.01, yB = tb + 0.01;
+    if (capture && solids && bot <= groundHeight((A.x + Bp.x) / 2, (A.z + Bp.z) / 2) + 0.3) solids.push({ k: 'seg', ax: A.x, az: A.z, bx: Bp.x, bz: Bp.z, nx: n.x, nz: n.z, wo: wo + (opt.noFoot ? 0 : 0.22), wi, top: Math.max(yA, yB) + 0.2 });
     const ao = off(A, wo), bo = off(Bp, wo), ai = off(A, -wi), bi = off(Bp, -wi);
     B.quad(Vxz(ao, yA), Vxz(bo, yB), Vxz(bi, yB), Vxz(ai, yA), K.pave, 2);
     B.quad(Vxz(ao, bot), Vxz(bo, bot), Vxz(bo, yB), Vxz(ao, yA), K.stone, 1);
@@ -153,9 +169,9 @@ export function buildFortifications(api, map) {
     const a = nodes.get(ka), b = nodes.get(kb);
     const pa = hexToWorld(a.q, a.r), pb = hexToWorld(b.q, b.r);
     steppedRun(pa, pb, top(a), top(b));
-    addDeck([{ x: pa.x, y: top(a) + 0.01, z: pa.z }, { x: pb.x, y: top(b) + 0.01, z: pb.z }], 0.85);
+    addDeck([{ x: pa.x, y: top(a) + 0.01, z: pa.z }, { x: pb.x, y: top(b) + 0.01, z: pb.z }], 0.85, true);
   }
-  for (const [k, h] of nodes) if (!linksOf(k).length) { const c = hexToWorld(h.q, h.r); addDeck([{ x: c.x - 0.01, y: top(h) + 0.01, z: c.z }, { x: c.x + 0.01, y: top(h) + 0.01, z: c.z }], 0.85); }
+  for (const [k, h] of nodes) if (!linksOf(k).length) { const c = hexToWorld(h.q, h.r); addDeck([{ x: c.x - 0.01, y: top(h) + 0.01, z: c.z }, { x: c.x + 0.01, y: top(h) + 0.01, z: c.z }], 0.85, true); }
   // joints: a solid block where the wall turns, forks or ends (straight runs need nothing)
   for (const [k, h] of nodes) {
     const ls = linksOf(k);
@@ -194,13 +210,15 @@ export function buildFortifications(api, map) {
         break;
       }
       case 'banniere': banners.push({ banner: bannerSpot(h, c, p.label) }); break;
-      case 'escalier': stairs(at, ax); break;
+      case 'escalier': capture = false; stairs(at, ax); capture = true; break;
       case 'feu': campfire(c, gy); break;
       default: break;
     }
   }
   for (const run of runs) gateComplex(run);
+  capture = false;
   for (const sg of stairSegs) stoneStairs(sg);
+  capture = true;
 
   // where a banner prop stands: on the inner parapet of a wall-walk, else off the hex centre (centres hold units/markers)
   function bannerSpot(h, c, label) {
@@ -455,6 +473,7 @@ export function buildFortifications(api, map) {
 
   function tent(at, ax, nx, L, Wd, Ht, col) {
     const y = (u, v) => { const p = at(u, v); return groundHeight(p.x, p.z) - 0.02; };
+    if (solids) { const c0 = at(0, 0); solids.push({ k: 'box', x: c0.x, z: c0.z, ux: ax.x, uz: ax.z, hl: L + 0.1, hw: Wd, top: y(0, 0) + Ht }); }
     const P = (u, v, dy) => { const p = at(u, v); return V(p.x, dy, p.z); };
     const r0 = P(-L, 0, y(-L, 0) + Ht), r1 = P(L, 0, y(L, 0) + Ht);
     const a0 = P(-L, Wd, y(-L, Wd)), a1 = P(L, Wd, y(L, Wd)), b0 = P(-L, -Wd, y(-L, -Wd)), b1 = P(L, -Wd, y(L, -Wd));
@@ -484,6 +503,8 @@ export function buildFortifications(api, map) {
   }
 
   function campfire(c, gy) {
+    if (solids) solids.push({ k: 'circ', x: c.x, z: c.z, r: 0.22, top: gy + 0.35 });
+    capture = false;
     for (let i = 0; i < 7; i++) {
       const a = i / 7 * Math.PI * 2;
       prism(B, c.x + Math.cos(a) * 0.16, gy - 0.03, c.z + Math.sin(a) * 0.16, 0.05, 0.035, 0.07, K.stoneDark, 1, 5);
@@ -494,5 +515,6 @@ export function buildFortifications(api, map) {
     }
     smokeSources.push({ x: c.x, y: gy + 0.1, z: c.z, fire: true });
     lanternSpots.push(V(c.x, gy + 0.08, c.z));
+    capture = true;
   }
 }

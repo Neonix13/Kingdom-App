@@ -289,6 +289,10 @@ uniform int uCutN;`)
   const lanternSpots = [];
   const windowSpots = [];
   const ck = (x, z) => `${Math.round(x * 1000)},${Math.round(z * 1000)}`;
+  // footprints that soldiers must walk around and arrows can hit (units3d / obstacles.js):
+  // { k: 'seg', ax, az, bx, bz, nx, nz, wo, wi, top } (band from -wi to wo across a segment), { k: 'circ', x, z, r, top },
+  // { k: 'box', x, z, ux, uz, hl, hw, top } (oriented box, half length along u, half width across)
+  const solids = [];
   let towerSite = null;
 
   function hipRoof(c, ax, az, hl, hd, base, Hr, U, nS = 3) {
@@ -655,6 +659,7 @@ uniform int uCutN;`)
     const { x, z, ax, az, gy } = towerSite;
     const at = (s, t, y) => V(x + ax.x * s + az.x * t, y, z + ax.z * s + az.z * t);
     const PS = 0.22, FS = 0.3, PY = gy + 1.5, TOP = gy + 2.0;
+    solids.push({ k: 'circ', x, z, r: FS * Math.SQRT2 + 0.08, top: TOP });
     const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
     for (const [s, t] of corners) {
       const foot = at(s * FS, t * FS, 0);
@@ -895,6 +900,11 @@ uniform int uCutN;`)
       if (ctx.isGateHex && (ctx.isGateHex(s.q1, s.r1) || ctx.isGateHex(s.q2, s.r2))) continue; // the gate's own doors close it
       const ec = edgeCorners(s.q1, s.r1, s.q2, s.r2);
       if (!ec) continue;
+      {
+        const ex = ec[1].x - ec[0].x, ez = ec[1].z - ec[0].z, el = Math.hypot(ex, ez) || 1;
+        const a = { x: ec[0].x + ex * 0.04, z: ec[0].z + ez * 0.04 }, b = { x: ec[0].x + ex * 0.96, z: ec[0].z + ez * 0.96 };
+        solids.push({ k: 'seg', ax: a.x, az: a.z, bx: b.x, bz: b.z, nx: -ez / el, nz: ex / el, wo: 0.05, wi: 0.05, top: groundHeight((a.x + b.x) / 2, (a.z + b.z) / 2) + 0.27 });
+      }
       const pts = [];
       for (let i = 0; i <= 4; i++) {
         const t = 0.06 + i / 4 * 0.88;
@@ -909,7 +919,7 @@ uniform int uCutN;`)
   }
 
   // Map-specific structures (fortifications.js: ramparts, gatehouses, towers, camps) drawn with the same buffers
-  if (ctx.decorate) ctx.decorate({ B, R, W, COL, V, C, box, beam, hbox, prism, tube, hipRoof, banners: gateInfo, lanternSpots, smokeSources, decks });
+  if (ctx.decorate) ctx.decorate({ B, R, W, COL, V, C, box, beam, hbox, prism, tube, hipRoof, banners: gateInfo, lanternSpots, smokeSources, decks, solids });
 
   if (W.count) {
     const wm = new THREE.MeshStandardMaterial({ color: 0x24170c, emissive: 0xffa24a, emissiveIntensity: 0, roughness: 0.8, side: THREE.DoubleSide });
@@ -948,5 +958,5 @@ uniform int uCutN;`)
     vegGroup.add(VEG.instanced(new THREE.SphereGeometry(0.055, 8, 6), m, lanternSpots.map(p => ({ x: p.x, y: p.y, z: p.z, s: 1 }))));
   }
 
-  return { waterwheels, smokeSources, lanternSpots, windowSpots, decks, banners: bannerSet, cutaways };
+  return { waterwheels, smokeSources, lanternSpots, windowSpots, decks, solids, banners: bannerSet, cutaways };
 }
