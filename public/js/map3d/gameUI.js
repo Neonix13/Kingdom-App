@@ -54,7 +54,13 @@ export function createGameUI({ world, container, bridge, getView }) {
   const sep = document.createElement('div');
   sep.className = 'tool-separator';
   const btn3d = document.getElementById('tool-3d');
-  if (toolbar && btn3d) { btn3d.after(sep); sep.after(gear); }
+  const tbCam = document.getElementById('tb-cam');
+  if (tbCam) {
+    gear.className = 'tool-btn tb-row';
+    gear.title = 'Réglages 3D : qualité, étiquettes, heure, caméra';
+    gear.innerHTML = '<svg class="tb-ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"></path></svg><span>Réglages 3D</span>';
+    tbCam.querySelector('.tb-h').after(gear);
+  } else if (toolbar && btn3d) { btn3d.after(sep); sep.after(gear); }
   const panel = document.createElement('div');
   panel.id = 'v3-settings';
   const levelOpts = world.LEVELS.map((l, i) => `<option value="${i}">${l.name}</option>`).join('');

@@ -197,16 +197,7 @@ body.hud-d #hud-root #sim-panel button:hover { box-shadow: 2px 2px 0 var(--hud-r
 body.hud-d #hud-root #sim-panel button.active { background: var(--hud-red); color: #fff; }
 body.hud-d #hud-root #sim-panel .sim-facing-btn { width: 28px; height: 26px; font-size: 14px; }
 
-/* ---- legacy toolbar as a right-hand tool strip ---- */
-body.hud-d #toolbar { position: fixed; top: 84px; right: 16px; left: auto; z-index: 390; background: #fff; border: 4px solid #000; border-radius: 0; box-shadow: 0 0 0 3px #fff, 0 0 0 6px #000; padding: 6px; }
-body.hud-d #toolbar .tool-btn { background: #fff; border: 2px solid #000; border-radius: 0; color: #000; }
-body.hud-d #toolbar .tool-btn:hover { background: #eee; }
-body.hud-d #toolbar .tool-btn.active { background: #000; color: #fff; border-color: #000; }
-body.hud-d #toolbar .tool-separator { background: #000; }
-body.hud-d #toolbar .tool-popup { left: auto; right: calc(100% + 10px); background: #fff; border: 3px solid #000; border-radius: 0; color: #000; }
-body.hud-d #toolbar .tool-popup label { color: #000; }
-body.hud-d #tool-3d { display: none; }
-body.hud-d #v3-settings, body.hud-d #snd-popup { position: fixed; left: auto; right: 90px; top: 84px; z-index: 395; background: #fff; color: #000; border: 4px solid #000; border-radius: 0; box-shadow: 0 0 0 3px #fff, 0 0 0 6px #000; font-family: var(--hud-body); }
+body.hud-d #v3-settings, body.hud-d #snd-popup { position: fixed; left: auto; right: 292px; top: 84px; z-index: 395; background: #fff; color: #000; border: 4px solid #000; border-radius: 0; box-shadow: 0 0 0 3px #fff, 0 0 0 6px #000; font-family: var(--hud-body); }
 body.hud-d #v3-settings h4 { color: #000; font: 400 14px var(--hud-display); }
 body.hud-d #v3-settings .hint { color: #333; }
 body.hud-d #v3-settings select, body.hud-d #v3-settings button { background: #fff; color: #000; border: 2px solid #000; border-radius: 0; }
@@ -293,14 +284,6 @@ body.hud-d #tuto-coach .tuto-next { background: var(--hud-red); color: #fff; }
 body.hud-d.hud-coach .hud-feed { display: none; }
 
 /* legacy tool icons drawn as ink line icons in the HUD */
-body.hud-d #toolbar #tool-terrain, body.hud-d #toolbar #tool-ping, body.hud-d #toolbar #tool-rules, body.hud-d #toolbar #v3-gear, body.hud-d #toolbar .tool-btn[title="Son"] { font-size: 0; background-repeat: no-repeat; background-position: center; background-size: 20px 20px; }
-body.hud-d #toolbar #tool-terrain { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2'%3E%3Cpath d='M12 3l6 9h-4l4 6H6l4-6H6z'/%3E%3Cpath d='M12 18v3'/%3E%3C/svg%3E"); }
-body.hud-d #toolbar #tool-ping { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2'%3E%3Cpath d='M12 22s-7-7-7-12a7 7 0 0 1 14 0c0 5-7 12-7 12z'/%3E%3Ccircle cx='12' cy='10' r='2.5'/%3E%3C/svg%3E"); }
-body.hud-d #toolbar #tool-rules { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2'%3E%3Cpath d='M4 4h6a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H4zM20 4h-6a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h6z'/%3E%3C/svg%3E"); }
-body.hud-d #toolbar #v3-gear { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2'%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cpath d='M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2'/%3E%3C/svg%3E"); }
-body.hud-d #toolbar .tool-btn[title="Son"] { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2'%3E%3Cpath d='M4 9h4l5-4v14l-5-4H4z'/%3E%3Cpath d='M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11'/%3E%3C/svg%3E"); }
-body.hud-d #toolbar #tool-weakness { font-size: 0; background-repeat: no-repeat; background-position: center; background-size: 20px 20px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke-width='2.6'%3E%3Cpath d='M12 3l7.8 4.5' stroke='%2328a050'/%3E%3Cpath d='M19.8 7.5v9' stroke='%23e89628'/%3E%3Cpath d='M19.8 16.5L12 21 4.2 16.5' stroke='%23D8352A'/%3E%3Cpath d='M4.2 16.5v-9L12 3' stroke='%23000'/%3E%3C/svg%3E"); }
-body.hud-d #toolbar #tool-terrain.active, body.hud-d #toolbar #tool-ping.active, body.hud-d #toolbar #tool-weakness.active { background-color: #ffd9d4; border-color: var(--hud-red); }
 
 /* ---- small screens ---- */
 @media (max-width: 1360px) {
@@ -375,14 +358,6 @@ body.hud-splash-on #combat-result-box { display: none !important; }
 @media (max-height: 760px) { #hud-splash .sp-stage { top: 40%; height: 46vh; } #hud-splash .sp-verdict { font-size: 36px; } #hud-splash .sp-head { padding: 8px 16px; } #hud-splash .sp-row { padding: 5px 16px; } }
 
 /* remaining legacy glyph buttons in the tool strip and the journal tabs: ink line icons */
-body.hud-d #toolbar #tool-cursor, body.hud-d #toolbar #tool-grid-group, body.hud-d #toolbar #grid-submenu .tool-btn { font-size: 0; background-repeat: no-repeat; background-position: center; background-size: 18px 18px; }
-body.hud-d #toolbar #tool-cursor { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linejoin='round'%3E%3Cpath d='M5 3l14 8-6 2-3 7z'/%3E%3C/svg%3E"); }
-body.hud-d #toolbar #tool-cursor.active { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linejoin='round'%3E%3Cpath d='M5 3l14 8-6 2-3 7z'/%3E%3C/svg%3E"); }
-body.hud-d #toolbar #tool-grid-group.active { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2'%3E%3Cpath d='M12 2l8.5 5v10L12 22l-8.5-5V7z'/%3E%3Cpath d='M12 2v20M3.5 7l17 10M20.5 7l-17 10'/%3E%3C/svg%3E") !important; }
-body.hud-d #toolbar #tool-grid-group { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2'%3E%3Cpath d='M12 2l8.5 5v10L12 22l-8.5-5V7z'/%3E%3Cpath d='M12 2v20M3.5 7l17 10M20.5 7l-17 10'/%3E%3C/svg%3E"); }
-body.hud-d #toolbar #grid-submenu .tool-btn[title="Opacité"] { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='8'/%3E%3Cpath d='M12 4a8 8 0 0 1 0 16z' fill='%23000'/%3E%3C/svg%3E"); }
-body.hud-d #toolbar #grid-submenu .tool-btn[title="Épaisseur"] { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000'%3E%3Cpath d='M4 6h16' stroke-width='1'/%3E%3Cpath d='M4 12h16' stroke-width='2.2'/%3E%3Cpath d='M4 18h16' stroke-width='4'/%3E%3C/svg%3E"); }
-body.hud-d #toolbar #grid-submenu .tool-btn[title="Couleur"] { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2'%3E%3Cpath d='M12 3c4 5 6 8 6 11a6 6 0 0 1-12 0c0-3 2-6 6-11z'/%3E%3C/svg%3E"); }
 body.hud-d.hud-drawer .sidebar-tab { font-size: 0 !important; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 4px; }
 body.hud-d.hud-drawer .sidebar-tab:first-child { display: none; }
 body.hud-d.hud-drawer .sidebar-tab::before { content: ''; width: 16px; height: 16px; background-repeat: no-repeat; background-size: 16px 16px; }
@@ -495,3 +470,33 @@ body.hud-gameover-on #hud-splash { display: none !important; }
 #hud-root .hud-ring .hud-ring-stances button:hover:not(:disabled) { transform: scale(1.12); }
 #hud-root .hud-ring .hud-ring-stances button:disabled { opacity: .35; cursor: not-allowed; }
 .hud-act:disabled { opacity: .45; cursor: not-allowed; }
+
+/* ---- tools strip (≡ button): labelled sections Vue / Carte / Caméra 3D / Son ---- */
+body.hud-d #toolbar { position: fixed; top: 84px; right: 16px; left: auto; z-index: 390; width: 250px; max-height: calc(100vh - 300px); overflow-y: auto; flex-direction: column; gap: 10px; padding: 10px 10px 12px; background: #fff; color: #000; border: 4px solid #000; border-radius: 0; box-shadow: 0 0 0 3px #fff, 0 0 0 6px #000; font-family: var(--hud-body); }
+body.hud-d #toolbar .tb-head { font: 400 15px var(--hud-display); letter-spacing: 1px; padding: 0 2px 6px; border-bottom: 3px solid #000; }
+body.hud-d #toolbar .tb-sec { display: flex; flex-direction: column; gap: 4px; }
+body.hud-d #toolbar .tb-sec:empty, body.hud-d #toolbar .tb-sec:not(:has(.tb-row)) { display: none; }
+body.hud-d #toolbar .tb-h { font: 900 10px var(--hud-body); letter-spacing: 2px; text-transform: uppercase; color: var(--hud-red); padding: 2px 2px 0; }
+body.hud-d #toolbar .tb-row { width: 100%; height: 36px; display: flex; align-items: center; justify-content: flex-start; gap: 10px; padding: 0 10px; background: #fff; color: #000; border: 2px solid #000; border-radius: 0; font: 700 13px var(--hud-body); text-align: left; cursor: pointer; }
+body.hud-d #toolbar .tb-row span { flex: 1; }
+body.hud-d #toolbar .tb-row:hover { background: #f1efe9; }
+body.hud-d #toolbar .tb-row:focus-visible { outline: 3px solid var(--hud-red); outline-offset: 1px; }
+body.hud-d #toolbar .tb-row.active { background: #000; color: #fff; }
+body.hud-d #toolbar .tb-row.active small { color: #fff; border-color: #fff; }
+body.hud-d #toolbar .tb-ic { flex: none; }
+body.hud-d #toolbar .tb-row small, body.hud-d #toolbar .tb-row kbd { font: 900 10px var(--hud-body); border: 1.5px solid currentColor; padding: 1px 4px; line-height: 1; }
+body.hud-d #toolbar .tb-caret { flex: none; transition: transform .15s; }
+body.hud-d #toolbar #tool-grid-group.active .tb-caret { transform: rotate(180deg); }
+body.hud-d #toolbar .tb-sub { display: none; flex-direction: column; gap: 8px; padding: 8px 10px 10px; border: 2px solid #000; border-top: 0; margin-top: -4px; background: #f7f5f0; }
+body.hud-d #toolbar .tb-sub.visible { display: flex; }
+body.hud-d #toolbar .tb-sub label { display: flex; align-items: center; justify-content: space-between; gap: 8px; font: 700 12px var(--hud-body); color: #000; }
+body.hud-d #toolbar .tb-sub input[type=range] { width: 120px; accent-color: var(--hud-red); }
+body.hud-d #toolbar .tb-swatches { display: flex; gap: 6px; }
+body.hud-d #toolbar .grid-color-swatch { width: 24px; height: 24px; border: 2px solid #000; border-radius: 0; padding: 0; cursor: pointer; }
+body.hud-d #toolbar .grid-color-swatch.active { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--hud-red); }
+body.hud-d #toolbar .tb-row.muted .snd-waves, body.hud-d #toolbar .tb-row:not(.muted) .snd-mute { display: none; }
+body.hud-d #toolbar .tb-legacy { display: none !important; }
+body.hud-d.hud-2d #toolbar #tb-cam { display: none; }
+body.hud-d:not(.hud-2d) #toolbar #tool-weakness, body.hud-d:not(.hud-2d) #toolbar #tool-coords, body.hud-d:not(.hud-2d) #toolbar #tool-grid-group, body.hud-d:not(.hud-2d) #toolbar #grid-submenu { display: none; }
+body.hud-d #toolbar .tuto-highlight { outline: 3px solid var(--hud-red); outline-offset: 2px; animation: hud-tuto 1.2s ease-in-out infinite; }
+@media (max-height: 760px) { body.hud-d #toolbar .tb-row { height: 32px; } body.hud-d #toolbar { gap: 6px; } }
