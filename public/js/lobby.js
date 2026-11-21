@@ -411,7 +411,7 @@ function playSolo() {
   const name = readName('create-name') || savedName() || 'Joueur';
   KBNet.clearSession();
   KBNet.send('create_solo', {
-    mode: 'simultaneous',
+    mode: document.getElementById('solo-mode')?.value || 'simultaneous',
     playerName: name,
     difficulty: document.getElementById('solo-difficulty').value,
     generalId: document.getElementById('solo-general').value || undefined,

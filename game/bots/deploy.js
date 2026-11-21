@@ -33,6 +33,8 @@ function nextPlacement(room, player, rng) {
   const front = (t) => hexDistance(t.q, t.r, foe.q, foe.r);
   const jitter = () => rng() * 0.5;
   const u = todo[0];
+  const ok = room.canDeployAt ? free.filter(t => room.canDeployAt(u, t.q, t.r)) : free;
+  if (!ok.length) return null;
   let score;
   switch (role(u)) {
     case 0: score = (t) => front(t) + lateral(t) * 0.3 + jitter(); break;            // front, centre
@@ -40,7 +42,7 @@ function nextPlacement(room, player, rng) {
     case 2: score = (t) => front(t) * 0.5 - lateral(t) + jitter(); break;            // flanks
     default: score = (t) => -front(t) + lateral(t) * 0.3; break;                     // rear
   }
-  const best = free.slice().sort((a, b) => score(a) - score(b))[0];
+  const best = ok.slice().sort((a, b) => score(a) - score(b))[0];
   return { unitId: u.id, q: best.q, r: best.r };
 }
 

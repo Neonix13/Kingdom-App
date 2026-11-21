@@ -207,6 +207,8 @@ export async function mountGameView(bridge, { container }) {
       if (!keys.size) for (const k of world.allHexes.keys()) { const [q, r] = k.split(',').map(Number); if (hexDist(q, r, z.q, z.r) <= (z.radius || 4)) keys.add(k); }
       fills.push({ keys, color: 'rgba(70,190,50,0.38)', edge: 'rgba(140,255,90,0.95)' });
       outlines.push({ keys, center: null, color: 'rgba(170,255,110,0.95)', width: 0.14 });
+      const stuck = bridge.deployBlockedFor ? bridge.deployBlockedFor(bridge.selectedUnit) : null;
+      if (stuck) fills.push({ keys: stuck, color: 'rgba(216,53,42,0.55)', edge: 'rgba(255,110,90,0.95)' });
     }
     fills.push({ keys: bridge.movableTiles, color: 'rgba(60,170,40,0.42)', edge: 'rgba(150,255,100,0.9)' });
     if (bridge.abilityTiles && bridge.abilityTiles.size) fills.push({ keys: new Set(bridge.abilityTiles.keys()), color: 'rgba(40,110,200,0.5)', edge: 'rgba(120,190,255,0.95)' });
