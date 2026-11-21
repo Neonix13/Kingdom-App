@@ -45,12 +45,158 @@ function jitter(geo, amount, seed) {
 
 const lin = (hex) => new THREE.Color(hex);
 
+// 0 = trunk (bark texture), 1 = foliage
+function part(geo, v) {
+  geo.setAttribute('aPart', new THREE.BufferAttribute(new Float32Array(geo.attributes.position.count).fill(v), 1));
+  return geo;
+}
+
+// ---- Procedural tree textures (grey detail maps, multiplied onto the vertex colours) ----
+let _treeTex = null;
+function tileDraw(ctx, size, fn) {
+  for (const dx of [-size, 0, size]) for (const dy of [-size, 0, size]) { ctx.save(); ctx.translate(dx, dy); fn(); ctx.restore(); }
+}
+function canvasTex(w, h, draw) {
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  const ctx = cv.getContext('2d');
+  draw(ctx, w, h);
+  const t = new THREE.CanvasTexture(cv);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.NoColorSpace;
+  t.anisotropy = 4;
+  t.generateMipmaps = true;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  return t;
+}
+function grey(v, a = 1) { const g = Math.round(Math.max(0, Math.min(1, v)) * 255); return `rgba(${g},${g},${g},${a})`; }
+
+export function treeTextures() {
+  if (_treeTex || typeof document === 'undefined') return _treeTex;
+  const rng = makeRng(4242);
+  // Broadleaf: overlapping leaf clusters, light tops, dark gaps (never transparent)
+  const leaves = canvasTex(512, 512, (ctx, S) => {
+    ctx.fillStyle = grey(0.32); ctx.fillRect(0, 0, S, S);
+    for (let i = 0; i < 2600; i++) {
+      const x = rng() * S, y = rng() * S, r = 7 + rng() * 12, a = rng() * Math.PI, v = 0.35 + rng() * 0.6;
+      tileDraw(ctx, S, () => {
+        ctx.translate(x, y); ctx.rotate(a);
+        const g = ctx.createLinearGradient(-r, -r * 0.5, r, r * 0.5);
+        g.addColorStop(0, grey(v + 0.18)); g.addColorStop(1, grey(v - 0.2));
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.ellipse(0, 0, r, r * 0.48, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = grey(v - 0.28, 0.5); ctx.lineWidth = 0.8;
+        ctx.beginPath(); ctx.moveTo(-r * 0.8, 0); ctx.lineTo(r * 0.8, 0); ctx.stroke();
+      });
+    }
+  });
+  // Conifer: short needle strokes hanging down and outwards in layered tufts
+  const needles = canvasTex(512, 512, (ctx, S) => {
+    ctx.fillStyle = grey(0.28); ctx.fillRect(0, 0, S, S);
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 7000; i++) {
+      const x = rng() * S, y = rng() * S, len = 10 + rng() * 22, a = Math.PI / 2 + (rng() - 0.5) * 1.3, v = 0.3 + rng() * 0.65;
+      tileDraw(ctx, S, () => {
+        ctx.strokeStyle = grey(v); ctx.lineWidth = 1.2 + rng() * 1.4;
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len); ctx.stroke();
+      });
+    }
+  });
+  // Bark: vertical fibres with dark furrows and a few horizontal cracks
+  const bark = canvasTex(128, 256, (ctx, W, H) => {
+    ctx.fillStyle = grey(0.55); ctx.fillRect(0, 0, W, H);
+    for (let i = 0; i < 260; i++) {
+      const x = rng() * W, w = 1 + rng() * 4, v = 0.3 + rng() * 0.55, y0 = rng() * H, len = 30 + rng() * 140;
+      for (const dx of [-W, 0, W]) for (const dy of [-H, 0, H]) {
+        ctx.fillStyle = grey(v, 0.8);
+        ctx.fillRect(x + dx + Math.sin(y0) * 2, y0 + dy, w, len);
+      }
+    }
+    for (let i = 0; i < 26; i++) {
+      const x = rng() * W, w = 2 + rng() * 3;
+      for (const dx of [-W, 0, W]) { ctx.fillStyle = grey(0.12, 0.85); ctx.fillRect(x + dx, 0, w, H); }
+    }
+    for (let i = 0; i < 40; i++) {
+      const x = rng() * W, y = rng() * H;
+      ctx.fillStyle = grey(0.15, 0.7); ctx.fillRect(x, y, 6 + rng() * 14, 1.5);
+    }
+  });
+  _treeTex = { leaves, needles, bark };
+  return _treeTex;
+}
+
+// Shader patch (patchLit "extra"): bark on trunks, leaf / needle detail and darker clump hollows on foliage.
+// Triplanar in object space so instancing, wind and LOD keep working; fully opaque (no alpha cut-outs).
+export function treeTexturePatch(kind) {
+  const tex = treeTextures();
+  return (shader) => {
+    if (!tex) return;
+    const foliage = kind === 'conifer' ? tex.needles : tex.leaves;
+    shader.uniforms.uFoliageTex = { value: foliage };
+    shader.uniforms.uBarkTex = { value: tex.bark };
+    const scale = kind === 'conifer' ? 2.1 : kind === 'bush' ? 2.6 : 1.9;
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>
+attribute float aPart;
+varying float vPart;
+varying vec3 vObj;
+varying vec3 vObjN;
+varying float vSeed;
+`).replace('#include <begin_vertex>', `#include <begin_vertex>
+vPart = aPart;
+vObj = position;
+vObjN = normal;
+{
+  vec3 _sp = vec3( 0.0 );
+  #ifdef USE_INSTANCING
+    _sp = instanceMatrix[ 3 ].xyz;
+  #endif
+  vSeed = fract( sin( dot( _sp.xz, vec2( 12.9898, 78.233 ) ) ) * 43758.5453 );
+}
+`);
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>
+uniform sampler2D uFoliageTex;
+uniform sampler2D uBarkTex;
+varying float vPart;
+varying vec3 vObj;
+varying vec3 vObjN;
+varying float vSeed;
+// x: albedo detail, y: blurred detail (cavities), z: macro clump shading
+vec3 treeDetail() {
+  if ( vPart < 0.5 ) {
+    vec2 uv = vec2( atan( vObj.z, vObj.x ) * 0.4775 + vSeed, vObj.y * 1.4 + vSeed * 3.0 );
+    return vec3( texture2D( uBarkTex, uv ).r, texture2D( uBarkTex, uv, 1.5 ).r, 1.0 );
+  }
+  vec3 p = vObj * ${scale.toFixed(2)} + vec3( vSeed * 7.0, vSeed * 3.0, vSeed * 5.0 );
+  vec3 w = pow( abs( normalize( vObjN ) ), vec3( 4.0 ) );
+  w /= ( w.x + w.y + w.z + 1e-4 );
+  vec3 d = vec3( 0.0 );
+  d.x = texture2D( uFoliageTex, p.zy ).r * w.x + texture2D( uFoliageTex, p.xz * 0.9 ).r * w.y + texture2D( uFoliageTex, p.xy ).r * w.z;
+  d.y = texture2D( uFoliageTex, p.zy, 2.0 ).r * w.x + texture2D( uFoliageTex, p.xz * 0.9, 2.0 ).r * w.y + texture2D( uFoliageTex, p.xy, 2.0 ).r * w.z;
+  vec3 q = p * 0.23;
+  d.z = texture2D( uFoliageTex, q.zy, 3.0 ).r * w.x + texture2D( uFoliageTex, q.xz, 3.0 ).r * w.y + texture2D( uFoliageTex, q.xy, 3.0 ).r * w.z;
+  return d;
+}
+`).replace('#include <color_fragment>', `#include <color_fragment>
+vec3 _td = treeDetail();
+{
+  if ( vPart < 0.5 ) diffuseColor.rgb *= 0.4 + _td.x * 1.25;
+  else {
+    diffuseColor.rgb *= mix( 1.0, 0.55 + _td.x * 0.9, 0.72 );
+    diffuseColor.rgb *= 0.8 + smoothstep( 0.32, 0.6, _td.y ) * 0.26;
+    diffuseColor.rgb *= 0.8 + smoothstep( 0.3, 0.62, _td.z ) * 0.32;
+  }
+  diffuseColor.rgb *= 0.93 + vSeed * 0.14;
+}
+`);
+  };
+}
+
 export function makeConiferGeometry(variant = 0, lod = 0) {
   const parts = [];
   const trunkCol = lin(0x4a3220);
   const trunk = strip(new THREE.CylinderGeometry(0.03, 0.05, 0.6, lod ? 4 : 5, 1, true));
   trunk.translate(0, 0.15, 0);
-  parts.push(paint(trunk, (x, y, z, c) => c.copy(trunkCol)));
+  parts.push(part(paint(trunk, (x, y, z, c) => c.copy(trunkCol)), 0));
 
   let tiers = variant === 0
     ? [[0.36, 0.55, 0.22], [0.29, 0.5, 0.5], [0.21, 0.46, 0.78], [0.12, 0.34, 1.04]]
@@ -71,7 +217,7 @@ export function makeConiferGeometry(variant = 0, lod = 0) {
       c.copy(dark).lerp(light, Math.min(1, 0.15 + g * 0.55 + local * 0.35));
       c.multiplyScalar(0.75 + 0.25 * local);
     });
-    parts.push(cone);
+    parts.push(part(cone, 1));
   });
   const geo = mergeGeometries(parts);
   geo.computeBoundingSphere();
@@ -83,7 +229,7 @@ export function makeBroadleafGeometry(variant = 0, lod = 0) {
   const trunkCol = lin(0x5b4128);
   const trunk = strip(new THREE.CylinderGeometry(0.035, 0.06, 0.7, lod ? 4 : 5, 1, true));
   trunk.translate(0, 0.2, 0);
-  parts.push(paint(trunk, (x, y, z, c) => c.copy(trunkCol)));
+  parts.push(part(paint(trunk, (x, y, z, c) => c.copy(trunkCol)), 0));
 
   let blobs = variant === 0
     ? [[0, 0.78, 0, 0.34], [0.2, 0.66, 0.08, 0.25], [-0.18, 0.68, -0.08, 0.26], [0.04, 0.98, -0.06, 0.24]]
@@ -102,7 +248,7 @@ export function makeBroadleafGeometry(variant = 0, lod = 0) {
       const out = Math.min(1, Math.hypot(px, pz) / 0.45);
       c.copy(dark).lerp(light, Math.min(1, 0.1 + up * 0.6 + out * 0.25 + (py - 0.4) * 0.3));
     });
-    parts.push(s);
+    parts.push(part(s, 1));
   });
   const geo = mergeGeometries(parts);
   geo.computeBoundingSphere();
@@ -118,7 +264,7 @@ export function makeBushGeometry() {
   spherizeNormals(s, 0, -0.05, 0, 0.7);
   const dark = lin(0x264519), light = lin(0x62903e);
   paint(s, (x, y, z, c) => c.copy(dark).lerp(light, Math.min(1, Math.max(0, (y + 0.06) / 0.3))));
-  return s;
+  return part(s, 1);
 }
 
 export function makeGrassTuftGeometry(seed = 5) {

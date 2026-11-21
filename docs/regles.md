@@ -92,7 +92,7 @@ L'outil **Côtés faibles** (vue 2D) colore les bords de chaque unité : vert (f
 
 ## 5. Combat
 
-**Portée** : 1 case (mêlée) ou la portée de l'unité (archers 3, archers d'élite 4), +1 par niveau de hauteur au-dessus de la cible, −1 par niveau au-dessous (au moins 1). La cible doit être visible (§7) et ne pas être alliée.
+**Portée** : toujours 1 case en mêlée ; pour les tireurs, la portée de l'unité (archers 3, archers d'élite 4), +1 par niveau de hauteur au-dessus de la cible, −1 par niveau au-dessous (au moins 1). Un archer au contact de sa cible se bat en mêlée (la cible peut riposter). La cible doit être visible (§7) et ne pas être alliée.
 
 **Attaque à distance** : cliquer un ennemi visible hors de portée (case orange) déplace d'abord l'unité sur la case d'approche choisie — mêlée : la moins chère à atteindre (puis la plus haute) ; tireur : la plus éloignée de la cible encore à portée (puis la moins chère) — puis lance l'attaque, en une seule action vérifiée d'un bloc par le serveur. Si aucune case accessible ce tour ne permet de frapper, l'unité ne bouge pas. Une embuscade sur le chemin arrête l'unité et annule l'attaque.
 
