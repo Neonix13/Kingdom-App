@@ -160,6 +160,71 @@ export function buildStructures(ctx) {
   } = ctx;
   const sqrt3 = Math.sqrt(3);
 
+  // Cutaway: buildings holding one of my units (or the selected one) open their roof and upper walls (dithered fade)
+  const MAX_CUT = 8;
+  const cutU = {
+    uCut: { value: Array.from({ length: MAX_CUT }, () => new THREE.Vector4()) },
+    uCutY: { value: new Array(MAX_CUT).fill(0) },
+    uCutN: { value: 0 },
+  };
+  const addCut = (shader) => {
+    Object.assign(shader.uniforms, cutU);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>
+uniform vec4 uCut[${MAX_CUT}];
+uniform float uCutY[${MAX_CUT}];
+uniform int uCutN;`)
+      .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+      for ( int i = 0; i < ${MAX_CUT}; i++ ) {
+        if ( i >= uCutN ) break;
+        vec4 c = uCut[i];
+        float d = length( vPWorld.xz - c.xy );
+        if ( d < c.z && vPWorld.y > uCutY[i] ) {
+          float a = c.w * ( 1.0 - smoothstep( c.z * 0.8, c.z, d ) );
+          if ( a > fract( 52.9829189 * fract( dot( gl_FragCoord.xy, vec2( 0.06711056, 0.00583715 ) ) ) ) ) discard;
+        }
+      }`);
+  };
+  const hexR = Math.hypot(hexCorner(0, 0, 0).x, hexCorner(0, 0, 0).z) * 1.02;
+  const cutState = new Map();
+  const cutaways = {
+    set(hexes) {
+      // the whole building (connected building hexes, nearest first, at most MAX_CUT) opens, not just one room
+      const keys = new Set();
+      for (const { q, r } of hexes) {
+        const seen = [`${q},${r}`];
+        for (let i = 0; i < seen.length && seen.length < MAX_CUT; i++) {
+          const [hq, hr] = seen[i].split(',').map(Number);
+          for (const [dq, dr] of HEX_DIRS) {
+            const nk = `${hq + dq},${hr + dr}`;
+            if (seen.length < MAX_CUT && !seen.includes(nk) && allHexes.get(nk)?.terrain === 'building') seen.push(nk);
+          }
+        }
+        for (const k of seen) keys.add(k);
+      }
+      const want = new Set();
+      for (const k of keys) {
+        const [q, r] = k.split(',').map(Number);
+        want.add(k);
+        if (!cutState.has(k)) {
+          const c = hexToWorld(q, r);
+          cutState.set(k, { x: c.x, z: c.z, y: groundHeight(c.x, c.z) + 0.28, a: 0, t: 1 });
+        } else cutState.get(k).t = 1;
+      }
+      for (const [k, st] of cutState) if (!want.has(k)) st.t = 0;
+    },
+    update(dt) {
+      if (!cutState.size) return;
+      let n = 0;
+      for (const [k, st] of cutState) {
+        st.a += (st.t - st.a) * Math.min(1, dt * 5);
+        if (st.t === 0 && st.a < 0.01) { cutState.delete(k); continue; }
+        if (n < MAX_CUT) { cutU.uCut.value[n].set(st.x, st.z, hexR, st.a); cutU.uCutY.value[n] = st.y; n++; }
+      }
+      cutU.uCutN.value = n;
+    },
+  };
+
   const woodMat = patchLit(new THREE.MeshStandardMaterial({ color: 0x6b4a2e, roughness: 0.85, flatShading: true }), {}, null, 'wood');
   const buildMat = patchLit(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, flatShading: true, side: THREE.DoubleSide }), {}, (shader) => {
     shader.vertexShader = shader.vertexShader
@@ -183,6 +248,7 @@ export function buildStructures(ctx) {
         }
         diffuseColor.rgb *= m;
       }`);
+    addCut(shader);
   }, 'build');
   const roofMat = patchLit(new THREE.MeshStandardMaterial({ color: 0x46443f, roughness: 0.78, flatShading: true }), {}, (shader) => {
     shader.vertexShader = shader.vertexShader
@@ -207,6 +273,7 @@ export function buildStructures(ctx) {
         vec3 _tv = normalize( ( viewMatrix * vec4( _tn.x, 0.0, _tn.y, 0.0 ) ).xyz );
         normal = normalize( normal + _tv * sin( _ch * 6.2831853 ) * 0.55 * _aa );
       }`);
+    addCut(shader);
   }, 'tileroof');
 
   const COL = {
@@ -879,5 +946,5 @@ export function buildStructures(ctx) {
     vegGroup.add(VEG.instanced(new THREE.SphereGeometry(0.055, 8, 6), m, lanternSpots.map(p => ({ x: p.x, y: p.y, z: p.z, s: 1 }))));
   }
 
-  return { waterwheels, smokeSources, lanternSpots, windowSpots, decks, banners: bannerSet };
+  return { waterwheels, smokeSources, lanternSpots, windowSpots, decks, banners: bannerSet, cutaways };
 }
