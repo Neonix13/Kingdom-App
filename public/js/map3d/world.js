@@ -441,9 +441,18 @@ function makeTerrainMaterial({ grid = false, snow = false } = {}) {
             albedo = mix( albedo, dirt, rm );
           }
         }
-        float steep = smoothstep( 0.4, 0.68, 1.0 - wN.y );
+        // facet normal: smoothed vertex normals hide steep wedges (a hex top dropping to a cliff end), the facet does not
+        vec3 fN = normalize( cross( dFdx( vPWorld ), dFdy( vPWorld ) ) );
+        if ( dot( fN, wN ) < 0.0 ) fN = -fN;
+        float upN = min( wN.y, fN.y );
+        vec3 rN = fN.y < wN.y ? fN : wN;
+        float along = dot( vPWorld.xz, vec2( 0.83, 0.57 ) );
+        float strata = texture2D( uNoise, vec2( vPWorld.y * 0.21 + texture2D( uNoise, vec2( along * 0.05, 0.3 ) ).r * 0.12, along * 0.013 ) ).r;
+        float steep = smoothstep( 0.34, 0.55, 1.0 - upN );
         if ( steep > 0.001 ) {
-          vec3 rock = rockTriplanar( vPWorld, wN ) * vec3( 0.95, 0.9, 0.84 ) * 1.6;
+          vec3 rt0 = rockTriplanar( vPWorld, rN );
+          vec3 rock = mix( vec3( dot( rt0, vec3( 0.3, 0.55, 0.15 ) ) ), rt0, 0.45 ) * vec3( 1.2, 0.96, 0.7 ) * 0.95;
+          rock *= 0.82 + 0.3 * smoothstep( 0.3, 0.7, strata );
           #ifdef SNOW
             vec3 rockFar = rockTriplanar( vPWorld * 0.18, wN ) * vec3( 0.95, 0.9, 0.84 ) * 1.6;
             rock = mix( rock, rockFar, smoothstep( 20.0, 70.0, distance( cameraPosition, vPWorld ) ) );
@@ -451,6 +460,22 @@ function makeTerrainMaterial({ grid = false, snow = false } = {}) {
           #endif
           rock *= 0.85 + 0.3 * macro;
           albedo = mix( albedo, rock, steep );
+        }
+        // cliff faces (their own mesh, third blend weight < 0): warm grey-brown rock with strata, vertical cracks,
+        // moss on ledges; vertex colours carry the mossy lip, the wet foot and the recesses
+        float cliffK = step( vBlendWeights.z, -0.5 );
+        if ( cliffK > 0.5 ) {
+          vec3 rt = rockTriplanar( vPWorld, wN );
+          float lum = dot( rt, vec3( 0.3, 0.55, 0.15 ) );
+          vec3 rock = mix( vec3( lum ), rt, 0.4 ) * vec3( 1.2, 1.02, 0.8 ) * 1.95;
+          rock *= 0.8 + 0.34 * smoothstep( 0.3, 0.7, strata );
+          float crack = texture2D( uNoise, vec2( along * 0.37, vPWorld.y * 0.035 ) ).g;
+          rock *= 1.0 - 0.38 * smoothstep( 0.68, 0.82, crack ) * ( 1.0 - smoothstep( 0.82, 0.9, crack ) );
+          rock *= 0.9 + 0.2 * macro;
+          vec3 cliffC = rock * diffuseColor.rgb;
+          float ledgeUp = smoothstep( 0.35, 0.75, wN.y );
+          cliffC = mix( cliffC, vec3( 0.2, 0.26, 0.12 ) * ( 0.8 + 0.4 * micro ), ledgeUp * 0.75 );
+          albedo = cliffC;
         }
         #ifdef SNOW
           float sn = texture2D( uNoise, vPWorld.xz * 0.027 ).r;
@@ -465,7 +490,7 @@ function makeTerrainMaterial({ grid = false, snow = false } = {}) {
             float nA = texture2D( uNoise, vPWorld.xz * 0.05 ).r;
             float alp = smoothstep( 5.0, 8.5, hY + ( nA - 0.5 ) * 1.8 );
             alpG = alp;
-            if ( alp > 0.001 ) {
+            if ( alp > 0.001 && cliffK < 0.5 ) {
               float slopeK = smoothstep( 0.1, 0.42, 1.0 - wN.y );
               vec3 scree = rockTriplanar( vPWorld, wN ) * vec3( 0.93, 0.91, 0.87 ) * 1.5 * ( 0.85 + 0.3 * macro );
               vec3 meadow = albedo * vec3( 0.92, 0.95, 0.82 );
@@ -487,7 +512,7 @@ function makeTerrainMaterial({ grid = false, snow = false } = {}) {
           float fw = fwidth( ed );
           float line = 1.0 - smoothstep( 0.008, 0.008 + fw * 1.5, ed );
           float camD = distance( cameraPosition, vPWorld );
-          float gfade = uGrid * ( 1.0 - smoothstep( 60.0, 150.0, camD ) ) * ( 1.0 - 0.6 * alpG );
+          float gfade = uGrid * ( 1.0 - smoothstep( 60.0, 150.0, camD ) ) * ( 1.0 - 0.6 * alpG ) * ( 1.0 - cliffK ) * ( 1.0 - 0.7 * steep );
           albedo = mix( albedo, vec3( 1.0, 0.96, 0.82 ) * 0.85, line * gfade );
           vec4 ovc = texture2D( uOverlay, ( vPWorld.xz - uOverlayBounds.xy ) / uOverlayBounds.zw );
           albedo = mix( albedo, ovc.rgb * 1.3, ovc.a );
@@ -510,6 +535,7 @@ const cornerHeights = new Map();
   const vertexMap = new Map();
   const centerMap = new Map();
   const hexCorners = new Map();
+  const cliffPos = [], cliffCol = [], cliffIdx = [];
 
   function addVertex(x, y, z, color, blendIds, blendWeights) {
     const idx = positions.length / 3;
@@ -592,7 +618,17 @@ const cornerHeights = new Map();
         const neighbor = allHexes.get(`${hex.q + dq},${hex.r + dr}`);
         if (neighbor) members.push(neighbor);
       }
-      const linked = (a, b) => !isVerticalEdge(a.q, a.r, b.q, b.r);
+      // around the end of a cliff only hexes on the same level share the corner: the rock face then wraps around the
+      // corner and tapers out along the next edge, instead of the upper hex top dropping to the foot in a steep wedge
+      let cliffCorner = false;
+      for (let x = 0; x < members.length && !cliffCorner; x++) for (let y = x + 1; y < members.length; y++) if (isVerticalEdge(members[x].q, members[x].r, members[y].q, members[y].r)) { cliffCorner = true; break; }
+      const linked = (a, b) => {
+        if (isVerticalEdge(a.q, a.r, b.q, b.r)) return false;
+        if (!cliffCorner) return true;
+        // a one-level step splits (a small rock face tapers out along it); ramps and same-level ground stay joined
+        const dh = Math.abs(surfH(a) - surfH(b));
+        return dh < 0.5 || dh > 1.5 || getRuleSegType(a.q, a.r, b.q, b.r) === 'rampe';
+      };
       const group = [hex];
       for (let pass = 0; pass < 2; pass++) for (const m of members) if (!group.includes(m) && group.some((g) => linked(g, m))) group.push(m);
       const sig = cornerKey + '#' + group.map((g) => `${g.q},${g.r}`).sort().join(';');
@@ -632,7 +668,7 @@ const cornerHeights = new Map();
         const w = 1 / n;
         bIds = [cornerTerrains[0], cornerTerrains[1 % n], cornerTerrains[2 % n]];
         bWts = n === 1 ? [1, 0, 0] : n === 2 ? [0.5, 0.5, 0] : [w, w, w];
-        if (cornerIsCliff) blended.multiplyScalar(0.9);
+        if (cornerIsCliff) blended.multiplyScalar(Math.max(...members.map(surfH)) - cornerY > 0.9 ? 0.74 : 0.96);
       }
       const vi = addVertex(cc.x, cornerY, cc.z, blended, bIds, bWts);
       vertexMap.set(sig, vi);
@@ -666,39 +702,95 @@ const cornerHeights = new Map();
     }
   }
 
-  // Step 5: rock faces on cliff edges, between the two hexes' own corner vertices
+  // Step 5: rock faces on cliff edges, between the two hexes' own corner vertices. They form their own mesh (kept out
+  // of the ground heightfield, so units, picking and groundHeight never see the relief of the face): each face is a
+  // grid bulged by noise toward the lower hex, with strata ledges, a mossy lip and a dark wet foot; the displacement
+  // fades to zero on its border so faces still meet the ground and each other exactly.
   {
-    const rockA = new THREE.Color(0.5, 0.46, 0.42), rockB = new THREE.Color(0.34, 0.31, 0.29);
+    const P = (i) => [positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]];
+    const nFace = makeNoise2D(7171), nLedge = makeNoise2D(7272);
+    const fortHex = (h) => { const k = `${h.q},${h.r}`; return rampartSet.has(k) || gateHexSet.has(k); };
     for (const [key, hex] of allHexes) {
       const ci = hexCorners.get(key);
       for (let d = 0; d < 3; d++) {
         const [dq, dr] = HEX_DIRS[d];
         const nk = `${hex.q + dq},${hex.r + dr}`;
         const nb = allHexes.get(nk);
-        if (!nb || !isVerticalEdge(hex.q, hex.r, nb.q, nb.r)) continue;
+        if (!nb) continue;
         const nci = hexCorners.get(nk);
         const g = DIR_TO_GEO_EDGE[d];
         // the same two corners seen from the neighbour: its edge toward us is the opposite one
         const gn = DIR_TO_GEO_EDGE[(d + 3) % 6];
         const a0 = ci[g], a1 = ci[(g + 1) % 6], b0 = nci[(gn + 1) % 6], b1 = nci[gn];
+        // faces wherever the two hexes do not share their corners: cliffs, and the tapering ends next to them
+        if (a0 === b0 && a1 === b1) continue;
         const ya0 = positions[a0 * 3 + 1], ya1 = positions[a1 * 3 + 1], yb0 = positions[b0 * 3 + 1], yb1 = positions[b1 * 3 + 1];
         if (Math.abs(ya0 - yb0) < 0.02 && Math.abs(ya1 - yb1) < 0.02) continue;
+        if ((ya0 - yb0) * (ya1 - yb1) < -1e-4) continue;
         const hiIsA = (ya0 + ya1) >= (yb0 + yb1);
         const [t0, t1, l0, l1] = hiIsA ? [a0, a1, b0, b1] : [b0, b1, a0, a1];
-        const P = (i) => [positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]];
-        const v = [P(t0), P(t1), P(l1), P(l0)];
-        const base = positions.length / 3;
-        const cols = [rockA, rockA, rockB, rockB];
-        for (let k = 0; k < 4; k++) addVertex(v[k][0], v[k][1], v[k][2], cols[k], [4, 4, 4], [1, 0, 0]);
-        // face toward the lower hex
         const lo = hiIsA ? nb : hex, hiH = hiIsA ? hex : nb;
         const pl = hexToWorld(lo.q, lo.r), ph = hexToWorld(hiH.q, hiH.r);
-        // (v0, v1, v2) with v2 below v1 has a normal along (ez, -ex) for the top edge e: three.js front faces wind
-        // counter-clockwise toward the viewer; a triangle squashed to a line (the face closing at one end) is skipped
-        const ex = v[1][0] - v[0][0], ez = v[1][2] - v[0][2];
+        const T0 = P(t0), T1 = P(t1), L0 = P(l0), L1 = P(l1);
+        // horizontal unit vector toward the lower hex
+        let ox = pl.x - ph.x, oz = pl.z - ph.z;
+        const on = Math.hypot(ox, oz) || 1; ox /= on; oz /= on;
+        const ex = T1[0] - T0[0], ez = T1[2] - T0[2];
         const front = ez * (pl.x - ph.x) - ex * (pl.z - ph.z) > 0;
-        if (Math.abs(v[1][1] - v[2][1]) > 0.01) indices.push(...(front ? [base, base + 1, base + 2] : [base, base + 2, base + 1]));
-        if (Math.abs(v[0][1] - v[3][1]) > 0.01) indices.push(...(front ? [base, base + 2, base + 3] : [base, base + 3, base + 2]));
+        const maxDrop = Math.max(T0[1] - L0[1], T1[1] - L1[1]);
+        // flat faces where something stands against them (stairs, walls, gates)
+        const flat = getRuleSegType(hex.q, hex.r, nb.q, nb.r) === 'escalier' || fortHex(hex) || fortHex(nb);
+        const cols = 7, rows = Math.max(3, Math.min(16, Math.ceil(maxDrop / 0.16)));
+        const base = cliffPos.length / 3;
+        for (let c = 0; c <= cols; c++) {
+          const sC = c / cols;
+          const tx = T0[0] + ex * sC, tz = T0[2] + ez * sC;
+          const ty = T0[1] + (T1[1] - T0[1]) * sC, by = L0[1] + (L1[1] - L0[1]) * sC;
+          const drop = Math.max(0, ty - by);
+          const endK = Math.min(1, sC / 0.2, (1 - sC) / 0.2);
+          const endT = endK * endK * (3 - 2 * endK);
+          for (let r = 0; r <= rows; r++) {
+            const v = r / rows;
+            let y = ty + (by - ty) * v;
+            let x = tx, z = tz;
+            const rowT = Math.pow(Math.sin(Math.PI * v), 0.6);
+            let disp = 0;
+            if (!flat && drop > 0.05) {
+              const amp = Math.min(0.22, 0.06 + 0.075 * drop) * endT * rowT * Math.min(1, drop / 0.6);
+              const u = (x * 0.83 + z * 0.57);
+              const n1 = nFace(u * 2.3, y * 2.1), n2 = nFace(u * 5.1 + 17, y * 4.7 - 9);
+              // strata: ledges that stick out a little, every ~0.45 of height
+              const strata = nLedge(y * 2.2 + nFace(u * 0.7, 3) * 0.6, u * 0.15);
+              const ledge = strata > 0.25 ? (strata - 0.25) * 1.4 : 0;
+              disp = amp * (0.45 + 0.4 * n1 + 0.2 * n2 + 0.55 * ledge);
+              x += ox * disp + (ex / (Math.hypot(ex, ez) || 1)) * amp * 0.25 * n2;
+              z += oz * disp + (ez / (Math.hypot(ex, ez) || 1)) * amp * 0.25 * n2;
+              y += amp * 0.35 * nFace(u * 3.7 - 5, y * 3.1 + 11) * rowT;
+            }
+            // colour: warm grey-brown rock, moss on the lip, a darker wet foot, recesses darker than bulges
+            const shade = 0.88 + 0.12 * nFace(x * 0.9 + 40, z * 0.9 - y * 0.6);
+            let cr = 0.52 * shade, cg = 0.47 * shade, cb = 0.4 * shade;
+            const lip = 1 - Math.min(1, v / 0.14);
+            if (lip > 0) { cr += (0.3 - cr) * lip * 0.75; cg += (0.36 - cg) * lip * 0.75; cb += (0.2 - cb) * lip * 0.75; }
+            const foot = Math.max(0, (v - 0.72) / 0.28);
+            const footK = 1 - 0.42 * foot * foot;
+            const recess = 1 - 0.18 * Math.max(0, -(disp / 0.12));
+            cliffPos.push(x, y, z);
+            cliffCol.push(cr * footK * recess, cg * footK * recess, cb * footK * recess * 1.03);
+          }
+        }
+        const idx = (c, r) => base + c * (rows + 1) + r;
+        for (let c = 0; c < cols; c++) {
+          const d0 = (T0[1] + (T1[1] - T0[1]) * (c / cols)) - (L0[1] + (L1[1] - L0[1]) * (c / cols));
+          const d1 = (T0[1] + (T1[1] - T0[1]) * ((c + 1) / cols)) - (L0[1] + (L1[1] - L0[1]) * ((c + 1) / cols));
+          if (d0 < 0.01 && d1 < 0.01) continue;
+          for (let r = 0; r < rows; r++) {
+            const A = idx(c, r), B = idx(c + 1, r), C = idx(c + 1, r + 1), D = idx(c, r + 1);
+            // (A, B, C): B along the top edge, C below it; winding faces the lower hex
+            if (d1 > 0.01) cliffIdx.push(...(front ? [A, B, C] : [A, C, B]));
+            if (d0 > 0.01) cliffIdx.push(...(front ? [A, C, D] : [A, D, C]));
+          }
+        }
       }
     }
   }
@@ -724,6 +816,38 @@ const cornerHeights = new Map();
   boardMesh.castShadow = true;
   boardMesh.receiveShadow = true;
   scene.add(boardMesh);
+
+  if (cliffIdx.length) {
+    const nV = cliffPos.length / 3;
+    const cg = new THREE.BufferGeometry();
+    cg.setAttribute('position', new THREE.Float32BufferAttribute(cliffPos, 3));
+    cg.setAttribute('color', new THREE.Float32BufferAttribute(cliffCol, 3));
+    // rock everywhere; a negative third weight marks cliff faces for the terrain shader
+    cg.setAttribute('terrainBlendIds', new THREE.Float32BufferAttribute(new Float32Array(nV * 3).fill(4), 3));
+    const w = new Float32Array(nV * 3);
+    for (let i = 0; i < nV; i++) { w[i * 3] = 1; w[i * 3 + 2] = -1; }
+    cg.setAttribute('terrainBlendWeights', new THREE.BufferAttribute(w, 3));
+    cg.setIndex(cliffIdx);
+    cg.computeVertexNormals();
+    // weld normals of vertices at the same place (face borders, corners between faces): rounded shading at the corners
+    const pos = cg.attributes.position.array, nrm = cg.attributes.normal.array;
+    const acc = new Map();
+    for (let i = 0; i < nV; i++) {
+      const k = `${Math.round(pos[i * 3] * 200)},${Math.round(pos[i * 3 + 1] * 200)},${Math.round(pos[i * 3 + 2] * 200)}`;
+      let a = acc.get(k); if (!a) { a = [0, 0, 0, []]; acc.set(k, a); }
+      a[0] += nrm[i * 3]; a[1] += nrm[i * 3 + 1]; a[2] += nrm[i * 3 + 2]; a[3].push(i);
+    }
+    for (const a of acc.values()) {
+      let [x, y, z] = a; const l = Math.hypot(x, y, z);
+      if (l < 1e-6) { x = 0; y = 1; z = 0; } else { x /= l; y /= l; z /= l; }
+      for (const i of a[3]) { nrm[i * 3] = x; nrm[i * 3 + 1] = y; nrm[i * 3 + 2] = z; }
+    }
+    cg.computeBoundingSphere();
+    const cliffMesh = new THREE.Mesh(cg, boardMesh.material);
+    cliffMesh.castShadow = true;
+    cliffMesh.receiveShadow = true;
+    scene.add(cliffMesh);
+  }
 }
 
 // --- Heightfields (CPU) ---
@@ -1314,35 +1438,45 @@ for (const [key, hex] of allHexes) {
   }
 }
 
-// Cliffs: craggy rocks embedded along cliff edges + scree at their foot
-for (const [segKey, type] of Object.entries(segmentData)) {
+// Cliffs (explicit and automatic): scree and a few fallen blocks at the foot, grass tufts hanging over the lip
+for (const [segKey, type] of ruleSegSet) {
   if (type !== 'cliff') continue;
   const s = parseSeg(segKey);
   const ha = allHexes.get(`${s.q1},${s.r1}`), hb = allHexes.get(`${s.q2},${s.r2}`);
   const ec = edgeCorners(s.q1, s.r1, s.q2, s.r2);
   if (!ha || !hb || !ec) continue;
   if (nearFort(s.q1, s.r1) || nearFort(s.q2, s.r2)) continue;
-  const rng = makeRng(s.q1 * 31 + s.r1 * 17 + s.q2 * 13 + s.r2 * 7 + 1);
   const [hi, lo] = effH(ha) >= effH(hb) ? [ha, hb] : [hb, ha];
+  const drop = effH(hi) - effH(lo);
+  if (drop < 0.5 || isWaterHex(lo)) continue;
+  const rng = makeRng(s.q1 * 31 + s.r1 * 17 + s.q2 * 13 + s.r2 * 7 + 1);
   const ph = hexToWorld(hi.q, hi.r), pl = hexToWorld(lo.q, lo.r);
   const ox = (pl.x - ph.x) / sqrt3, oz = (pl.z - ph.z) / sqrt3;
-  const n = rng() < 0.45 ? 1 : 2;
-  const drop = effH(hi) - effH(lo);
-  for (let i = 0; i < n; i++) {
-    const t = n === 1 ? 0.25 + rng() * 0.5 : (i === 0 ? 0.1 + rng() * 0.3 : 0.6 + rng() * 0.3);
-    const ex = ec[0].x + (ec[1].x - ec[0].x) * t, ez = ec[0].z + (ec[1].z - ec[0].z) * t;
-    const off = -0.05 + rng() * 0.12;
-    const x = ex + ox * off, z = ez + oz * off;
-    const big = rng() < 0.18;
-    const eda = Math.atan2(-(ec[1].z - ec[0].z), ec[1].x - ec[0].x);
-    // low craggy outcrops along the face (no tall standing needles)
-    if (big) slabs.push({ x, y: lerp(effH(lo), effH(hi), 0.1 + rng() * 0.2), z, s: 0.35 + rng() * 0.2, sy: 0.5 + Math.min(drop, 2) * (0.2 + rng() * 0.15), ry: eda + (rng() - 0.5) * 1.2, rx: (rng() - 0.5) * 0.5, rz: (rng() - 0.5) * 0.5, color: mul(rng, 1.0, 0.96, 0.9, 0.3) });
-    else rocks.push({ x, y: lerp(effH(lo), effH(hi), 0.05 + rng() * 0.3), z, s: 0.2 + rng() * 0.22, sy: 0.6 + rng() * 0.4, ry: rng() * 6.28, rx: (rng() - 0.5) * 1.2, rz: (rng() - 0.5) * 1.2, color: mul(rng, 1.0, 0.96, 0.9, 0.35) });
-    if (rng() < 0.5) {
-      const d = 0.15 + rng() * 0.25;
-      const sx = ex + ox * d * 1.5, sz = ez + oz * d * 1.5;
-      rocks.push({ x: sx, y: groundHeight(sx, sz) - 0.04, z: sz, s: 0.1 + rng() * 0.12, sy: 0.7 + rng() * 0.4, ry: rng() * 6.28, color: mul(rng, 1.0, 0.97, 0.92, 0.3) });
-    }
+  const eda = Math.atan2(-(ec[1].z - ec[0].z), ec[1].x - ec[0].x);
+  // talus: small stones, denser right against the face
+  const nScree = 5 + Math.floor(rng() * 4 + Math.min(drop, 3));
+  for (let i = 0; i < nScree; i++) {
+    const t = 0.12 + rng() * 0.76;
+    const dist = 0.04 + Math.pow(rng(), 1.8) * 0.42;
+    const x = ec[0].x + (ec[1].x - ec[0].x) * t + ox * dist * sqrt3, z = ec[0].z + (ec[1].z - ec[0].z) * t + oz * dist * sqrt3;
+    const sc = (0.045 + rng() * 0.07) * (1.15 - dist);
+    rocks.push({ x, y: groundHeight(x, z) - 0.25 * sc, z, s: sc, sy: 0.45 + rng() * 0.35, ry: rng() * 6.28, rx: (rng() - 0.5) * 0.6, rz: (rng() - 0.5) * 0.6, color: mul(rng, 0.92, 0.88, 0.82, 0.25) });
+  }
+  // now and then a fallen block lying against the foot
+  if (drop >= 1.5 && rng() < 0.35) {
+    const t = 0.25 + rng() * 0.5, dist = 0.08 + rng() * 0.12;
+    const x = ec[0].x + (ec[1].x - ec[0].x) * t + ox * dist * sqrt3, z = ec[0].z + (ec[1].z - ec[0].z) * t + oz * dist * sqrt3;
+    slabs.push({ x, y: groundHeight(x, z) - 0.04, z, s: 0.13 + rng() * 0.08, sy: 0.45 + rng() * 0.25, ry: eda + (rng() - 0.5) * 0.8, rx: (rng() - 0.5) * 0.3, rz: (rng() - 0.5) * 0.3, color: mul(rng, 0.9, 0.86, 0.8, 0.2) });
+  }
+  // grass tufts on the lip, leaning over the edge
+  const nTuft = 3 + Math.floor(rng() * 3);
+  const yA = groundHeight(ec[0].x - ox * 0.06, ec[0].z - oz * 0.06), yB = groundHeight(ec[1].x - ox * 0.06, ec[1].z - oz * 0.06);
+  for (let i = 0; i < nTuft; i++) {
+    const t = 0.1 + rng() * 0.8;
+    const x = ec[0].x + (ec[1].x - ec[0].x) * t - ox * 0.05, z = ec[0].z + (ec[1].z - ec[0].z) * t - oz * 0.05;
+    const y = yA + (yB - yA) * t;
+    if (y < effH(hi) - 0.3) continue;
+    grass.push({ x, y: y - 0.02, z, s: 0.5 + rng() * 0.35, sy: 0.9 + rng() * 0.5, ry: rng() * 6.28, color: mul(rng, 1.05, 1.0, 0.82, 0.2) });
   }
 }
 
