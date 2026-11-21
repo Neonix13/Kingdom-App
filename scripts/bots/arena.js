@@ -1,6 +1,6 @@
 // AI arena: plays bot-vs-bot games through the real protocol (memory store, fake clock) and reports results.
 // Usage: node scripts/bots/arena.js [--games 20] [--maps default,kankoku] [--modes sequential,simultaneous]
-//        [--pairs stratege:veteran,stratege:recrue] [--budget 5000] [--maxTurns 30] [--vp 0] [--old game/bots_old]
+//        [--pairs stratege:veteran,stratege:recrue] [--budget 5000] [--maxTurns 30] [--vp 0] [--offset 0] [--old game/bots_old]
 // A difficulty suffixed with "_old" plays with the bot code found in --old (a copy of an older game/bots),
 // to measure an AI change against its previous version: --pairs stratege:stratege_old
 const path = require('path');
@@ -15,6 +15,7 @@ const PAIRS = (args.pairs || 'stratege:veteran').split(',').map(p => p.split(':'
 const BUDGET = parseInt(args.budget, 10) || 5000;
 const MAX_TURNS = parseInt(args.maxTurns, 10) || 30;
 const VP = parseInt(args.vp, 10) || 0;
+const SEED_OFFSET = parseInt(args.offset, 10) || 0;
 
 const botsPath = require.resolve(path.join(ROOT, 'game/bots'));
 const newBots = require(botsPath);
@@ -117,7 +118,7 @@ async function playGame(i, mapId, mode, a, b) {
   for (const mapId of MAPS) for (const mode of MODES) for (const [a, b] of PAIRS) {
     const res = [];
     timing.plan = 0; timing.calls = 0; timing.max = 0;
-    for (let i = 0; i < GAMES; i++) res.push(await playGame(i, mapId, mode, a, b));
+    for (let i = 0; i < GAMES; i++) res.push(await playGame(i + SEED_OFFSET, mapId, mode, a, b));
     const wa = res.filter(r => r.winner === a).length, wb = res.filter(r => r.winner === b).length;
     const draws = res.length - wa - wb;
     const err = res.reduce((s, r) => s + r.errors, 0);

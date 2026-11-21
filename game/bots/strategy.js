@@ -271,7 +271,9 @@ function objectiveGoals(world, profile, out) {
   const vp = room.settings.victoryPoints > 0;
   const maxT = room.settings.maxTurns > 0 ? room.settings.maxTurns : room.turn + 20;
   const left = Math.max(1, maxT - room.turn + 1);
-  const want = profile.objectives + (vp ? Math.ceil(objs.reduce((s, o) => s + (o.points || 1), 0) / 2) : 0);
+  // with victory points: one more unit per three objectives, never more than half the army
+  const army = world.mine.filter(u => !u.isGeneral).length;
+  const want = Math.min(profile.objectives + (vp ? 1 + Math.floor(objs.length / 3) : 0), Math.max(1, Math.ceil(army / 2)));
   const free = world.mine.filter(u => !u.isGeneral && !u.isFleeing && !isRanged(u) && !out.has(u.id));
   const value = (o) => {
     let v = (o.points || 1) * Math.min(left, 10);
@@ -284,13 +286,13 @@ function objectiveGoals(world, profile, out) {
     if (n >= want) break;
     const occupant = room.unitMap[hexKey(o.q, o.r)];
     const ours = o.owner === playerId;
+    // an objective stays ours once taken: it only needs a holder while enemies are around
+    const threatened = world.enemies.some(e => hexDistance(e.q, e.r, o.q, o.r) <= 6);
     if (occupant && occupant.playerId === playerId) {
-      // keep the holder while enemies are around (or always when points decide the game)
-      const near = world.enemies.some(e => hexDistance(e.q, e.r, o.q, o.r) <= 6);
-      if (!out.has(occupant.id) && (vp || near || !ours)) { out.set(occupant.id, { q: o.q, r: o.r, kind: 'objective', hold: true }); n++; }
+      if (!out.has(occupant.id) && (threatened || !ours)) { out.set(occupant.id, { q: o.q, r: o.r, kind: 'objective', hold: true }); n++; }
       continue;
     }
-    if (ours && !vp && !world.enemies.some(e => hexDistance(e.q, e.r, o.q, o.r) <= 5)) continue;
+    if (ours && !threatened) continue;
     const u = free.filter(x => !out.has(x.id)).sort((a, b) => hexDistance(a.q, a.r, o.q, o.r) - hexDistance(b.q, b.r, o.q, o.r))[0];
     if (!u) break;
     // far objectives are only worth it with victory points
@@ -351,8 +353,12 @@ function scoutGoal(world, profile, out) {
 function assignments(world, profile) {
   const out = new Map();
   const pos = posture(world, profile);
-  if (pos.kind === 'defend') defendPosts(world, profile, pos, out);
-  objectiveGoals(world, profile, out);
+  // when points decide the game the objectives come first, the walls get what is left
+  const vp = world.room.settings.victoryPoints > 0;
+  if (vp) objectiveGoals(world, profile, out);
+  // measured (arena): with victory points in the sequential mode, sitting on the walls loses the race for points
+  if (pos.kind === 'defend' && !(vp && world.room.mode !== 'simultaneous')) defendPosts(world, profile, pos, out);
+  if (!vp) objectiveGoals(world, profile, out);
   if (pos.kind === 'attack') attackPlan(world, profile, pos, out);
   spyGoals(world, profile, pos, out);
   scoutGoal(world, profile, out);

@@ -351,7 +351,7 @@ function planTroop(world, profile, u, rng, blunder, objectives) {
   if (ua) return ua.kind === 'vanish' ? act('unit_vanish', { unitId: u.id }, 'vanish') : act('unit_build', { unitId: u.id, q: ua.q, r: ua.r, kind: ua.build }, 'build');
   const onObjective = objective && objective.q === u.q && objective.r === u.r && objective.kind !== 'scout' && objective.kind !== 'flank';
   // posts and held objectives: only strike from next to them
-  const tether = objective && (objective.hold || objective.kind === 'scout' || objective.kind === 'sabotage') ? objective : null;
+  const tether = objective && ((objective.hold && hexDistance(u.q, u.r, objective.q, objective.r) <= 1) || objective.kind === 'scout' || objective.kind === 'sabotage') ? objective : null;
   const targets = u.hasAttacked ? [] : world.enemies.filter(t => inRange(world, u, u.q, u.r, t));
   const reach = reachFrom(world, u);
 

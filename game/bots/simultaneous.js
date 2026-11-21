@@ -104,7 +104,8 @@ function planOrders(room, playerId, profile) {
     if (blunder && roll < profile.mistake * 0.4) continue;
     const opts = [];
     const asg = objectives.get(u.id);
-    const tether = asg && (asg.hold || asg.kind === 'scout' || asg.kind === 'sabotage') ? asg : null;
+    // a unit that holds (or has nearly reached) its post / objective only strikes next to it; scouts and saboteurs avoid fights
+    const tether = asg && ((asg.hold && hexDistance(u.q, u.r, asg.q, asg.r) <= 1) || asg.kind === 'scout' || asg.kind === 'sabotage') ? asg : null;
     // already in contact: strike without moving
     for (const e of world.enemies) {
       if (hexDistance(u.q, u.r, e.q, e.r) !== 1 || e.isFleeing && tactics < 0.5) continue;
