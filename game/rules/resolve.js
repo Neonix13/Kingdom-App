@@ -40,8 +40,24 @@ function idNum(id) {
   return Number.isFinite(n) ? n : 0;
 }
 
+// Per-turn priority: a seeded shuffle of the units (same seed = same order), so that no army wins every tie
+let RANK = null;
+function rankOf(id) {
+  return RANK && RANK.has(id) ? RANK.get(id) : idNum(id);
+}
+
 function byId(a, b) {
-  return idNum(a.u.id) - idNum(b.u.id) || (a.u.id < b.u.id ? -1 : a.u.id > b.u.id ? 1 : 0);
+  return rankOf(a.u.id) - rankOf(b.u.id) || (a.u.id < b.u.id ? -1 : a.u.id > b.u.id ? 1 : 0);
+}
+
+function shuffledRanks(ids, seed) {
+  const rnd = mulberry32((seed ^ 0x9E3779B9) >>> 0);
+  const order = [...ids].sort((a, b) => idNum(a) - idNum(b) || (a < b ? -1 : a > b ? 1 : 0));
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  return new Map(order.map((id, i) => [id, i]));
 }
 
 function alive(room, u) {
@@ -74,6 +90,7 @@ function resolveTurn(room, ordersByPlayer, seed) {
     return run(room, ordersByPlayer || {}, seed);
   } finally {
     room._rng = null;
+    RANK = null;
   }
 }
 
@@ -141,6 +158,7 @@ function run(room, ordersByPlayer, seed) {
       inRange: new Set(), reactQueue: [],
     });
   }
+  RANK = shuffledRanks([...ctl.keys()], seed);
   const ctls = () => [...ctl.values()].filter(c => alive(room, c.u)).sort(byId);
   const pathTrail = new Map(); // replay: unitId -> visited hexes since the last flush
   const flushTrails = () => {
@@ -274,8 +292,10 @@ function run(room, ordersByPlayer, seed) {
     const planned = strikes.map(s => {
       if (s.duel) return s;
       const isCac = s.trample || hexDistance(s.a.q, s.a.r, s.t.q, s.t.r) <= 1 || s.kind === 'encounter';
-      const choice = s.trample ? 'rien' : s.kind === 'encounter' ? 'counter' : reactionOf(s.t, ctl.get(s.t.id));
-      return { ...s, isCac, choice, result: room._resolveCombat(frozen(s.a), frozen(s.t), isCac, choice, s.extra) };
+      const wanted = s.trample ? 'rien' : s.kind === 'encounter' ? 'counter' : reactionOf(s.t, ctl.get(s.t.id));
+      const choice = room.effectiveDefense(s.a, s.t, isCac, wanted);
+      const kind = isCac && (s.kind === 'ranged' || s.kind === 'reaction') ? 'melee' : s.kind;
+      return { ...s, kind, isCac, choice, result: room._resolveCombat(frozen(s.a), frozen(s.t), isCac, choice, s.extra) };
     });
     let n = 0;
     for (const s of planned) {
@@ -291,9 +311,9 @@ function run(room, ordersByPlayer, seed) {
         log = room._resolveDuel(a, t, aP, tP).combatLog;
       } else {
         a.facing = s.isCac ? hexFacing(a.q, a.r, t.q, t.r) : hexFacingRanged(a.q, a.r, t.q, t.r);
-        if (s.choice === 'counter' || s.choice === 'absorb') {
+        if (s.isCac && (s.choice === 'counter' || s.choice === 'absorb')) {
           t.facing = hexFacing(t.q, t.r, a.q, a.r);
-          if (s.isCac) room._reveal(t);
+          room._reveal(t);
         }
         log = room._applyCombat(a, t, s.isCac, s.choice, s.result, aP, tP);
         if (s.extra && s.extra.charge) log.charge = s.extra.charge;
@@ -405,7 +425,7 @@ function run(room, ordersByPlayer, seed) {
         const cands = c.reactQueue.map(id => room.findUnit(id)).filter(e => e && alive(room, e) && seen[c.owner].has(e.id) && hexDistance(c.u.q, c.u.r, e.q, e.r) <= effectiveRange(room, c.u, e));
         c.reactQueue = [];
         if (!cands.length) continue;
-        cands.sort((x, y) => hexDistance(c.u.q, c.u.r, x.q, x.r) - hexDistance(c.u.q, c.u.r, y.q, y.r) || idNum(x.id) - idNum(y.id));
+        cands.sort((x, y) => hexDistance(c.u.q, c.u.r, x.q, x.r) - hexDistance(c.u.q, c.u.r, y.q, y.r) || rankOf(x.id) - rankOf(y.id));
         shots.push({ a: c.u, t: cands[0], c, kind: 'reaction' });
         c.fired = true;
       }
@@ -529,7 +549,7 @@ function run(room, ordersByPlayer, seed) {
       }
       const tgt = targetUnit(c);
       if (tgt && hexDistance(u.q, u.r, tgt.q, tgt.r) <= 1) continue;
-      fresh.sort((x, y) => idNum(x.id) - idNum(y.id));
+      fresh.sort((x, y) => rankOf(x.id) - rankOf(y.id));
       c.target = fresh[0].id;
       c.lastSeen = [fresh[0].q, fresh[0].r];
     }
@@ -577,8 +597,10 @@ function run(room, ordersByPlayer, seed) {
       if (mutual) {
         back.done = true;
         striking.add(tgt.id);
-        if (c.u.isGeneral && tgt.isGeneral) strikes.push({ a: c.u, t: tgt, c, c2: back, kind: 'encounter', duel: true });
-        else strikes.push({ a: c.u, t: tgt, c, c2: back, kind: 'encounter', extra: chargeExtra(c, tgt) });
+        const charges = (x) => x.o.type === 'charge' || x.u.stance === 'charge';
+        const [x, y] = charges(back) && !charges(c) ? [back, c] : [c, back];
+        if (x.u.isGeneral && y.u.isGeneral) strikes.push({ a: x.u, t: y.u, c: x, c2: y, kind: 'encounter', duel: true });
+        else strikes.push({ a: x.u, t: y.u, c: x, c2: y, kind: 'encounter', extra: chargeExtra(x, y.u) });
         continue;
       }
       if (c.u.isGeneral && tgt.isGeneral) { strikes.push({ a: c.u, t: tgt, c, kind: 'melee', duel: true }); continue; }
