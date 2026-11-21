@@ -601,6 +601,17 @@ function buildZoneTileSet(state) {
   if (state?.startingZone?.tiles && !(state.startingZone.tileSet instanceof Set)) {
     state.startingZone.tileSet = new Set(state.startingZone.tiles.map(t => `${t.q},${t.r}`));
   }
+  if (state?.blockedTiles && !(state.blockedTiles.footSet instanceof Set)) {
+    state.blockedTiles.footSet = new Set(state.blockedTiles.foot || []);
+    state.blockedTiles.mountedSet = new Set(state.blockedTiles.mounted || []);
+  }
+}
+// Zone hexes where this unit would be stuck (server-computed: outside the map's main connected area for its mobility)
+function deployBlockedFor(unit) {
+  const b = deployState?.blockedTiles;
+  if (!unit || !b) return null;
+  const set = window.KBRules && KBRules.isMounted(unit) ? b.mountedSet : b.footSet;
+  return set && set.size ? set : null;
 }
 
 let mode = 'select'; // select | move | attack | deploy
@@ -759,12 +770,14 @@ function render() {
     }
   } else {
     const zoneKeys = new Set();
+    const deployStuck = mode === 'deploy' ? deployBlockedFor(selectedUnit) : null;
     for (const { q, r } of mapHexes) {
       const { x, y } = hexToPixel(q, r);
       const inZone = startZone?.tileSet ? startZone.tileSet.has(`${q},${r}`) : (startZone ? hexDistance(q, r, startZone.q, startZone.r) <= (startZone.radius || 4) : false);
       if (inZone) zoneKeys.add(`${q},${r}`);
       const isHovered = hoveredHex && hoveredHex.q === q && hoveredHex.r === r;
       let fill = inZone ? 'rgba(255,255,255,0.3)' : 'rgba(14,12,10,0.4)';
+      if (inZone && deployStuck && deployStuck.has(`${q},${r}`)) fill = 'rgba(216,53,42,0.42)';
       let stroke = inZone ? `rgba(0,0,0,${Math.min(1, 0.25 + gridOpacity * 2)})` : `rgba(${gridColorRGB},${gridOpacity * 0.6})`;
       if (inZone && isHovered) fill = 'rgba(255,255,255,0.55)';
       if (isHovered && !inZone) stroke = 'rgba(216,53,42,0.5)';
@@ -1497,6 +1510,13 @@ function handleDeployClick(hex) {
     return;
   }
 
+  const stuck = deployBlockedFor(selectedUnit);
+  const other = deployState.units.find(u => u !== selectedUnit && u.q === hex.q && u.r === hex.r);
+  const otherStuck = other && selectedUnit.q != null ? deployBlockedFor(other) : null;
+  if ((stuck && stuck.has(`${hex.q},${hex.r}`)) || (otherStuck && otherStuck.has(`${selectedUnit.q},${selectedUnit.r}`))) {
+    notify(`${(stuck && stuck.has(`${hex.q},${hex.r}`)) ? selectedUnit.name : other.name} serait bloqué ici : impossible d'en sortir (barrières, escaliers ou falaises).`, 'info');
+    return;
+  }
   wsSend('place_unit', { roomCode, unitId: selectedUnit.id, q: hex.q, r: hex.r });
   selectedUnit.q = hex.q;
   selectedUnit.r = hex.r;
@@ -3402,6 +3422,7 @@ window.gameBridge = {
   get mapDoc() { return mapDoc; },
   get mapLoading() { return mapLoading; },
   get deployState() { return deployState; },
+  deployBlockedFor(unit) { return deployBlockedFor(unit); },
   get myId() { return myId; },
   get mode() { return mode; },
   get selectedUnit() { return selectedUnit; },
