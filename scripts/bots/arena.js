@@ -1,6 +1,6 @@
 // AI arena: plays bot-vs-bot games through the real protocol (memory store, fake clock) and reports results.
 // Usage: node scripts/bots/arena.js [--games 20] [--maps default,kankoku] [--modes sequential,simultaneous]
-//        [--pairs stratege:veteran,stratege:recrue] [--budget 5000] [--maxTurns 30] [--old game/bots_old]
+//        [--pairs stratege:veteran,stratege:recrue] [--budget 5000] [--maxTurns 30] [--vp 0] [--old game/bots_old]
 // A difficulty suffixed with "_old" plays with the bot code found in --old (a copy of an older game/bots),
 // to measure an AI change against its previous version: --pairs stratege:stratege_old
 const path = require('path');
@@ -14,6 +14,7 @@ const MODES = (args.modes || 'simultaneous').split(',');
 const PAIRS = (args.pairs || 'stratege:veteran').split(',').map(p => p.split(':'));
 const BUDGET = parseInt(args.budget, 10) || 5000;
 const MAX_TURNS = parseInt(args.maxTurns, 10) || 30;
+const VP = parseInt(args.vp, 10) || 0;
 
 const botsPath = require.resolve(path.join(ROOT, 'game/bots'));
 const newBots = require(botsPath);
@@ -93,7 +94,7 @@ async function playGame(i, mapId, mode, a, b) {
   side(y, 'b_two', '#e05050');
   room.hostId = 'b_one';
   room.mode = mode;
-  room.setSettings({ maxTurns: MAX_TURNS });
+  room.setSettings({ maxTurns: MAX_TURNS, victoryPoints: VP });
   room.budget = BUDGET;
   room.startGame();
   await store.create(room);

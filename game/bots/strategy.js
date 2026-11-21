@@ -89,7 +89,8 @@ function posture(world, profile) {
     // breach: an enemy unit is closer (walking) to our zone than our walls are
     const wallCost = Math.min(...[...intel.ramparts].map(k => fieldOwn.get(k)).filter(v => v != null), Infinity);
     const breached = world.enemies.some(e => { const f = fieldOwn.get(hexKey(e.q, e.r)); return f != null && f < wallCost - 1; });
-    const strong = world.enemies.length >= 2 && require('./tactics').globalBalance(world) > 1.8;
+    const seenFoes = new Set([...world.enemies.map(e => e.id), ...world.memory.enemies.keys()]).size;
+    const strong = seenFoes >= Math.max(3, world.mine.length - 2) && require('./tactics').globalBalance(world) > 1.8;
     if (breached || strong) return { kind: 'field', intel, own, foe, sally: true };
     return { kind: 'defend', intel, own, foe, fieldOwn };
   }
@@ -173,31 +174,64 @@ function defendPosts(world, profile, pos, out) {
   }
 }
 
-// Alternative crossing for a flank group: a stair/ladder/gate away from the main gate whose route is not much longer
+// Walking path from `from` to `to` that avoids the hexes of `avoid` (the main gate): Dijkstra on the shared rules
+function pathAvoiding(room, from, to, avoid, mounted) {
+  const table = room.moveTable();
+  const start = hexKey(from.q, from.r), goal = hexKey(to.q, to.r);
+  const dist = new Map([[start, 0]]), prev = new Map();
+  const open = [[0, from.q, from.r]];
+  while (open.length) {
+    let bi = 0;
+    for (let i = 1; i < open.length; i++) if (open[i][0] < open[bi][0]) bi = i;
+    const [d, q, r] = open.splice(bi, 1)[0];
+    const k = hexKey(q, r);
+    if (d > dist.get(k)) continue;
+    if (k === goal) break;
+    const here = room.hexMap[k];
+    for (const [dq, dr] of rules.DIRS) {
+      const nq = q + dq, nr = r + dr, nk = hexKey(nq, nr);
+      const there = room.hexMap[nk];
+      if (!there || avoid.has(nk)) continue;
+      const c = rules.stepCost(table, here, there, room.segmentData[segmentEdgeKey(q, r, nq, nr)] || null, mounted);
+      if (!isFinite(c)) continue;
+      const nd = d + c;
+      if (!dist.has(nk) || nd < dist.get(nk) - 1e-9) { dist.set(nk, nd); prev.set(nk, k); open.push([nd, nq, nr]); }
+    }
+    if (open.length > 6000) break;
+  }
+  if (!dist.has(goal)) return null;
+  const path = [];
+  for (let k = goal; k && k !== start; k = prev.get(k)) path.push(parseKey(k));
+  path.reverse();
+  return { cost: dist.get(goal), path };
+}
+
+// Alternative route for a flank group when the main gate is held: the walking route with every gate hex closed;
+// its waypoints are the hexes on both sides of the first crossing it uses (stairs, ladder, ramp, another gate), or
+// its midpoint. null when that route does not exist or is much longer than the one through the gate.
 function flankCrossing(world, pos, gate) {
   const { room } = world;
   const { intel, own, foe } = pos;
-  const fieldFoe = distanceField(room, foe.q, foe.r, false);
   const army = centroid(world.mine.filter(u => !u.isGeneral)) || own;
-  const fieldArmy = distanceField(room, army.q, army.r, false);
-  const main = gate ? (fieldArmy.get(hexKey(gate.q, gate.r)) || 0) + (fieldFoe.get(hexKey(gate.q, gate.r)) || 0) : Infinity;
-  let best = null, bc = Infinity;
-  const options = [...intel.crossings.map(c => {
-    // the hex on our side of the crossing, then the other one
-    const ca = fieldArmy.get(hexKey(c.a.q, c.a.r)), cb = fieldArmy.get(hexKey(c.b.q, c.b.r));
-    if (ca == null || cb == null) return null;
-    const [near, far] = ca <= cb ? [c.a, c.b] : [c.b, c.a];
-    return { near, far, kind: c.kind };
-  }).filter(Boolean), ...intel.gates.map(g => ({ near: g, far: g, kind: 'porte' }))];
-  for (const o of options) {
-    if (gate && hexDistance(o.far.q, o.far.r, gate.q, gate.r) <= 5) continue;
-    const ca = fieldArmy.get(hexKey(o.near.q, o.near.r)), cf = fieldFoe.get(hexKey(o.far.q, o.far.r));
-    if (ca == null || cf == null) continue;
-    const c = ca + cf;
-    if (c < bc) { bc = c; best = o; }
+  if (!gate) return null;
+  const gates = new Set();
+  for (const g of intel.gates) if (hexDistance(g.q, g.r, gate.q, gate.r) <= 2) gates.add(hexKey(g.q, g.r));
+  const fieldFoe = distanceField(room, foe.q, foe.r, false);
+  const main = fieldFoe.get(hexKey(army.q, army.r));
+  const alt = pathAvoiding(room, army, foe, gates, false);
+  if (!alt || main == null || alt.cost > main * 1.8 + 6) return null;
+  const crossKinds = new Set(['escalier', 'echelle', 'rampe']);
+  let prevHex = [army.q, army.r];
+  for (const h of alt.path) {
+    const seg = room.segmentData[segmentEdgeKey(prevHex[0], prevHex[1], h[0], h[1])];
+    const isGate = intel.gates.some(g => g.q === h[0] && g.r === h[1]);
+    if (crossKinds.has(seg) || isGate) {
+      return { near: { q: prevHex[0], r: prevHex[1] }, far: { q: h[0], r: h[1] }, kind: isGate ? 'porte' : seg, cost: alt.cost };
+    }
+    prevHex = h;
   }
-  if (!best || (Number.isFinite(main) && bc > main * 1.8 + 6)) return null;
-  return best;
+  const mid = alt.path[Math.floor(alt.path.length / 2)];
+  return mid ? { near: { q: mid[0], r: mid[1] }, far: { q: mid[0], r: mid[1] }, kind: 'route', cost: alt.cost } : null;
 }
 
 function attackPlan(world, profile, pos, out) {
@@ -221,7 +255,10 @@ function attackPlan(world, profile, pos, out) {
     fl.done = fl.done || [];
     if (hexDistance(u.q, u.r, fl.crossing.far.q, fl.crossing.far.r) <= 1 && !fl.done.includes(id)) fl.done.push(id);
     if (fl.done.includes(id)) continue;
-    out.set(id, { q: fl.crossing.far.q, r: fl.crossing.far.r, kind: 'flank', via: fl.crossing.near });
+    // first the near side of the crossing (the gate stays out of the route), then through it
+    const atNear = hexDistance(u.q, u.r, fl.crossing.near.q, fl.crossing.near.r) <= 1;
+    const g = atNear ? fl.crossing.far : fl.crossing.near;
+    out.set(id, { q: g.q, r: g.r, kind: 'flank' });
   }
 }
 
