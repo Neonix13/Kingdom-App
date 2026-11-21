@@ -1142,10 +1142,10 @@ waterMats.push(waterMat);
 await setProgress(68, 'Growing forests...');
 
 // --- Vegetation ---
-const vegMat = (opts, key) => patchLit(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0, envMapIntensity: 0.5 }), opts, null, key);
-const treeMatConifer = vegMat({ wind: true, windBend: 0.045, windFreq: 1.1, flutter: 0.004, clearOnUnits: true }, 'conifer');
-const treeMatBroad = vegMat({ wind: true, windBend: 0.06, windFreq: 1.3, flutter: 0.008, clearOnUnits: true }, 'broad');
-const bushMat = vegMat({ wind: true, windBend: 0.5, windFreq: 1.6, clearOnUnits: true }, 'bush');
+const vegMat = (opts, key, extra = null) => patchLit(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0, envMapIntensity: 0.5 }), opts, extra, key);
+const treeMatConifer = vegMat({ wind: true, windBend: 0.045, windFreq: 1.1, flutter: 0.004, clearOnUnits: true }, 'conifer-tex', VEG.treeTexturePatch('conifer'));
+const treeMatBroad = vegMat({ wind: true, windBend: 0.06, windFreq: 1.3, flutter: 0.008, clearOnUnits: true }, 'broad-tex', VEG.treeTexturePatch('broad'));
+const bushMat = vegMat({ wind: true, windBend: 0.5, windFreq: 1.6, clearOnUnits: true }, 'bush-tex', VEG.treeTexturePatch('bush'));
 const grassMat = vegMat({ wind: true, windBend: 9.0, windFreq: 2.1, fadeNear: 38, fadeFar: 62, noFlip: true }, 'grass');
 grassMat.side = THREE.DoubleSide;
 const wheatMat = vegMat({ wind: true, windBend: 5.0, windFreq: 1.8, fadeNear: 55, fadeFar: 85, noFlip: true, clearOnUnits: true }, 'wheat');
