@@ -56,9 +56,10 @@ Puis on ajoute :
 | **Falaise** | **infranchissable** (pour tout le monde) |
 | **Mur** | **infranchissable** |
 | **Échelle** | coût fixe de **3** (pente ignorée) — infanterie et généraux seulement |
-| Cavalerie et chars | ne franchissent jamais falaises, murs ni échelles |
+| **Escalier de pierre** | coût fixe de **2** (pente ignorée) — infanterie et généraux seulement ; monte au chemin de ronde des remparts, franchit une marche de rocher. Ne se sabote pas, ne se construit pas. Combattre à travers : attaquant en bas désavantagé (attaque −3 au corps à corps), défenseur avantagé (défense +2) — valeurs dans `data/balance/segments.json` |
+| Cavalerie et chars | ne franchissent jamais falaises, murs, échelles ni escaliers |
 
-- **Pas minimum** : une unité qui n'a encore rien dépensé de sa vitesse ce tour (ni déplacement, ni posture, ni pivot) peut toujours avancer d'**une case**, même si ce pas coûte plus que sa vitesse (sauf falaise, mur, ou échelle pour la cavalerie) ; ce pas consomme toute sa vitesse. Personne ne reste ainsi bloqué dans un fleuve (−1 vitesse) ou au pied d'une pente, même de nuit.
+- **Pas minimum** : une unité qui n'a encore rien dépensé de sa vitesse ce tour (ni déplacement, ni posture, ni pivot) peut toujours avancer d'**une case**, même si ce pas coûte plus que sa vitesse (sauf falaise, mur, ou échelle et escalier pour la cavalerie) ; ce pas consomme toute sa vitesse. Personne ne reste ainsi bloqué dans un fleuve (−1 vitesse) ou au pied d'une pente, même de nuit.
 - On ne traverse pas une case occupée par une unité visible.
 - **Embuscade** : si le chemin rencontre une unité ennemie cachée (§7), l'unité s'arrête net devant elle et perd le reste de sa vitesse pour la manche ; l'embusqué est révélé.
 - Les falaises bloquent le passage mais pas la vue.

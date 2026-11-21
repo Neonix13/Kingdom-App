@@ -18,6 +18,7 @@ export const SEGMENTS = [
   { id: 'passerelle', name: 'Passerelle', color: '#f0d070' },
   { id: 'bridge', name: 'Pont', color: '#ff9a30' },
   { id: 'echelle', name: 'Échelle', color: '#c08040' },
+  { id: 'escalier', name: 'Escalier de pierre', color: '#d8c8a8' },
   { id: 'chevaux_de_frise', name: 'Chevaux de frise', color: '#ff4a4a' },
 ];
 export const SEGMENT_IDS = new Set(SEGMENTS.map((s) => s.id));

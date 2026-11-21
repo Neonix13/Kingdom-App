@@ -91,6 +91,7 @@ const SEGMENT_COLORS_MAP = {
   chevaux_de_frise: '#c04040',
   mur:              '#606060',
   echelle:          '#a07840',
+  escalier:         '#c8b898',
 };
 
 // Propriétés locales pour les vérifications de mouvement côté client
@@ -103,6 +104,7 @@ const SEGMENT_DEFS_CLIENT = {
   chevaux_de_frise: { name:'Chevaux de frise',vitesse:0,   vitesse_fixe:null, infranchissable:false, infranchissable_cavalerie:false, attack_cac:0,  attack_tir:0, defense_cac:4, defense_tir:4, puissance_cac:0, puissance_tir:0, special:'+5 puissance vs cavalerie' },
   mur:              { name:'Mur',             vitesse:0,   vitesse_fixe:null, infranchissable:true,  infranchissable_cavalerie:false, attack_cac:0,  attack_tir:0, defense_cac:0, defense_tir:0, puissance_cac:0, puissance_tir:0, special:null },
   echelle:          { name:'Échelle',         vitesse:-2,  vitesse_fixe:null, infranchissable:false, infranchissable_cavalerie:true,  attack_cac:-6, attack_tir:0, defense_cac:0, defense_tir:0, puissance_cac:0, puissance_tir:0, special:'Infanterie et généraux seulement, coût 3' },
+  escalier:         { name:'Escalier',        vitesse:-1,  vitesse_fixe:2   , infranchissable:false, infranchissable_cavalerie:true,  attack_cac:-6, attack_tir:0, defense_cac:0, defense_tir:0, puissance_cac:0, puissance_tir:0, special:'Infanterie et généraux seulement, coût 3' },
 };
 
 // Movement: same rules and table as the server (public/js/rules.js, table sent in game_state.movementRules)

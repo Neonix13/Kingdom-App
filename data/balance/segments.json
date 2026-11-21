@@ -199,5 +199,31 @@
     "infranchissable": false,
     "infranchissable_cavalerie": true,
     "special": null
+  },
+  "escalier": {
+    "id": "escalier",
+    "name": "Escalier",
+    "vitesse": -1,
+    "attack_cac": -3,
+    "attack_tir": 0,
+    "puissance_cac": -1,
+    "puissance_tir": 0,
+    "intimidation_cac": -1,
+    "intimidation_tir": 0,
+    "armure_cac": -1,
+    "armure_tir": 0,
+    "defense_cac": 2,
+    "defense_tir": 0,
+    "defense_puissance_cac": 0,
+    "defense_puissance_tir": 2,
+    "defense_intimidation_cac": -1,
+    "defense_intimidation_tir": 1,
+    "defense_armure_cac": 1,
+    "defense_armure_tir": 0,
+    "vitesse_fixe": 2,
+    "vitesse_tout": false,
+    "infranchissable": false,
+    "infranchissable_cavalerie": true,
+    "special": null
   }
 }
