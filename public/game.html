@@ -233,7 +233,7 @@
     /* Loading screen (js/hud/loader.js): critical styles inline so nothing else shows before it */
     #kb-loader { position: fixed; inset: 0; z-index: 100000; display: flex; align-items: center; justify-content: center; background: #0b0a09; color: #f2ede2; font-family: 'Zen Kaku Gothic New', 'Segoe UI', sans-serif; transition: opacity .5s ease; }
     #kb-loader.out { opacity: 0; pointer-events: none; }
-    #kb-loader .kbl-speed { position: absolute; inset: -20%; background: repeating-conic-gradient(from 0deg at 50% 46%, rgba(255,255,255,.045) 0deg .8deg, transparent .8deg 5deg); -webkit-mask-image: radial-gradient(circle at 50% 46%, transparent 18%, #000 75%); mask-image: radial-gradient(circle at 50% 46%, transparent 18%, #000 75%); animation: kbl-rot 60s linear infinite; }
+    #kb-loader .kbl-speed { position: absolute; left: 50%; top: 46%; width: 300vmax; height: 300vmax; margin: -150vmax 0 0 -150vmax; background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(255,255,255,.045) 0deg .8deg, transparent .8deg 5deg); -webkit-mask-image: radial-gradient(circle at 50% 50%, transparent 6%, #000 25%); mask-image: radial-gradient(circle at 50% 50%, transparent 6%, #000 25%); animation: kbl-rot 60s linear infinite; pointer-events: none; }
     @keyframes kbl-rot { to { transform: rotate(360deg); } }
     #kb-loader .kbl-box { position: relative; width: min(860px, 92vw); display: flex; flex-direction: column; align-items: center; gap: 28px; }
     #kb-loader .kbl-title { font-family: 'Dela Gothic One', sans-serif; font-size: clamp(40px, 7vw, 76px); line-height: .9; letter-spacing: 2px; text-align: center; }

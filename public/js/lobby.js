@@ -459,7 +459,7 @@ function fillSoloGenerals() {
   for (const g of GENERALS_DATA) sel.insertAdjacentHTML('beforeend', `<option value="${escapeHtml(g.id)}">${escapeHtml(g.name)}</option>`);
 }
 
-const KINGDOMS = [{ id: 'QIN', k: '秦', name: 'Qin' }, { id: 'ZHAO', k: '趙', name: 'Zhao' }, { id: 'WEI', k: '魏', name: 'Wei' }];
+const KINGDOMS = [{ id: 'QIN', k: '秦', name: 'Qin' }, { id: 'ZHAO', k: '趙', name: 'Zhao' }, { id: 'WEI', k: '魏', name: 'Wei' }, { id: 'CHU', k: '楚', name: 'Chu' }];
 const UNIT_KANJI = { pietaille: '卒', soldats: '兵', phalange: '盾', lancier: '槍', espion: '諜', assassin: '刺', cavalier_leger: '騎', cavalier_lourd: '騎', archer: '弓', archer_elite: '弓', batisseurs: '工', char: '車' };
 let genTab = null;
 let previewGeneralId = null;
