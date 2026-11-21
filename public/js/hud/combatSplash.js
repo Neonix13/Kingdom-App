@@ -41,7 +41,7 @@ export function createCombatSplash({ bridge, portrait, kanji, isActive }) {
   function side(info, cls, label, stance) {
     const pic = info.pic ? `<img src="${esc(info.pic)}" alt="">` : `<span class="ph hud-hatch"><b class="hud-brush">${esc(info.kj)}</b></span>`;
     const ss = stanceOf(stance);
-    const st = ss ? `<span class="sp-st"><i class="st-chip" style="background:${esc(ss.c)}">${esc(ss.k)}</i>${esc(ss.name)}</span>` : '';
+    const st = ss ? `<span class="sp-st"><i class="st-chip" style="background:${esc(ss.c)}">${ss.svg || ''}</i>${esc(ss.name)}</span>` : '';
     return `<div class="sp-side ${cls}"><div class="sp-pic">${pic}</div>
       <div class="sp-tag" style="background:${esc(info.color)}"><span>${esc(label)}</span><b class="hud-dela">${esc(info.name)}</b>${st}</div></div>`;
   }

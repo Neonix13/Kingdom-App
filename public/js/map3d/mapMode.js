@@ -5,7 +5,9 @@
 const STYLE = `
 #hud-root .hud-ibtn[hidden] { display: none; }
 body.v3-map #view3d-plates .u3-plate { transform-origin: 0 0; }
-body.v3-map #view3d-plates .u3-plate .k { width: 24px; height: 24px; }
+body.v3-map #view3d-plates .u3-plate .k { width: 22px; height: 22px; margin-left: 0; }
+body.v3-map #view3d-plates .u3-plate:not(.sel):not(.hov) { padding: 0; gap: 0; }
+body.v3-map #view3d-plates .u3-plate:not(.sel):not(.hov) > :not(.k) { display: none; }
 body.v3-map .v3-map-chip.show { display: flex; }
 .v3-map-chip { display: none; position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 60; align-items: center; gap: 10px;
   padding: 6px 14px; background: #000; color: #fff; border: 2px solid #fff; box-shadow: 0 0 0 2px #000, 4px 4px 0 #D8352A;
@@ -93,13 +95,17 @@ export function createMapMode(world, { onChange } = {}) {
   }
 
   function enter() {
-    if (state !== 'off') return;
+    if (state !== 'off' || world.viewCamera !== camera) return;
     saved = {
       p: camera.position.clone(), t: controls.target.clone(), fov: camera.fov,
       min: controls.minDistance, max: controls.maxDistance, rotate: controls.enableRotate,
       buttons: { ...controls.mouseButtons }, grid: world.grid,
       fog: world.scene.fog ? world.scene.fog.density : null, clouds: world.clouds ? world.clouds.visible : null,
+      guard: world.camGuard ? world.camGuard.enabled : null, dof: world.dof ? world.dof.user : null,
     };
+    // the obstacle guard and the depth of field are made for the orbit view: off while the map is shown
+    if (world.camGuard) world.camGuard.enabled = false;
+    if (world.dof) world.dof.setEnabled(false);
     state = 'in';
     controls.minDistance = 0.01;
     controls.maxDistance = 1e6;
@@ -144,6 +150,8 @@ export function createMapMode(world, { onChange } = {}) {
     world.setGrid(saved.grid);
     if (world.scene.fog && saved.fog != null) world.scene.fog.density = saved.fog;
     if (world.clouds && saved.clouds != null) world.clouds.visible = saved.clouds;
+    if (world.camGuard && saved.guard != null) world.camGuard.enabled = saved.guard;
+    if (world.dof && saved.dof != null) world.dof.setEnabled(saved.dof);
   }
 
   function exit(instant = false) {

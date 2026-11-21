@@ -7,6 +7,7 @@ import { G, installHeightFog, patchLit } from './shaderPatches.js';
 import { createWaterMaterial } from './water.js';
 import * as VEG from './vegetation.js';
 import { createPost, QualityGovernor } from './post.js';
+import { bakeObstacleHeights, createCameraGuard } from './cameraGuard.js';
 import { createCloudLayer } from './clouds.js';
 import { createStars, createMoon, createFireflies, createLightPools } from './night.js';
 import { buildStructures } from './buildings.js';
@@ -1062,7 +1063,7 @@ function setTimeOfDay(hour, { env = true } = {}) {
   for (const m of windowMats) m.emissiveIntensity = 5.5 * glow;
   const starA = smoothstep(0.35, 1, night);
   stars.material.uniforms.uNight.value = starA;
-  birds.visible = night < 0.5;
+  birdSys.setNight(night);
   moon.material.opacity = starA;
   for (const fx of nightFx) {
     if (fx.material.uniforms.uNight) fx.material.uniforms.uNight.value = starA;
@@ -1142,10 +1143,10 @@ waterMats.push(waterMat);
 await setProgress(68, 'Growing forests...');
 
 // --- Vegetation ---
-const vegMat = (opts, key) => patchLit(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0, envMapIntensity: 0.5 }), opts, null, key);
-const treeMatConifer = vegMat({ wind: true, windBend: 0.045, windFreq: 1.1, flutter: 0.004, clearOnUnits: true }, 'conifer');
-const treeMatBroad = vegMat({ wind: true, windBend: 0.06, windFreq: 1.3, flutter: 0.008, clearOnUnits: true }, 'broad');
-const bushMat = vegMat({ wind: true, windBend: 0.5, windFreq: 1.6, clearOnUnits: true }, 'bush');
+const vegMat = (opts, key, extra = null) => patchLit(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0, envMapIntensity: 0.5 }), opts, extra, key);
+const treeMatConifer = vegMat({ wind: true, windBend: 0.045, windFreq: 1.1, flutter: 0.004, clearOnUnits: true }, 'conifer-tex', VEG.treeTexturePatch('conifer'));
+const treeMatBroad = vegMat({ wind: true, windBend: 0.06, windFreq: 1.3, flutter: 0.008, clearOnUnits: true }, 'broad-tex', VEG.treeTexturePatch('broad'));
+const bushMat = vegMat({ wind: true, windBend: 0.5, windFreq: 1.6, clearOnUnits: true }, 'bush-tex', VEG.treeTexturePatch('bush'));
 const grassMat = vegMat({ wind: true, windBend: 9.0, windFreq: 2.1, fadeNear: 38, fadeFar: 62, noFlip: true }, 'grass');
 grassMat.side = THREE.DoubleSide;
 const wheatMat = vegMat({ wind: true, windBend: 5.0, windFreq: 1.8, fadeNear: 55, fadeFar: 85, noFlip: true, clearOnUnits: true }, 'wheat');
@@ -1506,18 +1507,25 @@ const smokeMat = new THREE.ShaderMaterial({
   scene.add(smoke);
 }
 
-// --- Birds: flocks that roam the valley and perch on wall-walks, summits and fields ---
+// --- Birds: flocks that roam the valley and perch on wall-walks, roofs, tree tops, summits and fields ---
 const birdPerches = [];
 {
   const rng = makeRng(777);
-  for (const k of rampartSet) { const h = allHexes.get(k); if (h && rng() < 0.6) { const c = hexToWorld(h.q, h.r); birdPerches.push({ x: c.x, y: walkHeight(c.x, c.z), z: c.z }); } }
+  for (const k of rampartSet) { const h = allHexes.get(k); if (h && rng() < 0.6) { const c = hexToWorld(h.q, h.r); birdPerches.push({ x: c.x, y: walkHeight(c.x, c.z), z: c.z, kind: 'wall' }); } }
   for (const h of allHexes.values()) {
     const c = hexToWorld(h.q, h.r);
     const top = h.height >= 4 && HEX_DIRS.every(([dq, dr]) => { const n = allHexes.get(`${h.q + dq},${h.r + dr}`); return !n || n.height <= h.height; });
-    if ((top && rng() < 0.5) || (fieldSet.has(`${h.q},${h.r}`) && rng() < 0.08)) birdPerches.push({ x: c.x, y: groundHeight(c.x, c.z), z: c.z });
+    if (top && rng() < 0.5) birdPerches.push({ x: c.x, y: groundHeight(c.x, c.z), z: c.z, kind: 'summit' });
+    else if (fieldSet.has(`${h.q},${h.r}`) && rng() < 0.08) birdPerches.push({ x: c.x, y: groundHeight(c.x, c.z), z: c.z, kind: 'field' });
   }
+  for (const s of smokeSources) birdPerches.push({ x: s.x, y: s.y - 0.08, z: s.z, kind: 'roof' });
+  const treeTop = (make, v) => { const g = make(v); g.computeBoundingBox(); const y = g.boundingBox.max.y; g.dispose(); return y; };
+  [[conifers, VEG.makeConiferGeometry], [broads, VEG.makeBroadleafGeometry]].forEach(([sets, make]) => sets.forEach((list, v) => {
+    const top = treeTop(make, v);
+    for (const t of list) if (rng() < 0.04) birdPerches.push({ x: t.x, y: t.y + top * (t.s || 1) * (t.sy || 1) * 0.97, z: t.z, kind: 'tree' });
+  }));
 }
-const birdSys = createBirds({ scene, G, bounds: { bx0, bx1, bz0, bz1 }, groundHeight, perches: birdPerches, camera });
+const birdSys = createBirds({ scene, G, bounds: { bx0, bx1, bz0, bz1 }, groundHeight, surfaceHeight: walkHeight, perches: birdPerches, camera });
 const birds = birdSys.mesh;
 
 const boardLayers = createBoardLayers({ scene, hexToWorld, groundHeight, walkHeight, decks, bounds: { bx0, bx1, bz0, bz1 } });
@@ -1529,10 +1537,28 @@ await setProgress(92, 'Compiling shaders...');
 const post = createPost(renderer, scene, camera);
 let viewCam = camera;
 let usePost = true;
+// Cameras stay out of the scenery (walls, roofs, trees, relief): highest surface baked once from above
+const obstacleTop = bakeObstacleHeights(renderer, scene, { x0: bx0 - 15, z0: bz0 - 15, x1: bx1 + 15, z1: bz1 + 15 },
+  { hide: [sky, clouds, stars, moon, birds, grassMesh, flowerMesh, wheatMesh, ...nightFx] });
+const camGuard = createCameraGuard({ camera, controls, top: obstacleTop, groundHeight });
+// Depth of field: focus on a world point (selected unit…) or the orbit target; boosted during slow-motion shots
+const dofState = { user: true, quality: false, point: null, boost: 0, focus: 30 };
+const refreshDof = () => { post.dof.enabled = dofState.user && dofState.quality && usePost; };
+const _dofV = new THREE.Vector3(), _dofF = new THREE.Vector3();
+function updateDof(rawDt) {
+  if (!post.dof.enabled) return;
+  const rc = post.renderPass.camera;
+  rc.getWorldDirection(_dofF);
+  const d = Math.max(1, _dofV.subVectors(dofState.point || controls.target, rc.position).dot(_dofF));
+  dofState.focus += (d - dofState.focus) * Math.min(1, rawDt * 5);
+  post.dof.uniforms.uFocus.value = dofState.focus;
+  post.dof.uniforms.uAperture.value = 0.6 + 1.6 * dofState.boost;
+  post.dof.baseBlur = 4 + 7 * dofState.boost;
+}
 const maxDpr = Math.min(window.devicePixelRatio || 1, 2);
 const LEVELS = [
-  { name: 'Ultra', dpr: maxDpr, samples: maxDpr > 1.6 ? 2 : 4, bloom: true, post: true, grass: true, far: true },
-  { name: 'High', dpr: Math.min(maxDpr, 1.5), samples: 4, bloom: true, post: true, grass: true, far: true },
+  { name: 'Ultra', dpr: maxDpr, samples: maxDpr > 1.6 ? 2 : 4, bloom: true, post: true, grass: true, far: true, dof: true },
+  { name: 'High', dpr: Math.min(maxDpr, 1.5), samples: 4, bloom: true, post: true, grass: true, far: true, dof: true },
   { name: 'Medium', dpr: Math.min(maxDpr, 1.25), samples: 2, bloom: false, post: true, grass: true, far: true },
   { name: 'Low', dpr: Math.min(maxDpr, 1.0), samples: 0, bloom: false, post: true, grass: false, far: true },
   { name: 'Minimum', dpr: 0.75, samples: 0, bloom: false, post: false, grass: false, far: false },
@@ -1551,6 +1577,8 @@ function applyQuality(l) {
   post.composer.setSize(W(), H());
   post.bloom.enabled = l.bloom;
   usePost = l.post;
+  dofState.quality = !!l.dof;
+  refreshDof();
   grassMesh.visible = l.grass;
   flowerMesh.visible = l.grass;
   wheatMesh.visible = l.far;
@@ -1562,6 +1590,7 @@ function applyQuality(l) {
 }
 const qualityHooks = [];
 const resizeHooks = [];
+qualityHooks.push((l) => birdSys.setQuality(l));
 const _px = new Uint8Array(4);
 function measureFrameCost() {
   const gl = renderer.getContext();
@@ -1710,12 +1739,16 @@ const clock = new THREE.Clock();
 const perf = { cpu: 0, frame: 16.7 };
 const frameHooks = [(dt) => boardLayers.update(dt), (dt, t) => objectiveMarkers.update(dt, t)];
 let running = true;
+// timeScale < 1 slows every animation and effect (slow-motion shots); game logic and timers are not affected
+let timeScale = 1, simTime = 0;
 function animate() {
   if (!running) return;
   requestAnimationFrame(animate);
   const rawDt = clock.getDelta();
-  const dt = Math.min(rawDt, 0.1);
-  const t = clock.elapsedTime;
+  const dt = Math.min(rawDt, 0.1) * timeScale;
+  simTime += dt;
+  const t = simTime;
+  camGuard.before();
   if (pendingHour !== null) { setTimeOfDay(pendingHour, { env: false }); pendingHour = null; }
   G.uTime.value = t;
   G.uWindStrength.value = 0.75 + 0.35 * Math.sin(t * 0.13) + 0.2 * Math.sin(t * 0.41);
@@ -1727,6 +1760,8 @@ function animate() {
   updateIntro(dt);
   controls.update();
   for (const fn of frameHooks) fn(dt, t);
+  camGuard.after(Math.min(rawDt, 0.1));
+  updateDof(Math.min(rawDt, 0.1));
   sky.position.copy(camera.position);
   stars.position.copy(camera.position);
   moon.position.copy(camera.position).addScaledVector(MOON_DIR, 800);
@@ -1748,22 +1783,34 @@ function setRunning(v) {
 return {
   THREE, renderer, scene, camera, controls, canvas, perf, governor, post, LEVELS,
   allHexes, hexesByType, getSegType, effH, isWaterHex,
-  hexToWorld, worldToHex, groundHeight, walkHeight, deckClamp, pickHex, pickPoint, projectToScreen,
+  hexToWorld, worldToHex, groundHeight, walkHeight, decks, deckClamp, pickHex, pickPoint, projectToScreen,
   bounds: { bx0, bx1, bz0, bz1, BCX, BCZ },
   applyView, DEFAULT_VIEW, flyTo, focusHex, resize, start, setRunning,
   setTimeOfDay, previewTimeOfDay, commitTimeOfDay, get hour() { return timeState.hour; }, timeState,
-  applyQuality, qualityHooks, frameHooks, resizeHooks,
-  // view camera used for rendering / picking / projections (map mode swaps in an orthographic camera)
+  setTimeScale(k) { timeScale = Math.max(0.01, Math.min(4, k)); }, get timeScale() { return timeScale; },
+  // camera used for rendering / picking / projections: the orbit camera, a slow-motion shot camera or the
+  // orthographic map camera (mapMode.js); null = the orbit camera
   get viewCamera() { return viewCam; },
   setViewCamera(cam) { viewCam = cam || camera; post.renderPass.camera = viewCam; },
   setFlyFilter(fn) { flyFilter = fn; },
   stopFly() { intro.active = false; },
   clouds, aspect: () => W() / H(),
+  get usePost() { return usePost; },
+  dof: {
+    setEnabled(v) { dofState.user = !!v; refreshDof(); },
+    setFocus(point) { dofState.point = point || null; },
+    setBoost(k) { dofState.boost = Math.max(0, Math.min(1, k)); },
+    get active() { return post.dof.enabled; },
+    get user() { return dofState.user; },
+  },
+  camGuard, surfaceHeight: (x, z) => camGuard.surface(x, z),
+  applyQuality, qualityHooks, frameHooks, resizeHooks,
   setGrid(v) { terrainUniforms.uGrid.value = v; }, get grid() { return terrainUniforms.uGrid.value; },
   sunDir, G, layers: boardLayers, objectives: objectiveMarkers, map: mapDoc,
   // base-camp banners in the colours of the army deployed in each fixed zone: [{ zone, color, emblem }]
   setCampColors: (owners) => bannerSet && bannerSet.setZoneColors(owners),
   // birds scatter when one of these points (unit positions, world x/z) comes near their perch
   setBirdThreats: (points) => birdSys.setThreats(points),
+  birds: birdSys,
 };
 }

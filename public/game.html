@@ -227,8 +227,63 @@
     }
   }
   </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Yuji+Boku&family=Zen+Kaku+Gothic+New:wght@500;700;900&family=Zen+Old+Mincho:wght@700;900&display=swap">
+  <style>
+    /* Loading screen (js/hud/loader.js): critical styles inline so nothing else shows before it */
+    #kb-loader { position: fixed; inset: 0; z-index: 100000; display: flex; align-items: center; justify-content: center; background: #0b0a09; color: #f2ede2; font-family: 'Zen Kaku Gothic New', 'Segoe UI', sans-serif; transition: opacity .5s ease; }
+    #kb-loader.out { opacity: 0; pointer-events: none; }
+    #kb-loader .kbl-speed { position: absolute; inset: -20%; background: repeating-conic-gradient(from 0deg at 50% 46%, rgba(255,255,255,.045) 0deg .8deg, transparent .8deg 5deg); -webkit-mask-image: radial-gradient(circle at 50% 46%, transparent 18%, #000 75%); mask-image: radial-gradient(circle at 50% 46%, transparent 18%, #000 75%); animation: kbl-rot 60s linear infinite; }
+    @keyframes kbl-rot { to { transform: rotate(360deg); } }
+    #kb-loader .kbl-box { position: relative; width: min(860px, 92vw); display: flex; flex-direction: column; align-items: center; gap: 28px; }
+    #kb-loader .kbl-title { font-family: 'Dela Gothic One', sans-serif; font-size: clamp(40px, 7vw, 76px); line-height: .9; letter-spacing: 2px; text-align: center; }
+    #kb-loader .kbl-title span { display: block; font-size: .3em; letter-spacing: .55em; margin-top: 10px; color: #cfc6b3; }
+    #kb-loader .kbl-brush { width: 220px; height: 12px; margin-top: -14px; }
+    #kb-loader .kbl-phase { font-weight: 900; letter-spacing: 3px; font-size: 13px; color: #D8352A; text-transform: uppercase; }
+    #kb-loader .kbl-quote { margin: 0; display: grid; grid-template-columns: 132px 1fr; gap: 22px; align-items: center; min-height: 140px; width: 100%; opacity: 0; transform: translateY(6px); transition: opacity .38s ease, transform .38s ease; }
+    #kb-loader .kbl-quote.in { opacity: 1; transform: none; }
+    #kb-loader .kbl-portrait { width: 132px; height: 132px; border: 4px solid #f2ede2; box-shadow: 6px 6px 0 #D8352A; background: #f2ede2 center/cover; overflow: hidden; position: relative; }
+    #kb-loader .kbl-portrait img { width: 100%; height: 100%; object-fit: cover; object-position: 55% 18%; filter: grayscale(1) contrast(1.35); display: block; }
+    #kb-loader .kbl-portrait.noimg img { display: none; }
+    #kb-loader .kbl-portrait.noimg::after { content: '将'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #000; font: 64px 'Yuji Boku', serif; }
+    #kb-loader blockquote { margin: 0 0 8px; font-family: 'Zen Old Mincho', serif; font-weight: 700; font-size: clamp(17px, 2.2vw, 24px); line-height: 1.45; }
+    #kb-loader blockquote::before { content: '« '; color: #D8352A; }
+    #kb-loader blockquote::after { content: ' »'; color: #D8352A; }
+    #kb-loader figcaption { font-family: 'Dela Gothic One', sans-serif; font-size: 14px; letter-spacing: 1px; color: #D8352A; }
+    #kb-loader figcaption::before { content: '— '; }
+    #kb-loader .kbl-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: center; font-size: 13px; font-weight: 700; color: #8f8778; }
+    #kb-loader .kbl-steps li { display: flex; align-items: center; gap: 7px; transition: color .25s; }
+    #kb-loader .kbl-steps li i { width: 12px; height: 12px; border: 2px solid currentColor; transform: rotate(45deg); transition: background .25s; }
+    #kb-loader .kbl-steps li.ok { color: #f2ede2; }
+    #kb-loader .kbl-steps li.ok i { background: #D8352A; border-color: #D8352A; }
+    #kb-loader .kbl-bar { width: min(420px, 80vw); height: 4px; background: rgba(242,237,226,.15); }
+    #kb-loader .kbl-bar i { display: block; height: 100%; width: 0; background: #D8352A; transition: width .3s ease; }
+    #kb-loader .kbl-msg { min-height: 18px; font-size: 13px; color: #cfc6b3; }
+    #kb-loader .kbl-actions { display: flex; gap: 12px; }
+    #kb-loader .kbl-actions[hidden] { display: none; }
+    #kb-loader .kbl-actions button, #kb-loader .kbl-actions a { font: 900 13px 'Zen Kaku Gothic New', sans-serif; padding: 8px 16px; border: 2px solid #f2ede2; background: transparent; color: #f2ede2; text-decoration: none; cursor: pointer; }
+    #kb-loader .kbl-actions button { background: #D8352A; border-color: #D8352A; }
+    #kb-loader.reconnect { background: rgba(11,10,9,.88); }
+    #kb-loader.reconnect .kbl-title { display: none; }
+    @media (max-width: 560px) { #kb-loader .kbl-quote { grid-template-columns: 1fr; justify-items: center; text-align: center; } }
+    @media (prefers-reduced-motion: reduce) { #kb-loader .kbl-speed { animation: none; } }
+  </style>
 </head>
 <body>
+  <div id="kb-loader" role="status" aria-live="polite">
+    <div class="kbl-speed" aria-hidden="true"></div>
+    <div class="kbl-box">
+      <div class="kbl-title">KINGDOM<span>BATTLEGROUND</span></div>
+      <svg class="kbl-brush" viewBox="0 0 220 12" aria-hidden="true"><path d="M3 8 C 50 2, 110 11, 160 5 S 210 7, 217 4" stroke="#D8352A" stroke-width="4" fill="none" stroke-linecap="round"></path></svg>
+      <div class="kbl-phase">Préparation de la bataille…</div>
+      <figure class="kbl-quote" hidden><div class="kbl-portrait"><img alt=""></div><div><blockquote></blockquote><figcaption></figcaption></div></figure>
+      <ol class="kbl-steps"></ol>
+      <div class="kbl-bar"><i></i></div>
+      <div class="kbl-msg"></div>
+      <div class="kbl-actions" hidden><button type="button" data-a="reload">Recharger</button><a href="/">Retour au menu</a></div>
+    </div>
+  </div>
+  <script type="module" src="/js/hud/loader.js"></script>
   <div id="turn-order-panel" style="display:none">
     <div id="turn-order-list"></div>
   </div>
@@ -246,51 +301,37 @@
       </div>
       <canvas id="game-canvas"></canvas>
 
-      <!-- Barre d'outils haut-gauche -->
-      <div id="toolbar">
-        <button class="tool-btn active" id="tool-cursor" title="Sélection" onclick="setToolbarTool('cursor')">&#9654;</button>
-        <div class="tool-separator"></div>
-        <button class="tool-btn" id="tool-terrain" title="Afficher les terrains" onclick="toggleTerrain()">&#127795;</button>
-        <div class="tool-separator"></div>
-        <button class="tool-btn" id="tool-coords" title="Afficher les coordonnées des cases" onclick="toggleCoords()">Q,R</button>
-        <div class="tool-separator"></div>
-        <button class="tool-btn" id="tool-weakness" title="Côtés faibles des unités (vue 2D) : vert = face, orange = flanc, rouge = dos" onclick="toggleWeakness()">&#9680;</button>
-        <div class="tool-separator"></div>
-        <button class="tool-btn" id="tool-ping" title="Ping (clic sur une case pour signaler)" onclick="togglePing()">&#128204;</button>
-        <div class="tool-separator"></div>
-        <button class="tool-btn" id="tool-3d" title="Vue 3D" onclick="toggleView3d()" style="font-size:11px;font-weight:700">3D</button>
-        <div class="tool-separator"></div>
-        <button class="tool-btn" id="tool-rules" title="Règles" onclick="toggleRules()" style="font-size:16px">&#128214;</button>
-        <div class="tool-separator"></div>
-        <!-- Groupe Grille -->
-        <button class="tool-btn" id="tool-grid-group" title="Grille" onclick="toggleGridSubmenu()">&#35;</button>
-        <div class="tool-submenu" id="grid-submenu">
-          <div style="position:relative;display:flex;justify-content:center">
-            <button class="tool-btn" title="Opacité" onclick="toggleToolPopup('grid-popup')">&#9681;</button>
-            <div class="tool-popup" id="grid-popup">
-              <label>Opacité</label>
-              <input type="range" min="0" max="1" step="0.05" value="0.25" oninput="setGridOpacity(this.value)">
-            </div>
+      <!-- Outils (bouton ≡ du HUD) : sections Vue, Carte, Caméra 3D, Son. Les modules 3D et son ajoutent leurs boutons dans #tb-cam et #tb-son. -->
+      <div id="toolbar" role="toolbar" aria-label="Outils">
+        <div class="tb-head">Outils</div>
+        <div class="tb-sec" id="tb-vue">
+          <div class="tb-h">Vue</div>
+          <button class="tool-btn tb-row" id="tool-terrain" title="Colorer les cases selon leur terrain" onclick="toggleTerrain()"><svg class="tb-ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l6 9h-4l4 6H6l4-6H6z"></path><path d="M12 18v3"></path></svg><span>Terrains</span></button>
+          <button class="tool-btn tb-row" id="tool-weakness" title="Côtés faibles des unités : vert = face, orange = flanc, rouge = dos (vue 2D)" onclick="toggleWeakness()"><svg class="tb-ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 3l7.8 4.5" stroke="#28a050"></path><path d="M19.8 7.5v9" stroke="#e89628"></path><path d="M19.8 16.5L12 21 4.2 16.5" stroke="#D8352A"></path><path d="M4.2 16.5v-9L12 3" stroke="currentColor"></path></svg><span>Côtés faibles</span><small>2D</small></button>
+        </div>
+        <div class="tb-sec" id="tb-carte">
+          <div class="tb-h">Carte</div>
+          <button class="tool-btn tb-row" id="tool-ping" title="Signaler une case aux autres joueurs : cliquez ensuite sur la case" onclick="togglePing()"><svg class="tb-ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s-7-7-7-12a7 7 0 0 1 14 0c0 5-7 12-7 12z"></path><circle cx="12" cy="10" r="2.5"></circle></svg><span>Signaler une case</span></button>
+          <button class="tool-btn tb-row" id="tool-coords" title="Afficher les coordonnées des cases (Q,R)" onclick="toggleCoords()"><svg class="tb-ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2l8.5 5v10L12 22l-8.5-5V7z"></path><path d="M9 10.5h1.5M13.5 10.5H15M9 14h6"></path></svg><span>Coordonnées</span><small>2D</small></button>
+          <button class="tool-btn tb-row" id="tool-grid-group" title="Réglages de la grille (vue 2D)" onclick="toggleGridSubmenu()" aria-controls="grid-submenu"><svg class="tb-ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2l8.5 5v10L12 22l-8.5-5V7z"></path><path d="M12 2v20M3.5 7l17 10M20.5 7l-17 10"></path></svg><span>Grille</span><small>2D</small><svg class="tb-caret" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
+          <div class="tool-submenu tb-sub" id="grid-submenu">
+            <label>Opacité <input type="range" min="0" max="1" step="0.05" value="0.25" oninput="setGridOpacity(this.value)"></label>
+            <label>Épaisseur <input type="range" min="0.3" max="4" step="0.1" value="1" oninput="setGridThickness(this.value)"></label>
+            <div class="tb-swatches" role="group" aria-label="Couleur de la grille"><button type="button" class="grid-color-swatch active" data-rgb="180,140,60" title="Or" aria-label="Grille Or" style="background:rgb(180,140,60)" onclick="setGridColor('180,140,60')"></button><button type="button" class="grid-color-swatch" data-rgb="220,220,220" title="Blanc" aria-label="Grille Blanc" style="background:rgb(220,220,220)" onclick="setGridColor('220,220,220')"></button><button type="button" class="grid-color-swatch" data-rgb="60,180,220" title="Cyan" aria-label="Grille Cyan" style="background:rgb(60,180,220)" onclick="setGridColor('60,180,220')"></button><button type="button" class="grid-color-swatch" data-rgb="220,80,40" title="Rouge" aria-label="Grille Rouge" style="background:rgb(220,80,40)" onclick="setGridColor('220,80,40')"></button><button type="button" class="grid-color-swatch" data-rgb="80,220,80" title="Vert" aria-label="Grille Vert" style="background:rgb(80,220,80)" onclick="setGridColor('80,220,80')"></button><button type="button" class="grid-color-swatch" data-rgb="160,100,220" title="Violet" aria-label="Grille Violet" style="background:rgb(160,100,220)" onclick="setGridColor('160,100,220')"></button></div>
           </div>
-          <div style="position:relative;display:flex;justify-content:center">
-            <button class="tool-btn" title="Épaisseur" onclick="toggleToolPopup('grid-thick-popup')">&#8801;</button>
-            <div class="tool-popup" id="grid-thick-popup">
-              <label>Épaisseur</label>
-              <input type="range" min="0.3" max="4" step="0.1" value="1" oninput="setGridThickness(this.value)">
-            </div>
-          </div>
-          <div style="position:relative;display:flex;justify-content:center">
-            <button class="tool-btn" title="Couleur" onclick="toggleToolPopup('grid-color-popup')">&#11044;</button>
-            <div class="tool-popup" id="grid-color-popup" style="flex-wrap:wrap;max-width:180px;white-space:normal;gap:5px;">
-              <label style="width:100%;margin-bottom:2px">Couleur</label>
-              <div class="grid-color-swatch active" data-rgb="180,140,60" title="Or"     style="background:rgba(180,140,60,0.9)" onclick="setGridColor('180,140,60')"></div>
-              <div class="grid-color-swatch"        data-rgb="220,220,220" title="Blanc"   style="background:rgba(220,220,220,0.9)" onclick="setGridColor('220,220,220')"></div>
-              <div class="grid-color-swatch"        data-rgb="60,180,220" title="Cyan"    style="background:rgba(60,180,220,0.9)"  onclick="setGridColor('60,180,220')"></div>
-              <div class="grid-color-swatch"        data-rgb="220,80,40" title="Rouge"   style="background:rgba(220,80,40,0.9)"   onclick="setGridColor('220,80,40')"></div>
-              <div class="grid-color-swatch"        data-rgb="80,220,80" title="Vert"    style="background:rgba(80,220,80,0.9)"   onclick="setGridColor('80,220,80')"></div>
-              <div class="grid-color-swatch"        data-rgb="160,100,220" title="Violet"  style="background:rgba(160,100,220,0.9)" onclick="setGridColor('160,100,220')"></div>
-            </div>
-          </div>
+        </div>
+        <div class="tb-sec" id="tb-cam">
+          <div class="tb-h">Caméra 3D</div>
+          <button class="tool-btn tb-row" id="tool-photo" title="Mode photo : masque l'interface (P)" onclick="document.querySelector('#v3-settings [data-act=photo]')?.click()"><svg class="tb-ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"></path><circle cx="12" cy="13" r="3.5"></circle></svg><span>Mode photo</span><kbd>P</kbd></button>
+          <button class="tool-btn tb-row" id="tool-topview" title="Vue carte, de haut (M)" onclick="document.querySelector('#v3-settings [data-act=top]')?.click()"><svg class="tb-ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v6M9 6l3 3 3-3"></path><path d="M4 13l8 4 8-4-8-4z"></path><path d="M4 17l8 4 8-4"></path></svg><span>Vue carte (M)</span></button>
+        </div>
+        <div class="tb-sec" id="tb-son">
+          <div class="tb-h">Son</div>
+        </div>
+        <div class="tb-legacy" hidden>
+          <button class="tool-btn active" id="tool-cursor" title="Sélection" onclick="setToolbarTool('cursor')"></button>
+          <button class="tool-btn" id="tool-3d" title="Vue 3D" onclick="toggleView3d()">3D</button>
+          <button class="tool-btn" id="tool-rules" title="Règles" onclick="toggleRules()"></button>
         </div>
       </div>
 

@@ -43,19 +43,94 @@ const GradeShader = {
   `,
 };
 
+// Light depth of field: gathers a golden-angle disc whose radius grows with the distance to the focus plane.
+// Reads the scene depth resolved with the colour (depthTexture on the composer targets).
+const DofShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    tDepth: { value: null },
+    uNear: { value: 0.3 },
+    uFar: { value: 1400 },
+    uFocus: { value: 30 },
+    uAperture: { value: 0.6 },
+    uMaxBlur: { value: 5 },
+    uResolution: { value: new THREE.Vector2(1, 1) },
+  },
+  vertexShader: /* glsl */`
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 ); }
+  `,
+  fragmentShader: /* glsl */`
+    uniform sampler2D tDiffuse;
+    uniform sampler2D tDepth;
+    uniform float uNear, uFar, uFocus, uAperture, uMaxBlur;
+    uniform vec2 uResolution;
+    varying vec2 vUv;
+    float viewZ( vec2 uv ) {
+      float z = texture2D( tDepth, uv ).x * 2.0 - 1.0;
+      return 2.0 * uNear * uFar / ( uFar + uNear - z * ( uFar - uNear ) );
+    }
+    // near blur is softened: the foreground of a strategy view is large on screen
+    float coc( float z ) { return clamp( abs( z - uFocus ) / max( z, 0.001 ) * uAperture * ( z < uFocus ? 0.6 : 1.0 ), 0.0, 1.0 ) * uMaxBlur; }
+    void main() {
+      vec4 base = texture2D( tDiffuse, vUv );
+      float z0 = viewZ( vUv );
+      float c0 = coc( z0 );
+      if ( c0 < 0.45 ) { gl_FragColor = base; return; }
+      vec3 acc = base.rgb;
+      float wsum = 1.0;
+      for ( int i = 0; i < 20; i ++ ) {
+        float fi = float( i ) + 0.5;
+        float r = sqrt( fi / 20.0 ) * c0;
+        float a = fi * 2.39996323;
+        vec2 uv = vUv + vec2( cos( a ), sin( a ) ) * r / uResolution;
+        float zs = viewZ( uv );
+        // a sharper surface in front must not smear into the blurred background behind it
+        float w = zs < z0 ? smoothstep( r - 1.0, r + 1.0, coc( zs ) + 0.5 ) : 1.0;
+        acc += texture2D( tDiffuse, uv ).rgb * w;
+        wsum += w;
+      }
+      gl_FragColor = vec4( acc / wsum, base.a );
+    }
+  `,
+};
+
+class DofPass extends ShaderPass {
+  constructor(getCamera) {
+    super(DofShader);
+    this.getCamera = getCamera;
+    this.baseBlur = 4;
+  }
+  render(renderer, writeBuffer, readBuffer, deltaTime, maskActive) {
+    const u = this.uniforms;
+    const cam = this.getCamera();
+    u.tDepth.value = readBuffer.depthTexture;
+    u.uNear.value = cam.near;
+    u.uFar.value = cam.far;
+    u.uResolution.value.set(readBuffer.width, readBuffer.height);
+    u.uMaxBlur.value = this.baseBlur * (readBuffer.height / 900);
+    super.render(renderer, writeBuffer, readBuffer, deltaTime, maskActive);
+  }
+}
+
 export function createPost(renderer, scene, camera) {
   const size = renderer.getSize(new THREE.Vector2());
   const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 4 });
+  rt.depthTexture = new THREE.DepthTexture(size.x, size.y);
   const composer = new EffectComposer(renderer, rt);
+  if (!composer.renderTarget2.depthTexture) composer.renderTarget2.depthTexture = new THREE.DepthTexture(size.x, size.y);
   const renderPass = new RenderPass(scene, camera);
+  const dof = new DofPass(() => renderPass.camera);
+  dof.enabled = false;
   const bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.35, 0.45, 2.4);
   const grade = new ShaderPass(GradeShader);
   const output = new OutputPass();
   composer.addPass(renderPass);
+  composer.addPass(dof);
   composer.addPass(bloom);
   composer.addPass(grade);
   composer.addPass(output);
-  return { composer, renderPass, bloom, grade, output, rt };
+  return { composer, renderPass, dof, bloom, grade, output, rt };
 }
 
 // Adaptive quality: keep frame time under budget by trading resolution and effects.

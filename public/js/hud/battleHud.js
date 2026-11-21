@@ -103,8 +103,12 @@ export function mountBattleHud(bridge, view) {
     };
   }
   (window.gameEventHooks = window.gameEventHooks || []).push(() => invalidate());
-  const isTimer = (n) => { for (let x = n; x && x !== document.body; x = x.parentNode) if (x.id === 'top-timer' || x.id === 'sim-timer') return true; return false; };
-  const mo = new MutationObserver((recs) => { if (recs.some((r) => !isTimer(r.target))) invalidate(); });
+  const isTimer = (n) => { for (let x = n; x && x !== document.body; x = x.parentNode) if (x.id === 'top-timer' || x.id === 'sim-timer' || x.id === 'top-time') return true; return false; };
+  const isClock = (n) => { for (let x = n; x && x !== document.body; x = x.parentNode) if (x.id === 'top-time') return true; return false; };
+  const mo = new MutationObserver((recs) => {
+    if (recs.some((r) => !isTimer(r.target))) invalidate();
+    else if (recs.some((r) => isClock(r.target))) { const st = bridge.state; renderBanner(st, bridge.mode === 'deploy' && !!bridge.deployState); }
+  });
   for (const id of ['top-bar', 'combat-log', 'sim-bar', 'stance-panel', 'action-panel', 'btn-end-turn-center', 'btn-deploy-ready-center', 'unit-list', 'tab-chat']) {
     const n = $(id);
     if (n) mo.observe(n, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['style', 'class', 'disabled'] });
@@ -322,12 +326,12 @@ export function mountBattleHud(bridge, view) {
     if (u.isMine && !deploying && !sim && u.hasAttacked) meta.push('A ATTAQUÉ');
     const pct = u.maxVitality ? Math.max(0, Math.min(100, (u.vitality / u.maxVitality) * 100)) : 0;
     const stanceShown = !sim && $('stance-panel')?.style.display === 'block';
-    const sty = (s) => (window.stanceStyle ? window.stanceStyle(s) : { k: '', c: '#000', name: names[s] || s, short: names[s] || s });
+    const sty = (s) => (window.stanceStyle ? window.stanceStyle(s) : { k: '', svg: '', c: '#000', name: names[s] || s, short: names[s] || s });
     const stanceBtns = list.map((s, i) => {
       const on = u.stance === s;
       const ss = sty(s);
       const label = on ? esc(ss.short) : '';
-      return `<button class="hud-para st-btn${on ? ' on' : ''}" data-stance="${i}" title="${esc(ss.name)} (${i + 1})" aria-label="${esc(ss.name)}"><span><i class="st-chip" style="background:${esc(ss.c)}">${esc(ss.k)}</i>${label}</span></button>`;
+      return `<button class="hud-para st-btn${on ? ' on' : ''}" data-stance="${i}" title="${esc(ss.name)} (${i + 1})" aria-label="${esc(ss.name)}"><span><i class="st-chip" style="background:${esc(ss.c)}">${ss.svg || ''}</i>${label}</span></button>`;
     }).join('');
     let stanceNow = '';
     if (!u.isGeneral && u.stance) {
@@ -335,7 +339,7 @@ export function mountBattleHud(bridge, view) {
       const kind = (u.range || 1) > 1 ? 'tir' : 'cac';
       const fx = window.stanceEffectsText ? window.stanceEffectsText(u.stance, kind, 4) : '';
       const full = [window.stanceEffectsText ? window.stanceEffectsText(u.stance) : '', window.stanceAngleText ? window.stanceAngleText(u.stance) : '', sim && window.stanceReactionText ? `si attaquée : ${window.stanceReactionText(u.stance)}` : ''].filter(Boolean).join(' — ');
-      stanceNow = `<div class="stance-now" title="${esc(full)}"><i class="st-chip" style="background:${esc(ss.c)}">${esc(ss.k)}</i><b>${esc(ss.name.toUpperCase())}</b><span>${esc(fx)}${sim && window.stanceReactionText ? ` · si attaquée : ${esc(window.stanceReactionText(u.stance))}` : ''}</span></div>`;
+      stanceNow = `<div class="stance-now" title="${esc(full)}"><i class="st-chip" style="background:${esc(ss.c)}">${ss.svg || ''}</i><b>${esc(ss.name.toUpperCase())}</b><span>${esc(fx)}${sim && window.stanceReactionText ? ` · si attaquée : ${esc(window.stanceReactionText(u.stance))}` : ''}</span></div>`;
     }
     el.card.innerHTML = `
       <div class="pic">${src ? `<img src="${esc(src)}" alt="">` : ''}<span class="k">${unitKanji(u)}</span><i class="owner" style="background:${esc(color)}"></i></div>

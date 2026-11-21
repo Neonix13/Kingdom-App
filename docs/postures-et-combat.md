@@ -91,10 +91,11 @@ La valeur d'angle `a` est ajoutée à l'attaque, à la puissance et à l'intimid
 | **Char** (séquentiel) | Traverse et frappe chaque ennemi traversé, sans riposte (réponse « Rien »). En simultané, il combat normalement. |
 | **Cavalier léger** | Séquentiel : attaquer coûte 2 de vitesse et il peut encore bouger. Simultané : il s'arrête après sa frappe. |
 
-## 6. Incohérences relevées (code et docs)
+## 6. Points corrigés
 
-- **Tir en simultané** : la cible d'un tir dont la posture répondrait Contre-attaquer ou Encaisser se tourne vers le tireur. Le journal affiche ce choix alors que le calcul a utilisé « Rien » (`resolve.js`, `resolveStrikes`). En séquentiel, elle ne se tourne pas.
-- **Archers** : « la cible ne fait aucun jet de défense » ne vaut qu'à distance ≥ 2. Au contact, la cible riposte normalement.
-- **Phalange contre les tirs** : avec les unités actuelles, « encaisser un tir sauf d'archers » ne sert que contre une unité de mêlée qui frappe d'en haut, en séquentiel. En simultané, jamais.
-- **Mêlée à 2 cases depuis une hauteur** (séquentiel) : elle est traitée comme un tir, sans riposte. regles.md ne le dit pas (§5 : « 1 case (mêlée) … +1 par niveau »).
-- **regles.md §4–§5** : l'usure d'armure (−1 par attaque reçue) et le bonus d'angle sur l'armure de l'attaquant face à la riposte n'y figurent pas.
+- **Tir en simultané** : la cible ne se tourne plus vers le tireur et le journal montre la réponse réellement appliquée.
+- **Archers au contact** : mêlée normale avec riposte (« aucun jet de défense » ne vaut qu'à distance ≥ 2), affichée comme une mêlée.
+- **Mêlée depuis une hauteur** : la portée de mêlée est toujours 1 ; le bonus de hauteur ne s'applique qu'aux tireurs. La phalange n'encaisse donc plus que les tirs de tireurs non archers (aucune unité actuelle), et ne peut pas encaisser les archers.
+- **Priorité en simultané** : ordre tiré au sort à chaque tour à partir de la graine.
+
+Reste à documenter dans regles.md : l'usure d'armure (−1 par attaque reçue) et le bonus d'angle sur l'armure de l'attaquant face à la riposte.
