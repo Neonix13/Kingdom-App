@@ -693,12 +693,12 @@ const cornerHeights = new Map();
         // face toward the lower hex
         const lo = hiIsA ? nb : hex, hiH = hiIsA ? hex : nb;
         const pl = hexToWorld(lo.q, lo.r), ph = hexToWorld(hiH.q, hiH.r);
-        // right-hand normal of (v0, v1, v2): three.js front faces wind counter-clockwise toward the viewer
-        const ux = v[1][0] - v[0][0], uy = v[1][1] - v[0][1], uz = v[1][2] - v[0][2];
-        const wx = v[2][0] - v[0][0], wy = v[2][1] - v[0][1], wz = v[2][2] - v[0][2];
-        const nx = uy * wz - uz * wy, nz = ux * wy - uy * wx;
-        if (nx * (pl.x - ph.x) + nz * (pl.z - ph.z) > 0) indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-        else indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
+        // (v0, v1, v2) with v2 below v1 has a normal along (ez, -ex) for the top edge e: three.js front faces wind
+        // counter-clockwise toward the viewer; a triangle squashed to a line (the face closing at one end) is skipped
+        const ex = v[1][0] - v[0][0], ez = v[1][2] - v[0][2];
+        const front = ez * (pl.x - ph.x) - ex * (pl.z - ph.z) > 0;
+        if (Math.abs(v[1][1] - v[2][1]) > 0.01) indices.push(...(front ? [base, base + 1, base + 2] : [base, base + 2, base + 1]));
+        if (Math.abs(v[0][1] - v[3][1]) > 0.01) indices.push(...(front ? [base, base + 2, base + 3] : [base, base + 3, base + 2]));
       }
     }
   }
@@ -710,6 +710,14 @@ const cornerHeights = new Map();
   boardGeo.setAttribute('terrainBlendWeights', new THREE.Float32BufferAttribute(tBlendWeights, 3));
   boardGeo.setIndex(indices);
   boardGeo.computeVertexNormals();
+  {
+    // a cliff face closing to a point at one end has a vertex in no real triangle: give it an upward normal (a zero normal
+    // turns into NaN in the lighting, which the bloom then spreads over the screen)
+    const nrm = boardGeo.attributes.normal.array;
+    for (let i = 0; i < nrm.length; i += 3) {
+      if (nrm[i] * nrm[i] + nrm[i + 1] * nrm[i + 1] + nrm[i + 2] * nrm[i + 2] < 1e-8) { nrm[i] = 0; nrm[i + 1] = 1; nrm[i + 2] = 0; }
+    }
+  }
   boardGeo.computeBoundingSphere();
 
   boardMesh = new THREE.Mesh(boardGeo, makeTerrainMaterial({ grid: true }));

@@ -65,6 +65,7 @@ export function buildFortifications(api, map) {
   };
 
   // One straight stretch of curtain wall from pa to pb, walk-way at heights ta -> tb
+  let paveRuns = 0;
   function wallRun(pa, pb, ta, tb, opt = {}) {
     const dx = pb.x - pa.x, dz = pb.z - pa.z, len = Math.hypot(dx, dz);
     if (len < 1e-3) return;
@@ -86,8 +87,9 @@ export function buildFortifications(api, map) {
       bot -= 0.5;
     }
     const yA = ta + 0.01, yB = tb + 0.01;
+    const lift = (paveRuns++ % 3) * 0.004;
     const ao = off(A, wo), bo = off(Bp, wo), ai = off(A, -wi), bi = off(Bp, -wi);
-    B.quad(Vxz(ao, yA), Vxz(bo, yB), Vxz(bi, yB), Vxz(ai, yA), K.pave, 2);
+    B.quad(Vxz(ao, yA + lift), Vxz(bo, yB + lift), Vxz(bi, yB + lift), Vxz(ai, yA + lift), K.pave, 2);
     B.quad(Vxz(ao, bot), Vxz(bo, bot), Vxz(bo, yB), Vxz(ao, yA), K.stone, 1);
     B.quad(Vxz(bi, bot), Vxz(ai, bot), Vxz(ai, yA), Vxz(bi, yB), K.stone, 1);
     if (!opt.openA) B.quad(Vxz(ai, bot), Vxz(ao, bot), Vxz(ao, yA), Vxz(ai, yA), K.stone, 1);
@@ -170,7 +172,7 @@ export function buildFortifications(api, map) {
     let bot = Infinity;
     for (let i = 0; i < 6; i++) { const p = hexCorner(c.x, c.z, i); bot = Math.min(bot, groundHeight(p.x, p.z)); }
     const y = top(h);
-    prism(B, c.x, bot - 0.5, c.z, 1.08, 1.02, y + 0.01 - bot + 0.5, K.stone, 1, 8, Math.PI / 8);
+    prism(B, c.x, bot - 0.5, c.z, 1.08, 1.02, y - 0.03 - bot + 0.5, K.stone, 1, 8, Math.PI / 8);
     prism(B, c.x, y, c.z, 1.04, 1.04, 0.2, K.stoneDark, 1, 8, Math.PI / 8);
   }
 
@@ -241,7 +243,14 @@ export function buildFortifications(api, map) {
     const dh = Math.max(0.2, yHi - yLo);
     const run = Math.max(0.75, Math.min(1.25, 0.45 + dh * 0.38));
     const half = 0.26;
-    const P = (along, out) => ({ x: M.x + t.x * along + d.x * (face + out), z: M.z + t.z * along + d.z * (face + out) });
+    // beside a gate, slide the flight along the wall, clear of the gate's buttress
+    let shift = 0;
+    for (const [dq, dr] of HEX_DIRS) {
+      if (!gateKeys.has(hk(hi.q + dq, hi.r + dr))) continue;
+      const g = hexToWorld(hi.q + dq, hi.r + dr);
+      shift = ((g.x - M.x) * t.x + (g.z - M.z) * t.z) > 0 ? -0.42 : 0.42;
+    }
+    const P = (along, out) => ({ x: M.x + t.x * (along + shift) + d.x * (face + out), z: M.z + t.z * (along + shift) + d.z * (face + out) });
     const nSteps = Math.max(4, Math.ceil(dh / 0.12));
     const base = yLo - 0.3;
     // each step a block from the foot of the flight to its own tread: the flight reads as solid masonry
@@ -336,9 +345,9 @@ export function buildFortifications(api, map) {
     for (const s of [-1, 1]) {
       const p = at(s * towerU, 0);
       const deep = thick + (big ? 0.35 : 0.18);
-      hbox(B, p.x, floor - 0.5, tY + 0.02, p.z, tan, tw, deep, K.stone, 1);
+      hbox(B, p.x, floor - 0.5, tY - 0.1, p.z, tan, tw, deep, K.stone, 1);
       hbox(B, p.x, floor - 0.5, floor + 0.65, p.z, tan, tw + 0.12, deep + 0.14, K.stoneDark, 1);
-      hbox(B, p.x, tY - 0.1, tY + 0.02, p.z, tan, tw + 0.05, deep + 0.05, K.stoneDark, 1);
+      hbox(B, p.x, tY - 0.1, tY + 0.035, p.z, tan, tw + 0.05, deep + 0.05, K.stoneDark, 1);
       for (let i = -2; i <= 2; i++) {
         for (const v of [-1, 1]) {
           const m = at(s * towerU + i * tw * 0.4, v * (deep - 0.04));
@@ -427,8 +436,8 @@ export function buildFortifications(api, map) {
     if (ls.length) { const d = { x: ls[0].x - c.x, z: ls[0].z - c.z }; const l = Math.hypot(d.x, d.z); X = { x: d.x / l, z: d.z / l }; }
     const Z = { x: -X.z, z: X.x };
     // platform at walk level (units can stand on it), wider than the curtain, crenellated, with an open pavilion
-    const H = y + 0.02;
-    hbox(B, c.x, bot, H, c.z, X, 1.0, 1.25, K.stone, 1);
+    const H = y + 0.035;
+    hbox(B, c.x, bot, H - 0.12, c.z, X, 1.0, 1.25, K.stone, 1);
     hbox(B, c.x, bot, bot + 0.5 + Math.max(0.25, Math.min(1, (H - bot) * 0.3)), c.z, X, 1.12, 1.37, K.stoneDark, 1);
     hbox(B, c.x, H - 0.12, H, c.z, X, 1.05, 1.3, K.stoneDark, 1);
     for (let i = -2; i <= 2; i++) {
