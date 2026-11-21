@@ -66,6 +66,7 @@ export function mountBattleHud(bridge, view) {
     <div class="hud-roster"></div>
     <div class="hud-orders hud-panel" hidden></div>
     <div class="hud-feed"></div>
+    <button class="hud-lastcombat" title="Rouvrir la fiche du dernier combat (journal : toutes les fiches)">撃 DERNIER COMBAT</button>
     <div class="hud-card hud-panel hud-hatch" hidden></div>
     <div class="hud-mode"></div>
     <div class="hud-route" hidden></div>
@@ -484,6 +485,9 @@ export function mountBattleHud(bridge, view) {
   el.seal.addEventListener('click', () => { if (sealTarget && !sealTarget.disabled) sealTarget.click(); });
 
   function renderFeed() {
+    const fights = (bridge.combatHistory || []).filter((e) => e && e.log && !e.log.abilityUsed).length;
+    const lc = root.querySelector('.hud-lastcombat');
+    if (lc) lc.classList.toggle('on', fights > 0);
     const log = $('combat-log');
     const entries = log ? [...log.children].slice(0, 4) : [];
     el.feed.innerHTML = entries.map((n, i) => {
@@ -593,6 +597,8 @@ export function mountBattleHud(bridge, view) {
   if (area && window.ResizeObserver) new ResizeObserver(resizeView).observe(area);
 
   const splash = createCombatSplash({ bridge, portrait, kanji: unitKanji, isActive: () => active });
+  window.hudOpenCombat = (i) => splash.open(i);
+  root.querySelector('.hud-lastcombat').addEventListener('click', () => splash.openLast());
   const gameOver = createGameOver({ bridge });
 
   // ---- 2D view: attack tooltip on hoverable targets (the 3D view has its own, same content) ----

@@ -157,7 +157,7 @@ body.hud-d #hud-root { display: block; }
 @keyframes hud-seal-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.07); } }
 
 /* ---- event feed ---- */
-.hud-feed { position: absolute; right: 22px; bottom: 216px; width: 300px; display: flex; flex-direction: column-reverse; gap: 8px; pointer-events: none; }
+.hud-feed { position: absolute; right: 22px; bottom: 258px; width: 300px; display: flex; flex-direction: column-reverse; gap: 8px; pointer-events: none; }
 .hud-feed .ev { background: #fff; border: 3px solid #000; padding: 5px 10px; font-size: 12.5px; font-weight: 700; line-height: 1.35; transform: rotate(-.6deg); box-shadow: 3px 3px 0 #000; }
 .hud-feed .ev.hit { border-left: 10px solid #000; }
 .hud-feed .ev.kill { background: var(--hud-red); color: #fff; }
@@ -292,7 +292,7 @@ body.hud-d.hud-coach .hud-feed { display: none; }
   .hud-actions, .hud-mode, .hud-simslot { left: 606px; }
   .hud-seal { width: 136px; height: 136px; right: 24px; bottom: 24px; }
   .hud-seal .kj { font-size: 50px; }
-  .hud-feed { bottom: 190px; width: 270px; }
+  .hud-feed { bottom: 230px; width: 270px; }
 }
 @media (max-height: 760px) {
   .hud-roster { max-height: calc(100vh - 128px - 236px); }
@@ -502,3 +502,18 @@ body.hud-d.hud-2d #toolbar #tb-cam { display: none; }
 body.hud-d:not(.hud-2d) #toolbar #tool-weakness, body.hud-d:not(.hud-2d) #toolbar #tool-coords, body.hud-d:not(.hud-2d) #toolbar #tool-grid-group, body.hud-d:not(.hud-2d) #toolbar #grid-submenu { display: none; }
 body.hud-d #toolbar .tuto-highlight { outline: 3px solid var(--hud-red); outline-offset: 2px; animation: hud-tuto 1.2s ease-in-out infinite; }
 @media (max-height: 760px) { body.hud-d #toolbar .tb-row { height: 32px; } body.hud-d #toolbar { gap: 6px; } }
+
+/* ---- combat card: closed by hand, navigation between the combats of a turn ---- */
+#hud-splash.manual .sp-stage, #hud-splash.manual .sp-small { cursor: default; }
+#hud-splash .sp-nav { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-top: 3px solid #000; background: #fff; font: 700 13px var(--hud-body); pointer-events: auto; }
+#hud-splash .sp-nav span { flex: 1; text-align: center; }
+#hud-splash .sp-nav button { min-width: 36px; height: 30px; border: 2px solid #000; background: #fff; color: #000; font: 900 14px var(--hud-body); cursor: pointer; }
+#hud-splash .sp-nav button:hover:not([disabled]) { background: #000; color: #fff; }
+#hud-splash .sp-nav button[disabled] { opacity: .3; cursor: default; }
+#hud-splash .sp-nav button.x { background: var(--hud-red); color: #fff; border-color: #000; }
+#hud-root .hud-lastcombat { position: absolute; right: 22px; bottom: 216px; pointer-events: auto; height: 34px; padding: 0 12px; display: none; align-items: center; gap: 8px; background: #fff; color: #000; border: 3px solid #000; box-shadow: 3px 3px 0 #000; font: 900 12px var(--hud-body); letter-spacing: 1px; cursor: pointer; }
+#hud-root .hud-lastcombat.on { display: flex; }
+#hud-root .hud-lastcombat:hover { background: #000; color: #fff; }
+#combat-history .h-open { margin-left: 6px; padding: 1px 7px; border: 1.5px solid currentColor; background: transparent; color: inherit; font: 900 10px var(--hud-body, sans-serif); letter-spacing: 1px; cursor: pointer; }
+#combat-history .h-open:hover { background: #000; color: #fff; }
+@media (max-width: 1360px) { #hud-root .hud-lastcombat { bottom: 186px; } }

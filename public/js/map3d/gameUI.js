@@ -34,7 +34,7 @@ body.v3-photo #v3-photo-bar { display:flex; }
 `;
 
 const CAM_CODES = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Equal', 'Minus', 'NumpadAdd', 'NumpadSubtract']);
-const DEFAULTS = { quality: 'auto', grid: 0.16, plates: 'auto', hour: 'auto', camSpeed: 1, staging: true, combatCard: 'full', followPlayback: true, dice: true, killCam: true, dof: true };
+const DEFAULTS = { quality: 'auto', grid: 0.16, plates: 'auto', hour: 'auto', camSpeed: 1, staging: true, combatCard: 'full', combatClose: 'mine', followPlayback: true, dice: true, killCam: true, dof: true };
 
 export function createGameUI({ world, container, bridge, getView }) {
   const style = document.createElement('style');
@@ -74,6 +74,7 @@ export function createGameUI({ world, container, bridge, getView }) {
     <label>Vitesse caméra <input type="range" data-k="camSpeed" min="0.4" max="2.5" step="0.1"></label>
     <label>Mise en scène des combats <input type="checkbox" data-k="staging"></label>
     <label>Fiche de combat <select data-k="combatCard"><option value="full">Grande</option><option value="small">Petite</option><option value="off">Aucune</option></select></label>
+    <label>Fermeture des fiches <select data-k="combatClose"><option value="mine">Manuelle pour mes combats</option><option value="manual">Toujours manuelle</option><option value="auto">Automatique</option></select></label>
     <label>Caméra qui suit l'action <input type="checkbox" data-k="followPlayback"></label>
     <label>Dés 3D <input type="checkbox" data-k="dice"></label>
     <label>Ralentis sur les unités détruites <input type="checkbox" data-k="killCam"></label>

@@ -2775,17 +2775,18 @@ function appendChatMessage({ authorName, text, isMine, isSystem, authorId, isSpe
 
 let combatHistoryEntries = [];
 function addCombatHistory(log, round) {
-  combatHistoryEntries.push({ log, round });
+  const idx = combatHistoryEntries.length;
+  combatHistoryEntries.push({ log, round, idx });
   const container = document.getElementById('combat-history');
   if (!container) return;
   const entry = document.createElement('div');
-  entry.innerHTML = formatHistoryEntry({ log, round });
+  entry.innerHTML = formatHistoryEntry({ log, round, idx });
   container.appendChild(entry.firstElementChild);
   container.scrollTop = container.scrollHeight;
 }
 
 let historyCounter = 0;
-function formatHistoryEntry({ log, round }) {
+function formatHistoryEntry({ log, round, idx = null }) {
   if (!log) return '';
   const id = `h${historyCounter++}`;
   const b = log.breakdown || {};
@@ -2808,6 +2809,7 @@ function formatHistoryEntry({ log, round }) {
     ${hitBadge}
     ${log.targetKilled ? `<span class="h-badge h-dead">DÉTRUIT</span>` : ''}
     ${log.attackerKilled ? `<span class="h-badge h-dead">ATTAQUANT DÉTRUIT</span>` : ''}
+    ${idx != null && !log.abilityUsed ? `<button class="h-open" title="Rouvrir la fiche de ce combat" onclick="event.stopPropagation(); window.hudOpenCombat && window.hudOpenCombat(${idx})">FICHE</button>` : ''}
   </div>`;
 
   const sign = n => n >= 0 ? `+${n}` : `${n}`;
@@ -3651,6 +3653,7 @@ window.gameBridge = {
     return extendRoute(seqRoute(unit), tq, tr);
   },
   // March over several turns to a hex beyond this turn's reach: { path (origin included), turnEnds, turns, ... } or null
+  get combatHistory() { return combatHistoryEntries; },
   marchPlan(unit, tq, tr) { return marchPlanFor(unit, tq, tr); },
   get pendingMarch() { return pendingMarch; },
   cancelMarch(unitId) { wsSend('cancel_march', { roomCode, unitId }); },
