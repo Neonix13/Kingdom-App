@@ -44,7 +44,18 @@ Défense : phalange « Encaisser » contre les tirs ; au corps à corps, contre-
 - **Sans frappe intéressante**, une unité menacée se met en garde au lieu de s'avancer : Défense de combat contre la cavalerie (annule la charge, pas de flanc), Combat sinon, et s'oriente vers la menace quand son flanc ou son dos est exposé. Les unités brisées (moral < 30 % ou vitalité < 25 %) se replient vers le général. Les tireurs restent derrière une unité de mêlée et attendent en Défense à distance quand rien n'est à portée.
 - **Général** : reste derrière ses troupes (centre de l'armée décalé à l'opposé de l'ennemi), hors de portée des tireurs (portée + 2) et de la cavalerie ennemie, dans les deux modes.
 - **Séquentiel** : mêmes estimations ; Défense de combat face à la cavalerie quand l'unité attend ; orientation face à la menace avec la vitesse restante.
-- **Arène** : `node scripts/bots/arena.js --games 30 --pairs stratege:veteran --modes simultaneous,sequential --maps default,kankoku` joue des parties IA contre IA par le protocole (horloge simulée). Un niveau suffixé `_old` joue avec une copie d'une ancienne version (`--old <dossier>`), pour mesurer un changement ; `--kills 1` compte les généraux tués par camp, `--trace 1` affiche les ordres tour par tour.
+- **Stratégie** (`game/bots/strategy.js`, partagée par les deux modes) :
+  - **Points clés de la carte** (données publiques) : portes (éléments `porte`), chemin de ronde (`decor.ramparts`), escaliers, échelles et rampes (segments, falaises automatiques comprises), ponts.
+  - **Posture** : *défendre* quand des remparts se dressent près de notre zone et loin de celle de l'ennemi, *attaquer* dans le cas inverse, *bataille rangée* sinon (Vétéran et Stratège, `tactics` ≥ 0,5).
+  - **Défense** : l'infanterie la plus solide tient les portes (la porte principale, celle que l'ennemi atteint le plus vite, d'abord) en Défense de combat ; les tireurs montent sur le chemin de ronde près de cette porte, en Défense à distance ; un bâtisseur ferme la porte principale avec des chevaux de frise côté ennemi ; le reste attend en réserve derrière la porte (cavalerie plus en retrait). Une unité à son poste ne frappe que les ennemis à côté de lui. Les défenseurs quittent leurs murs dès qu'un ennemi est entré (plus proche de notre zone que les murs) ou quand ils dominent nettement une armée ennemie bien repérée.
+  - **Attaque** : un groupe de contournement (25 à 40 % de l'infanterie à pied) suit la route qui évite la porte principale (poterne, escaliers, échelle, défilé), point d'entrée puis passage ; le reste fixe la porte.
+  - **Objectifs** : valeur = points × tours restants (au plus 10), objectifs ennemis à reprendre en priorité ; avec points de victoire, une unité de plus par trois objectifs (au plus la moitié de l'armée) et les objectifs passent avant les postes ; un objectif déjà à nous ne garde son occupant que sous menace (il reste à nous une fois quitté). En séquentiel avec points de victoire, l'IA ne met pas de garnison sur les murs (mesuré : elle perdait la course aux points).
+  - **Éclaireur** : un cavalier léger (ou un espion) part en avant, au plus 6 cases devant l'armée, quand aucun ennemi n'a encore été vu (à partir du tour 3).
+  - **Espions** : vont saboter les échelles et les ponts qui mènent vers l'ennemi (jamais un pont occupé).
+  - **Vision en ligne de vue** : une unité évite de finir dans une forêt ou un bâtiment bordé de cases qu'elle ne voit pas (embuscades), sauf l'éclaireur.
+  - **Mode simultané** : une unité en Marche ou en Repos qui s'approche à 7 cases de l'ennemi reprend une posture de combat en chemin (Défense de combat face à la cavalerie).
+  - **Itinéraire de recherche** : sur une carte à zones fixes, les zones des adversaires (publiques), et non plus les zones inutilisées de la carte (l'armée restait plantée devant une zone vide) ; un point d'exploration est atteint dès qu'une unité en est à 2 cases.
+- **Arène** : `node scripts/bots/arena.js --games 30 --pairs stratege:veteran --modes simultaneous,sequential --maps default,kankoku` (options `--vp 25` points de victoire, `--offset 100` autres tirages) joue des parties IA contre IA par le protocole (horloge simulée). Un niveau suffixé `_old` joue avec une copie d'une ancienne version (`--old <dossier>`), pour mesurer un changement ; `--kills 1` compte les généraux tués par camp, `--trace 1` affiche les ordres tour par tour.
 
 ### Rythme et exécution
 - **Serveur local** : une action à la fois, après une pause (minuterie de la salle, `nextDeadline`). Début de manche : pause un peu plus longue. `config.botPace` multiplie les pauses (0 en test).
@@ -124,7 +135,26 @@ Mesures précédentes :
 
 Échelle des niveaux (nouvelle IA) : Stratège bat Vétéran 22 – 8 (défaut, simultané), 20 – 10 (défaut, séquentiel), 16 – 14 (Kankoku, simultané), 23 – 7 (Kankoku, séquentiel) ; Stratège bat Recrue 26 à 30 sur 30 ; Vétéran bat Recrue 23 à 29 sur 30. Aucune partie nulle, aucune erreur d'IA ; temps de planification moyen 2 à 6 ms par décision (pointe 170 ms).
 
+## 5 ter. Mesures après la stratégie (arène, 30 parties par paire, budget 5000, 30 tours max, tirages 300 à 329)
+
+Nouveau Stratège contre le Stratège précédent (même code de déploiement pour les deux) :
+
+| Carte | Simultané | Séquentiel | Simultané, 25 points de victoire | Séquentiel, 25 points de victoire |
+|---|---|---|---|---|
+| défaut | 10 – 20 | 16 – 14 | (pas d'objectif sur cette carte) | |
+| Col de Kankoku | 22 – 8 | 15 – 15 | 27 – 3 | 18 – 12 |
+| Colline de Kokuyou | 25 – 5 | 17 – 13 | 30 – 0 | 23 – 7 |
+| Plaine de Bayou | 26 – 4 | 22 – 8 | 29 – 1 | 22 – 8 |
+
+Sur la carte par défaut (bataille rangée, rien de nouveau ne s'y applique sauf l'éclaireur et la sortie de la Marche), le résultat varie avec les tirages : 18 – 12 (tirages 0 à 29), 29 – 31 (200 à 259), 10 – 20 (300 à 329), soit environ l'égalité. Sans points de victoire, sur les cartes à remparts, beaucoup de parties vont à la limite de 30 tours (le défenseur tient ses murs) et se jouent aux points de la fin.
+
+Échelle (nouvelle IA, tirages 300 à 329) : Stratège bat Vétéran 18 – 12 (défaut, simultané), 24 – 6 (défaut, séquentiel), 20 – 10 et 20 – 10 (Kankoku), 19 – 11 et 23 – 7 (Kokuyou), 25 – 5 et 22 – 8 (Bayou) ; Vétéran bat Recrue de 21 – 9 à 30 – 0. Aucune partie nulle, aucune erreur d'IA. Planification : 1 à 5 ms en moyenne par décision, 57 ms au pire.
+
+Essais écartés après mesure : pénaliser les cases à portée de charge de la cavalerie ennemie (23 – 37 sur la carte par défaut), changer de posture en même temps qu'une frappe avec déplacement, éclaireur sans limite de distance.
+
 ## 6. Limites connues
+- L'IA ne tient pas encore de position de blocage de zone de contrôle en terrain ouvert et ne prédit pas où une unité ennemie va finir son mouvement (seulement qui peut l'atteindre).
+- Les bâtisseurs n'escaladent pas : ils ne posent pas d'échelle pour franchir un mur en attaque.
 - Lambda : l'IA joue toute sa manche d'un coup à la réception d'un message (pas de pause possible sans minuterie).
 - La mémoire de l'IA est un cache du processus : sur la lambda, une nouvelle instance repart sans mémoire (elle retrouve l'ennemi par l'exploration).
 - Un joueur qui cache son général seul dans une forêt loin de l'armée de l'IA peut encore tenir longtemps (l'exploration finit par passer, la limite de tours ou les objectifs départagent sinon).
