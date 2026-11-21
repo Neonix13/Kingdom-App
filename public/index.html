@@ -28,6 +28,11 @@
         <h1 class="ld-title">KINGDOM</h1>
         <svg class="ld-stroke" width="260" height="14" viewBox="0 0 260 14" aria-hidden="true"><path d="M3 9 C 60 2, 130 13, 190 6 S 250 8, 257 5" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round"/></svg>
         <p class="ld-tagline">Batailles des Royaumes combattants, au tour par tour</p>
+        <div class="ld-hero-art" aria-hidden="true">
+          <img src="/assets/unites/GENERAL%20IMAGE%201-1/RI%20BOKU%201-1.jpg" alt="">
+          <img src="/assets/unites/GENERAL%20IMAGE%201-1/OU%20KI%201-1.jpg" alt="">
+          <img src="/assets/unites/GENERAL%20IMAGE%201-1/REN%20PA%201-1.jpg" alt="">
+        </div>
       </div>
 
       <div class="ld-panel resume-card" id="resume-card" style="display:none">
@@ -253,15 +258,16 @@
         <aside class="ld-army-side" id="ld-army-general"></aside>
         <div class="ld-army-main">
           <div class="ld-army-head">
-            <h2 class="phase-title">Composition de l'armée</h2>
-            <div class="budget-bar">
-              <div class="ld-budget-track"><i id="ld-budget-fill"></i></div>
-              <span class="budget-label">Dépensé</span>
-              <span class="budget-used" id="army-spent">0</span>
-              <span class="budget-label">sur</span>
-              <span class="budget-value" id="army-budget">2 500</span>
-              <span class="budget-label">· reste</span>
-              <span class="budget-value" id="army-remaining">2 500</span>
+            <div>
+              <span class="ld-label">Recrutement</span>
+              <h2 class="phase-title">Composez votre armée</h2>
+            </div>
+            <div class="budget-bar" aria-label="Budget">
+              <div class="ld-budget-left"><b class="budget-value ld-gold" id="army-remaining">2 500</b><span>or restant</span></div>
+              <div class="ld-budget-detail">
+                <div class="ld-budget-track"><i id="ld-budget-fill"></i></div>
+                <span class="budget-label">Dépensé <b class="budget-used ld-gold" id="army-spent">0</b> sur <b class="ld-gold" id="army-budget">2 500</b></span>
+              </div>
             </div>
           </div>
           <div class="unit-shop" id="unit-shop"></div>
