@@ -11,21 +11,22 @@
 //   caution      distance the general keeps from visible enemies (0 = fights in the front line)
 //   holdIfWeaker wait in good terrain when the local balance of forces is bad
 //   army         army building style: random | template | optimized | fixed
+//   tactics      0..1 tactical depth: attack angles, contact routes, ganging up, bracing, facing, falling back
 const PROFILES = {
   recrue: {
     id: 'recrue', label: 'Recrue', delay: 1300, mistake: 0.25, focus: 0, terrain: 0, cohesion: Infinity,
     stance: 0.3, ability: 0.35, motivate: 0.3, objectives: 0, caution: 0, holdIfWeaker: false, retreatRanged: false,
-    army: 'random', budgetUse: 0.85,
+    army: 'random', budgetUse: 0.85, tactics: 0,
   },
   veteran: {
     id: 'veteran', label: 'Vétéran', delay: 1000, mistake: 0.08, focus: 0.6, terrain: 0.5, cohesion: 6,
     stance: 0.75, ability: 0.8, motivate: 0.8, objectives: 1, caution: 2, holdIfWeaker: false, retreatRanged: true,
-    army: 'template', budgetUse: 1,
+    army: 'template', budgetUse: 1, tactics: 0.5,
   },
   stratege: {
     id: 'stratege', label: 'Stratège', delay: 800, mistake: 0, focus: 1, terrain: 1, cohesion: 3,
     stance: 1, ability: 1, motivate: 1, objectives: 2, caution: 3, holdIfWeaker: true, retreatRanged: true,
-    army: 'optimized', budgetUse: 1,
+    army: 'optimized', budgetUse: 1, tactics: 1,
   },
   // Scripted opponent of the tutorial: holds its positions and only strikes what it can reach nearby
   tutorial: {
