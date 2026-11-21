@@ -955,6 +955,22 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
 
   H.add_ai = (connId, data) => H.add_bot(connId, data);
 
+  // Host changes the general of one of the room's AIs (lobby only)
+  H.set_bot_general = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    requireHost(tx, connId);
+    requirePhase(tx, 'lobby');
+    const room = tx.room;
+    const bot = room.getPlayer(v.id(data.playerId));
+    if (!bot || !bot.isBot) fail('bot_not_found', 'IA introuvable.');
+    const general = GENERALS.find(g => g.id === data.generalId);
+    if (!general) fail('invalid_general', 'Général inconnu.');
+    if (room.players.some(o => o !== bot && o.generalId === general.id)) fail('general_taken', 'Ce général est déjà pris.');
+    bot.generalId = general.id;
+    bot.name = `${general.name} (IA)`;
+    tx.dirty = true;
+    emit(tx, 'all', lobbyMessage(room));
+  });
+
   H.remove_bot = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
     requireHost(tx, connId);
     requirePhase(tx, 'lobby');

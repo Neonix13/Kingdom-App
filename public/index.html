@@ -8,9 +8,13 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Yuji+Boku&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=Zen+Old+Mincho:wght@700;900&display=swap">
   <link rel="stylesheet" href="/css/style.css">
   <link rel="stylesheet" href="/css/lobby-d.css">
+  <script type="importmap">
+  { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/" } }
+  </script>
 </head>
 <body class="lobby-d">
   <div class="ld-backdrop" aria-hidden="true"></div>
+  <div class="ld-home-bg" id="home-bg" aria-hidden="true"><canvas id="home-bg-canvas" tabindex="-1"></canvas></div>
 
   <header class="ld-header">
     <span class="ld-seal-mini ld-brush" aria-hidden="true">戦</span>
@@ -24,80 +28,146 @@
 
     <!-- Accueil -->
     <section id="screen-home">
-      <div class="ld-hero">
-        <h1 class="ld-title">KINGDOM</h1>
-        <svg class="ld-stroke" width="260" height="14" viewBox="0 0 260 14" aria-hidden="true"><path d="M3 9 C 60 2, 130 13, 190 6 S 250 8, 257 5" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round"/></svg>
-        <p class="ld-tagline">Batailles des Royaumes combattants, au tour par tour</p>
-        <div class="ld-hero-art" aria-hidden="true">
-          <img src="/assets/unites/GENERAL%20IMAGE%201-1/RI%20BOKU%201-1.jpg" alt="">
-          <img src="/assets/unites/GENERAL%20IMAGE%201-1/OU%20KI%201-1.jpg" alt="">
-          <img src="/assets/unites/GENERAL%20IMAGE%201-1/REN%20PA%201-1.jpg" alt="">
+      <div class="ld-home">
+        <div class="ld-home-hero">
+          <span class="ld-home-kicker">Royaumes combattants · bataille au tour par tour</span>
+          <h1 class="ld-title">KINGDOM</h1>
+          <svg class="ld-stroke" width="300" height="16" viewBox="0 0 300 16" aria-hidden="true"><path d="M3 10 C 70 2, 150 15, 220 7 S 290 9, 297 6" stroke="currentColor" stroke-width="6" fill="none" stroke-linecap="round"/></svg>
+          <p class="ld-tagline">Battleground</p>
         </div>
+
+        <div class="ld-panel resume-card" id="resume-card" style="display:none">
+          <h2>Partie en cours</h2>
+          <p class="ld-muted" id="resume-text"></p>
+          <div class="btn-row">
+            <button class="ld-btn ld-btn-red" onclick="resumeSession()">Reprendre ma place</button>
+            <button class="ld-btn" onclick="dismissResume()">Ignorer</button>
+          </div>
+        </div>
+
+        <nav class="ld-home-menu" aria-label="Menu principal">
+          <button class="ld-big ld-big-red" onclick="openHomePanel('new')">
+            <span class="ld-big-k ld-brush" aria-hidden="true">戦</span>
+            <span class="ld-big-txt"><b>Nouvelle partie</b><small>Avec des amis, contre l'IA ou en tutoriel</small></span>
+          </button>
+          <button class="ld-big" onclick="openHomePanel('join')">
+            <span class="ld-big-k ld-brush" aria-hidden="true">門</span>
+            <span class="ld-big-txt"><b>Rejoindre une partie</b><small>Avec un code ou un lien d'invitation</small></span>
+          </button>
+          <button class="ld-big" onclick="openHomePanel('about')">
+            <span class="ld-big-k ld-brush" aria-hidden="true">書</span>
+            <span class="ld-big-txt"><b>Règles et à propos</b><small>Comment se joue une bataille</small></span>
+          </button>
+        </nav>
       </div>
 
-      <div class="ld-panel resume-card" id="resume-card" style="display:none">
-        <h2>Partie en cours</h2>
-        <p class="ld-muted" id="resume-text"></p>
-        <div class="btn-row">
-          <button class="ld-btn ld-btn-red" onclick="resumeSession()">Reprendre ma place</button>
-          <button class="ld-btn" onclick="dismissResume()">Ignorer</button>
-        </div>
-      </div>
+      <div class="ld-sheet" id="home-sheet" hidden>
+        <div class="ld-sheet-box" role="dialog" aria-modal="true" aria-labelledby="home-sheet-title">
+          <button class="ld-close" onclick="closeHomePanel()" aria-label="Fermer">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg>
+          </button>
 
-      <div class="ld-home-grid">
-        <div class="ld-panel">
-          <h2><span class="ld-brush ld-k" aria-hidden="true">陣</span>Créer une partie</h2>
-          <div class="input-group">
-            <label for="create-name">Votre nom</label>
-            <input type="text" id="create-name" placeholder="Ex : Shin" maxlength="20" autocomplete="nickname">
-          </div>
-          <button class="ld-btn ld-btn-red ld-wide" onclick="createRoom()">Créer la salle</button>
-          <p class="hint">Invitez vos amis avec le code ou le lien de la salle.</p>
-        </div>
-
-        <div class="ld-panel solo-card">
-          <h2><span class="ld-brush ld-k" aria-hidden="true">将</span>Jouer contre l'IA</h2>
-          <div class="ld-two">
+          <div class="ld-sheet-panel" data-panel="new">
+            <h2 id="home-sheet-title"><span class="ld-brush ld-k" aria-hidden="true">戦</span>Nouvelle partie</h2>
             <div class="input-group">
-              <label for="solo-difficulty">Difficulté</label>
-              <select id="solo-difficulty">
-                <option value="recrue">Recrue — facile</option>
-                <option value="veteran" selected>Vétéran — moyen</option>
-                <option value="stratege">Stratège — difficile</option>
-              </select>
+              <label for="create-name">Votre nom</label>
+              <input type="text" id="create-name" placeholder="Ex : Shin" maxlength="20" autocomplete="nickname">
+            </div>
+            <div class="ld-choices" role="radiogroup" aria-label="Type de partie">
+              <button type="button" class="ld-choice" role="radio" data-kind="friends" aria-checked="true">
+                <span class="ld-brush" aria-hidden="true">盟</span><b>Avec des amis</b><small>Une salle avec un code et un lien d'invitation. Vous pourrez y ajouter des IA.</small>
+              </button>
+              <button type="button" class="ld-choice" role="radio" data-kind="ai" aria-checked="false">
+                <span class="ld-brush" aria-hidden="true">将</span><b>Contre l'IA</b><small>Une bataille en solo : vous recrutez votre armée, l'IA aussi.</small>
+              </button>
+              <button type="button" class="ld-choice" role="radio" data-kind="tuto" aria-checked="false">
+                <span class="ld-brush" aria-hidden="true">学</span><b>Tutoriel</b><small>Une bataille guidée pas à pas pour apprendre les règles.</small>
+              </button>
+            </div>
+
+            <div class="ld-choice-opts" data-for="ai" hidden>
+              <div class="ld-two">
+                <div class="input-group">
+                  <label for="solo-difficulty">Difficulté de l'IA</label>
+                  <select id="solo-difficulty">
+                    <option value="recrue">Recrue — facile</option>
+                    <option value="veteran" selected>Vétéran — moyen</option>
+                    <option value="stratege">Stratège — difficile</option>
+                  </select>
+                </div>
+                <div class="input-group">
+                  <label for="solo-mode">Mode de tour</label>
+                  <select id="solo-mode">
+                    <option value="simultaneous" selected>Simultané — ordres secrets</option>
+                    <option value="sequential">Classique — chacun son tour</option>
+                  </select>
+                </div>
+              </div>
+              <div class="input-group">
+                <span class="ld-label" id="solo-general-label">Votre général</span>
+                <input type="hidden" id="solo-general" value="">
+                <div class="ld-gpick" id="solo-general-pick" role="group" aria-labelledby="solo-general-label"></div>
+              </div>
+            </div>
+
+            <div class="ld-sheet-actions">
+              <button class="ld-btn ld-btn-red ld-btn-xl" id="new-go" onclick="startNewGame()">Créer la salle</button>
+              <p class="hint" id="new-hint">Invitez vos amis avec le code ou le lien de la salle.</p>
+            </div>
+          </div>
+
+          <div class="ld-sheet-panel" data-panel="join" id="join-card">
+            <h2><span class="ld-brush ld-k" aria-hidden="true">門</span><span id="join-title">Rejoindre une partie</span></h2>
+            <div class="input-group">
+              <label for="join-name">Votre nom</label>
+              <input type="text" id="join-name" placeholder="Ex : Kyoukai" maxlength="20" autocomplete="nickname">
             </div>
             <div class="input-group">
-              <label for="solo-general">Votre général</label>
-              <select id="solo-general"><option value="">Aléatoire</option></select>
+              <label for="join-code">Code de la salle ou lien d'invitation</label>
+              <input type="text" id="join-code" placeholder="Ex : AB3XYZ" maxlength="200" autocomplete="off" spellcheck="false">
             </div>
-            <div class="input-group">
-              <label for="solo-mode">Mode de tour</label>
-              <select id="solo-mode">
-                <option value="simultaneous" selected>Simultané — ordres secrets</option>
-                <option value="sequential">Classique — chacun son tour</option>
-              </select>
+            <div class="ld-sheet-actions btn-row">
+              <button class="ld-btn ld-btn-red ld-btn-xl" onclick="joinRoom(false)">Rejoindre</button>
+              <button class="ld-btn" onclick="joinRoom(true)" title="Suivre la partie sans jouer">Regarder en spectateur</button>
             </div>
+            <div class="ld-join-resume" id="join-resume"></div>
           </div>
-          <div class="btn-row">
-            <button class="ld-btn ld-btn-red" onclick="playSolo()">Jouer en solo</button>
-            <button class="ld-btn" onclick="startTutorial()" title="Bataille guidée pas à pas contre une IA">Tutoriel</button>
-          </div>
-          <p class="hint">Vous recrutez votre armée, l'IA aussi, puis la bataille commence. Nom : celui de « Créer une partie ».</p>
-        </div>
 
-        <div class="ld-panel" id="join-card">
-          <h2><span class="ld-brush ld-k" aria-hidden="true">門</span>Rejoindre une partie</h2>
-          <div class="input-group">
-            <label for="join-name">Votre nom</label>
-            <input type="text" id="join-name" placeholder="Ex : Kyoukai" maxlength="20" autocomplete="nickname">
-          </div>
-          <div class="input-group">
-            <label for="join-code">Code de la salle</label>
-            <input type="text" id="join-code" placeholder="Ex : AB3XYZ" maxlength="8" style="text-transform:uppercase" autocomplete="off">
-          </div>
-          <div class="btn-row">
-            <button class="ld-btn ld-btn-red" onclick="joinRoom(false)">Rejoindre</button>
-            <button class="ld-btn" onclick="joinRoom(true)" title="Suivre la partie sans jouer">Regarder en spectateur</button>
+          <div class="ld-sheet-panel ld-about" data-panel="about">
+            <h2><span class="ld-brush ld-k" aria-hidden="true">書</span>Règles et à propos</h2>
+            <section>
+              <h3>Le but</h3>
+              <p>Chaque joueur incarne un grand général des Royaumes combattants. Il recrute une armée avec un budget en or, la déploie dans sa zone, puis la mène au combat. On gagne en éliminant les généraux adverses ou leurs armées, ou, si les points de victoire sont activés, en tenant les objectifs de la carte.</p>
+            </section>
+            <section>
+              <h3>Le tour</h3>
+              <ul>
+                <li><b>Simultané</b> (par défaut) : chacun donne ses ordres en secret, puis ils s'exécutent en même temps, case par case. Le nombre d'unités qu'on peut commander dépend de la Stratégie du général.</li>
+                <li><b>Classique</b> : chacun son tour, dans l'ordre d'initiative.</li>
+                <li>L'heure avance à chaque tour ; la nuit réduit la vue et la vitesse.</li>
+              </ul>
+            </section>
+            <section>
+              <h3>Les unités</h3>
+              <ul>
+                <li><b>Infanterie</b>, <b>tireurs</b>, <b>cavalerie</b> et <b>chars</b>, plus des unités spéciales (espions, assassins, bâtisseurs) qui ont chacune une capacité.</li>
+                <li>Chaque unité a une <b>posture</b> : Marche, Combat, Charge, Repos, Défense de combat, Défense à distance. Elle change la vitesse, l'attaque, la défense et la réaction quand l'unité est attaquée.</li>
+                <li>L'<b>orientation</b> compte : une attaque de flanc ou de dos fait plus mal.</li>
+              </ul>
+            </section>
+            <section>
+              <h3>Le combat</h3>
+              <p>Une unité lance d'autant plus de dés qu'elle a de vitalité ; chaque réussite inflige des dégâts réduits par l'armure de la cible et fait perdre du moral. Une unité sans moral s'enfuit. Le défenseur peut contre-attaquer, encaisser ou ne rien faire. Deux généraux au contact se battent en duel.</p>
+            </section>
+            <section>
+              <h3>Le terrain</h3>
+              <p>Routes et ponts accélèrent, forêts et rivières ralentissent. Les falaises ne se franchissent que par des escaliers, des échelles ou des rampes. La vue est coupée par le relief, les murs, les forêts et les bâtiments, où des unités cachées peuvent tendre des embuscades.</p>
+            </section>
+            <p class="ld-muted">Les règles complètes sont accessibles pendant la partie (bouton Règles).</p>
+            <section class="ld-credits">
+              <h3>À propos</h3>
+              <p>Kingdom Battleground est un projet de fans inspiré du manga <i>Kingdom</i> de Yasuhisa Hara, sans lien avec l'auteur ni ses éditeurs. Créé par Neonix13, Alexis Sanzey et Pharoah Jardin.</p>
+            </section>
           </div>
         </div>
       </div>
@@ -253,8 +323,10 @@
         <span class="ld-muted" id="ld-start-hint"></span>
         <button class="ld-btn ld-ready-btn" id="lobby-ready-btn" onclick="toggleLobbyReady()" style="display:none" aria-pressed="false">Je suis prêt</button>
         <button class="ld-seal" id="start-btn" onclick="onSealClick()" style="display:none">
-          <span class="ld-brush ld-seal-k" aria-hidden="true">戦</span>
-          <span class="ld-seal-label" id="ld-start-label">Lancer</span>
+          <span class="ld-seal-face">
+            <span class="ld-brush ld-seal-k" aria-hidden="true">戦</span>
+            <span class="ld-seal-label" id="ld-start-label">Lancer</span>
+          </span>
         </button>
       </div>
     </section>
@@ -289,8 +361,10 @@
         <div class="ld-nations" id="army-nations"></div>
         <span class="ld-muted" id="army-wait"></span>
         <button class="ld-seal" id="army-submit-btn" onclick="submitArmy()">
-          <span class="ld-brush ld-seal-k" aria-hidden="true">戦</span>
-          <span class="ld-seal-label">Prêt</span>
+          <span class="ld-seal-face">
+            <span class="ld-brush ld-seal-k" aria-hidden="true">戦</span>
+            <span class="ld-seal-label">Prêt</span>
+          </span>
         </button>
       </div>
     </section>
@@ -329,5 +403,19 @@
   <script src="/js/net.js"></script>
   <script src="/js/lobby.js"></script>
   <script>document.getElementById('app-version').textContent = APP_VERSION;</script>
+  <script type="module">
+    const box = document.getElementById('home-bg');
+    const small = matchMedia('(max-width: 700px)').matches;
+    const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const go = () => import('/js/homeScene.js')
+      .then((m) => m.mountHomeScene({ canvas: document.getElementById('home-bg-canvas'), container: box, reducedMotion, small }))
+      .then((scene) => {
+        window.homeScene = scene;
+        scene.setActive(document.getElementById('screen-home').style.display !== 'none');
+        box.classList.add('ready');
+      })
+      .catch((e) => { console.warn('[accueil] décor 3D indisponible', e); box.classList.add('failed'); });
+    if (document.readyState === 'complete') setTimeout(go, 200); else addEventListener('load', () => setTimeout(go, 200));
+  </script>
 </body>
 </html>
