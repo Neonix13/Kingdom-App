@@ -1375,7 +1375,7 @@ const zoneOfHex = new Map();
 (mapDoc.zones || []).forEach((z, i) => { for (const k of z.tiles || []) if (!zoneOfHex.has(k)) zoneOfHex.set(k, i); });
 const bannerZoneOf = (x, z) => { const h = worldToHex(x, z); return h ? (zoneOfHex.get(`${h.q},${h.r}`) ?? null) : null; };
 
-const { waterwheels, smokeSources, lanternSpots, windowSpots, decks, banners: bannerSet } = buildStructures({
+const { waterwheels, smokeSources, lanternSpots, windowSpots, decks, banners: bannerSet, cutaways } = buildStructures({
   scene, vegGroup, allHexes, hexesByType, segmentData, getSegType, parseSeg, edgeCorners,
   hexToWorld, hexCorner, groundHeight, effH, isWaterHex, footbridges, gateways,
   HEX_DIRS, DIR_TO_GEO_EDGE, CORNER_NEIGHBORS, HEX_HEIGHT_STEP, WATER_LEVEL, RIVERBED_HEIGHT,
@@ -1732,7 +1732,7 @@ function resize() {
 // --- Animate ---
 const clock = new THREE.Clock();
 const perf = { cpu: 0, frame: 16.7 };
-const frameHooks = [(dt) => boardLayers.update(dt), (dt, t) => objectiveMarkers.update(dt, t)];
+const frameHooks = [(dt) => boardLayers.update(dt), (dt, t) => objectiveMarkers.update(dt, t), (dt) => cutaways.update(dt)];
 let running = true;
 // timeScale < 1 slows every animation and effect (slow-motion shots); game logic and timers are not affected
 let timeScale = 1, simTime = 0;
@@ -1800,6 +1800,8 @@ return {
   setCampColors: (owners) => bannerSet && bannerSet.setZoneColors(owners),
   // birds scatter when one of these points (unit positions, world x/z) comes near their perch
   setBirdThreats: (points) => birdSys.setThreats(points),
+  // buildings with these hexes ([{ q, r }]) open their roof and upper walls (units inside stay visible)
+  setBuildingCutaways: (hexes) => cutaways.set(hexes),
   birds: birdSys,
 };
 }

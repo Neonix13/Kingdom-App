@@ -228,6 +228,12 @@ export async function mountGameView(bridge, { container }) {
     // base-camp banners take the colours of the army deployed in each fixed zone; birds flee approaching troops
     if (st && Array.isArray(st.players) && world.setCampColors) world.setCampColors(st.players.filter((p) => p.mapZone != null).map((p) => ({ zone: p.mapZone, color: bridge.getPlayerColor(p.id), emblem: KINGDOM_OF[p.generalId] || '' })));
     if (world.setBirdThreats) world.setBirdThreats(shownUnits.map((u) => world.hexToWorld(u.q, u.r)));
+    if (world.setBuildingCutaways) {
+      const inside = (u) => u && u.q != null && world.allHexes.get(hexKey(u.q, u.r))?.terrain === 'building';
+      const open = shownUnits.filter((u) => (u.isMine || u.playerId === bridge.myId) && inside(u));
+      if (inside(sel) && !open.includes(sel)) open.push(sel);
+      world.setBuildingCutaways(open.map((u) => ({ q: u.q, r: u.r })));
+    }
     if (bridge.simultaneous && !bridge.playback) ordersLayer.show(bridge.plannedOrders || [], bridge.getPlayerColor(bridge.myId), (id) => { const u = shownUnits.find((x) => x.id === id); return u ? anchorOf(u).clone().setY(anchorOf(u).y - 0.3) : null; });
     else ordersLayer.clear();
     world.layers.setOccupied(new Set([...shownUnits.map((u) => hexKey(u.q, u.r)), ...editsLayer.clearedHexes(bridge.mapEdits, baseMap().ter)]));
