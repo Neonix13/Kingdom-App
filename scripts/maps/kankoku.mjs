@@ -5,10 +5,15 @@
 // the walls. Flanks: two narrow defiles through the massifs (north: stone stairs; south: the old trail and its ladder),
 // long and slow, overlooked by Qin lookouts — infantry only.
 // A continuous cliff line runs along the wall through both massifs: gates, stairs and the ladder are the only crossings.
+// The defiles are tracks of flat landings joined by one-level steps (decor.paths draws them as dirt tracks); any drop of
+// two levels or more is a cliff for the rules (automatic cliffs, mapProps.effectiveSegments).
 // Usage: node scripts/maps/kankoku.mjs [--out data/maps/kankoku.json]
 import { writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+
+const { effectiveSegments } = createRequire(import.meta.url)('../../public/js/mapProps.js');
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const outArg = process.argv.indexOf('--out');
@@ -202,12 +207,7 @@ trail.forEach((h, i) => {
   h.trail = true;
   fixed.add(key(h.q, h.r));
 });
-// smooth the profile so no step climbs more than one level
-for (let pass = 0; pass < 4; pass++) for (let i = 1; i < trail.length; i++) {
-  const a = trail[i - 1], b = trail[i];
-  if (b.h - a.h > 1) b.h = a.h + 1;
-  if (a.h - b.h > 1) a.h = b.h + 1;
-}
+terrace(trail, -1);
 // ladder where the trail crosses the cliff line
 let ladder = null;
 for (let i = 1; i < trail.length; i++) {
@@ -216,6 +216,29 @@ for (let i = 1; i < trail.length; i++) {
   if (lo.c === GATE_C && hi.c === GATE_C + 1) { setSeg(lo, hi, 'echelle'); ladder = [lo, hi]; break; }
 }
 if (!ladder) throw new Error('le sentier ne traverse pas la ligne de falaises');
+
+// A path profile made of flat landings (at least MIN_RUN hexes at the same level) joined by one-level steps, following
+// the heights already set on the path; skip = index where the path may jump (stairs/ladder edge, kept as is).
+function terrace(path, skip) {
+  const MIN_RUN = 3;
+  const want = path.map((h) => h.h);
+  let level = want[0], run = 0;
+  for (let i = 0; i < path.length; i++) {
+    if (i === skip) { level = want[i]; run = 0; }
+    else if (run >= MIN_RUN && want[i] !== level) level += Math.sign(want[i] - level);
+    else if (i > 0 && Math.abs(want[i] - level) > 1 + Math.floor(run / MIN_RUN)) level += Math.sign(want[i] - level);
+    if (path[i].h !== level) run = 0;
+    path[i].h = level;
+    run++;
+  }
+  // a last pass: never more than one level between consecutive hexes of the track (except at skip)
+  for (let pass = 0; pass < 4; pass++) for (let i = 1; i < path.length; i++) {
+    if (i === skip) continue;
+    const a = path[i - 1], b = path[i];
+    if (b.h - a.h > 1) b.h = a.h + 1;
+    if (a.h - b.h > 1) a.h = b.h + 1;
+  }
+}
 
 // --- flank passages: narrow defiles through the massifs, walled by rock faces, so that a small force can turn the
 // fortress at the price of a long, slow climb; the crossing of the wall line is a single edge (stone stairs or the
@@ -266,12 +289,7 @@ if (nci < 0) throw new Error('le défilé nord ne traverse pas la ligne du mur')
   northPath.forEach((h, i) => {
     h.h = i < nci ? Math.round(lerp(h0, peakE, smooth(0, nci - 1, i))) : Math.round(lerp(peakW, hEnd, smooth(nci, n - 1, i)));
   });
-  for (let pass = 0; pass < 6; pass++) for (let i = 1; i < n; i++) {
-    if (i === nci) continue;
-    const a = northPath[i - 1], b = northPath[i];
-    if (b.h - a.h > 1) b.h = a.h + 1;
-    if (a.h - b.h > 1) a.h = b.h + 1;
-  }
+  terrace(northPath, nci);
   northPath.forEach((h, i) => {
     fixed.add(key(h.q, h.r));
     passageHexes.add(key(h.q, h.r));
@@ -346,6 +364,17 @@ const buildings = [[20, gateJ - 5], [20, gateJ - 4], [21, gateJ - 5], [20, gateJ
 for (const [c, j] of buildings) { const h = at(c, j); if (h && h.valley && h.terrain !== 'road' && h.terrain !== 'river' && h.terrain !== 'bridge') { h.terrain = 'building'; h.h = Math.round(h.h); } }
 for (const b of buildings) { const h = at(...b); if (h && h.terrain === 'building') for (const n of neighbors(h)) if (n.terrain === 'building') n.h = h.h; }
 
+// stairs stand in the lower hex of their edge: keep their foot and the hexes around it clear of houses
+const stairFeet = new Set();
+for (const [ek, t] of Object.entries(segments)) {
+  if (t !== 'escalier') continue;
+  const [A, B] = ek.split('|');
+  const lo = hexes.get(A).h <= hexes.get(B).h ? hexes.get(A) : hexes.get(B);
+  stairFeet.add(key(lo.q, lo.r));
+  for (const n of neighbors(lo)) stairFeet.add(key(n.q, n.r));
+}
+for (const k of stairFeet) { const h = hexes.get(k); if (h && h.terrain === 'building') h.terrain = 'plain'; }
+
 // --- decor ---
 const fields = [];
 for (const h of hexes.values()) {
@@ -354,7 +383,7 @@ for (const h of hexes.values()) {
   if ((h.x < 18 && h.z < zc(h.x) - 2 && n > 0.5) || (h.x > 64 && h.x < 82 && h.z > zc(h.x) + 3 && n > 0.55)) fields.push(key(h.q, h.r));
 }
 const props = [];
-const prop = (type, c, j, rot, label) => { const h = at(c, j); if (h) props.push({ type, q: h.q, r: h.r, ...(rot != null ? { rot } : {}), ...(label ? { label } : {}) }); };
+const prop = (type, c, j, rot, label) => { const h = at(c, j); if (h && !stairFeet.has(key(h.q, h.r))) props.push({ type, q: h.q, r: h.r, ...(rot != null ? { rot } : {}), ...(label ? { label } : {}) }); };
 for (const g of gates) props.push({ type: 'porte', q: g.q, r: g.r, rot: 0 });
 // towers on the wall: at both ends and every few hexes, never right next to a gate (its buttresses stand there)
 const rampSorted = [...ramparts].sort((a, b) => a.j - b.j);
@@ -429,6 +458,46 @@ const objectives = [
 ];
 if (bridge) objectives.push({ id: 'pont', q: bridge.q, r: bridge.r, type: 'pont', points: 1, name: 'Pont de la plaine' });
 
+// wall walk: consecutive wall-walk hexes are always joined (one level apart: open; two or more: stairs)
+for (const a of ramparts) for (const n of neighbors(a)) {
+  if (!rampartSet.has(key(n.q, n.r))) continue;
+  const ek = edgeKey(key(a.q, a.r), key(n.q, n.r));
+  if (Math.abs(a.h - n.h) >= 2) segments[ek] = 'escalier';
+  else if (segments[ek] === 'cliff') delete segments[ek];
+}
+// summits cut off by cliffs on every side: lower them until they join the slope below (every hex reachable on foot)
+for (let it = 0; it < 30; it++) {
+  const hObj = {};
+  for (const h of hexes.values()) hObj[key(h.q, h.r)] = h.h;
+  const eff = effectiveSegments(segments, { ramparts: ramparts.map((h) => key(h.q, h.r)) }, hObj);
+  const start = key(gate.q, gate.r);
+  const seen = new Set([start]);
+  const st = [start];
+  while (st.length) {
+    const k = st.pop();
+    for (const n of neighbors(hexes.get(k))) {
+      const nk = key(n.q, n.r);
+      const t = eff[edgeKey(k, nk)];
+      if (seen.has(nk) || t === 'cliff' || t === 'mur') continue;
+      seen.add(nk); st.push(nk);
+    }
+  }
+  let changed = false;
+  for (const h of hexes.values()) {
+    const hk0 = key(h.q, h.r);
+    if (seen.has(hk0) || rampartSet.has(hk0) || gateSet.has(hk0)) continue;
+    const ok = neighbors(h).filter((n) => seen.has(key(n.q, n.r)) && !cliffEdges.has(edgeKey(hk0, key(n.q, n.r))) && !rampartSet.has(key(n.q, n.r)));
+    if (!ok.length) continue;
+    const target = Math.max(...ok.map((n) => n.h)) + 1;
+    if (h.h > target) { h.h = target; changed = true; }
+    for (const n of ok) {
+      const ek = edgeKey(hk0, key(n.q, n.r));
+      if (segments[ek] === 'cliff' && Math.abs(h.h - n.h) <= 1) { delete segments[ek]; changed = true; }
+    }
+  }
+  if (!changed) break;
+}
+
 const height = {}, terrain = {};
 for (const h of hexes.values()) {
   height[key(h.q, h.r)] = h.h;
@@ -443,10 +512,33 @@ const map = {
   updatedAt: new Date().toISOString(),
   background: null,
   height, terrain, segments,
-  decor: { fields, ramparts: ramparts.map((h) => key(h.q, h.r)), props },
+  decor: { fields, ramparts: ramparts.map((h) => key(h.q, h.r)), paths: [...new Set([...northPath, ...trail].filter((h) => h.terrain !== 'road').map((h) => key(h.q, h.r)))], props },
   zones, objectives,
 };
 writeFileSync(OUT, JSON.stringify(map));
+{
+  const eff = effectiveSegments(segments, map.decor, height);
+  const isBlocked = (t) => t === 'cliff' || t === 'mur';
+  const reach = (start) => {
+    const seen = new Set([start]);
+    const st = [start];
+    while (st.length) {
+      const k = st.pop();
+      const h = hexes.get(k);
+      for (const n of neighbors(h)) {
+        const nk = key(n.q, n.r);
+        if (seen.has(nk) || isBlocked(eff[edgeKey(k, nk)])) continue;
+        seen.add(nk); st.push(nk);
+      }
+    }
+    return seen;
+  };
+  for (const z of zones) {
+    const r = reach(z.tiles[0]);
+    const out = [...hexes.keys()].filter((k) => !r.has(k));
+    console.log(`accessible à pied depuis ${z.name} : ${(100 * r.size / hexes.size).toFixed(1)} % (${out.length} cases hors d'atteinte${out.length ? ' : ' + out.slice(0, 12).join(' ') : ''})`);
+  }
+}
 const count = (o) => Object.values(o).reduce((a, v) => ((a[v] = (a[v] || 0) + 1), a), {});
 console.log(`${OUT}\n${hexes.size} cases, hauteurs ${Math.min(...Object.values(height))}–${Math.max(...Object.values(height))}`);
 console.log('terrains', count(terrain), '\nsegments', count(segments));

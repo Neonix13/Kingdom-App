@@ -71,11 +71,12 @@ export class Renderer {
     if (ch.all) { for (const k in this.dirty) this.dirty[k] = true; this.syncBackground(); }
     if (ch.layers) {
       for (const l of ch.layers) {
-        if (l === 'height') { this.dirty.hexes = true; this.dirty.zones = true; }
+        if (l === 'height') { this.dirty.hexes = true; this.dirty.zones = true; this.dirty.segs = true; }
         else if (l === 'terrain') this.dirty.hexes = true;
         else if (l === 'seg') this.dirty.segs = true;
         else if (l === 'field') this.dirty.fields = true;
-        else if (l === 'rampart' || l === 'props') this.request();
+        else if (l === 'rampart') { this.dirty.segs = true; this.request(); }
+        else if (l === 'props') this.request();
         else if (l === 'zone' || l === 'zoneCount') this.dirty.zones = true;
         else if (l === 'meta') this.syncBackground();
       }
@@ -237,12 +238,34 @@ export class Renderer {
 
   rebuildSegs() {
     const groups = new Map();
-    for (const [k, t] of this.model.segments) {
+    const m = this.model;
+    const add = (t, str) => { let p = groups.get(t); if (!p) groups.set(t, (p = [])); p.push(str); };
+    for (const [k, t] of m.segments) {
       const e = parseEdge(k);
       if (!e || !isAdjacent(e.q1, e.r1, e.q2, e.r2)) continue;
-      let p = groups.get(t);
-      if (!p) groups.set(t, (p = []));
-      p.push(lineStr(edgeEnds(e.q1, e.r1, e.q2, e.r2)));
+      add(t, lineStr(edgeEnds(e.q1, e.r1, e.q2, e.r2)));
+      // stairs / ladders / ramps: chevrons pointing up the climb
+      if (t === 'escalier' || t === 'echelle' || t === 'rampe') {
+        const h1 = m.height.get(`${e.q1},${e.r1}`) || 0, h2 = m.height.get(`${e.q2},${e.r2}`) || 0;
+        if (h1 !== h2) {
+          const [lo, hi] = h1 < h2 ? [center(e.q1, e.r1), center(e.q2, e.r2)] : [center(e.q2, e.r2), center(e.q1, e.r1)];
+          const L = Math.hypot(hi.x - lo.x, hi.y - lo.y) || 1, ux = (hi.x - lo.x) / L, uy = (hi.y - lo.y) / L;
+          const mx = (lo.x + hi.x) / 2, my = (lo.y + hi.y) / 2, sz = 0.16;
+          for (const off of [-0.42, -0.2]) {
+            const bx = mx + ux * off, by = my + uy * off;
+            add('__arrow', `M${bx - ux * sz - uy * sz},${by - uy * sz + ux * sz}L${bx},${by}L${bx - ux * sz + uy * sz},${by - uy * sz - ux * sz}`);
+          }
+        }
+      }
+    }
+    // the cliffs the game adds by itself (2+ levels apart, rampart edges without stairs): dashed
+    if (window.KBMapProps) {
+      const eff = window.KBMapProps.effectiveSegments(Object.fromEntries(m.segments), { ramparts: [...m.ramparts] }, Object.fromEntries(m.height));
+      for (const [k, t] of Object.entries(eff)) {
+        if (m.segments.has(k) || t !== 'cliff') continue;
+        const e = parseEdge(k);
+        if (e) add('__auto', lineStr(edgeEnds(e.q1, e.r1, e.q2, e.r2)));
+      }
     }
     this.segPaths = new Map([...groups].map(([t, a]) => [t, new Path2D(a.join(''))]));
     this.dirty.segs = false;
@@ -352,8 +375,18 @@ export class Renderer {
         ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.lineWidth = lw + 2 * px; ctx.stroke(p);
         ctx.strokeStyle = s.color; ctx.lineWidth = lw; ctx.stroke(p);
       }
+      const auto = this.segPaths.get('__auto');
+      if (auto) {
+        const cl = (SEGMENTS.find((s) => s.id === 'cliff') || {}).color || '#888';
+        ctx.setLineDash([0.12, 0.1]);
+        ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = lw * 0.7 + 2 * px; ctx.stroke(auto);
+        ctx.strokeStyle = cl; ctx.lineWidth = lw * 0.7; ctx.stroke(auto);
+        ctx.setLineDash([]);
+      }
+      const arrows = this.segPaths.get('__arrow');
+      if (arrows) { ctx.strokeStyle = '#2a2520'; ctx.lineWidth = Math.max(1.5 * px, 0.06); ctx.stroke(arrows); }
       for (const [t, p] of this.segPaths) {
-        if (SEGMENTS.some((s) => s.id === t)) continue;
+        if (t.startsWith('__') || SEGMENTS.some((s) => s.id === t)) continue;
         ctx.strokeStyle = '#ff00ff'; ctx.lineWidth = lw; ctx.stroke(p);
       }
     }

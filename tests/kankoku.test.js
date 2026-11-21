@@ -3,11 +3,13 @@ const assert = require('node:assert');
 const maps = require('../game/maps');
 const rules = require('../game/rules');
 const { getStartingZones } = require('../game/HexUtils');
-const { PROP_BY_ID } = require('../public/js/mapProps.js');
+const { PROP_BY_ID, effectiveSegments, rampartEdges, unreachableRamparts } = require('../public/js/mapProps.js');
 
 const map = maps.getMap('kankoku');
 const td = maps.terrainLookup(map);
-const seg = (q1, r1, q2, r2) => map.segments[rules.edgeKey(q1, r1, q2, r2)] || null;
+// the segments the game plays with: map segments + automatic cliffs (2+ levels) + walls around the wall walk
+const effSeg = effectiveSegments(map.segments, map.decor, map.height);
+const seg = (q1, r1, q2, r2) => effSeg[rules.edgeKey(q1, r1, q2, r2)] || null;
 
 // Hexes reachable from `start` (unbounded cost). closed: extra edge types treated as impassable
 function costs(start, { mounted = false, closed = [] } = {}) {
@@ -142,4 +144,39 @@ test('Col de Kankoku : partie IA contre IA complète (déploiement, déplacement
   const crossed = [...sides.values()].filter((s) => s.size === 2).length;
   const fought = Object.values(r.stats.players).some((p) => p.damageDealt > 0);
   assert.ok(crossed > 0 || fought, 'les armées doivent se rencontrer (passage de la ligne des remparts ou combats)');
+});
+
+test('Col de Kankoku : on ne monte sur le chemin de ronde que par les escaliers (ou l\'échelle)', () => {
+  const edges = rampartEdges(map.decor, map.height);
+  assert.ok(edges.length > 20);
+  for (const e of edges) assert.ok(['cliff', 'escalier', 'echelle'].includes(effSeg[e.key]), `bord de rempart ouvert : ${e.key} (${effSeg[e.key]})`);
+  assert.deepStrictEqual(unreachableRamparts(map.decor, map.segments, map.height), []);
+  // from the courtyard beside the wall, the wall walk is reachable only through its stairs
+  const ramparts = new Set(map.decor.ramparts);
+  const noStairs = reach(parse('23,8'), { closed: ['escalier', 'echelle'] });
+  for (const k of ramparts) assert.ok(!noStairs.has(k), `rempart ${k} accessible sans escalier`);
+  const withStairs = reach(parse('23,8'));
+  for (const k of ramparts) assert.ok(withStairs.has(k), `rempart ${k} inaccessible même par les escaliers`);
+});
+
+test('Col de Kankoku : presque toutes les cases sont accessibles à pied malgré les falaises', () => {
+  const total = Object.keys(map.height).length;
+  for (const z of map.zones) {
+    const r = reach(parse(z.tiles[0]));
+    const out = Object.keys(map.height).filter((k) => !r.has(k));
+    assert.ok(r.size / total >= 0.95, `${z.name || 'zone'} : ${r.size}/${total}, hors d'atteinte ${out.slice(0, 20).join(' ')}`);
+  }
+});
+
+test('Col de Kankoku : le pied des escaliers est dégagé (ni maison ni élément de décor)', () => {
+  const props = new Set((map.decor.props || []).map((p) => `${p.q},${p.r}`));
+  const ramparts = new Set(map.decor.ramparts || []);
+  for (const [k, t] of Object.entries(map.segments)) {
+    if (t !== 'escalier') continue;
+    const [a, b] = k.split('|');
+    if (ramparts.has(a) && ramparts.has(b)) continue;
+    const lo = map.height[a] <= map.height[b] ? a : b;
+    assert.notStrictEqual(td[lo], 'building', `maison au pied de l'escalier ${k}`);
+    assert.ok(!props.has(lo), `élément de décor au pied de l'escalier ${k}`);
+  }
 });

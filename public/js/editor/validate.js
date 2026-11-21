@@ -38,20 +38,18 @@ export function validate(model, opts = {}) {
     if (v === 'cliff' && dh === 0) push(warnings, 'cliffflat', `Falaise sans dénivelé : ${k}`, { edge: k });
   }
 
-  // Height steps >= 2 without cliff / ladder / wall
-  for (const [k, h] of H) {
-    if (!KEY_RE.test(k)) continue;
-    const [q, r] = parseKey(k);
-    for (let d = 0; d < 3; d++) {
-      const n = key(q + DIRS[d][0], r + DIRS[d][1]);
-      if (!H.has(n)) continue;
-      const dh = Math.abs(h - H.get(n));
-      if (dh < 2) continue;
-      const s = model.segAt(q, r, q + DIRS[d][0], r + DIRS[d][1]);
-      if (s === 'cliff' || s === 'echelle' || s === 'escalier' || s === 'mur') continue;
-      push(warnings, 'steep', `Dénivelé de ${dh} sans falaise entre ${k} et ${n}`, { edge: `${k}|${n}` });
+  // Wall walks: their edges are sheer walls except stairs / ladders (KBMapProps.withRampartRules, same rule as the game)
+  if (window.KBMapProps && model.ramparts && model.ramparts.size) {
+    const hexSet = new Set(H.keys());
+    const decorR = { ramparts: [...model.ramparts] };
+    const segObj = Object.fromEntries(model.segments);
+    for (const g of window.KBMapProps.unreachableRamparts(decorR, segObj, hexSet)) {
+      push(warnings, 'rampartnoaccess', `Rempart sans escalier ni échelle (${g.length} case${g.length > 1 ? 's' : ''}, ex. ${g[0]}) : personne ne peut y monter. Ajoutez un segment « Escalier de pierre » sur un bord du rempart.`, { hex: g[0] });
     }
   }
+
+  // Height steps >= 2 need no cliff segment: the game adds one by itself (dashed in the editor), unless stairs,
+  // a ladder, a ramp or a bridge is placed on the edge (KBMapProps.effectiveSegments)
 
   // Isolated hexes and islands
   const seen = new Set();

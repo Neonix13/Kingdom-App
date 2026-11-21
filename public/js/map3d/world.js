@@ -14,6 +14,7 @@ import { createBirds } from './birds.js';
 import { buildFortifications } from './fortifications.js';
 import { createBoardLayers } from './overlays.js';
 import { createObjectiveMarkers } from './objectives3d.js';
+import '../mapProps.js';
 
 export async function createWorld(opts = {}) {
 
@@ -49,9 +50,14 @@ for (const [segKey, segType] of Object.entries(segmentData)) segSet.set(segKey, 
 function getSegType(q1, r1, q2, r2) {
   return segSet.get(`${q1},${r1}|${q2},${r2}`) || segSet.get(`${q2},${r2}|${q1},${r1}`) || null;
 }
-// edges drawn as a vertical step in the terrain: cliffs, and stone stairs (escalier.js-style flights stand against them)
+// the segments the rules see (map segments + automatic cliffs where heights differ by 2+ + walls around ramparts):
+// the terrain shape follows them, so a cliff in the rules is a crisp rock face on screen and every slope is walkable
+const MP = (typeof self !== 'undefined' && self.KBMapProps) || null;
+const ruleSegSet = new Map(Object.entries(MP ? MP.effectiveSegments(segmentData, decor, heightData) : segmentData));
+const getRuleSegType = (q1, r1, q2, r2) => ruleSegSet.get(`${q1},${r1}|${q2},${r2}`) || ruleSegSet.get(`${q2},${r2}|${q1},${r1}`) || null;
+// edges drawn as a vertical step in the terrain: cliffs (explicit or automatic), and stone stairs (their flight stands against the face)
 const VERTICAL_SEGS = new Set(['cliff', 'escalier']);
-const isVerticalEdge = (q1, r1, q2, r2) => VERTICAL_SEGS.has(getSegType(q1, r1, q2, r2));
+const isVerticalEdge = (q1, r1, q2, r2) => VERTICAL_SEGS.has(getRuleSegType(q1, r1, q2, r2));
 
 await setProgress(12, 'Processing hex grid...');
 
@@ -284,7 +290,8 @@ let roadPixels;
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, roadCanvas.width, roadCanvas.height);
   const P = (p) => [(p.x - roadBounds.x) * ROAD_PX, (p.z - roadBounds.y) * ROAD_PX];
-  const isRoadLike = (h) => h && (h.terrain === 'road' || h.terrain === 'bridge');
+  const pathSet = new Set(decor.paths || []);
+  const isRoadLike = (h) => h && (h.terrain === 'road' || h.terrain === 'bridge' || pathSet.has(`${h.q},${h.r}`));
   ctx.strokeStyle = '#fff';
   ctx.fillStyle = '#fff';
   ctx.lineCap = 'round';
@@ -501,6 +508,7 @@ const cornerHeights = new Map();
   const tBlendWeights = [];
   const vertexMap = new Map();
   const centerMap = new Map();
+  const hexCorners = new Map();
 
   function addVertex(x, y, z, color, blendIds, blendWeights) {
     const idx = positions.length / 3;
@@ -539,9 +547,8 @@ const cornerHeights = new Map();
         edgeTransitions[geoEdge] = 0.55;
       } else if (Math.abs(hexH - surfH(neighbor)) > 0.01) {
         needsRing = true;
-        const cliff = isVerticalEdge(hex.q, hex.r, nq, nr);
-        // mountain slopes run from centre to centre (no flat tops / stepped blocks); elsewhere a flat with a bevel
-        edgeTransitions[geoEdge] = cliff ? 0.1 : (isMountain(hex) && isMountain(neighbor) ? 0.93 : 0.7);
+        // cliffs are drawn as vertical rock faces on the edge itself (no band); a one-level step is a gentle slope
+        edgeTransitions[geoEdge] = isVerticalEdge(hex.q, hex.r, nq, nr) ? 0 : 0.7;
       }
     }
     const wp = hexToWorld(hex.q, hex.r);
@@ -576,38 +583,37 @@ const cornerHeights = new Map();
     for (let i = 0; i < 6; i++) {
       const cc = hexCorner(wp.x, wp.z, i);
       const cornerKey = getCornerKey(cc.x, cc.z);
-      if (vertexMap.has(cornerKey)) { cornerIndices.push(vertexMap.get(cornerKey)); continue; }
-
+      // The hexes meeting at this corner, split into groups joined by walkable edges (a cliff separates groups):
+      // each group gets its own vertex, so a cliff is a clean vertical step and the ground on either side stays flat.
       const neighborOffsets = CORNER_NEIGHBORS[i];
-      const blendColors = [myColor];
-      const cornerTerrains = [myTi];
-      let heightSum = hexY, heightCount = 1;
+      const members = [hex];
       for (const [dq, dr] of neighborOffsets) {
         const neighbor = allHexes.get(`${hex.q + dq},${hex.r + dr}`);
-        if (neighbor) {
-          blendColors.push(hexColor(neighbor));
-          cornerTerrains.push(hexTex(neighbor));
-          heightSum += surfH(neighbor);
-          heightCount++;
-        }
+        if (neighbor) members.push(neighbor);
       }
-      const [n0dq, n0dr] = neighborOffsets[0];
-      const [n1dq, n1dr] = neighborOffsets[1];
-      const n0q = hex.q + n0dq, n0r = hex.r + n0dr;
-      const n1q = hex.q + n1dq, n1r = hex.r + n1dr;
-      const cornerIsCliff = isVerticalEdge(hex.q, hex.r, n0q, n0r)
-        || isVerticalEdge(hex.q, hex.r, n1q, n1r)
-        || isVerticalEdge(n0q, n0r, n1q, n1r);
+      const linked = (a, b) => !isVerticalEdge(a.q, a.r, b.q, b.r);
+      const group = [hex];
+      for (let pass = 0; pass < 2; pass++) for (const m of members) if (!group.includes(m) && group.some((g) => linked(g, m))) group.push(m);
+      const sig = cornerKey + '#' + group.map((g) => `${g.q},${g.r}`).sort().join(';');
+      if (vertexMap.has(sig)) { cornerIndices.push(vertexMap.get(sig)); continue; }
+
+      const blendColors = group.map((g) => (g === hex ? myColor : hexColor(g)));
+      const cornerTerrains = group.map((g) => (g === hex ? myTi : hexTex(g)));
+      // height: the level shared by most of the group (two same-level hexes keep a flat common edge), else the mean
+      const hs = group.map(surfH);
+      let cornerY = hs.reduce((a, v) => a + v, 0) / hs.length;
+      for (const v of hs) if (hs.filter((w) => Math.abs(w - v) < 0.01).length >= 2) { cornerY = v; break; }
+      const cornerIsCliff = members.length > group.length;
       const isStream = streamCornerKeys.has(cornerKey);
-      let cornerY = heightSum / heightCount;
       {
-        // corners under a wall never rise above its walk; inside a gate passage they stay at the passage floor
+        // corners under a wall stay just below its walk (the paving is never coplanar with the ground); inside a
+        // gate passage they stay at the passage floor
         let walk = rampartSet.has(key) ? hexY : Infinity;
         let gateFloor = gateHexSet.has(key) ? hexY : Infinity;
-        for (const [dq, dr] of neighborOffsets) {
-          const nk = `${hex.q + dq},${hex.r + dr}`;
-          if (rampartSet.has(nk)) walk = Math.min(walk, surfH(allHexes.get(nk)));
-          if (gateHexSet.has(nk)) gateFloor = Math.min(gateFloor, effH(allHexes.get(nk)));
+        for (const m of members) {
+          const mk = `${m.q},${m.r}`;
+          if (m !== hex && rampartSet.has(mk)) walk = Math.min(walk, surfH(m) - 0.08);
+          if (gateHexSet.has(mk)) gateFloor = Math.min(gateFloor, effH(m));
         }
         cornerY = Math.min(cornerY, walk, gateFloor);
       }
@@ -617,9 +623,6 @@ const cornerHeights = new Map();
         cornerY -= STREAM_DEPTH;
         blended = waterColor.clone();
         bIds = [3, 3, 3]; bWts = [1, 0, 0];
-      } else if (cornerIsCliff) {
-        blended = new THREE.Color(0.55, 0.5, 0.45);
-        bIds = [4, 4, 4]; bWts = [1, 0, 0];
       } else {
         blended = new THREE.Color(0, 0, 0);
         for (const c of blendColors) { blended.r += c.r; blended.g += c.g; blended.b += c.b; }
@@ -628,12 +631,15 @@ const cornerHeights = new Map();
         const w = 1 / n;
         bIds = [cornerTerrains[0], cornerTerrains[1 % n], cornerTerrains[2 % n]];
         bWts = n === 1 ? [1, 0, 0] : n === 2 ? [0.5, 0.5, 0] : [w, w, w];
+        if (cornerIsCliff) blended.multiplyScalar(0.9);
       }
       const vi = addVertex(cc.x, cornerY, cc.z, blended, bIds, bWts);
-      vertexMap.set(cornerKey, vi);
-      cornerHeights.set(cornerKey, cornerY);
+      vertexMap.set(sig, vi);
+      const prevY = cornerHeights.get(cornerKey);
+      if (prevY === undefined || cornerY < prevY) cornerHeights.set(cornerKey, cornerY);
       cornerIndices.push(vi);
     }
+    hexCorners.set(key, cornerIndices);
 
     if (!info.needsRing) {
       for (let i = 0; i < 6; i++) indices.push(centerIdx, cornerIndices[(i + 1) % 6], cornerIndices[i]);
@@ -655,6 +661,43 @@ const cornerHeights = new Map();
         indices.push(centerIdx, innerIndices[next], innerIndices[i]);
         indices.push(innerIndices[i], cornerIndices[next], cornerIndices[i]);
         indices.push(innerIndices[i], innerIndices[next], cornerIndices[next]);
+      }
+    }
+  }
+
+  // Step 5: rock faces on cliff edges, between the two hexes' own corner vertices
+  {
+    const rockA = new THREE.Color(0.5, 0.46, 0.42), rockB = new THREE.Color(0.34, 0.31, 0.29);
+    for (const [key, hex] of allHexes) {
+      const ci = hexCorners.get(key);
+      for (let d = 0; d < 3; d++) {
+        const [dq, dr] = HEX_DIRS[d];
+        const nk = `${hex.q + dq},${hex.r + dr}`;
+        const nb = allHexes.get(nk);
+        if (!nb || !isVerticalEdge(hex.q, hex.r, nb.q, nb.r)) continue;
+        const nci = hexCorners.get(nk);
+        const g = DIR_TO_GEO_EDGE[d];
+        // the same two corners seen from the neighbour: its edge toward us is the opposite one
+        const gn = DIR_TO_GEO_EDGE[(d + 3) % 6];
+        const a0 = ci[g], a1 = ci[(g + 1) % 6], b0 = nci[(gn + 1) % 6], b1 = nci[gn];
+        const ya0 = positions[a0 * 3 + 1], ya1 = positions[a1 * 3 + 1], yb0 = positions[b0 * 3 + 1], yb1 = positions[b1 * 3 + 1];
+        if (Math.abs(ya0 - yb0) < 0.02 && Math.abs(ya1 - yb1) < 0.02) continue;
+        const hiIsA = (ya0 + ya1) >= (yb0 + yb1);
+        const [t0, t1, l0, l1] = hiIsA ? [a0, a1, b0, b1] : [b0, b1, a0, a1];
+        const P = (i) => [positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]];
+        const v = [P(t0), P(t1), P(l1), P(l0)];
+        const base = positions.length / 3;
+        const cols = [rockA, rockA, rockB, rockB];
+        for (let k = 0; k < 4; k++) addVertex(v[k][0], v[k][1], v[k][2], cols[k], [4, 4, 4], [1, 0, 0]);
+        // face toward the lower hex
+        const lo = hiIsA ? nb : hex, hiH = hiIsA ? hex : nb;
+        const pl = hexToWorld(lo.q, lo.r), ph = hexToWorld(hiH.q, hiH.r);
+        // right-hand normal of (v0, v1, v2): three.js front faces wind counter-clockwise toward the viewer
+        const ux = v[1][0] - v[0][0], uy = v[1][1] - v[0][1], uz = v[1][2] - v[0][2];
+        const wx = v[2][0] - v[0][0], wy = v[2][1] - v[0][1], wz = v[2][2] - v[0][2];
+        const nx = uy * wz - uz * wy, nz = ux * wy - uy * wx;
+        if (nx * (pl.x - ph.x) + nz * (pl.z - ph.z) > 0) indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+        else indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
       }
     }
   }

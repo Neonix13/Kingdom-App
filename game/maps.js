@@ -5,7 +5,8 @@
 //   background: { image, hexSize, origX, origY, width, height } | null,   // optional 2D backdrop + calibration
 //   height:   { "q,r": level },          // defines the set of hexes on the map (every hex must be listed)
 //   terrain:  { "q,r": type },           // only non-plain hexes (missing = plain)
-//   segments: { "q1,r1|q2,r2": type },   // edge features: river, cliff, mur, barriere, passerelle, echelle, escalier, chevaux_de_frise
+//   segments: { "q1,r1|q2,r2": type },   // edge features: river, cliff, mur, barriere, passerelle, echelle, escalier, rampe, chevaux_de_frise
+//               (the rules add automatic cliffs where heights differ by 2+ and walls around ramparts: mapProps.effectiveSegments)
 //   decor:    { fields: ["q,r", ...],    // purely visual (public/js/mapProps.js): wheat fields,
 //               ramparts: ["q,r", ...],  // wall-walk hexes drawn as fortress walls (rules come from height + cliff segments),
 //               props: [{ type, q, r, rot, label }] },  // towers, gatehouses, tents, banners, stairs, campfires
@@ -17,7 +18,7 @@ const path = require('path');
 
 const MAPS_DIR = path.join(__dirname, '..', 'data', 'maps');
 const TERRAINS = new Set(['plain', 'forest', 'river', 'road', 'building', 'bridge']);
-const SEGMENTS = new Set(['river', 'cliff', 'bridge', 'passerelle', 'barriere', 'chevaux_de_frise', 'mur', 'echelle', 'escalier']);
+const SEGMENTS = new Set(['river', 'cliff', 'bridge', 'passerelle', 'barriere', 'chevaux_de_frise', 'mur', 'echelle', 'escalier', 'rampe']);
 const ID_RE = /^[a-z0-9][a-z0-9_-]{0,62}$/;
 const KEY_RE = /^-?\d+,-?\d+$/;
 const { validateDecor } = require('../public/js/mapProps.js');

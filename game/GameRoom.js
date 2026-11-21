@@ -4,6 +4,7 @@ const { hexDistance, hexKey, buildHexMap, findPathCost, getStartingZones, segmen
 const TERRAINS = require('./data/terrains');
 const SEGMENTS = require('./data/segments');
 const maps = require('./maps');
+const { effectiveSegments } = require('../public/js/mapProps.js');
 const { getTurnController } = require('./turns');
 const rules = require('./rules');
 const replay = require('./replay');
@@ -100,7 +101,7 @@ class GameRoom {
     try { map = maps.getMap(this.mapId); } catch (e) { this.mapId = 'default'; map = maps.getMap('default'); }
     this.map = map;
     this.terrainData = maps.terrainLookup(map);
-    this.segmentData = map.segments || {};
+    this.segmentData = effectiveSegments(map.segments, map.decor, map.height);
     this.heightData = map.height || {};
     this.hexMap = buildHexMap(map);
     this._applyMapEdits();

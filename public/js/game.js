@@ -35,7 +35,7 @@ let UNIT_TYPES = {};
 function applyMapEdits() {
   if (!mapDoc) return;
   const ed = gameState && gameState.mapEdits;
-  segmentData = { ...(mapDoc.segments || {}) };
+  segmentData = window.KBMapProps ? KBMapProps.effectiveSegments(mapDoc.segments, mapDoc.decor, mapDoc.height) : { ...(mapDoc.segments || {}) };
   terrainData = Object.fromEntries(Object.entries(mapDoc.terrain || {}).filter(([, t]) => t && t !== 'plain'));
   if (ed) {
     for (const [k, t] of Object.entries(ed.seg || {})) { if (t) segmentData[k] = t; else delete segmentData[k]; }
@@ -92,6 +92,7 @@ const SEGMENT_COLORS_MAP = {
   mur:              '#606060',
   echelle:          '#a07840',
   escalier:         '#c8b898',
+  rampe:            '#b8a070',
 };
 
 // Propriétés locales pour les vérifications de mouvement côté client
@@ -105,6 +106,7 @@ const SEGMENT_DEFS_CLIENT = {
   mur:              { name:'Mur',             vitesse:0,   vitesse_fixe:null, infranchissable:true,  infranchissable_cavalerie:false, attack_cac:0,  attack_tir:0, defense_cac:0, defense_tir:0, puissance_cac:0, puissance_tir:0, special:null },
   echelle:          { name:'Échelle',         vitesse:-2,  vitesse_fixe:null, infranchissable:false, infranchissable_cavalerie:true,  attack_cac:-6, attack_tir:0, defense_cac:0, defense_tir:0, puissance_cac:0, puissance_tir:0, special:'Infanterie et généraux seulement, coût 3' },
   escalier:         { name:'Escalier',        vitesse:-1,  vitesse_fixe:2   , infranchissable:false, infranchissable_cavalerie:true,  attack_cac:-6, attack_tir:0, defense_cac:0, defense_tir:0, puissance_cac:0, puissance_tir:0, special:'Infanterie et généraux seulement, coût 3' },
+  rampe:            { name:'Rampe',           vitesse:-1,  infranchissable:false, infranchissable_cavalerie:false, attack_cac:0, attack_tir:0, defense_cac:0, defense_tir:0, puissance_cac:0, puissance_tir:0, special:'Pente praticable par tous malgré un fort dénivelé' },
 };
 
 // Movement: same rules and table as the server (public/js/rules.js, table sent in game_state.movementRules)
@@ -244,6 +246,32 @@ function drawSegments(ctx) {
     ctx.beginPath();
     ctx.moveTo(c1.x, c1.y);
     ctx.lineTo(c2.x, c2.y);
+    ctx.stroke();
+    if (segType === 'escalier' || segType === 'echelle' || segType === 'rampe') drawClimbArrow(ctx, q1, r1, q2, r2, c1, c2, segType);
+  }
+  ctx.restore();
+}
+
+// Stairs, ladders and ramps: chevrons pointing up the climb (from the lower hex toward the higher one)
+function drawClimbArrow(ctx, q1, r1, q2, r2, c1, c2, segType) {
+  const H = (mapDoc && mapDoc.height) || {};
+  const h1 = H[`${q1},${r1}`] || 0, h2 = H[`${q2},${r2}`] || 0;
+  if (h1 === h2) return;
+  const [lo, hi] = h1 < h2 ? [[q1, r1], [q2, r2]] : [[q2, r2], [q1, r1]];
+  const pl = hexToPixel(...lo), ph = hexToPixel(...hi);
+  const len = Math.hypot(ph.x - pl.x, ph.y - pl.y) || 1;
+  const ux = (ph.x - pl.x) / len, uy = (ph.y - pl.y) / len;
+  const mx = (c1.x + c2.x) / 2, my = (c1.y + c2.y) / 2;
+  const s = HEX_SIZE * 0.16;
+  ctx.save();
+  ctx.strokeStyle = segType === 'escalier' ? '#3b352d' : '#5a3c10';
+  ctx.lineWidth = HEX_SIZE * 0.06;
+  for (const k of [-0.42, -0.2]) {
+    const bx = mx + ux * HEX_SIZE * k, by = my + uy * HEX_SIZE * k;
+    ctx.beginPath();
+    ctx.moveTo(bx - ux * s - uy * s, by - uy * s + ux * s);
+    ctx.lineTo(bx, by);
+    ctx.lineTo(bx - ux * s + uy * s, by - uy * s - ux * s);
     ctx.stroke();
   }
   ctx.restore();

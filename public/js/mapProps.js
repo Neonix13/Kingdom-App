@@ -1,9 +1,14 @@
 // Kingdom Battleground — decorative map features stored in map.decor (purely visual, no rule effect):
 //   decor.ramparts: ["q,r", ...]                      wall-walk hexes; their drops get masonry walls and battlements in 3D
+//   decor.paths:    ["q,r", ...]                      visual dirt tracks (mountain trails, defiles): drawn like roads, no rule effect
 //   decor.props:    [{ type, q, r, rot?, label? }]    point features (tower, gatehouse, tents, banner, stairs, campfire)
 //                   banners are vertical war banners (nobori), never confused with objective pennants; in a fixed
 //                   deployment zone they take the colours of the army deployed there (3D, map3d/banners3d.js)
-// Rules come only from height, terrain and segments (cliffs under the walls, barriers on the gate...).
+// Rules come from height, terrain and segments (barriers on the gate...), plus two derived rules (effectiveSegments):
+// - automatic cliffs: neighbours AUTO_CLIFF_DH (2) levels apart or more are separated by a cliff unless the edge carries
+//   stairs, a ladder, a ramp ('rampe'), a bridge or a footbridge;
+// - a wall walk can only be entered or left by its stone stairs (segment 'escalier') or a siege ladder ('echelle');
+//   every other edge between a rampart hex and a non-rampart hex is a sheer wall (treated as 'cliff').
 // Shared by the server (validation), the game (2D drawing), the map editor and the 3D view (fortifications.js).
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -30,6 +35,10 @@
     if (decor.ramparts !== undefined) {
       if (!Array.isArray(decor.ramparts)) errors.push('decor.ramparts doit être une liste de cases.');
       else for (const k of decor.ramparts) if (typeof k !== 'string' || !KEY_RE.test(k) || !hexes.has(k)) { errors.push(`Rempart hors carte : ${k}`); break; }
+    }
+    if (decor.paths !== undefined) {
+      if (!Array.isArray(decor.paths)) errors.push('decor.paths doit être une liste de cases.');
+      else for (const k of decor.paths) if (typeof k !== 'string' || !KEY_RE.test(k) || !hexes.has(k)) { errors.push(`Sentier hors carte : ${k}`); break; }
     }
     if (decor.props !== undefined) {
       if (!Array.isArray(decor.props)) errors.push('decor.props doit être une liste.');
@@ -172,5 +181,89 @@
     ctx.restore();
   }
 
-  return { PROP_TYPES, PROP_BY_ID, DIRS, validateDecor, drawDecor2D };
+  // ---- Rampart access rule (shared by the server, the game client, the bots and the editor) ----
+  const RAMPART_ACCESS = ['escalier', 'echelle'];
+  const edgeKey = (q1, r1, q2, r2) => ((q1 < q2 || (q1 === q2 && r1 < r2)) ? `${q1},${r1}|${q2},${r2}` : `${q2},${r2}|${q1},${r1}`);
+
+  // Edges between a rampart hex and a non-rampart hex of the map (hexes: Set or object of "q,r"), with their key
+  function rampartEdges(decor, hexes) {
+    const R = new Set((decor && decor.ramparts) || []);
+    const has = hexes instanceof Set ? (k) => hexes.has(k) : (k) => Object.prototype.hasOwnProperty.call(hexes || {}, k);
+    const out = [];
+    for (const k of R) {
+      if (!has(k)) continue;
+      const [q, r] = k.split(',').map(Number);
+      for (const [dq, dr] of DIRS) {
+        const nk = `${q + dq},${r + dr}`;
+        if (R.has(nk) || !has(nk)) continue;
+        out.push({ key: edgeKey(q, r, q + dq, r + dr), rampart: k, outside: nk });
+      }
+    }
+    return out;
+  }
+
+  // segments + a 'cliff' on every rampart edge that has no stairs or ladder: the movement rules (server, bots, client
+  // previews) then only let units onto the wall walk through its stairs. map: { segments, decor, height }
+  function withRampartRules(segments, decor, hexes) {
+    const out = Object.assign({}, segments || {});
+    for (const e of rampartEdges(decor, hexes)) {
+      if (RAMPART_ACCESS.indexOf(out[e.key]) === -1) out[e.key] = 'cliff';
+    }
+    return out;
+  }
+
+  // ---- Automatic cliffs: between two neighbouring hexes whose heights differ by AUTO_CLIFF_DH levels or more, the edge is
+  // a cliff unless the map puts an explicit way up there (stairs, ladder, ramp, bridge, footbridge).
+  const AUTO_CLIFF_DH = 2;
+  const STEEP_PASSABLE = ['escalier', 'echelle', 'rampe', 'bridge', 'passerelle'];
+  function autoCliffs(segments, height) {
+    const out = {};
+    const H = height || {};
+    for (const k of Object.keys(H)) {
+      const [q, r] = k.split(',').map(Number);
+      for (let d = 0; d < 3; d++) {
+        const nk = `${q + DIRS[d][0]},${r + DIRS[d][1]}`;
+        if (!(nk in H)) continue;
+        if (Math.abs((H[k] || 0) - (H[nk] || 0)) < AUTO_CLIFF_DH) continue;
+        const ek = edgeKey(q, r, q + DIRS[d][0], r + DIRS[d][1]);
+        const t = (segments || {})[ek];
+        if (t === 'cliff' || t === 'mur' || STEEP_PASSABLE.indexOf(t) !== -1) continue;
+        out[ek] = 'cliff';
+      }
+    }
+    return out;
+  }
+
+  // The segments the rules play with: the map's own segments, plus the automatic cliffs and the rampart walls.
+  // Used by the server (GameRoom, bots, simultaneous resolution), the game client (previews, 2D) and the 3D terrain.
+  function effectiveSegments(segments, decor, height) {
+    return withRampartRules(Object.assign({}, segments || {}, autoCliffs(segments, height)), decor, height);
+  }
+
+  // Groups of connected rampart hexes with no stairs or ladder at all (editor warning: nobody can ever get up there)
+  function unreachableRamparts(decor, segments, hexes) {
+    const R = new Set(((decor && decor.ramparts) || []).filter((k) => (hexes instanceof Set ? hexes.has(k) : k in (hexes || {}))));
+    const access = new Set(rampartEdges(decor, hexes).filter((e) => RAMPART_ACCESS.indexOf((segments || {})[e.key]) !== -1).map((e) => e.rampart));
+    const seen = new Set();
+    const groups = [];
+    for (const k of R) {
+      if (seen.has(k)) continue;
+      const group = [];
+      const stack = [k];
+      seen.add(k);
+      while (stack.length) {
+        const cur = stack.pop();
+        group.push(cur);
+        const [q, r] = cur.split(',').map(Number);
+        for (const [dq, dr] of DIRS) {
+          const nk = `${q + dq},${r + dr}`;
+          if (R.has(nk) && !seen.has(nk)) { seen.add(nk); stack.push(nk); }
+        }
+      }
+      if (!group.some((g) => access.has(g))) groups.push(group);
+    }
+    return groups;
+  }
+
+  return { PROP_TYPES, PROP_BY_ID, DIRS, validateDecor, drawDecor2D, RAMPART_ACCESS, rampartEdges, withRampartRules, unreachableRamparts, AUTO_CLIFF_DH, STEEP_PASSABLE, autoCliffs, effectiveSegments };
 });

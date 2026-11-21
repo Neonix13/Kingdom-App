@@ -225,5 +225,30 @@
     "infranchissable": false,
     "infranchissable_cavalerie": true,
     "special": null
+  },
+  "rampe": {
+    "id": "rampe",
+    "name": "Rampe",
+    "vitesse": -1,
+    "attack_cac": 0,
+    "attack_tir": 0,
+    "puissance_cac": 0,
+    "puissance_tir": 0,
+    "intimidation_cac": 0,
+    "intimidation_tir": 0,
+    "armure_cac": 0,
+    "armure_tir": 0,
+    "defense_cac": 0,
+    "defense_tir": 0,
+    "defense_puissance_cac": 0,
+    "defense_puissance_tir": 0,
+    "defense_intimidation_cac": 0,
+    "defense_intimidation_tir": 0,
+    "defense_armure_cac": 0,
+    "defense_armure_tir": 0,
+    "vitesse_tout": false,
+    "infranchissable": false,
+    "infranchissable_cavalerie": false,
+    "special": null
   }
 }

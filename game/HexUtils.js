@@ -2,6 +2,7 @@
 // 1 hex = 100m
 
 const maps = require('./maps');
+const { effectiveSegments } = require('../public/js/mapProps.js');
 const SEGMENT_DEFS = require('./data/segments');
 const rules = require('./rules');
 
@@ -10,7 +11,7 @@ function getTerrainData(map = maps.getMap('default')) {
 }
 
 function getSegmentData(map = maps.getMap('default')) {
-  return map.segments || {};
+  return effectiveSegments(map.segments, map.decor, map.height);
 }
 
 function segmentEdgeKey(q1, r1, q2, r2) {

@@ -218,7 +218,8 @@ export function buildFortifications(api, map) {
     return { x, z, label };
   }
 
-  // Stone stairs on an 'escalier' edge: a flight running along the face on the low side, rising to a landing at the top.
+  // Stone stairs on an 'escalier' edge: a straight flight square to the edge it crosses, standing in the lower hex and
+  // climbing toward the higher one, its top step flush with the face (a cliff or the wall), then a landing on top.
   // Between two wall-walk hexes the walk itself climbs in steps (steppedRun), nothing more to draw.
   function stoneStairs(sg) {
     const ha = allHexes.get(hk(sg.q1, sg.r1)), hb = allHexes.get(hk(sg.q2, sg.r2));
@@ -229,32 +230,38 @@ export function buildFortifications(api, map) {
     const [hi, lo] = top(ha) >= top(hb) ? [ha, hb] : [hb, ha];
     const yHi = top(hi), ch = hexToWorld(hi.q, hi.r), cl = hexToWorld(lo.q, lo.r);
     const M = { x: (ec[0].x + ec[1].x) / 2, z: (ec[0].z + ec[1].z) / 2 };
+    // d: from the face out into the lower hex (down the flight); t: along the edge
     let d = { x: cl.x - ch.x, z: cl.z - ch.z };
     const dl = Math.hypot(d.x, d.z);
     d = { x: d.x / dl, z: d.z / dl };
     const t = { x: -d.z, z: d.x };
-    const yLo = Math.min(groundHeight(M.x + d.x * 0.45, M.z + d.z * 0.45), top(lo));
+    // a wall face stands out from the edge (curtain thickness), a cliff face is on the edge
+    const face = nodes.has(hk(hi.q, hi.r)) ? Math.max(0, WALL_IN - S3 / 2) : 0;
+    const yLo = top(lo);
     const dh = Math.max(0.2, yHi - yLo);
-    const Lt = Math.max(0.7, Math.min(1.35, 0.55 + dh * 0.42));
-    const depth = 0.3, half = 0.2;
-    const P = (u, v) => ({ x: M.x + t.x * u + d.x * v, z: M.z + t.z * u + d.z * v });
-    const u1 = 0.42, u0 = u1 - Lt;
-    const nSteps = Math.max(3, Math.ceil(dh / 0.11));
-    const base = yLo - 0.4;
+    const run = Math.max(0.75, Math.min(1.25, 0.45 + dh * 0.38));
+    const half = 0.26;
+    const P = (along, out) => ({ x: M.x + t.x * along + d.x * (face + out), z: M.z + t.z * along + d.z * (face + out) });
+    const nSteps = Math.max(4, Math.ceil(dh / 0.12));
+    const base = yLo - 0.3;
+    // each step a block from the foot of the flight to its own tread: the flight reads as solid masonry
     for (let k = 0; k < nSteps; k++) {
-      const u = u0 + (k + 0.5) * Lt / nSteps;
-      const c = P(u, depth);
-      hbox(B, c.x, base, yLo + dh * (k + 1) / nSteps, c.z, t, Lt / (2 * nSteps) + 0.004, half, K.pave, 2);
+      const out0 = run * (1 - (k + 1) / nSteps), out1 = run * (1 - k / nSteps);
+      const c = P(0, (out0 + out1) / 2);
+      hbox(B, c.x, base, yLo + dh * (k + 1) / nSteps, c.z, d, (out1 - out0) / 2 + 0.004, half, K.pave, 2);
     }
-    // landing against the face, at the top
-    const L = P(u1 + 0.17, depth / 2 + 0.02);
-    hbox(B, L.x, base, yHi + 0.01, L.z, t, 0.2, depth / 2 + half - 0.05, K.stone, 1);
-    // outer side wall and coping
-    const o0 = P(u0, depth + half + 0.04), o1 = P(u1, depth + half + 0.04);
-    beam(B, V(o0.x, yLo + 0.14, o0.z), V(o1.x, yHi + 0.14, o1.z), 0.06, 0.1, K.stoneDark, 1);
-    hbox(B, P(u0 + Lt / 2, depth + half + 0.04).x, base, yLo + 0.05, P(u0 + Lt / 2, depth + half + 0.04).z, t, Lt / 2, 0.04, K.stoneDark, 1);
-    const f = P(u0, depth), top0 = P(u1, depth);
-    addDeck([{ x: f.x, y: yLo + 0.01, z: f.z }, { x: top0.x, y: yHi + 0.01, z: top0.z }, { x: L.x, y: yHi + 0.01, z: L.z }], half + 0.02);
+    // side walls (cheeks) with a sloping coping on both sides of the flight
+    for (const side of [-1, 1]) {
+      const f0 = P(side * (half + 0.05), run), f1 = P(side * (half + 0.05), 0);
+      beam(B, V(f0.x, yLo + 0.16, f0.z), V(f1.x, yHi + 0.16, f1.z), 0.06, 0.09, K.stoneDark, 1);
+      const mid = P(side * (half + 0.05), run / 2);
+      hbox(B, mid.x, base, yLo + 0.06, mid.z, d, run / 2, 0.05, K.stoneDark, 1);
+    }
+    // landing on top, just inside the face
+    const L = P(0, -0.18);
+    hbox(B, L.x, base, yHi + 0.01, L.z, d, 0.18, half, K.stone, 1);
+    const foot = P(0, run + 0.05), topP = P(0, 0), land = P(0, -0.3);
+    addDeck([{ x: foot.x, y: yLo + 0.01, z: foot.z }, { x: topP.x, y: yHi + 0.01, z: topP.z }, { x: land.x, y: yHi + 0.01, z: land.z }], half + 0.02);
   }
 
   // Adjacent porte props -> one gate complex each (a wide gate with several passages, or a single postern)
