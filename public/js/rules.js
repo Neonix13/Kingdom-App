@@ -58,6 +58,23 @@
       generalHeightFactor: 2,           // a general on high ground sees behind lower forests (not inside them)
       spy: { range: 6, forestRange: 4, forestSight: 4 },
       assassinHiddenBeyond: 4,          // assassins are invisible to enemies farther than 4 hexes (any terrain)
+      // Line of sight (game/los.js), in height levels: a sight line from the eye (hex height + eyeHeight) to the target
+      // (hex height + targetHeight) is blocked by any hex it crosses whose ground (+ canopy for forests, + building) is
+      // higher than the line, and by walls on the edges it crosses (top = higher side + segment height).
+      // Forests do not block within forestSight of the observer; a general sees over forests lower than his hex;
+      // from inside a building, only the hexes reached without crossing another building hex are seen (no seeing
+      // through rooms: own room, the rooms next to it, and outside through its own openings).
+      los: {
+        eyeHeight: 0.6,
+        targetHeight: 0.4,
+        canopyHeight: 1.2,
+        buildingHeight: 1.0,
+        canopyTerrains: ['forest'],
+        buildingTerrains: ['building'],
+        segmentHeights: { mur: 1.5 },   // sight-blocking segments (others, e.g. barrières, fences, do not block)
+        terrainSegments: ['cliff'],     // drawn by the relief itself
+        defaultWallHeight: 1.5,         // other impassable segments
+      },
     },
     // Unit abilities (data/balance/units.json: bonusType + optional bonusValue / bonusRange / bonusCost; defaults below)
     abilities: {
