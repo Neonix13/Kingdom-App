@@ -439,6 +439,9 @@ export function createWalker(world, { container = document.body, onEnter, onExit
     if (active) return;
     if (!grid) buildGrid();
     saved = { p: camera.position.clone(), t: controls.target.clone(), enabled: controls.enabled, minD: controls.minDistance, near: camera.near };
+    // the ghost camera does its own collision handling: the orbit camera rig steps aside while walking
+    saved.rig = world.cameraRig ? world.cameraRig.enabled : null;
+    if (world.cameraRig) world.cameraRig.enabled = false;
     const b = world.bounds;
     const sx = Math.max(b.bx0 + 0.5, Math.min(b.bx1 - 0.5, controls.target.x));
     const sz = Math.max(b.bz0 + 0.5, Math.min(b.bz1 - 0.5, controls.target.z));
@@ -473,6 +476,7 @@ export function createWalker(world, { container = document.body, onEnter, onExit
     const i = world.frameHooks.indexOf(frame);
     if (i >= 0) world.frameHooks.splice(i, 1);
     controls.enabled = saved.enabled;
+    if (world.cameraRig && saved.rig != null) world.cameraRig.enabled = saved.rig;
     camera.near = saved.near;
     camera.updateProjectionMatrix();
     world.flyTo(saved.p, saved.t, 0.7);

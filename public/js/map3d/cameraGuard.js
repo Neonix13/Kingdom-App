@@ -1,8 +1,13 @@
 import * as THREE from 'three';
 
-// Keeps cameras out of the scenery. A top-down "highest surface" map is baked once from the static scene
-// (terrain, walls, buildings, trees, water); the orbit camera is then pulled in front of whatever lies
-// between its target and itself, and never sinks below the surface under it.
+// Camera rig. The orbit camera driven by OrbitControls, flyTo, the auto camera and the keyboard is the DESIRED
+// camera: nothing here ever modifies it. A separate RENDER camera is derived from it every frame:
+// - wheel zoom is smoothed (spring on the distance), the orbit target is lifted above the ground under it;
+// - when the line from the target to the camera runs into the scenery (terrain, walls, roofs, trees: a top-down
+//   "highest surface" map baked once), the render camera first raises its pitch, then if needed comes closer;
+// - every correction goes through critically damped springs with hysteresis, so it never pops, and fades back to
+//   the desired view as soon as the way is clear.
+// Rendering, picking and projections use the render camera.
 
 const OFFSET = 100; // stored as height + OFFSET so that an empty texel (0) means "nothing here"
 
@@ -83,61 +88,197 @@ export function bakeObstacleHeights(renderer, scene, { x0, z0, x1, z1 }, { hide 
   };
 }
 
-export function createCameraGuard({ camera, controls, top, groundHeight }) {
-  const desired = new THREE.Vector3(), applied = new THREE.Vector3(), dir = new THREE.Vector3(), pos = new THREE.Vector3();
-  let clipped = false, cur = null, pulled = false;
+// Smooth "camera floor": highest surface dilated then box-blurred on a coarse grid, bilinearly sampled.
+// Continuous (no steps at wall edges) and never below the raw surface at the grid nodes.
+function buildFloor(surface, { x0, z0, x1, z1 }, cell = 0.5) {
+  const nx = Math.ceil((x1 - x0) / cell) + 1, nz = Math.ceil((z1 - z0) / cell) + 1;
+  let a = new Float32Array(nx * nz), b = new Float32Array(nx * nz);
+  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+    const v = surface(x0 + i * cell, z0 + j * cell);
+    a[j * nx + i] = Number.isFinite(v) ? v : -50;
+  }
+  const pass = (src, dst, r, op) => {
+    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+      let m = op === 'max' ? -Infinity : 0, n = 0;
+      for (let d = -r; d <= r; d++) { const ii = Math.min(nx - 1, Math.max(0, i + d)); const v = src[j * nx + ii]; if (op === 'max') { if (v > m) m = v; } else { m += v; n++; } }
+      dst[j * nx + i] = op === 'max' ? m : m / n;
+    }
+    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) src[j * nx + i] = dst[j * nx + i];
+    for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
+      let m = op === 'max' ? -Infinity : 0, n = 0;
+      for (let d = -r; d <= r; d++) { const jj = Math.min(nz - 1, Math.max(0, j + d)); const v = src[jj * nx + i]; if (op === 'max') { if (v > m) m = v; } else { m += v; n++; } }
+      dst[j * nx + i] = op === 'max' ? m : m / n;
+    }
+    return dst;
+  };
+  b = pass(a, b, 3, 'max'); [a, b] = [b, a];
+  b = pass(a, b, 2, 'avg'); [a, b] = [b, a];
+  return function floor(x, z) {
+    const fx = (x - x0) / cell, fz = (z - z0) / cell;
+    if (fx < 0 || fz < 0 || fx > nx - 1 || fz > nz - 1) return surface(x, z);
+    const i = Math.min(nx - 2, Math.floor(fx)), j = Math.min(nz - 2, Math.floor(fz));
+    const u = fx - i, v = fz - j;
+    const k = j * nx + i;
+    return (a[k] * (1 - u) + a[k + 1] * u) * (1 - v) + (a[k + nx] * (1 - u) + a[k + nx + 1] * u) * v;
+  };
+}
+
+// critically damped spring step (x toward target, velocity v), stable for any dt
+function spring(st, target, omega, dt) {
+  const x = st.x - target;
+  const e = Math.exp(-omega * dt);
+  const nx = (x + (st.v + omega * x) * dt) * e;
+  st.v = (st.v - omega * (st.v + omega * x) * dt) * e;
+  st.x = target + nx;
+  return st.x;
+}
+
+export function createCameraGuard({ camera, controls, top, groundHeight, bounds, renderCam = null }) {
+  renderCam = renderCam || new THREE.PerspectiveCamera(camera.fov, camera.aspect, camera.near, camera.far);
+  renderCam.position.copy(camera.position);
+  renderCam.quaternion.copy(camera.quaternion);
   const surface = (x, z) => { const t = top(x, z); const g = groundHeight(x, z); return Math.max(Number.isFinite(t) ? t : -Infinity, Number.isFinite(g) ? g : -Infinity); };
+  const floor = bounds ? buildFloor(surface, bounds) : surface;
+
+  const NEAR_ZONE = 3.5;               // length of the target→camera segment, from the camera, kept clear
+  const PHI_MIN = 0.12;                // highest pitch the rig may use to see over an obstacle (rad from vertical)
+  const dist = { x: 0, v: 0 }, lift = { x: 0, v: 0 }, dphi = { x: 0, v: 0 }, shrink = { x: 0, v: 0 };
+  const lastT = new THREE.Vector3(), Tr = new THREE.Vector3(), off = new THREE.Vector3(), pos = new THREE.Vector3();
+  const sph = new THREE.Spherical();
+  let primed = false, enabled = true;
+  const stats = { adjusted: false, blockedFrames: 0, lastJump: 0 };
+
+  // first distance along (phi, theta) from Tr where the segment runs into the scenery, or null if clear
+  function firstBlock(phi, theta, d, extra) {
+    const sp = Math.sin(phi), cp = Math.cos(phi);
+    const dx = sp * Math.sin(theta), dy = cp, dz = sp * Math.cos(theta);
+    // only the stretch right in front of the lens matters: scenery between the camera and a distant target may
+    // hide it (like in any strategy game), but never sits on the lens or around it
+    const ignore = Math.max(Math.min(2.0, 0.3 * d), d - NEAR_ZONE);
+    const step = Math.min(0.6, Math.max(0.15, d * 0.02));
+    for (let s = ignore; s <= d + 1e-6; s += step) {
+      const x = Tr.x + dx * s, y = Tr.y + dy * s, z = Tr.z + dz * s;
+      const m = 0.15 + 0.35 * Math.min(1, s / 4) + extra;
+      if (y < surface(x, z) + m) return s;
+    }
+    const ex = Tr.x + dx * d, ey = Tr.y + dy * d, ez = Tr.z + dz * d;
+    if (ey < floor(ex, ez) + 0.35 + extra) return d;
+    return null;
+  }
+
+  function syncOptics() {
+    if (renderCam.fov !== camera.fov || renderCam.aspect !== camera.aspect || renderCam.near !== camera.near || renderCam.far !== camera.far || renderCam.zoom !== camera.zoom) {
+      renderCam.fov = camera.fov; renderCam.aspect = camera.aspect; renderCam.near = camera.near; renderCam.far = camera.far; renderCam.zoom = camera.zoom;
+      renderCam.updateProjectionMatrix();
+    }
+    renderCam.up.copy(camera.up);
+  }
+
+  function snapToDesired() {
+    renderCam.position.copy(camera.position);
+    renderCam.quaternion.copy(camera.quaternion);
+    renderCam.updateMatrixWorld();
+    primed = false;
+  }
+
+  function update(dt) {
+    syncOptics();
+    const T = controls.target, P = camera.position;
+    off.subVectors(P, T);
+    const L = off.length();
+    if (L < 1e-4) { snapToDesired(); return; }
+    sph.setFromVector3(off);
+    dt = Math.min(Math.max(dt, 0), 0.1);
+    // teleports (applyView, instant focus, mode switches): no spring across them
+    if (!primed || lastT.distanceTo(T) > 6) {
+      dist.x = L; dist.v = 0;
+      lift.x = enabled ? Math.max(0, groundHeight(T.x, T.z) - T.y) : 0; lift.v = 0;
+      if (!primed) { dphi.x = dphi.v = shrink.x = shrink.v = 0; }
+      primed = true;
+    }
+    lastT.copy(T);
+    // disabled (map mode, promenade): corrections fade out, then the render camera is the desired one exactly
+    if (!enabled) {
+      dist.x = L; dist.v = 0;
+      spring(lift, 0, 10, dt);
+      spring(dphi, 0, 6, dt);
+      spring(shrink, 0, 6, dt);
+      if (Math.abs(lift.x) < 1e-4 && Math.abs(dphi.x) < 1e-4 && Math.abs(shrink.x) < 1e-3) {
+        lift.x = lift.v = dphi.x = dphi.v = shrink.x = shrink.v = 0;
+        stats.adjusted = false;
+        renderCam.position.copy(P);
+        renderCam.quaternion.copy(camera.quaternion);
+        renderCam.updateMatrixWorld();
+        return;
+      }
+    } else {
+      // smoothed zoom, orbit target lifted above the ground under it
+      spring(dist, L, 16, dt);
+      spring(lift, Math.max(0, groundHeight(T.x, T.z) - T.y), 10, dt);
+    }
+    const d = Math.max(0.3, dist.x);
+    Tr.copy(T); Tr.y += lift.x;
+    if (enabled) {
+      // collision: hysteresis margin while a correction is active, so it only lets go when clearly free
+      const extra = (dphi.x > 0.01 || shrink.x > 0.05) ? 0.3 : 0;
+      let wantPhi = 0, wantShrink = 0;
+      if (firstBlock(sph.phi, sph.theta, d, extra) != null) {
+        let found = false;
+        for (let k = 1; k <= 26; k++) {
+          const p = Math.max(PHI_MIN, sph.phi - k * 0.06);
+          if (firstBlock(p, sph.theta, d, extra) == null) { wantPhi = sph.phi - p; found = true; break; }
+          if (p === PHI_MIN) break;
+        }
+        if (!found) {
+          const p = Math.min(sph.phi, PHI_MIN);
+          wantPhi = sph.phi - p;
+          const s = firstBlock(p, sph.theta, d, extra);
+          if (s != null) wantShrink = Math.max(0, d - Math.max(Math.min(2.5, d), s - 0.6));
+        }
+      }
+      spring(dphi, wantPhi, wantPhi > dphi.x ? 9 : 3.2, dt);
+      spring(shrink, wantShrink, wantShrink > shrink.x ? 9 : 3.2, dt);
+      if (dphi.x < 0) { dphi.x = 0; dphi.v = Math.max(0, dphi.v); }
+      if (shrink.x < 0) { shrink.x = 0; shrink.v = Math.max(0, shrink.v); }
+    }
+    const phi = Math.max(Math.min(PHI_MIN, sph.phi), sph.phi - dphi.x);
+    const r = Math.max(Math.min(1.2, d), d - shrink.x);
+    pos.setFromSphericalCoords(r, phi, sph.theta).add(Tr);
+    if (enabled) {
+      // the camera point itself: above the smooth floor (continuous), never inside the raw surface
+      const fl = floor(pos.x, pos.z) + 0.35;
+      if (pos.y < fl) pos.y = fl;
+      const raw = surface(pos.x, pos.z) + 0.1;
+      if (pos.y < raw) pos.y = raw;
+    }
+    stats.lastJump = renderCam.position.distanceTo(pos);
+    stats.dphi = dphi.x; stats.shrink = shrink.x; stats.dist = d; stats.lift = lift.x;
+    stats.adjusted = dphi.x > 0.01 || shrink.x > 0.05;
+    if (stats.adjusted) stats.blockedFrames++;
+    renderCam.position.copy(pos);
+    renderCam.lookAt(Tr);
+    renderCam.updateMatrixWorld();
+  }
+
   return {
-    enabled: true,
-    // put the camera back where the controls / camera moves wanted it, so the user's zoom is never lost
-    before() {
-      if (clipped && camera.position.distanceToSquared(applied) < 1e-10) camera.position.copy(desired);
-      clipped = false;
-    },
-    after(dt) {
-      if (!this.enabled) return;
-      const T = controls.target, C = camera.position;
-      desired.copy(C);
-      dir.subVectors(C, T);
-      const L = dir.length();
-      if (L < 1e-4) return;
-      dir.divideScalar(L);
-      const start = Math.min(1.2, L * 0.3);
-      let allow = L;
-      for (let s = start; s <= L; s += 0.3) {
-        const px = T.x + dir.x * s, py = T.y + dir.y * s, pz = T.z + dir.z * s;
-        const margin = 0.15 + 0.35 * Math.min(1, s / 4);
-        if (py < surface(px, pz) + margin) { allow = Math.max(start, s - 0.6); break; }
-      }
-      if (allow < 2.5 && allow < L) allow = L; // target under a roof or a tree: lift instead of diving in
-      if (cur == null || cur > L) cur = L;
-      if (allow < L - 1e-3) {
-        pulled = true;
-        if (allow < cur) cur = allow;
-        else cur += (allow - cur) * Math.min(1, dt * 2.5);
-      } else if (pulled) {
-        cur += (L - cur) * Math.min(1, dt * 2.5);
-        if (L - cur < 0.02) { cur = L; pulled = false; }
-      } else cur = L;
-      pos.copy(T).addScaledVector(dir, cur);
-      const floor = surface(pos.x, pos.z) + 0.5;
-      if (pos.y < floor) pos.y = floor;
-      if (pos.distanceToSquared(C) > 1e-10) {
-        C.copy(pos);
-        applied.copy(pos);
-        clipped = true;
-      }
-    },
+    renderCam,
+    get enabled() { return enabled; },
+    set enabled(v) { enabled = !!v; },
+    update,
+    // snap the render camera onto the desired one (no spring), e.g. after a cut
+    reset() { primed = false; dphi.x = dphi.v = shrink.x = shrink.v = 0; },
+    stats,
     // first sample of the segment a→b that runs into the scenery (null if clear)
     blocked(a, b, margin = 0.2) {
-      const d = a.distanceTo(b);
-      for (let s = 0.2; s <= d; s += 0.2) {
-        const k = s / d;
+      const dd = a.distanceTo(b);
+      for (let s = 0.2; s <= dd; s += 0.2) {
+        const k = s / dd;
         const x = a.x + (b.x - a.x) * k, y = a.y + (b.y - a.y) * k, z = a.z + (b.z - a.z) * k;
         if (y < surface(x, z) + margin) return s;
       }
       return null;
     },
     surface,
+    floor,
   };
 }
