@@ -34,7 +34,7 @@ body.v3-photo #v3-photo-bar { display:flex; }
 `;
 
 const CAM_CODES = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Equal', 'Minus', 'NumpadAdd', 'NumpadSubtract']);
-const DEFAULTS = { quality: 'auto', grid: 0.16, plates: 'auto', hour: 'auto', camSpeed: 1, staging: true, combatCard: 'full', combatClose: 'mine', followPlayback: true, dice: true, killCam: true, dof: true };
+const DEFAULTS = { quality: 'auto', grid: 0.16, plates: 'auto', hour: 'auto', camSpeed: 1, staging: true, combatCard: 'full', combatClose: 'mine', followPlayback: true, dice: true, killCam: true, dof: true, colors: 'kingdom' };
 
 export function createGameUI({ world, container, bridge, getView }) {
   const style = document.createElement('style');
@@ -67,6 +67,7 @@ export function createGameUI({ world, container, bridge, getView }) {
   const levelOpts = world.LEVELS.map((l, i) => `<option value="${i}">${l.name}</option>`).join('');
   panel.innerHTML = `
     <h4>RÉGLAGES 3D</h4>
+    <label>Couleurs <select data-k="colors"><option value="kingdom">Kingdom (chaudes, contrastées)</option><option value="naturel">Naturelles</option></select></label>
     <label>Qualité <select data-k="quality"><option value="auto">Auto (60 fps)</option>${levelOpts}</select></label>
     <label>Grille <input type="range" data-k="grid" min="0" max="0.5" step="0.02"></label>
     <label>Étiquettes <select data-k="plates"><option value="auto">Auto</option><option value="always">Toujours</option><option value="never">Jamais</option></select></label>
@@ -109,6 +110,7 @@ export function createGameUI({ world, container, bridge, getView }) {
     }
     if (!k || k === 'grid') world.setGrid(settings.grid);
     if (!k || k === 'dof') world.dof.setEnabled(settings.dof !== false);
+    if ((!k || k === 'colors') && world.colors) world.colors.set(settings.colors || 'kingdom');
     if (!k || k === 'hour') applyHour();
   }
   function applyHour() {

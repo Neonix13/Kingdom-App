@@ -6,7 +6,7 @@ import { makeNoise2D, makeRng, fbm2, ridged2, makeTileableNoiseData } from './no
 import { G, installHeightFog, patchLit } from './shaderPatches.js';
 import { createWaterMaterial } from './water.js';
 import * as VEG from './vegetation.js';
-import { createPost, QualityGovernor } from './post.js';
+import { createPost, QualityGovernor, COLOR_PRESETS } from './post.js';
 import { bakeObstacleHeights, createCameraGuard } from './cameraGuard.js';
 import { createCloudLayer } from './clouds.js';
 import { createStars, createMoon, createFireflies, createLightPools } from './night.js';
@@ -1591,6 +1591,7 @@ await setProgress(92, 'Compiling shaders...');
 const post = createPost(renderer, scene, camera);
 let viewCam = camera;
 let usePost = true;
+let colorPreset = 'kingdom';
 // Cameras stay out of the scenery (walls, roofs, trees, relief): highest surface baked once from above
 const obstacleTop = bakeObstacleHeights(renderer, scene, { x0: bx0 - 15, z0: bz0 - 15, x1: bx1 + 15, z1: bz1 + 15 },
   { hide: [sky, clouds, stars, moon, birds, grassMesh, flowerMesh, wheatMesh, ...nightFx] });
@@ -1852,6 +1853,11 @@ return {
   stopFly() { intro.active = false; },
   clouds, aspect: () => W() / H(),
   get usePost() { return usePost; },
+  colors: {
+    presets: Object.keys(COLOR_PRESETS),
+    set(name) { colorPreset = COLOR_PRESETS[name] !== undefined ? name : 'kingdom'; post.display.setPreset(COLOR_PRESETS[colorPreset]); },
+    get current() { return colorPreset; },
+  },
   dof: {
     setEnabled(v) { dofState.user = !!v; refreshDof(); },
     setFocus(point) { dofState.point = point || null; },

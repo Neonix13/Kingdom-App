@@ -43,6 +43,73 @@ const GradeShader = {
   `,
 };
 
+const LUT_KINGDOM = [[0.0, 0.0618, 0.1472, 0.2444, 0.3504, 0.4598, 0.5398, 0.6181, 0.6924, 0.7607, 0.7958, 0.876, 0.9762, 1.0, 1.0, 1.0, 1.0], [0.0, 0.0252, 0.0712, 0.1308, 0.2014, 0.3148, 0.4065, 0.4883, 0.5627, 0.6332, 0.7056, 0.7815, 0.8937, 1.0, 1.0, 1.0, 1.0], [0.0, 0.0319, 0.0901, 0.1656, 0.2549, 0.3436, 0.4162, 0.489, 0.5412, 0.5878, 0.6586, 0.7345, 0.8482, 0.9743, 1.0, 1.0, 1.0]];
+
+// Display-referred grade, applied after tone mapping (OutputPass): per-channel curves (17-point LUT), saturation,
+// light unsharp mask. "kingdom" was fitted on a frame graded by the user (warm, deeper blacks, brighter highlights,
+// fewer green tones), with a softened toe so night scenes keep their shadow detail.
+export const COLOR_PRESETS = {
+  kingdom: { lut: LUT_KINGDOM, saturation: 0.82, sharpen: 0.35 },
+  naturel: null,
+};
+const LUT_SIZE = 17;
+const DisplayGradeShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uLut: { value: Array.from({ length: LUT_SIZE }, (_, i) => new THREE.Vector3(i / (LUT_SIZE - 1), i / (LUT_SIZE - 1), i / (LUT_SIZE - 1))) },
+    uSat: { value: 1 },
+    uSharpen: { value: 0 },
+    uStrength: { value: 1 },
+    uTexel: { value: new THREE.Vector2(1, 1) },
+  },
+  vertexShader: /* glsl */`
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 ); }
+  `,
+  fragmentShader: /* glsl */`
+    uniform sampler2D tDiffuse;
+    uniform vec3 uLut[ ${LUT_SIZE} ];
+    uniform float uSat, uSharpen, uStrength;
+    uniform vec2 uTexel;
+    varying vec2 vUv;
+    float curve( float x, int ch ) {
+      float f = clamp( x, 0.0, 1.0 ) * ${(LUT_SIZE - 1).toFixed(1)};
+      int i = int( min( floor( f ), ${(LUT_SIZE - 2).toFixed(1)} ) );
+      float t = f - float( i );
+      return mix( uLut[ i ][ ch ], uLut[ i + 1 ][ ch ], t );
+    }
+    void main() {
+      vec4 c = texture2D( tDiffuse, vUv );
+      vec3 col = c.rgb;
+      if ( uSharpen > 0.0 ) {
+        vec3 n = texture2D( tDiffuse, vUv + vec2( uTexel.x, 0.0 ) ).rgb + texture2D( tDiffuse, vUv - vec2( uTexel.x, 0.0 ) ).rgb
+               + texture2D( tDiffuse, vUv + vec2( 0.0, uTexel.y ) ).rgb + texture2D( tDiffuse, vUv - vec2( 0.0, uTexel.y ) ).rgb;
+        col = clamp( col + uSharpen * ( col - n * 0.25 ), 0.0, 1.0 );
+      }
+      vec3 g = vec3( curve( col.r, 0 ), curve( col.g, 1 ), curve( col.b, 2 ) );
+      float l = dot( g, vec3( 0.2126, 0.7152, 0.0722 ) );
+      g = mix( vec3( l ), g, uSat );
+      gl_FragColor = vec4( mix( col, clamp( g, 0.0, 1.0 ), uStrength ), c.a );
+    }
+  `,
+};
+
+class DisplayGradePass extends ShaderPass {
+  constructor() { super(DisplayGradeShader); }
+  render(renderer, writeBuffer, readBuffer, deltaTime, maskActive) {
+    this.uniforms.uTexel.value.set(1 / readBuffer.width, 1 / readBuffer.height);
+    super.render(renderer, writeBuffer, readBuffer, deltaTime, maskActive);
+  }
+  setPreset(p) {
+    this.enabled = !!p;
+    if (!p) return;
+    const u = this.uniforms;
+    for (let i = 0; i < LUT_SIZE; i++) u.uLut.value[i].set(p.lut[0][i], p.lut[1][i], p.lut[2][i]);
+    u.uSat.value = p.saturation;
+    u.uSharpen.value = p.sharpen;
+  }
+}
+
 // Light depth of field: gathers a golden-angle disc whose radius grows with the distance to the focus plane.
 // Reads the scene depth resolved with the colour (depthTexture on the composer targets).
 const DofShader = {
@@ -125,12 +192,15 @@ export function createPost(renderer, scene, camera) {
   const bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.35, 0.45, 2.4);
   const grade = new ShaderPass(GradeShader);
   const output = new OutputPass();
+  const display = new DisplayGradePass();
+  display.setPreset(COLOR_PRESETS.kingdom);
   composer.addPass(renderPass);
   composer.addPass(dof);
   composer.addPass(bloom);
   composer.addPass(grade);
   composer.addPass(output);
-  return { composer, renderPass, dof, bloom, grade, output, rt };
+  composer.addPass(display);
+  return { composer, renderPass, dof, bloom, grade, output, display, rt };
 }
 
 // Adaptive quality: keep frame time under budget by trading resolution and effects.

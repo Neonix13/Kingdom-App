@@ -143,6 +143,7 @@ window.addEventListener('keydown', (e) => {
   }
 });
 window.addEventListener('resize', () => world.resize());
+if (params.get('colors') && world.colors) world.colors.set(params.get('colors'));
 window.__map3d = world;
 window.__walker = walker;
 </script>
