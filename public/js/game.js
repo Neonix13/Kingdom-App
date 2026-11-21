@@ -617,13 +617,14 @@ function frameHexes2D(hexes, margin = 0.14) {
 }
 
 // Fog of war: distance (1..16) of each hidden hex to the visible area, darker farther away, black at 16 (cached per vision set)
+const FOG_DIST_MAX = 100;
 let fogDistCache = { src: null, map: new Map() };
 function fogDistances(visible) {
   if (!visible || fogDistCache.src === visible) return fogDistCache.map;
   const map = new Map();
   let frontier = [...visible].map(k => k.split(',').map(Number));
   const seen = new Set(visible);
-  for (let d = 1; d <= 16 && frontier.length; d++) {
+  for (let d = 1; d <= FOG_DIST_MAX && frontier.length; d++) {
     const next = [];
     for (const [q, r] of frontier) for (const [dq, dr] of SEGMENT_EDGE_DIRS) {
       const k = `${q + dq},${r + dr}`;
@@ -720,7 +721,7 @@ function render() {
       const { x, y } = hexToPixel(q, r);
       const isVisible = visibleSet.has(key);
       const isHovered = hoveredHex && hoveredHex.q === q && hoveredHex.r === r;
-      let fill = isVisible ? 'rgba(0,0,0,0)' : `rgba(4,3,3,${(0.8 + 0.2 * Math.min(1, ((fogDist.get(key) || 16) - 1) / 15)).toFixed(3)})`;
+      let fill = isVisible ? 'rgba(0,0,0,0)' : `rgba(4,3,3,${(0.8 + 0.2 * Math.min(1, ((fogDist.get(key) || FOG_DIST_MAX) - 1) / (FOG_DIST_MAX - 1))).toFixed(3)})`;
       let stroke = isVisible ? `rgba(${gridColorRGB},${gridOpacity})` : 'rgba(0,0,0,0)';
       if (isVisible && movableTiles.has(key)) fill = 'rgba(255,255,255,0.22)';
       if (abilityTiles.has(key)) fill = 'rgba(47,95,168,0.45)';
