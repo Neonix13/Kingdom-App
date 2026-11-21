@@ -1246,6 +1246,9 @@ for (const hex of hexesByType.forest || []) {
   }
 }
 
+// Trunk circles of the board's forest trees (Promenade collisions)
+const trunks = [...conifers[0], ...conifers[1], ...broads[0], ...broads[1]].map((t) => ({ x: t.x, z: t.z, r: 0.045 * t.s }));
+
 // Plains: grass tufts, occasional bush; fields: wheat; rocky hexes: boulders
 for (const [key, hex] of allHexes) {
   const vt = vtypeOf.get(key);
@@ -1836,7 +1839,7 @@ return {
   allHexes, hexesByType, getSegType, effH, isWaterHex,
   hexToWorld, worldToHex, groundHeight, walkHeight, deckClamp, pickHex, pickPoint, projectToScreen,
   // walkable decks (bridges, stairs, wall-walks with wall: true) and solid footprints (walls, towers, gates, tents, fences)
-  decks, solids,
+  decks, solids, trunks,
   bounds: { bx0, bx1, bz0, bz1, BCX, BCZ },
   applyView, DEFAULT_VIEW, flyTo, focusHex, resize, start, setRunning,
   setTimeOfDay, previewTimeOfDay, commitTimeOfDay, get hour() { return timeState.hour; }, timeState,

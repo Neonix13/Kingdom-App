@@ -1,6 +1,9 @@
 // "Promenade": a ghost walking on the battlefield, seen in third person. Purely local (no server message, no rule effect).
 // Collisions: terrain heightfield (cliffs, steep slopes) + the merged building/fortification meshes tagged userData.kbCollider
-// (walls, houses, towers, stairs, wall walks, bridges), indexed once in a uniform XZ grid of triangles.
+// (walls, houses, towers, stairs, wall walks, bridges), indexed once in a uniform XZ grid of triangles,
+// plus the solid footprints of world.solids (walls, towers, tents, fences…) and the board's tree trunks (world.trunks).
+import { createObstacles } from './obstacles.js';
+
 const CSS = `
 #v3-walk-layer { position:absolute; inset:0; z-index:40; cursor:grab; display:none; }
 body.v3-walk #v3-walk-layer { display:block; }
@@ -70,6 +73,39 @@ export function createWalker(world, { container = document.body, onEnter, onExit
       }
     }
     grid = { T, cells };
+    obst = world.solids && world.solids.length ? createObstacles(world) : null;
+    trunkCells = new Map();
+    for (const t of world.trunks || []) {
+      const k = Math.floor(t.x / CELL) * 73856093 ^ Math.floor(t.z / CELL) * 19349663;
+      let a = trunkCells.get(k);
+      if (!a) trunkCells.set(k, (a = []));
+      a.push(t);
+    }
+  }
+  let obst = null, trunkCells = null;
+  // body (radius R) at (x, z) against footprints standing higher than a step above the feet, and against tree trunks
+  function solidBlocks(x, z, feet) {
+    if (obst) {
+      for (const [ox, oz] of [[0, 0], [R, 0], [-R, 0], [0, R], [0, -R]]) if (obst.solidTop(x + ox, z + oz) > feet + MAX_STEP) return true;
+    }
+    if (trunkCells) {
+      const cx = Math.floor(x / CELL), cz = Math.floor(z / CELL);
+      for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+        const list = trunkCells.get((cx + i) * 73856093 ^ (cz + j) * 19349663);
+        if (list) for (const t of list) if ((x - t.x) ** 2 + (z - t.z) ** 2 < (t.r + R) ** 2 && feet < groundHeight(t.x, t.z) + 1.2) return true;
+      }
+    }
+    return false;
+  }
+  // push-back direction away from what blocks (x, z)
+  function solidNormal(x, z, feet, ux, uz) {
+    let sx = 0, sz = 0;
+    for (let a = 0; a < 8; a++) {
+      const dx = Math.cos(a * Math.PI / 4), dz = Math.sin(a * Math.PI / 4);
+      if (solidBlocks(x + dx * R * 1.5, z + dz * R * 1.5, feet)) { sx -= dx; sz -= dz; }
+    }
+    const l = Math.hypot(sx, sz);
+    return l > 1e-6 ? { nx: sx / l, nz: sz / l } : { nx: -ux, nz: -uz };
   }
   const cellAt = (x, z) => grid.cells.get(Math.floor(x / CELL) * 73856093 ^ Math.floor(z / CELL) * 19349663);
 
@@ -272,6 +308,10 @@ export function createWalker(world, { container = document.body, onEnter, onExit
           const gl = Math.hypot(gx, gz);
           hit = gl > 1e-6 ? { t: 0, nx: -gx / gl, nz: -gz / gl, len } : { t: 0, nx: -ux, nz: -uz, len };
         }
+      }
+      if (!hit && !onWay && solidBlocks(nx, nz, pos.y) && !solidBlocks(pos.x, pos.z, pos.y)) {
+        const n = solidNormal(nx, nz, pos.y, ux, uz);
+        hit = { t: 0, nx: n.nx, nz: n.nz, len };
       }
       if (!hit) { pos.x = nx; pos.z = nz; return; }
       const free = Math.max(0, hit.t * hit.len - R);
