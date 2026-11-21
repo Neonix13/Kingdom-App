@@ -1743,7 +1743,7 @@ function setRunning(v) {
 return {
   THREE, renderer, scene, camera, controls, canvas, perf, governor, post, LEVELS,
   allHexes, hexesByType, getSegType, effH, isWaterHex,
-  hexToWorld, worldToHex, groundHeight, walkHeight, deckClamp, pickHex, pickPoint, projectToScreen,
+  hexToWorld, worldToHex, groundHeight, walkHeight, decks, deckClamp, pickHex, pickPoint, projectToScreen,
   bounds: { bx0, bx1, bz0, bz1, BCX, BCZ },
   applyView, DEFAULT_VIEW, flyTo, focusHex, resize, start, setRunning,
   setTimeOfDay, previewTimeOfDay, commitTimeOfDay, get hour() { return timeState.hour; }, timeState,
