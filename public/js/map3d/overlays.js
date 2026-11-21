@@ -51,7 +51,7 @@ export function createBoardLayers(world) {
   }
 
   // Hidden hexes grouped by distance (1..FOG_STEPS) to the nearest visible hex
-  const FOG_STEPS = 6;
+  const FOG_STEPS = 16;
   function fogRings(visibleKeys) {
     const seen = new Set(visibleKeys);
     const rings = [[]];
@@ -90,7 +90,7 @@ export function createBoardLayers(world) {
     ctx.filter = `blur(${(0.6 * VIS_PPU).toFixed(1)}px)`;
     for (let d = FOG_STEPS; d >= 1; d--) {
       if (!rings[d].length) continue;
-      ctx.fillStyle = `rgb(0,${Math.round(255 * (1 - d / (FOG_STEPS + 1)))},0)`;
+      ctx.fillStyle = `rgb(0,${Math.round(255 * (1 - (d - 1) / FOG_STEPS))},0)`;
       ctx.beginPath();
       for (const [q, r] of rings[d]) hexPath(ctx, visP, q, r, 1.08);
       ctx.fill();
