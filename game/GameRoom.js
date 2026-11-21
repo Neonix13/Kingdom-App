@@ -14,7 +14,7 @@ const { RULES } = rules;
 
 const MAP_RADIUS = 70;
 // Derived from the map or rebuilt on load: never serialized
-const TRANSIENT = new Set(['map', 'hexMap', 'unitMap', 'terrainData', 'segmentData', 'heightData', 'mapCenter', '_events', '_moveTable', '_rng', '_losGrid', '_losCache']);
+const TRANSIENT = new Set(['map', 'hexMap', 'unitMap', 'terrainData', 'segmentData', 'heightData', 'mapCenter', '_events', '_moveTable', '_rng', '_losGrid', '_losCache', '_mainAreaCache']);
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
@@ -433,6 +433,7 @@ class GameRoom {
 
   startDeployment() {
     this.phase = 'deployment';
+    this._mainAreaCache = null;
     const zones = getStartingZones(this.players.length, MAP_RADIUS, this.budget, this.map);
     this.players.forEach((p, i) => {
       p.startingZone = zones[i];
@@ -455,12 +456,61 @@ class GameRoom {
     const ordered = [...player.units.filter(u => u.isGeneral), ...player.units.filter(u => !u.isGeneral)];
     for (const unit of ordered) {
       if (unit.q !== null) continue;
-      const tile = free.shift();
-      if (!tile) break;
+      const i = free.findIndex(t => this.canDeployAt(unit, t.q, t.r));
+      if (i < 0) continue;
+      const [tile] = free.splice(i, 1);
       unit.q = tile.q;
       unit.r = tile.r;
       unit.facing = hexFacing(tile.q, tile.r, bq, br);
     }
+  }
+
+  // Hexes of the main connected area of the map for foot or mounted units (largest set of hexes linked by passable
+  // steps). A unit deployed outside it could never leave its pocket (fenced field for cavalry, cliff-ringed hilltop…)
+  _mainArea(mounted) {
+    const key = mounted ? 'mounted' : 'foot';
+    this._mainAreaCache = this._mainAreaCache || {};
+    if (this._mainAreaCache[key]) return this._mainAreaCache[key];
+    const table = this.moveTable();
+    const label = new Map();
+    let best = null;
+    for (const start of Object.keys(this.hexMap)) {
+      if (label.has(start)) continue;
+      const comp = new Set([start]);
+      label.set(start, comp);
+      const stack = [start];
+      while (stack.length) {
+        const k = stack.pop();
+        const [q, r] = k.split(',').map(Number);
+        for (const [dq, dr] of rules.DIRS) {
+          const nq = q + dq, nr = r + dr, nk = hexKey(nq, nr);
+          if (!this.hexMap[nk] || label.has(nk)) continue;
+          const c = rules.stepCost(table, this.hexMap[k], this.hexMap[nk], this.segmentData[segmentEdgeKey(q, r, nq, nr)] || null, mounted);
+          if (!isFinite(c)) continue;
+          label.set(nk, comp);
+          comp.add(nk);
+          stack.push(nk);
+        }
+      }
+      if (!best || comp.size > best.size) best = comp;
+    }
+    this._mainAreaCache[key] = best || new Set();
+    return this._mainAreaCache[key];
+  }
+
+  canDeployAt(unit, q, r) {
+    return this._mainArea(rules.isMounted(unit)).has(hexKey(q, r));
+  }
+
+  // Zone hexes where foot / mounted units would be stuck, for the deployment UI
+  _deployBlocked(zone) {
+    const out = { foot: [], mounted: [] };
+    for (const t of (zone && zone.tiles) || []) {
+      const k = hexKey(t.q, t.r);
+      if (!this._mainArea(false).has(k)) out.foot.push(k);
+      if (!this._mainArea(true).has(k)) out.mounted.push(k);
+    }
+    return out;
   }
 
   getDeploymentState(playerId) {
@@ -479,6 +529,7 @@ class GameRoom {
       budget: this.budget,
       isReady: !!player.isReady,
       startingZone: player.startingZone,
+      blockedTiles: this._deployBlocked(player.startingZone),
       units: player.units,
       placedUnits: player.placedUnits,
       generalData: general,
@@ -542,6 +593,10 @@ class GameRoom {
     // Check if occupied
     const unit = player.units.find(u => u.id === unitId);
     if (!unit) return { error: 'Unité introuvable.' };
+    const stuckMsg = (u) => (rules.isMounted(u)
+      ? `${u.name} serait bloqué ici : les montures ne peuvent pas sortir de cette case (barrières, escaliers ou falaises).`
+      : `${u.name} serait bloqué ici : cette case est fermée par des falaises ou des murs.`);
+    if (!this.canDeployAt(unit, q, r)) return { error: stuckMsg(unit), code: 'deploy_stuck' };
     for (const p of this.players) {
       if (p === player) continue;
       for (const u of p.units) {
@@ -550,6 +605,7 @@ class GameRoom {
     }
     // Units start placed (auto-deployment): dropping a unit on one of ours swaps their places
     const other = player.units.find(u => u !== unit && u.q === q && u.r === r);
+    if (other && unit.q !== null && !this.canDeployAt(other, unit.q, unit.r)) return { error: stuckMsg(other), code: 'deploy_stuck' };
     if (other) {
       other.q = unit.q;
       other.r = unit.r;
