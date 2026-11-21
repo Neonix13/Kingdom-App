@@ -24,6 +24,7 @@ const MOON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke
 const ICONS = {
   rules: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M4 4h6a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H4zM20 4h-6a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h6z"></path></svg>',
   exit: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M14 4H5v16h9"></path><path d="M10 12h10M16 8l4 4-4 4"></path></svg>',
+  map: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"></path><path d="M9 4v14M15 6v14"></path></svg>',
   journal: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"></path><path d="M8 9h8M8 12h5"></path></svg>',
   tools: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg>',
 };
@@ -56,6 +57,7 @@ export function mountBattleHud(bridge, view) {
       <div class="hud-scores"></div>
       <div class="hud-timer"></div>
       <button class="hud-ibtn" data-hud="2d" title="Vue 2D" aria-label="Vue 2D">2D</button>
+      <button class="hud-ibtn" data-hud="map" title="Vue carte, de haut (M)" aria-label="Vue carte">${ICONS.map}</button>
       <button class="hud-ibtn" data-hud="rules" title="Règles" aria-label="Règles">${ICONS.rules}</button>
       <button class="hud-ibtn" data-hud="journal" title="Journal : historique et chat (J)" aria-label="Journal">${ICONS.journal}<span class="hud-dot"></span></button>
       <button class="hud-ibtn" data-hud="tools" title="Outils et réglages" aria-label="Outils">${ICONS.tools}</button>
@@ -122,6 +124,7 @@ export function mountBattleHud(bridge, view) {
     if (a === '2d') window.toggleView3d && window.toggleView3d();
     else if (a === 'rules') window.toggleRules && window.toggleRules();
     else if (a === 'journal') toggleDrawer();
+    else if (a === 'map') { window.view3d && window.view3d.toggleMapMode && window.view3d.toggleMapMode(); }
     else if (a === 'tools') { document.body.classList.toggle('hud-tools'); document.body.classList.remove('hud-drawer'); render(); }
     else if (a === 'exit') {
       if (b.classList.contains('armed')) { window.leaveGame && window.leaveGame(); return; }
@@ -167,6 +170,9 @@ export function mountBattleHud(bridge, view) {
     const vb = root.querySelector('[data-hud="2d"]');
     const label = view.active ? '2D' : '3D';
     if (vb.textContent !== label) { vb.textContent = label; vb.title = vb.ariaLabel = `Vue ${label}`; }
+    const mb = root.querySelector('[data-hud="map"]');
+    mb.hidden = !view.active;
+    mb.classList.toggle('on', !!(window.view3d && window.view3d.mapMode));
     tick();
   }
 
@@ -528,6 +534,8 @@ export function mountBattleHud(bridge, view) {
       if (b) b.click();
     } else if (u.q != null && view.hexOnScreen && !view.hexOnScreen(u.q, u.r, 0.2)) view.focusHex(u.q, u.r);
   });
+
+  window.addEventListener('kb-mapmode', () => render());
 
   // ---- keyboard: R/F/C/V actions, 1-9 stances, Enter seal, J journal (physical keys, outside the camera keys) ----
   const editable = (n) => n && (n.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName));

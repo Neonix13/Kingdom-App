@@ -167,17 +167,6 @@ export function createGameUI({ world, container, bridge, getView }) {
 
   // --- Keyboard camera ---
   const keys = new Set();
-  let topDown = null;
-  function toggleTopDown() {
-    if (topDown) {
-      world.flyTo(topDown.p, topDown.t, 0.8);
-      topDown = null;
-    } else {
-      topDown = { p: camera.position.clone(), t: controls.target.clone() };
-      const t = controls.target.clone();
-      world.flyTo(new THREE.Vector3(t.x, t.y + 46, t.z + 0.5), t, 0.8);
-    }
-  }
   const editable = (el) => el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
   window.addEventListener('keydown', (e) => {
     const view = getView();
@@ -188,9 +177,9 @@ export function createGameUI({ world, container, bridge, getView }) {
       if (e.code.startsWith('Arrow')) e.preventDefault();
       return;
     }
-    if (k === 'p') setPhoto(!photo);
-    else if (k === 'escape') { if (photo) setPhoto(false); else bridge.deselect && bridge.deselect(); }
-    else if (k === 't') toggleTopDown();
+    if (e.code === 'KeyM') { e.preventDefault(); view.toggleMapMode && view.toggleMapMode(); }
+    else if (k === 'p') setPhoto(!photo);
+    else if (k === 'escape') { if (view.mapMode) view.toggleMapMode(); else if (photo) setPhoto(false); else bridge.deselect && bridge.deselect(); }
     else if (k === ' ') {
       e.preventDefault();
       const st = bridge.state;
@@ -205,7 +194,7 @@ export function createGameUI({ world, container, bridge, getView }) {
   function update(dt) {
     if (!keys.size) return;
     const dist = camera.position.distanceTo(controls.target);
-    const sp = dist * 0.9 * settings.camSpeed * dt;
+    const sp = dist * 0.9 * settings.camSpeed * dt * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) / Math.tan(THREE.MathUtils.degToRad(21));
     camera.getWorldDirection(fwd);
     fwd.y = 0; fwd.normalize();
     right.crossVectors(fwd, camera.up).normalize();

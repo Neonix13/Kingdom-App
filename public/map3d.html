@@ -63,7 +63,7 @@
   <div class="title">KINGDOM · 3D MAP</div>
   <div class="stats" id="stats"></div>
   <label>Time of day <input type="range" id="tod" min="5.5" max="20.5" step="0.05" value="16.2"></label>
-  <div class="keys"><b>G</b> grid · <b>C</b> cinematic · <b>Q</b> quality · <b>H</b> hide UI · <b>R</b> reset</div>
+  <div class="keys"><b>G</b> grid · <b>C</b> cinematic · <b>Q</b> quality · <b>H</b> hide UI · <b>R</b> reset · <b>M</b> map</div>
 </div>
 <div id="controls">Left drag: orbit &nbsp;·&nbsp; Right drag: pan &nbsp;·&nbsp; Scroll: zoom</div>
 
@@ -80,6 +80,7 @@
 
 <script type="module">
 import { createWorld } from './js/map3d/world.js';
+import { createMapMode } from './js/map3d/mapMode.js';
 
 const params = new URLSearchParams(location.search);
 const loadBar = document.getElementById('loadBar');
@@ -117,10 +118,13 @@ function updateHud() {
 setInterval(updateHud, 500);
 updateHud();
 
+const mapMode = createMapMode(world);
 window.addEventListener('keydown', (e) => {
   if (e.target && e.target.tagName === 'INPUT' && e.target.type !== 'range') return;
   const k = e.key.toLowerCase();
   const g = world.governor;
+  if (e.code === 'KeyM') { mapMode.toggle(); return; }
+  if (k === 'escape' && mapMode.active) { mapMode.toggle(); return; }
   if (k === 'r') world.flyTo(new world.THREE.Vector3(world.DEFAULT_VIEW.px, world.DEFAULT_VIEW.py, world.DEFAULT_VIEW.pz), new world.THREE.Vector3(world.DEFAULT_VIEW.tx, world.DEFAULT_VIEW.ty, world.DEFAULT_VIEW.tz), 1.2);
   else if (k === 'g') world.setGrid(world.grid > 0 ? 0 : 0.11);
   else if (k === 'c') world.controls.autoRotate = !world.controls.autoRotate;
