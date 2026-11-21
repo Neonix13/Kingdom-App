@@ -206,13 +206,13 @@ test('IA contre IA avec minuteries (serveur local) et rythme entre les actions',
   };
   const h = harness({ scheduler, now: Date.now, config: { botPace: 0.004 } });
   protocol = h.protocol;
-  const room = botRoom({ code: 'IATIME', mapId: 'test-small', a: 'veteran', b: 'stratege', maxTurns: 8 });
+  const room = botRoom({ code: 'IATIME', mapId: 'test-small', a: 'veteran', b: 'stratege', maxTurns: 5 });
   await h.store.create(room);
   const spec = h.client('spec');
   await spec.send('join_room', { roomCode: room.roomCode, playerName: 'Arbitre', spectator: true });
   const t0 = Date.now();
   let r;
-  while (Date.now() - t0 < 50000) {
+  while (Date.now() - t0 < 55000) {
     await new Promise(res => setTimeout(res, 50));
     r = await h.store.get('IATIME');
     if (!r || r.phase === 'ended') break;

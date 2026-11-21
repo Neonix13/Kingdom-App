@@ -4,10 +4,11 @@
 const GENERALS = require('../data/generals');
 const rules = require('../rules');
 const AIAgent = require('../../simulation/AIAgent');
-const { hexDistance, hexKey, segmentEdgeKey } = require('../HexUtils');
+const { hexDistance, hexKey, segmentEdgeKey, hexFacing } = require('../HexUtils');
 const { distanceField, reachableGoal } = require('./pathing');
 const { buildWorld, inRange, unitValue, centroid, nearestHex, loneGeneralGoal } = require('./world');
 const { rngFor, pick } = require('./rng');
+const T = require('./tactics');
 
 const { RULES } = rules;
 // Abilities that have an effect in GameRoom.useGeneralAbility
@@ -40,8 +41,9 @@ function mods(room, unit, q, r) {
   return { st: unit.isGeneral ? {} : room._getStanceMods(unit), te: room._getTerrainMods(q, r) };
 }
 
-// Rough expectation of a strike (same formula as GameRoom._resolveCombat, averaged; angle and courage ignored)
-function strike(world, a, t, fq, fr) {
+// Rough expectation of a strike (same formula as GameRoom._resolveCombat, averaged; courage ignored).
+// extra: { attack, power } (charge bonus) added to the attacker
+function strike(world, a, t, fq, fr, extra = null) {
   const room = world.room;
   const C = RULES.combat;
   const ranged = hexDistance(fq, fr, t.q, t.r) > 1;
@@ -55,17 +57,19 @@ function strike(world, a, t, fq, fr) {
   const D = mods(room, t, t.q, t.r);
   const h = world.height(fq, fr) - world.height(t.q, t.r);
   const night = world.night ? (RULES.night.attackMod[type] || 0) : 0;
+  const ang = ranged ? 0 : T.angleBonus(t, fq, fr);
+  const ex = extra || {};
   const atk = (a.isGeneral ? a.force : a.attack) + (A.st[`attack_${type}`] || 0) + (A.te[`attack_${type}`] || 0)
-    - (D.st[`esquive_${type}`] || 0) - (D.te[`esquive_${type}`] || 0) + h + night;
+    - (D.st[`esquive_${type}`] || 0) - (D.te[`esquive_${type}`] || 0) + h + night + ang + (ex.attack || 0);
   const pDie = Math.max(0, Math.min(1, atk / 20));
   const ngoA = Math.max(1, Math.floor(a.vitality / C.diceDivisor)), ngoD = Math.max(1, Math.floor(t.vitality / C.diceDivisor));
   const abD = room.ability(t);
   const rangedArmor = ranged && abD ? (abD.type === 'defend_ranged' ? abD.value : abD.type === 'anti_cavalry' ? (RULES.abilities.anti_cavalry.rangedArmor || 0) : 0) : 0;
-  const ar = ngoD * Math.max(0, t.armor + (D.st.armure || 0) + (D.te.armure || 0) + rangedArmor);
+  const ar = ngoD * Math.max(0, t.armor + (D.st.armure || 0) + (D.te.armure || 0) + rangedArmor - ang);
   const ratio = 1 - ar / (ar + C.armorK);
   const abA = room.ability(a);
   const lancer = abA && abA.type === 'anti_cavalry' && RULES.abilities.antiCavalryCategories.includes(t.category) ? abA.value : 0;
-  const power = Math.max(1, a.power + (A.st[`puissance_${type}`] || 0) + (A.te[`puissance_${type}`] || 0) + lancer);
+  const power = Math.max(1, a.power + (A.st[`puissance_${type}`] || 0) + (A.te[`puissance_${type}`] || 0) + lancer + ang + (ex.power || 0));
   let dmg;
   if (a.isGeneral) dmg = (a.force - 10.5 + C.general.base) * a.power / C.general.powerDivisor * ratio / C.general.damageDivisor;
   else dmg = ngoA * pDie * power * ratio;
@@ -76,6 +80,16 @@ function strike(world, a, t, fq, fr) {
 function targetScore(world, profile, a, t, fq, fr) {
   const s = strike(world, a, t, fq, fr);
   let score = 10 + Math.min(100, (s.expected / Math.max(1, t.vitality)) * 100);
+  // melee: the defender hits back (it counters in classic mode; in simultaneous mode its stance decides)
+  const tactics = profile.tactics || 0;
+  if (tactics > 0 && !s.duel && hexDistance(fq, fr, t.q, t.r) === 1 && !t.isFleeing) {
+    const ans = world.room.mode === 'simultaneous' ? (t.isGeneral ? 'counter' : (RULES.simultaneous.stanceReaction[t.stance] || 'counter')) : 'counter';
+    if (ans !== 'rien') {
+      const back = strike(world, t, { ...a, q: fq, r: fr, facing: hexFacing(fq, fr, t.q, t.r) }, t.q, t.r);
+      const taken = back.expected * (ans === 'absorb' ? 0.5 : 1);
+      score -= Math.min(100, taken / Math.max(1, a.vitality) * 100) * 0.6 * tactics;
+    }
+  }
   score += profile.focus * ((1 - t.vitality / (t.maxVitality || t.vitality || 1)) * 40 + (s.kill ? 60 * s.pHit : 0) + (t.isGeneral ? 80 : 0) + (t.isFleeing ? 10 : 0));
   score += unitValue(t) / 100;
   if (s.duel && profile.focus > 0 && a.force < t.force - 1) score -= 120;
@@ -176,7 +190,14 @@ function planGeneral(world, profile, g, rng, blunder) {
     return approach(world, profile, g, reach, nearestEnemy(world, g).enemy, null);
   }
   const keep = profile.caution + 1;
-  const c0 = centroid(troops) || { q: g.q, r: g.r };
+  const tactics = profile.tactics || 0;
+  let c0 = centroid(troops) || { q: g.q, r: g.r };
+  // behind the troops: the army centre pushed away from the enemy
+  const ec = tactics > 0 ? T.enemyCentroid(world) : null;
+  if (ec && troops.length) {
+    const len = Math.max(1, hexDistance(c0.q, c0.r, ec.q, ec.r));
+    c0 = { q: Math.round(c0.q + (c0.q - ec.q) / len * 2), r: Math.round(c0.r + (c0.r - ec.r) / len * 2) };
+  }
   const center = nearestHex(room, c0.q, c0.r);
   // Walking cost to the army (cliffs and walls), straight distance if the army is out of reach
   const field = distanceField(room, center.q, center.r, false);
@@ -187,6 +208,10 @@ function planGeneral(world, profile, g, rng, blunder) {
     const d = world.enemies.length ? Math.min(...world.enemies.map(e => hexDistance(q, r, e.q, e.r))) : Infinity;
     if (d < keep) s -= (keep - d) * 6;
     if (withArmy) s += terrainScore(world, q, r) * profile.terrain * 0.5;
+    if (tactics > 0) {
+      const mt = T.meleeThreat(world, q, r);
+      s -= (T.rangedThreat(world, q, r) * 8 + mt.cavalry * 6 + mt.n * 3) * tactics;
+    }
     return s;
   };
   let best = null, bs = score(g.q, g.r) + 0.5; // small bias for staying put
@@ -212,6 +237,7 @@ function idleStance(world, profile, u) {
   if (world.night && dist > 5 && hurt) return 'repos';
   if (u.stance === 'repos') return dist > 4 ? 'marche' : isRanged(u) ? 'defense_distance' : 'combat';
   if (isRanged(u) && world.enemies.some(isRanged) && dist > 2) return 'defense_distance';
+  if (!isRanged(u) && (profile.tactics || 0) > 0 && T.meleeThreat(world, u.q, u.r).cavalry > 0 && u.typeId !== 'lancier') return 'defense_combat';
   if (!isRanged(u) && dist <= 2) return profile.focus >= 1 ? 'defense_combat' : 'combat';
   if (dist > 8 && u.stance === 'repos' && !world.night) return 'marche';
   return null;
@@ -382,6 +408,15 @@ function planTroop(world, profile, u, rng, blunder, objectives) {
     const st = idleStance(world, profile, u);
     if (st && st !== u.stance) return act('change_stance', { unitId: u.id, stanceId: st }, 'idle_stance');
   }
+  // keep the front toward the threat: a flank or the back offered to enemies that can reach us costs a lot
+  if ((profile.tactics || 0) >= 0.5 && u.speedRemaining >= 1 && world.enemies.length) {
+    const face = T.threatFacing(world, u);
+    if (face != null && face !== (u.facing || 0)) {
+      const now = T.worstExposure(world, u, u.q, u.r, u.facing || 0, u.stance);
+      const then = T.worstExposure(world, u, u.q, u.r, face, u.stance);
+      if (then < now) return act('rotate_facing', { unitId: u.id, facing: face }, 'face_threat');
+    }
+  }
   return null;
 }
 
@@ -426,5 +461,5 @@ function chooseDefense(room, attackId, pending, profile) {
 module.exports = {
   planBattleStep, chooseDefense, strike, reachFrom, USABLE_ABILITIES,
   // helpers shared with the simultaneous planner
-  abilityStep, assignObjectives, armyGoal, approachDest, targetScore, attackStance, nearestEnemy, isRanged, unitAbilityPlan,
+  abilityStep, assignObjectives, armyGoal, approachDest, targetScore, terrainScore, attackStance, nearestEnemy, isRanged, unitAbilityPlan,
 };
