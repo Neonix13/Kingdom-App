@@ -42,11 +42,15 @@ function searchRoute(room, player) {
   const c = room.mapCenter || { q: 0, r: 0 };
   const own = player.startingZone || centroid(player.units.filter(u => u.q !== null)) || c;
   let route = [];
-  const fixed = (room.map && Array.isArray(room.map.zones) ? room.map.zones : [])
-    .map(z => (z.tiles || []).map(t => (typeof t === 'string' ? t.split(',').map(Number) : [t.q, t.r])))
-    .filter(t => t.length)
-    .map(t => ({ q: Math.round(t.reduce((s, x) => s + x[0], 0) / t.length), r: Math.round(t.reduce((s, x) => s + x[1], 0) / t.length) }))
-    .filter(z => hexDistance(z.q, z.r, own.q, own.r) > 4);
+  const hasFixed = room.map && Array.isArray(room.map.zones) && room.map.zones.length;
+  const tilesOf = (z) => (z.tiles || []).map(t => (typeof t === 'string' ? t.split(',').map(Number) : [t.q, t.r]));
+  const middle = (t) => ({ q: Math.round(t.reduce((s, x) => s + x[0], 0) / t.length), r: Math.round(t.reduce((s, x) => s + x[1], 0) / t.length) });
+  // fixed zones are public: the other players' zones first (the unused zones of the map are empty)
+  let fixed = hasFixed ? room.players.filter(p => p.id !== player.id && !room.areAllies(player.id, p.id) && p.startingZone)
+    .map(p => tilesOf(p.startingZone)).filter(t => t.length).map(middle) : [];
+  if (hasFixed && !fixed.length) {
+    fixed = room.map.zones.map(tilesOf).filter(t => t.length).map(middle).filter(z => hexDistance(z.q, z.r, own.q, own.r) > 4);
+  }
   if (fixed.length) {
     route = fixed.sort((a, b) => hexDistance(a.q, a.r, own.q, own.r) - hexDistance(b.q, b.r, own.q, own.r)).map(z => nearestHex(room, z.q, z.r));
   } else {
@@ -134,7 +138,8 @@ function huntGoal(room, player, m, mine) {
   }
   const turn = room.turn;
   const t = m.explore;
-  const reached = t && (m.seen.get(hexKey(t.q, t.r)) === turn || hexDistance(t.q, t.r, c.q, c.r) <= 1 || turn - t.since > EXPLORE_TURNS);
+  const reached = t && (m.seen.get(hexKey(t.q, t.r)) === turn || hexDistance(t.q, t.r, c.q, c.r) <= 1
+    || mine.some(u => hexDistance(u.q, u.r, t.q, t.r) <= 2) || turn - t.since > EXPLORE_TURNS);
   if (t && !reached) return t;
   if (t) m.seen.set(hexKey(t.q, t.r), turn);
   let next = searchRoute(room, player).find(p => !m.seen.has(hexKey(p.q, p.r)));

@@ -9,6 +9,7 @@ const { distanceField, reachableGoal } = require('./pathing');
 const { buildWorld, inRange, unitValue, centroid, nearestHex, loneGeneralGoal } = require('./world');
 const { rngFor, pick } = require('./rng');
 const T = require('./tactics');
+const Strat = require('./strategy');
 
 const { RULES } = rules;
 // Abilities that have an effect in GameRoom.useGeneralAbility
@@ -262,7 +263,12 @@ function approachDest(world, profile, u, reach, goal, limit) {
     if (limit != null && f < limit) continue;
     const [q, r] = parseKey(k);
     if (keepAway && world.enemies.some(e => hexDistance(q, r, e.q, e.r) < keepAway)) continue;
-    const s = f - terrainScore(world, q, r) * profile.terrain * 0.4 + (world.terrainAt(q, r) === 'river' ? 3 : 0);
+    let s = f - terrainScore(world, q, r) * profile.terrain * 0.4 + (world.terrainAt(q, r) === 'river' ? 3 : 0);
+    // do not walk blindly into cover next to hexes we cannot see (ambushes), unless scouting
+    if ((profile.tactics || 0) > 0 && !(goal && goal.kind === 'scout') && COVER.has(world.terrainAt(q, r))
+      && rules.DIRS.some(([dq, dr]) => { const nk = keyOf(q + dq, r + dr); return world.room.hexMap[nk] && !world.vis.has(nk); })) {
+      s += 1.5 * profile.tactics;
+    }
     if (s < bs) { bs = s; best = { q, r }; }
   }
   return best;
@@ -296,10 +302,23 @@ function armyGoal(world) {
 
 // Unit abilities the bot uses: an assassin vanishes when no enemy is in sight nearby; bâtisseurs put chevaux de frise
 // on the edge facing the nearest enemy when it comes close (espions only scout: their sight already reveals ambushes)
-function unitAbilityPlan(world, u) {
+function unitAbilityPlan(world, u, asg = null) {
   const { room } = world;
   const ab = room.ability(u);
   if (!ab || u.isFleeing || (u.speedRemaining || 0) < ab.cost) return null;
+  // bâtisseurs posted on a gate: chevaux de frise on its outer edge (the side the enemy comes from)
+  if (ab.type === 'build' && asg && asg.build && u.q === asg.q && u.r === asg.r && asg.toward) {
+    let best = null, bd = Infinity;
+    for (const [dq, dr] of rules.DIRS) {
+      const q = u.q + dq, r = u.r + dr;
+      if (!room.hexMap[keyOf(q, r)] || room.unitMap[keyOf(q, r)]) continue;
+      const opts = rules.buildOptions(room.segmentData[segmentEdgeKey(u.q, u.r, q, r)] || null, room.terrainData[keyOf(q, r)]);
+      if (!opts.some(o => o.id === 'chevaux_de_frise')) continue;
+      const d = hexDistance(q, r, asg.toward.q, asg.toward.r);
+      if (d < bd) { bd = d; best = { q, r }; }
+    }
+    if (best && bd < hexDistance(u.q, u.r, asg.toward.q, asg.toward.r)) return { kind: 'build', build: 'chevaux_de_frise', q: best.q, r: best.r };
+  }
   if (ab.type === 'ambush') {
     if (u.vanishedDay === room.dayNumber()) return null;
     if (world.enemies.some(e => hexDistance(e.q, e.r, u.q, u.r) <= ab.range)) return null;
@@ -324,10 +343,15 @@ function unitAbilityPlan(world, u) {
 
 function planTroop(world, profile, u, rng, blunder, objectives) {
   const { room } = world;
-  const ua = blunder ? null : unitAbilityPlan(world, u);
-  if (ua) return ua.kind === 'vanish' ? act('unit_vanish', { unitId: u.id }, 'vanish') : act('unit_build', { unitId: u.id, q: ua.q, r: ua.r, kind: ua.build }, 'build');
   const objective = objectives.get(u.id);
-  const onObjective = objective && objective.q === u.q && objective.r === u.r;
+  const sab = !blunder && Strat.sabotageTarget(world, u, objective);
+  const sabAb = sab && room.ability(u);
+  if (sab && sabAb && (u.speedRemaining || 0) >= sabAb.cost) return act('unit_sabotage', { unitId: u.id, q: sab.q, r: sab.r }, 'sabotage');
+  const ua = blunder ? null : unitAbilityPlan(world, u, objective);
+  if (ua) return ua.kind === 'vanish' ? act('unit_vanish', { unitId: u.id }, 'vanish') : act('unit_build', { unitId: u.id, q: ua.q, r: ua.r, kind: ua.build }, 'build');
+  const onObjective = objective && objective.q === u.q && objective.r === u.r && objective.kind !== 'scout' && objective.kind !== 'flank';
+  // posts and held objectives: only strike from next to them
+  const tether = objective && (objective.hold || objective.kind === 'scout' || objective.kind === 'sabotage') ? objective : null;
   const targets = u.hasAttacked ? [] : world.enemies.filter(t => inRange(world, u, u.q, u.r, t));
   const reach = reachFrom(world, u);
 
@@ -362,6 +386,7 @@ function planTroop(world, profile, u, rng, blunder, objectives) {
       const cands = [];
       for (const [k, cost] of reach) {
         const [q, r] = parseKey(k);
+        if (tether && hexDistance(q, r, tether.q, tether.r) > (tether.kind === 'post' || tether.kind === 'objective' ? 1 : 0)) continue;
         for (const t of world.enemies) {
           if (!inRange(world, u, q, r, t)) continue;
           if (profile.hold && hexDistance(u.q, u.r, t.q, t.r) > (profile.engageRadius || 0) + (u.range || 1)) continue;
@@ -405,7 +430,7 @@ function planTroop(world, profile, u, rng, blunder, objectives) {
   }
 
   if (u.speedRemaining > 0 && rng() < Math.max(profile.stance, 0.2)) {
-    const st = idleStance(world, profile, u);
+    const st = (onObjective && objective.stance) || idleStance(world, profile, u);
     if (st && st !== u.stance) return act('change_stance', { unitId: u.id, stanceId: st }, 'idle_stance');
   }
   // keep the front toward the threat: a flank or the back offered to enemies that can reach us costs a lot
@@ -427,7 +452,7 @@ function planBattleStep(room, playerId, profile) {
   if (!world.player || world.player.isEliminated) return null;
   const ability = abilityStep(world, profile);
   if (ability) return ability;
-  const objectives = assignObjectives(world, profile);
+  const objectives = Strat.assignments(world, profile);
   const units = world.mine.slice().sort((a, b) => ((ORDER[a.category] ?? 2) + (a.isGeneral ? 3 : 0)) - ((ORDER[b.category] ?? 2) + (b.isGeneral ? 3 : 0)));
   for (const u of units) {
     if (u.isFleeing) continue;

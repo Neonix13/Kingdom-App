@@ -13,6 +13,7 @@ const { hexDistance, hexKey, hexFacing } = require('../HexUtils');
 const { buildWorld, inRange, centroid, loneGeneralGoal, unitValue } = require('./world');
 const B = require('./battle');
 const T = require('./tactics');
+const Strat = require('./strategy');
 const { rngFor, pick } = require('./rng');
 const { distanceField } = require('./pathing');
 
@@ -80,7 +81,7 @@ function planOrders(room, playerId, profile) {
   if (!world.player || world.player.isEliminated) return {};
   const max = room.turns.commandPoints ? room.turns.commandPoints(room, playerId) : 99;
   const tactics = profile.tactics || 0;
-  const objectives = B.assignObjectives(world, profile);
+  const objectives = Strat.assignments(world, profile);
   const ability = B.abilityStep(world, profile);
   const balance = T.globalBalance(world);
   const defensive = profile.holdIfWeaker && world.enemies.length > 0 && balance < 0.8;
@@ -102,14 +103,20 @@ function planOrders(room, playerId, profile) {
     const { blunder, roll } = unitRng.get(u.id);
     if (blunder && roll < profile.mistake * 0.4) continue;
     const opts = [];
+    const asg = objectives.get(u.id);
+    const tether = asg && (asg.hold || asg.kind === 'scout' || asg.kind === 'sabotage') ? asg : null;
     // already in contact: strike without moving
     for (const e of world.enemies) {
       if (hexDistance(u.q, u.r, e.q, e.r) !== 1 || e.isFleeing && tactics < 0.5) continue;
       opts.push({ e, q: u.q, r: u.r, path: null, run: 0 });
     }
-    if (tactics > 0 || !opts.length) {
+    if ((tactics > 0 || !opts.length) && !(tether && tether.kind !== 'objective' && tether.kind !== 'post')) {
       const { contacts } = T.contactReach(world, u, u.speedRemaining || 0);
-      for (const c of contacts) for (const e of c.adj) opts.push({ e, q: c.q, r: c.r, path: c.path, run: c.path.length });
+      for (const c of contacts) {
+        // units holding a post or an objective only strike next to it
+        if (tether && hexDistance(c.q, c.r, tether.q, tether.r) > 1) continue;
+        for (const e of c.adj) opts.push({ e, q: c.q, r: c.r, path: c.path, run: c.path.length });
+      }
     }
     for (const o of opts) {
       const x = exchange(world, profile, u, o.e, o.q, o.r, o.run);
@@ -212,7 +219,14 @@ function planOrders(room, playerId, profile) {
     }
 
     // ---------- unit abilities ----------
-    const ua = blunder ? null : B.unitAbilityPlan(world, u);
+    const asg = objectives.get(u.id);
+    const sab = !blunder && Strat.sabotageTarget(world, u, asg);
+    const sabAb = sab && room.ability(u);
+    if (sab && sabAb && (u.speedRemaining || 0) >= sabAb.cost) {
+      cands.push({ unitId: u.id, prio: 65, order: { type: 'hold', unitAbility: { kind: 'sabotage', q: sab.q, r: sab.r } } });
+      continue;
+    }
+    const ua = blunder ? null : B.unitAbilityPlan(world, u, asg);
     if (ua) {
       const unitAbility = ua.kind === 'build' ? { kind: 'build', build: ua.build, q: ua.q, r: ua.r } : { kind: 'vanish' };
       cands.push({ unitId: u.id, prio: 60, order: { type: 'hold', unitAbility } });
@@ -236,6 +250,20 @@ function planOrders(room, playerId, profile) {
 
     // ---------- shooters ----------
     const strikeReach = (u.speedRemaining || 0) + (u.range || 1);
+    // shooters posted on a wall walk: get there, then shoot from it (or wait in ranged defence)
+    if (B.isRanged(u) && asg && asg.kind === 'post') {
+      if (u.q === asg.q && u.r === asg.r) {
+        const ts = world.enemies.filter(t => inRange(world, u, u.q, u.r, t));
+        if (ts.length) {
+          const t = ts.slice().sort((a, b) => B.targetScore(world, profile, u, b, u.q, u.r) - B.targetScore(world, profile, u, a, u.q, u.r))[0];
+          cands.push({ unitId: u.id, prio: 100 + B.targetScore(world, profile, u, t, u.q, u.r), order: { type: 'attack', targetId: t.id } });
+        } else if (u.stance !== 'defense_distance' && u.speedRemaining > 0) cands.push({ unitId: u.id, prio: 45, order: { type: 'hold', stance: 'defense_distance' } });
+        continue;
+      }
+      const dest = reach.size ? B.approachDest(world, profile, u, reach, asg, null) : null;
+      const path = dest && pathTo(prev, u, dest.q, dest.r);
+      if (path && path.length) { cands.push({ unitId: u.id, prio: 70, order: { type: 'move', path } }); continue; }
+    }
     if (B.isRanged(u)) {
       let targets = world.enemies.filter(t => hexDistance(u.q, u.r, t.q, t.r) <= strikeReach || inRange(world, u, u.q, u.r, t));
       const allowed = targets.length && (!profile.hold || targets.some(t => hexDistance(u.q, u.r, t.q, t.r) <= (profile.engageRadius || 0) + (u.range || 1)));
@@ -274,8 +302,8 @@ function planOrders(room, playerId, profile) {
     const threat = T.meleeThreat(world, u.q, u.r);
     const nearest = world.enemies.length ? Math.min(...world.enemies.map(e => hexDistance(e.q, e.r, u.q, u.r))) : Infinity;
     const objective = objectives.get(u.id);
-    if (objective && objective.q === u.q && objective.r === u.r) {
-      const hold = holdOrder(world, profile, u, rng, threat);
+    if (objective && objective.q === u.q && objective.r === u.r && objective.hold !== false && objective.kind !== 'scout' && objective.kind !== 'flank') {
+      const hold = holdOrder(world, profile, u, rng, threat, objective.stance);
       if (hold) cands.push({ unitId: u.id, prio: 55, order: hold });
       continue;
     }
@@ -288,7 +316,7 @@ function planOrders(room, playerId, profile) {
     }
     const goal = objective || (blunder ? world.enemyGuess : B.armyGoal(world));
     if (!goal) continue;
-    const prio = objective ? 60 : 20 + hexDistance(u.q, u.r, goal.q, goal.r) * 0.1;
+    const prio = objective ? (objective.kind === 'post' ? 66 : 60) : 20 + hexDistance(u.q, u.r, goal.q, goal.r) * 0.1;
     // Long walk with no enemy in sight: march stance (the change costs this turn's speed, the stance pays back)
     if (!world.enemies.length && u.stance && u.stance !== 'marche' && u.speedRemaining > 0 && hexDistance(u.q, u.r, goal.q, goal.r) > 6 && rng() < profile.stance) {
       const slow = { ...u, speedRemaining: (u.speedRemaining || 0) - S.stanceCost };
@@ -301,7 +329,7 @@ function planOrders(room, playerId, profile) {
     if (!reach.size) continue;
     // Advance: keep together (no unit far ahead of the army) and do not end next to enemy melee units in the open
     let limit = null;
-    if (Number.isFinite(profile.cohesion) && troops.length > 1) {
+    if (!objective && Number.isFinite(profile.cohesion) && troops.length > 1) {
       const field = distanceField(room, goal.q, goal.r, false);
       const vals = troops.map(m => field.get(hexKey(m.q, m.r))).filter(v => v != null);
       if (vals.length > 1) limit = vals.reduce((s, v) => s + v, 0) / vals.length - profile.cohesion;
@@ -316,7 +344,15 @@ function planOrders(room, playerId, profile) {
       }
     }
     const path = dest && pathTo(prev, u, dest.q, dest.r);
-    if (path && path.length) cands.push({ unitId: u.id, prio, order: { type: 'move', path } });
+    if (path && path.length) {
+      const order = { type: 'move', path };
+      // enemies close: leave the march (or rest) stance on the way, it answers a charge badly
+      const near = world.enemies.length && Math.min(...world.enemies.map(e => hexDistance(e.q, e.r, dest.q, dest.r))) <= 7;
+      if (near && tactics > 0 && !B.isRanged(u) && (u.stance === 'marche' || u.stance === 'repos') && rng() < profile.stance) {
+        order.stance = T.meleeThreat(world, dest.q, dest.r).cavalry > 0 && !isLancer(room, u) ? 'defense_combat' : 'combat';
+      }
+      cands.push({ unitId: u.id, prio, order });
+    }
   }
 
   cands.sort((a, b) => b.prio - a.prio);
@@ -344,14 +380,15 @@ function planOrders(room, playerId, profile) {
 
 // Order for a melee unit that waits for the enemy: a defensive stance (Défense de combat against cavalry or when
 // outmatched, Combat otherwise) and a facing toward the threat when its flank or back is exposed. null = nothing to do.
-function holdOrder(world, profile, u, rng, threat) {
+function holdOrder(world, profile, u, rng, threat, prefer = null) {
   const order = { type: 'hold' };
   const room = world.room;
   if (u.speedRemaining > 0 && rng() < profile.stance) {
-    let want = null;
-    if (threat.cavalry > 0 && !isLancer(room, u)) want = 'defense_combat';
-    else if (u.stance === 'marche' || u.stance === 'repos') want = 'combat';
-    else if (u.stance === 'charge' && threat.n > 0) want = 'defense_combat';
+    // a post imposes its stance; otherwise brace against cavalry, leave march / rest, stop charging when threatened
+    let want = prefer;
+    if (!want && threat.cavalry > 0 && !isLancer(room, u)) want = 'defense_combat';
+    else if (!want && (u.stance === 'marche' || u.stance === 'repos')) want = 'combat';
+    else if (!want && u.stance === 'charge' && threat.n > 0) want = 'defense_combat';
     if (want && want !== u.stance) order.stance = want;
   }
   const tactics = profile.tactics || 0;
