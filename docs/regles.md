@@ -130,7 +130,13 @@ Résolution « NGO » (`RULES.combat`, `GameRoom._resolveCombat`) :
 
 Règles combinées de l'ami (vision) et de l'embuscade (`RULES.vision`, `RULES.concealment`) :
 
-- **Brouillard de guerre** : chaque unité voit à 3 cases (les généraux à leur Stratégie), 2 cases depuis une forêt ; depuis l'extérieur, on ne voit dans une forêt que ses **2 premières rangées** de cases ; la hauteur allonge la vue (+1 par niveau au-dessus de la case regardée) ; les murs bloquent la vue, pas les falaises.
+- **Brouillard de guerre** : chaque unité voit à 3 cases (les généraux à leur Stratégie), 2 cases depuis une forêt ; depuis l'extérieur, on ne voit dans une forêt que ses **2 premières rangées** de cases ; la hauteur allonge la vue (+1 par niveau au-dessus de la case regardée).
+- **Ligne de vue** (`RULES.vision.los`, `game/los.js`) : une case n'est vue que si la ligne droite entre l'œil de l'unité (hauteur de sa case + 0,6 niveau) et la case visée (+ 0,4 niveau) n'est coupée par rien. La ligne est suivie case par case (deux tracés légèrement décalés de part et d'autre : un rayon qui frôle un coin passe si l'un des deux est libre). La bloquent :
+  - le **relief** : toute case traversée dont le sol est plus haut que la ligne (crêtes, montagnes, remparts : au pied du mur de Kankoku on ne voit pas la plaine, du chemin de ronde si) ;
+  - les **forêts** : leurs cimes (+1,2 niveau), sauf jusqu'à 2 cases de l'observateur (4 pour un espion : on voit la lisière) et sauf pour un **général** au-dessus d'elles (il voit par-dessus une forêt plus basse que sa case) ;
+  - les **bâtiments** (+1 niveau) ;
+  - les **murs** posés sur un côté de case (segment « mur », +1,5 niveau au-dessus du côté le plus haut) ; les barrières, chevaux de frise, échelles et escaliers ne bloquent pas la vue, les falaises sont prises en compte par le relief.
+- **Depuis un bâtiment** : une unité voit sa pièce (sa case) et les pièces voisines (cases de bâtiment adjacentes), et l'extérieur par ses propres ouvertures (toute ligne qui ne traverse aucune autre case de bâtiment) ; elle ne voit pas une pièce située derrière une autre. En 3D, le toit et le haut des murs du bâtiment s'effacent quand une de vos unités y est (ou l'unité sélectionnée).
 - **Espion** : voit à **6 cases** (4 depuis une forêt) et **voit l'intérieur des forêts jusqu'à 4 cases**.
 - **Général en hauteur** : +2 de vue par niveau de sa case, dans toutes les directions ; il voit **derrière** une forêt plus basse que lui, mais pas **dedans** au-delà de 2 cases.
 - **Assassin** : invisible pour un ennemi qui n'a **aucune unité à 4 cases** ou moins, quel que soit le terrain.

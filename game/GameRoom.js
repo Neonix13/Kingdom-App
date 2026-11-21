@@ -8,12 +8,13 @@ const { effectiveSegments } = require('../public/js/mapProps.js');
 const { getTurnController } = require('./turns');
 const rules = require('./rules');
 const replay = require('./replay');
+const { canSeeHex, resetLos } = require('./los');
 
 const { RULES } = rules;
 
 const MAP_RADIUS = 70;
 // Derived from the map or rebuilt on load: never serialized
-const TRANSIENT = new Set(['map', 'hexMap', 'unitMap', 'terrainData', 'segmentData', 'heightData', 'mapCenter', '_events', '_moveTable', '_rng']);
+const TRANSIENT = new Set(['map', 'hexMap', 'unitMap', 'terrainData', 'segmentData', 'heightData', 'mapCenter', '_events', '_moveTable', '_rng', '_losGrid', '_losCache']);
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
@@ -104,6 +105,7 @@ class GameRoom {
     this.segmentData = effectiveSegments(map.segments, map.decor, map.height);
     this.heightData = map.height || {};
     this.hexMap = buildHexMap(map);
+    resetLos(this);
     this._applyMapEdits();
     const keys = Object.keys(this.hexMap);
     let sq = 0, sr = 0;
@@ -113,6 +115,7 @@ class GameRoom {
 
   // Map changes made during the battle (espions, bâtisseurs), persisted and re-applied over the shared map
   _applyMapEdits() {
+    resetLos(this);
     const ed = this.mapEdits;
     if (!ed || (!Object.keys(ed.seg || {}).length && !Object.keys(ed.ter || {}).length)) return;
     this.segmentData = { ...this.segmentData };
@@ -735,52 +738,53 @@ class GameRoom {
     return this._visibleHexesOf(player);
   }
 
-  // RULES.vision: range = Strategy (min 3), 2 inside a forest, spies 6 / 4; forests hide what lies beyond forestSight
-  // hexes (spies: 4); +1 per level above the target, generals +2 per level of their own hex and they see behind
-  // (not inside) lower forests; impassable segments except cliffs block the view
+  // RULES.vision: range = Strategy (min 3), 2 inside a forest, spies 6 / 4; +1 per level above the target, generals
+  // +2 per level of their own hex. Forest hexes deeper than forestSight (spies: 4) are not seen from outside, and
+  // everything must be in line of sight (game/los.js: relief, canopies, buildings, walls)
   _visibleHexesOf(player) {
-    const V = RULES.vision;
     const visible = new Set();
-    const sd = this.segmentData;
     const night = this.phase === 'battle' && this.isNight();
-    const DIRS = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
     for (const unit of player.units) {
       if (unit.q === null) continue;
-      const inForest = (this.terrainData[hexKey(unit.q, unit.r)] || 'plain') === 'forest';
-      const spy = unit.typeId === V.spyTypeId || unit.typeId === RULES.concealment.spyTypeId;
-      let baseRange = spy ? (inForest ? V.spy.forestRange : V.spy.range) : (inForest ? V.forestRange : Math.max(V.unitRange, unit.visionRange || 0));
-      if (night) baseRange = Math.max(RULES.night.visionMin, Math.floor(baseRange * RULES.night.visionFactor));
-      const forestSight = spy ? V.spy.forestSight : V.forestSight;
-      const myHeight = this.heightData[hexKey(unit.q, unit.r)] || 0;
-      const heightBonus = unit.isGeneral ? myHeight * V.generalHeightFactor : myHeight;
-      const maxRange = baseRange + heightBonus;
-      const visited = new Map();
-      const queue = [{ q: unit.q, r: unit.r, d: 0 }];
-      visited.set(hexKey(unit.q, unit.r), 0);
-      while (queue.length) {
-        const { q, r, d } = queue.shift();
-        const key = hexKey(q, r);
-        if (!this.hexMap[key]) continue;
-        const targetHeight = this.heightData[key] || 0;
-        const effectiveRange = unit.isGeneral ? baseRange + heightBonus : baseRange + Math.max(0, myHeight - targetHeight);
-        const isForest = this.terrainData[key] === 'forest';
-        const lowerForest = isForest && targetHeight < myHeight;
-        if (!inForest && isForest && d > forestSight && !(unit.isGeneral && lowerForest)) continue;
-        if (d <= effectiveRange && !(unit.isGeneral && lowerForest && d > forestSight)) visible.add(key);
-        if (d >= maxRange) continue;
-        for (const [dq, dr] of DIRS) {
-          const nq = q + dq, nr = r + dr;
-          const nk = hexKey(nq, nr);
-          if (visited.has(nk)) continue;
-          const edgeK = segmentEdgeKey(q, r, nq, nr);
-          const segDef = sd[edgeK] ? this._segments()[sd[edgeK]] : null;
-          if (segDef?.infranchissable && sd[edgeK] !== 'cliff') { visited.set(nk, maxRange + 1); continue; }
-          visited.set(nk, d + 1);
-          queue.push({ q: nq, r: nr, d: d + 1 });
-        }
-      }
+      for (const k of this._unitVision(unit, night)) visible.add(k);
     }
     return visible;
+  }
+
+  _unitVision(unit, night) {
+    const V = RULES.vision;
+    const inForest = (this.terrainData[hexKey(unit.q, unit.r)] || 'plain') === 'forest';
+    const spy = unit.typeId === V.spyTypeId || unit.typeId === RULES.concealment.spyTypeId;
+    let baseRange = spy ? (inForest ? V.spy.forestRange : V.spy.range) : (inForest ? V.forestRange : Math.max(V.unitRange, unit.visionRange || 0));
+    if (night) baseRange = Math.max(RULES.night.visionMin, Math.floor(baseRange * RULES.night.visionFactor));
+    const forestSight = spy ? V.spy.forestSight : V.forestSight;
+    const general = !!unit.isGeneral;
+    const ck = `${unit.q},${unit.r}|${baseRange}|${forestSight}|${general ? 1 : 0}`;
+    if (!this._losCache) this._losCache = new Map();
+    const hit = this._losCache.get(ck);
+    if (hit) return hit;
+    const myHeight = this.heightData[hexKey(unit.q, unit.r)] || 0;
+    const heightBonus = general ? myHeight * V.generalHeightFactor : myHeight;
+    const maxRange = baseRange + heightBonus;
+    const out = [];
+    const sight = { forestSight, seesOverLowerForest: general };
+    for (let dq = -maxRange; dq <= maxRange; dq++) {
+      for (let dr = Math.max(-maxRange, -dq - maxRange); dr <= Math.min(maxRange, -dq + maxRange); dr++) {
+        const q = unit.q + dq, r = unit.r + dr;
+        const key = hexKey(q, r);
+        if (!this.hexMap[key]) continue;
+        const d = hexDistance(unit.q, unit.r, q, r);
+        const targetHeight = this.heightData[key] || 0;
+        const effectiveRange = general ? maxRange : baseRange + Math.max(0, myHeight - targetHeight);
+        if (d > effectiveRange) continue;
+        if (!inForest && this.terrainData[key] === 'forest' && d > forestSight) continue;
+        if (!canSeeHex(this, unit, { q, r }, d, sight)) continue;
+        out.push(key);
+      }
+    }
+    if (this._losCache.size > 4000) this._losCache.clear();
+    this._losCache.set(ck, out);
+    return out;
   }
 
   // ---- concealment (ambushes) ----

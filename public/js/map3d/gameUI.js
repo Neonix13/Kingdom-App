@@ -78,10 +78,10 @@ export function createGameUI({ world, container, bridge, getView }) {
     <label>Dés 3D <input type="checkbox" data-k="dice"></label>
     <label>Ralentis sur les unités détruites <input type="checkbox" data-k="killCam"></label>
     <label>Profondeur de champ <input type="checkbox" data-k="dof"></label>
-    <div class="row"><button data-act="photo">Mode photo (P)</button><button data-act="top">Vue du dessus (T)</button></div>
+    <div class="row"><button data-act="photo">Mode photo (P)</button><button data-act="top">Vue carte (M)</button></div>
     <div class="row"><button data-act="walk">Promenade sur le terrain (B)</button></div>
     <div class="hint">Clic gauche : sélection · glisser : déplacer la vue · clic droit glissé : pivoter · molette : zoom<br>
-    ZQSD / WASD / flèches : déplacer · A/E : pivoter · Espace : centrer sur l’unité · Échap : désélectionner · B : promenade</div>`;
+    ZQSD / WASD / flèches : déplacer · A/E : pivoter · Espace : centrer sur l’unité · Échap : désélectionner · B : promenade · M : vue carte</div>`;
   container.appendChild(panel);
   gear.addEventListener('click', (e) => { e.stopPropagation(); panel.classList.toggle('open'); });
   document.addEventListener('pointerdown', (e) => { if (!panel.contains(e.target) && e.target !== gear) panel.classList.remove('open'); });
@@ -97,7 +97,7 @@ export function createGameUI({ world, container, bridge, getView }) {
     });
   }
   panel.querySelector('[data-act=photo]').addEventListener('click', () => setPhoto(true));
-  panel.querySelector('[data-act=top]').addEventListener('click', () => toggleTopDown());
+  panel.querySelector('[data-act=top]').addEventListener('click', () => { panel.classList.remove('open'); const v = getView(); if (v && v.toggleMapMode) v.toggleMapMode(); });
   panel.querySelector('[data-act=walk]').addEventListener('click', () => { panel.classList.remove('open'); walker.enter(); });
 
   function apply(k) {
@@ -210,17 +210,6 @@ export function createGameUI({ world, container, bridge, getView }) {
 
   // --- Keyboard camera ---
   const keys = new Set();
-  let topDown = null;
-  function toggleTopDown() {
-    if (topDown) {
-      world.flyTo(topDown.p, topDown.t, 0.8);
-      topDown = null;
-    } else {
-      topDown = { p: camera.position.clone(), t: controls.target.clone() };
-      const t = controls.target.clone();
-      world.flyTo(new THREE.Vector3(t.x, t.y + 46, t.z + 0.5), t, 0.8);
-    }
-  }
   const editable = (el) => el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
   window.addEventListener('keydown', (e) => {
     const view = getView();
@@ -232,10 +221,10 @@ export function createGameUI({ world, container, bridge, getView }) {
       return;
     }
     if (walker.active) return;
-    if (e.code === 'KeyB') { walker.enter(); return; }
-    if (k === 'p') setPhoto(!photo);
-    else if (k === 'escape') { if (photo) setPhoto(false); else bridge.deselect && bridge.deselect(); }
-    else if (k === 't') toggleTopDown();
+    if (e.code === 'KeyB') { if (!view.mapMode) walker.enter(); return; }
+    if (e.code === 'KeyM') { e.preventDefault(); view.toggleMapMode && view.toggleMapMode(); }
+    else if (k === 'p') setPhoto(!photo);
+    else if (k === 'escape') { if (view.mapMode) view.toggleMapMode(); else if (photo) setPhoto(false); else bridge.deselect && bridge.deselect(); }
     else if (k === ' ') {
       e.preventDefault();
       const st = bridge.state;
@@ -250,7 +239,7 @@ export function createGameUI({ world, container, bridge, getView }) {
   function update(dt) {
     if (!keys.size || walker.active) return;
     const dist = camera.position.distanceTo(controls.target);
-    const sp = dist * 0.9 * settings.camSpeed * dt;
+    const sp = dist * 0.9 * settings.camSpeed * dt * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) / Math.tan(THREE.MathUtils.degToRad(21));
     camera.getWorldDirection(fwd);
     fwd.y = 0; fwd.normalize();
     right.crossVectors(fwd, camera.up).normalize();

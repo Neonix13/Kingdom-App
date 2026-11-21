@@ -524,27 +524,33 @@ function renderGenerals(takenList) {
   const abil = [];
   if (g.activeAbility) abil.push(`<div class="ld-abil-item"><span class="ld-abil-kind">Capacité active · recharge ${g.activeAbility.cooldown} tours</span><b>${escapeHtml(g.activeAbility.name)}</b><p>${escapeHtml(g.activeAbility.description)}</p></div>`);
   if (g.passiveAbility) abil.push(`<div class="ld-abil-item"><span class="ld-abil-kind">Passif</span><b>${escapeHtml(g.passiveAbility.name)}</b><p>${escapeHtml(g.passiveAbility.description)}</p></div>`);
+  const heroImg = generalImageUrl(g);
+  const fc = (x) => `<span class="ld-gmini"><i>F</i>${x.force ?? '—'}<i>S</i>${x.strategy ?? '—'}<i>C</i>${x.charisma ?? '—'}</span>`;
   grid.innerHTML = `
-    <div class="ld-tabs" role="group" aria-label="Royaume">${KINGDOMS.map(k => `<button class="ld-tab" data-tab="${k.id}" aria-pressed="${k.id === genTab}" aria-label="${k.name}" title="${k.name}">${k.k}</button>`).join('')}</div>
-    <div class="ld-gen">
-      <div class="ld-gen-info">
-        <div class="ld-gen-kicker">GÉNÉRAL · ${escapeHtml(kingdomLabel(g).toUpperCase())}</div>
-        <div class="ld-gen-name">${escapeHtml(g.name)}</div>
-        <svg class="ld-stroke" width="220" height="12" viewBox="0 0 220 12" aria-hidden="true"><path d="M2 8 C 50 2, 110 11, 160 5 S 210 7, 218 4" stroke="currentColor" stroke-width="4" fill="none" stroke-linecap="round"/></svg>
-        ${g.citation ? `<p class="ld-gen-quote">${escapeHtml(g.citation)}</p>` : ''}
-        ${statBars(g)}
-        ${generalFacts(g)}
-        ${abil.length ? `<div class="ld-abil">${abil.join('')}</div>` : ''}
-        ${status ? `<div class="ld-gen-actions">${status}</div>` : ''}
+    <div class="ld-tabs" role="group" aria-label="Royaume">${KINGDOMS.map(k => `<button class="ld-tab" data-tab="${k.id}" aria-pressed="${k.id === genTab}" title="${k.name}"><span class="ld-brush" aria-hidden="true">${k.k}</span><span>${k.name}</span></button>`).join('')}</div>
+    <div class="ld-gen-stage">
+      ${heroImg ? `<div class="ld-gen-bg" aria-hidden="true" style="background-image:url('${heroImg}')"></div>` : ''}
+      <div class="ld-gen">
+        <div class="ld-gen-info">
+          <div class="ld-gen-kicker">Général · ${escapeHtml(kingdomLabel(g))}</div>
+          <div class="ld-gen-name">${escapeHtml(g.name)}</div>
+          <svg class="ld-stroke" width="220" height="12" viewBox="0 0 220 12" aria-hidden="true"><path d="M2 8 C 50 2, 110 11, 160 5 S 210 7, 218 4" stroke="currentColor" stroke-width="4" fill="none" stroke-linecap="round"/></svg>
+          ${g.citation ? `<p class="ld-gen-quote">${escapeHtml(g.citation)}</p>` : ''}
+          ${statBars(g)}
+          ${generalFacts(g)}
+          ${abil.length ? `<div class="ld-abil">${abil.join('')}</div>` : ''}
+          ${status ? `<div class="ld-gen-actions">${status}</div>` : ''}
+        </div>
+        ${scrollHtml(g)}
       </div>
-      ${scrollHtml(g)}
     </div>
-    <div class="ld-roster">${inTab.map(x => {
+    <div class="ld-roster" role="group" aria-label="Généraux de ${escapeHtml((KINGDOMS.find(k => k.id === genTab) || {}).name || '')}">${inTab.map(x => {
       const cls = [x.id === g.id ? 'preview' : '', x.id === selectedGeneral ? 'mine' : '', isTaken(x) ? 'taken' : ''].join(' ');
       const img = generalImageUrl(x);
-      const flag = x.id === selectedGeneral ? '<span class="ld-flag">VOUS</span>' : isTaken(x) ? '<span class="ld-flag">PRIS</span>' : '';
+      const flag = x.id === selectedGeneral ? '<span class="ld-flag">Vous</span>' : isTaken(x) ? '<span class="ld-flag">Pris</span>' : '';
       return `<button class="ld-gbtn ${cls}" data-gen="${escapeHtml(x.id)}" aria-pressed="${x.id === g.id}">
-        <span class="ld-face">${img ? `<img src="${img}" alt="">` : escapeHtml(x.name.charAt(0))}</span>${flag}<span>${escapeHtml(x.name)}</span></button>`;
+        <span class="ld-face">${img ? `<img src="${img}" alt="">` : `<span class="ld-brush">${escapeHtml(x.name.charAt(0))}</span>`}</span>${flag}
+        <span class="ld-gname">${escapeHtml(x.name)}</span>${fc(x)}</button>`;
     }).join('')}</div>`;
   grid.onclick = (e) => {
     const t = e.target.closest('button');
@@ -595,7 +601,7 @@ function showUnitCardLobby(u) {
         ${bonusHtml}
       </div>
       <div class="uc-pdf-right">
-        <div class="uc-pdf-title">${u.name}<br><span>${u.category.toUpperCase()} · ${u.cost} OR</span></div>
+        <div class="uc-pdf-title">${escapeHtml(u.name)}<br><span>${escapeHtml(unitGroupOf(u).name.toUpperCase())} · <b class="uc-gold">${fmtGold(u.cost)} or</b></span></div>
         <div class="uc-pdf-stats">${statsHtml}</div>
       </div>
     </div>
@@ -714,54 +720,109 @@ function renderSettings(data) {
 }
 
 // Army builder
+const UNIT_GROUPS = [
+  { id: 'inf', name: 'Infanterie', hint: 'Le cœur de la ligne : tient le terrain et encaisse.', ids: ['pietaille', 'soldats', 'phalange', 'lancier'], cats: ['Infanterie'] },
+  { id: 'tir', name: 'Tireurs', hint: 'Frappent à distance, sans riposte possible.', ids: ['archer', 'archer_elite'], cats: ['Tireurs'] },
+  { id: 'cav', name: 'Cavalerie', hint: 'Rapide et décisive en charge, fragile au contact prolongé.', ids: ['cavalier_leger', 'cavalier_lourd'], cats: ['Chevaux', 'Cavalerie'] },
+  { id: 'char', name: 'Chars', hint: 'Lourds, ils traversent les lignes ennemies.', ids: ['char'], cats: ['Chars'] },
+  { id: 'spe', name: 'Unités spéciales', hint: 'Renseignement, sabotage et génie.', ids: ['espion', 'assassin', 'batisseurs'], cats: [] },
+];
+const GROUP_ICONS = {
+  inf: '<path d="M12 3l7 3v5c0 5-3.5 8-7 10-3.5-2-7-5-7-10V6z"/><path d="M12 7v9M9 11h6"/>',
+  tir: '<path d="M6 3c9 3 9 15 0 18"/><path d="M6 3v18M6 12h14M16 8l4 4-4 4"/>',
+  cav: '<path d="M8 21v-5l-3-3 2-6 6-4 3 3 4 1-1 4h-3l-2 2v8"/><circle cx="14" cy="7.5" r=".6" fill="currentColor"/>',
+  char: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2"/><path d="M12 4v6M12 14v6M4 12h6M14 12h6M6.3 6.3l4.3 4.3M13.4 13.4l4.3 4.3M17.7 6.3l-4.3 4.3M10.6 13.4l-4.3 4.3"/>',
+  spe: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+};
+const groupIcon = (id, size = 18) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${GROUP_ICONS[id] || GROUP_ICONS.spe}</svg>`;
+const UNIT_STATS = [['attack', 'Attaque', 'ATQ'], ['defense', 'Défense', 'DÉF'], ['power', 'Puissance', 'PUI'], ['armor', 'Armure', 'ARM'], ['speed', 'Vitesse', 'VIT']];
+const fmtGold = (n) => Number(n || 0).toLocaleString('fr-FR');
+
+function unitGroupOf(u) {
+  return UNIT_GROUPS.find(g => g.ids.includes(u.id)) || UNIT_GROUPS.find(g => g.cats.includes(u.category)) || UNIT_GROUPS[UNIT_GROUPS.length - 1];
+}
+
 function renderArmyGeneral() {
   const box = document.getElementById('ld-army-general');
   const g = GENERALS_DATA.find(x => x.id === selectedGeneral);
-  if (!g) { box.innerHTML = ''; return; }
-  box.innerHTML = `<div class="ld-gen-kicker">VOTRE GÉNÉRAL · ${escapeHtml(kingdomLabel(g).toUpperCase())}</div>
-    <div class="ld-gen-name">${escapeHtml(g.name)}</div>
-    ${statBars(g)}
-    ${scrollHtml(g)}`;
+  const img = g ? generalImageUrl(g) : null;
+  const chosen = UNITS_DATA.filter(u => (armyQuantities[u.id] || 0) > 0);
+  const totalUnits = chosen.reduce((n, u) => n + armyQuantities[u.id], 0);
+  const summary = chosen.length
+    ? `<ul class="ld-army-list">${chosen.map(u => `<li><span class="ld-al-ico">${groupIcon(unitGroupOf(u).id, 16)}</span>
+        <span class="ld-al-name">${escapeHtml(u.name)}</span><span class="ld-al-n">× ${armyQuantities[u.id]}</span>
+        <span class="ld-gold">${fmtGold(u.cost * armyQuantities[u.id])}</span></li>`).join('')}</ul>`
+    : '<p class="ld-army-empty">Aucune unité recrutée. Ajoutez des troupes avec les boutons +.</p>';
+  box.innerHTML = `${g ? `<div class="ld-army-hero">
+      ${img ? `<div class="ld-army-face"><img src="${img}" alt=""></div>` : ''}
+      <div class="ld-army-hero-txt"><div class="ld-gen-kicker">Votre général · ${escapeHtml(kingdomLabel(g))}</div>
+      <div class="ld-gen-name">${escapeHtml(g.name)}</div>${statBars(g)}</div></div>` : ''}
+    <div class="ld-army-sum">
+      <div class="ld-army-sum-head"><span>Votre armée</span><b>${totalUnits} unité${totalUnits > 1 ? 's' : ''}</b></div>
+      ${summary}
+    </div>`;
+}
+
+function unitCardHtml(u, max) {
+  const img = unitImageUrl(u);
+  const stats = UNIT_STATS.map(([k, label, short]) => {
+    const v = u[k] ?? 0;
+    return `<div class="ld-us" title="${label} : ${v}"><span>${short}</span><b>${v}</b><span class="ld-us-track"><i style="width:${Math.max(6, Math.min(100, v / (max[k] || 1) * 100))}%"></i></span></div>`;
+  }).join('');
+  const extra = [`${u.vitality} vitalité`, `${u.morale} moral`];
+  if (u.range > 1) extra.push(`portée ${u.range}`);
+  return `<article class="ld-ucard" id="unit-row-${u.id}" data-unit="${escapeHtml(u.id)}">
+    <button class="ld-ucard-art" data-sheet="${escapeHtml(u.id)}" aria-label="Fiche complète : ${escapeHtml(u.name)}">
+      ${img ? `<img src="${img}" alt="" loading="lazy">` : `<span class="ld-ucard-ico">${groupIcon(unitGroupOf(u).id, 48)}</span>`}
+      <span class="ld-ucard-cost"><b>${fmtGold(u.cost)}</b> or</span>
+      <span class="ld-ucard-count" id="badge-${u.id}" aria-hidden="true"></span>
+      <span class="ld-ucard-info" aria-hidden="true">Fiche</span>
+    </button>
+    <div class="ld-ucard-body">
+      <div class="ld-ucard-title"><b>${escapeHtml(u.name)}</b><small>${extra.join(' · ')}</small></div>
+      <div class="ld-ustats">${stats}</div>
+      ${u.bonus ? `<p class="ld-ucard-bonus" title="${escapeHtml(u.bonus)}">${escapeHtml(u.bonus)}</p>` : ''}
+    </div>
+    <div class="ld-ucard-foot unit-qty">
+      <button class="ld-q" data-q="-1" aria-label="Retirer : ${escapeHtml(u.name)}">−</button>
+      <span id="qty-${u.id}" aria-live="polite">0</span>
+      <button class="ld-q" data-q="1" aria-label="Ajouter : ${escapeHtml(u.name)}">+</button>
+    </div>
+  </article>`;
 }
 
 function renderArmyBuilder() {
   const shop = document.getElementById('unit-shop');
-  shop.innerHTML = '';
   armyQuantities = {};
   UNITS_DATA.forEach(u => { armyQuantities[u.id] = 0; });
+  const max = {};
+  for (const [k] of UNIT_STATS) max[k] = Math.max(...UNITS_DATA.map(u => u[k] || 0));
+  const groups = UNIT_GROUPS.map(g => ({ g, units: UNITS_DATA.filter(u => unitGroupOf(u) === g) })).filter(x => x.units.length);
+  shop.innerHTML = groups.map(({ g, units }) => `<section class="ld-cat" data-group="${g.id}">
+      <header class="ld-cat-head"><span class="ld-cat-ico">${groupIcon(g.id, 20)}</span><h3>${g.name}</h3><p>${g.hint}</p><span class="ld-cat-n" id="cat-n-${g.id}"></span></header>
+      <div class="ld-cat-grid">${units.map(u => unitCardHtml(u, max)).join('')}</div>
+    </section>`).join('');
+  shop.onclick = (e) => {
+    const card = e.target.closest('.ld-ucard');
+    if (!card) return;
+    const q = e.target.closest('[data-q]');
+    if (q) { changeQty(card.dataset.unit, Number(q.dataset.q)); return; }
+    if (e.target.closest('[data-sheet]')) {
+      const u = UNITS_DATA.find(x => x.id === card.dataset.unit);
+      if (u) showUnitCardLobby(u);
+    }
+  };
   renderArmyGeneral();
-  for (const u of UNITS_DATA) {
-    const row = document.createElement('div');
-    row.className = 'ld-unit';
-    row.id = `unit-row-${u.id}`;
-    const img = unitImageUrl(u);
-    const stats = `ATQ ${u.attack} · PUI ${u.power} · DÉF ${u.defense} · ARM ${u.armor} · VIT ${u.speed}${u.range > 1 ? ` · portée ${u.range}` : ''}`;
-    row.innerHTML = `
-      <button class="ld-unit-face" aria-label="Fiche : ${escapeHtml(u.name)}">${img ? `<img src="${img}" alt="">` : ''}<span class="ld-brush">${UNIT_KANJI[u.id] || '兵'}</span></button>
-      <div class="ld-unit-info"><b>${escapeHtml(u.name)}</b><small title="${escapeHtml(stats)}">${escapeHtml(u.category)} · ${stats}</small><span class="ld-cost">${u.cost.toLocaleString('fr-FR')} or</span></div>
-      <div class="unit-qty">
-        <button aria-label="Retirer : ${escapeHtml(u.name)}" onclick="changeQty('${u.id}', -1)">−</button>
-        <span id="qty-${u.id}" aria-live="polite">0</span>
-        <button aria-label="Ajouter : ${escapeHtml(u.name)}" onclick="changeQty('${u.id}', 1)">+</button>
-      </div>`;
-    row.querySelector('.ld-unit-face').onclick = () => showUnitCardLobby(u);
-    shop.appendChild(row);
-  }
   updateBudgetDisplay();
 }
 
 function changeQty(typeId, delta) {
   const unit = UNITS_DATA.find(u => u.id === typeId);
-  const newQty = Math.max(0, armyQuantities[typeId] + delta);
-  const spent = computeSpent();
-  const cost = unit.cost;
-  if (delta > 0 && spent + cost > budget) {
-    return notify('Budget insuffisant !');
-  }
+  if (!unit) return;
+  const newQty = Math.max(0, (armyQuantities[typeId] || 0) + delta);
+  if (delta > 0 && computeSpent() + unit.cost > budget) return notify('Budget insuffisant !');
   armyQuantities[typeId] = newQty;
-  document.getElementById(`qty-${typeId}`).textContent = newQty;
-  const row = document.getElementById(`unit-row-${typeId}`);
-  if (row) row.classList.toggle('has', newQty > 0);
+  renderArmyGeneral();
   updateBudgetDisplay();
 }
 
@@ -776,11 +837,32 @@ function computeSpent() {
 
 function updateBudgetDisplay() {
   const spent = computeSpent();
-  document.getElementById('army-budget').textContent = budget.toLocaleString('fr-FR');
-  document.getElementById('army-spent').textContent = spent.toLocaleString('fr-FR');
-  document.getElementById('army-remaining').textContent = (budget - spent).toLocaleString('fr-FR');
+  const left = budget - spent;
+  document.getElementById('army-budget').textContent = fmtGold(budget);
+  document.getElementById('army-spent').textContent = fmtGold(spent);
+  document.getElementById('army-remaining').textContent = fmtGold(left);
   const fill = document.getElementById('ld-budget-fill');
   if (fill) fill.style.width = `${budget > 0 ? Math.min(100, spent / budget * 100) : 0}%`;
+  for (const u of UNITS_DATA) {
+    const n = armyQuantities[u.id] || 0;
+    const card = document.getElementById(`unit-row-${u.id}`);
+    if (!card) continue;
+    card.classList.toggle('has', n > 0);
+    card.classList.toggle('pricey', u.cost > left);
+    document.getElementById(`qty-${u.id}`).textContent = n;
+    const badge = document.getElementById(`badge-${u.id}`);
+    if (badge) badge.textContent = n > 0 ? `× ${n}` : '';
+    const plus = card.querySelector('[data-q="1"]');
+    if (plus) { plus.disabled = u.cost > left; plus.title = u.cost > left ? 'Budget insuffisant' : ''; }
+    const minus = card.querySelector('[data-q="-1"]');
+    if (minus) minus.disabled = n === 0;
+  }
+  for (const g of UNIT_GROUPS) {
+    const el = document.getElementById(`cat-n-${g.id}`);
+    if (!el) continue;
+    const n = UNITS_DATA.filter(u => unitGroupOf(u) === g).reduce((t, u) => t + (armyQuantities[u.id] || 0), 0);
+    el.textContent = n ? `${n} recrutée${n > 1 ? 's' : ''}` : '';
+  }
 }
 
 function submitArmy() {

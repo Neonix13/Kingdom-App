@@ -2,6 +2,7 @@ import { createWorld } from './world.js';
 import { createPathPreview, createOrdersLayer } from './pathPreview.js';
 import { createMapEditsLayer } from './mapEdits3d.js';
 import { createGameUI } from './gameUI.js';
+import { createMapMode } from './mapMode.js';
 import { createDice3d } from './dice3d.js';
 import { createCameraDirector } from './cameraDirector.js';
 import { createCorpseLayer } from './corpses3d.js';
@@ -98,8 +99,9 @@ export async function mountGameView(bridge, { container }) {
   editsLayer.update(bridge.mapEdits, baseMap().seg, baseMap().ter);
   let view = null;
   const ui = createGameUI({ world, container, bridge, getView: () => view });
+  const mapMode = createMapMode(world, { onChange: (on) => window.dispatchEvent(new CustomEvent('kb-mapmode', { detail: on })) });
   const dice = createDice3d(world);
-  const killCam = createKillCam(world, { enabled: () => ui.killCam(), blocked: () => ui.photo || !view || !view.active });
+  const killCam = createKillCam(world, { enabled: () => ui.killCam(), blocked: () => ui.photo || !view || !view.active || mapMode.active });
   const director = createCameraDirector(world, { container, enabled: () => ui.followPlayback() && !killCam.active });
   const corpses = createCorpseLayer(world);
   if (window.KBCorpses) window.KBCorpses.onChange((list) => corpses.set(list));
@@ -228,6 +230,12 @@ export async function mountGameView(bridge, { container }) {
     // base-camp banners take the colours of the army deployed in each fixed zone; birds flee approaching troops
     if (st && Array.isArray(st.players) && world.setCampColors) world.setCampColors(st.players.filter((p) => p.mapZone != null).map((p) => ({ zone: p.mapZone, color: bridge.getPlayerColor(p.id), emblem: KINGDOM_OF[p.generalId] || '' })));
     if (world.setBirdThreats) world.setBirdThreats(shownUnits.map((u) => world.hexToWorld(u.q, u.r)));
+    if (world.setBuildingCutaways) {
+      const inside = (u) => u && u.q != null && world.allHexes.get(hexKey(u.q, u.r))?.terrain === 'building';
+      const open = shownUnits.filter((u) => (u.isMine || u.playerId === bridge.myId) && inside(u));
+      if (inside(sel) && !open.includes(sel)) open.push(sel);
+      world.setBuildingCutaways(open.map((u) => ({ q: u.q, r: u.r })));
+    }
     if (bridge.simultaneous && !bridge.playback) ordersLayer.show(bridge.plannedOrders || [], bridge.getPlayerColor(bridge.myId), (id) => { const u = shownUnits.find((x) => x.id === id); return u ? anchorOf(u).clone().setY(anchorOf(u).y - 0.3) : null; });
     else ordersLayer.clear();
     world.layers.setOccupied(new Set([...shownUnits.map((u) => hexKey(u.q, u.r)), ...editsLayer.clearedHexes(bridge.mapEdits, baseMap().ter)]));
@@ -352,7 +360,7 @@ export async function mountGameView(bridge, { container }) {
     preview.update(dt);
     const camDist = world.camera.position.distanceTo(world.controls.target);
     const pm = ui.platesMode();
-    const showPlates = !ui.photo && (pm === 'always' || (pm === 'auto' && camDist < 48));
+    const showPlates = !ui.photo && (pm === 'always' || (pm === 'auto' && (camDist < 48 || mapMode.active)));
     plates.classList.toggle('names', camDist < 14);
     plates.style.display = showPlates ? '' : 'none';
     if (showPlates) {
@@ -361,7 +369,7 @@ export async function mountGameView(bridge, { container }) {
         const s = world.projectToScreen(anchorOf(u));
         if (!s.visible) { el.style.display = 'none'; continue; }
         el.style.display = '';
-        el.style.transform = `translate(${s.x.toFixed(1)}px, ${s.y.toFixed(1)}px) translate(-50%, -100%)`;
+        el.style.transform = `translate(${s.x.toFixed(1)}px, ${s.y.toFixed(1)}px) translate(-50%, ${mapMode.active ? '-50%' : '-100%'})`;
       }
     }
   }
@@ -406,6 +414,8 @@ export async function mountGameView(bridge, { container }) {
     markDirty() { dirty = true; },
     onMapEdits(ed) { editsLayer.update(ed, baseMap().seg, baseMap().ter); dirty = true; },
     focusHex(q, r) { world.focusHex(q, r, 0.9); },
+    toggleMapMode() { mapMode.toggle(); },
+    get mapMode() { return mapMode.active; },
     // true when the hex is well inside the screen (not near the borders)
     hexOnScreen(q, r, margin = 0.12) {
       const p = world.hexToWorld(q, r);
@@ -480,6 +490,7 @@ export async function mountGameView(bridge, { container }) {
     },
     killCam,
     setActive(on) {
+      if (!on) mapMode.exit(true);
       view.active = on;
       ui.hide(!on);
       canvas.style.display = on ? '' : 'none';
