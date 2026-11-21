@@ -94,6 +94,7 @@ export async function mountGameView(bridge, { container }) {
 
   const preview = createPathPreview(world);
   const ordersLayer = createOrdersLayer(world);
+  const marchLayer = createOrdersLayer(world, { opacity: 0.45 }); // standing marches of my units (rest of the route)
   const editsLayer = createMapEditsLayer(world);
   const baseMap = () => (bridge.mapDoc ? { seg: bridge.mapDoc.segments || {}, ter: bridge.mapDoc.terrain || {} } : { seg: {}, ter: {} });
   editsLayer.update(bridge.mapEdits, baseMap().seg, baseMap().ter);
@@ -238,6 +239,9 @@ export async function mountGameView(bridge, { container }) {
     }
     if (bridge.simultaneous && !bridge.playback) ordersLayer.show(bridge.plannedOrders || [], bridge.getPlayerColor(bridge.myId), (id) => { const u = shownUnits.find((x) => x.id === id); return u ? anchorOf(u).clone().setY(anchorOf(u).y - 0.3) : null; });
     else ordersLayer.clear();
+    const marches = (bridge.state?.units || []).filter((u) => u.isMine && u.march && u.march.route && u.march.route.length && u.q != null)
+      .map((u) => ({ type: 'move', path: [[u.q, u.r], ...u.march.route] }));
+    if (marches.length) marchLayer.show(marches, bridge.getPlayerColor(bridge.myId)); else marchLayer.clear();
     world.layers.setOccupied(new Set([...shownUnits.map((u) => hexKey(u.q, u.r)), ...editsLayer.clearedHexes(bridge.mapEdits, baseMap().ter)]));
     if (units3d) {
       units3d.sync(shownUnits);
@@ -307,10 +311,13 @@ export async function mountGameView(bridge, { container }) {
         if (units3d) units3d.setHovered(hu ? hu.id : null);
         for (const el of plateEls.values()) el.classList.toggle('hov', !!(hu && el._unit.id === hu.id));
         const approach = sel && attackable && hu && bridge.approachTo ? bridge.approachTo(sel, hu) : null;
+        const march = sel && !movable && !attackable && !hu && bridge.marchPlan ? bridge.marchPlan(sel, valid.q, valid.r) : null;
+        if (march) world.layers.setHover(valid, '#c9d4ff');
         if (sel && movable) {
           const res = bridge.pathTo(sel, valid.q, valid.r);
           preview.showPath(res ? [[sel.q, sel.r], ...res.path.slice(1)] : null);
         } else if (approach && approach.path.length > 1) preview.showPath(approach.path);
+        else if (march) preview.showPath(march.path, { turnEnds: march.turnEnds });
         else preview.showPath(null);
         if (sel && attackable && hu) {
           let from = anchorOf(sel).clone().setY(anchorOf(sel).y - 0.35);

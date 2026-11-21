@@ -75,7 +75,11 @@
     if (!unit || unit.q == null) return null;
     const from = (start, budget, fresh) => reach(unit, budget, start, fresh);
     let R = composeRoute(unit, budgetFor(unit), from);
-    if (!R && routeWaypoints(unit).length) { route.waypoints = []; R = composeRoute(unit, budgetFor(unit), from); }
+    if (!R && routeWaypoints(unit).length) {
+      const M = marchRoute(unit); // waypoints beyond this turn: a march
+      if (M) return M;
+      route.waypoints = []; R = composeRoute(unit, budgetFor(unit), from);
+    }
     return R;
   }
 
@@ -84,6 +88,7 @@
     if (!unit || !canPlan() || unit.isFleeing) return;
     const R = simRoute(unit);
     if (!R) return;
+    if (R.march) return;
     for (const k of R.reach.dist.keys()) movableTiles.add(k);
     movableTiles.delete(`${unit.q},${unit.r}`);
     for (const [q, r] of routeWaypoints(unit)) movableTiles.delete(`${q},${r}`);
@@ -117,12 +122,16 @@
 
   function patchOrder(unit, patch) {
     const o = { type: 'hold', ...(current(unit) || {}), ...patch };
+    // a march order: resend its whole route (the server splits it again with the new budget)
+    if (o.marchRest && !('path' in patch) && o.type === 'move') { o.path = [...(o.path || []), ...o.marchRest]; o.march = true; }
+    delete o.marchRest;
+    if (o.type !== 'move' || ('path' in patch && !patch.march)) delete o.march;
     for (const k of Object.keys(o)) if (o[k] === undefined) delete o[k];
     const routed = o.type === 'attack' || o.type === 'charge';
     if (o.type !== 'move' && !routed) delete o.path;
     if (o.type !== 'attack' && o.type !== 'charge') delete o.targetId;
     // a stance or facing change shrinks the budget: drop a path that no longer fits (checked step by step)
-    if ((o.type === 'move' || routed) && o.path && o.path.length) {
+    if ((o.type === 'move' || routed) && o.path && o.path.length && !o.march) {
       if (!pathFits(unit, o.path, budgetFor(unit, o))) {
         if (o.type === 'move') { o.type = 'hold'; notify('Chemin trop long avec ce changement : déplacement annulé.', 'info'); }
         else if ((unit.range || 1) > 1) notify('Position de tir trop loin avec ce changement : le tireur reste sur place.', 'info');
@@ -137,6 +146,7 @@
     if (!order) return 'Aucun ordre : l\'unité tient sa position.';
     const parts = [ORDER_LABEL[order.type] || order.type];
     if (order.type === 'move' && order.path) parts[0] += ` (${order.path.length} case${order.path.length > 1 ? 's' : ''})`;
+    if (order.type === 'move' && order.marchRest && order.marchRest.length) parts[0] += ` · marche : encore ${order.marchRest.length} case${order.marchRest.length > 1 ? 's' : ''} aux tours suivants`;
     if ((order.type === 'attack' || order.type === 'charge') && order.path && order.path.length && unit && (unit.range || 1) <= 1) parts[0] += ` · par le chemin choisi (${order.path.length} case${order.path.length > 1 ? 's' : ''})`;
     if (order.targetId) {
       const t = anyUnit(order.targetId);
@@ -180,13 +190,13 @@
     if (selectedUnit) {
       const sel = myUnit(selectedUnit.id) || selectedUnit;
       // waypoints: Maj+clic (or the Étapes tool) adds one, a click on a waypoint cuts the route back to it
-      if (!unitAt && routeClick(sel, hex, !!opts.shiftKey || route.tool, movableTiles, refresh)) return;
+      if (!unitAt && routeClick(sel, hex, !!opts.shiftKey || route.tool, { has: (k) => movableTiles.has(k) || marchTargets(sel).has(k) }, refresh)) return;
       if (unitAt && !unitAt.isMine && !unitAt.isAlly) {
         const type = st.tool === 'charge' ? 'charge' : 'attack';
         if (type === 'charge' && sel.range > 1) { notify('Les tireurs ne chargent pas.', 'info'); return; }
         const patch = { type, targetId: unitAt.id, path: undefined };
         const R = routeWaypoints(sel).length ? simRoute(sel) : null;
-        if (R && (sel.range || 1) <= 1) patch.path = R.path.slice(1); // melee: follows the route, then closes in
+        if (R && !R.march && (sel.range || 1) <= 1) patch.path = R.path.slice(1); // melee: follows the route, then closes in
         else if (type === 'attack' && sel.range > 1) {
           // out of range: the shooter first walks to its firing position (after the route, if any)
           const a = approachTo(sel, unitAt);
@@ -211,11 +221,36 @@
         computeTiles(sel);
         return;
       }
+      // beyond this turn's reach: a march over several turns (first click shows it, the second one gives the order)
+      const mp = !unitAt && marchPlan(sel, hex.q, hex.r);
+      if (mp) {
+        if (mp.path.length - 1 > 200) { notify('Destination trop lointaine pour une seule marche.', 'info'); return; }
+        if (st.pendingMarch === `${sel.id}|${key}`) {
+          st.pendingMarch = null;
+          patchOrder(sel, { type: 'move', path: mp.path.slice(1), march: true, targetId: undefined });
+          resetRoute();
+          computeTiles(sel);
+          return;
+        }
+        st.pendingMarch = `${sel.id}|${key}`;
+        notify(`${marchLabel(mp)} : cliquez à nouveau sur la case pour donner l'ordre.`, 'info');
+        render();
+        return;
+      }
       select(null);
       return;
     }
     if (unitAt && unitAt.isMine) select(unitAt);
     else if (unitAt) showUnitDetail(unitAt);
+  }
+
+  // March to a hex beyond this turn's reach (planning budget), or null
+  function marchPlan(unit, tq, tr) {
+    if (!unit || unit.q == null || !canPlan() || unit.isFleeing) return null;
+    const k = `${tq},${tr}`;
+    if (movableTiles.has(k) || (gameState.units || []).some(u => u.q === tq && u.r === tr)) return null;
+    const b = budgetFor(unit);
+    return window.marchPlan ? window.marchPlan(unit, tq, tr, b, b === unit.speedRemaining && KBRules.hasFullSpeed(unit)) : null;
   }
 
   // Path to (tq, tr) through the waypoints: { path (origin included), costs, cost } or null
@@ -229,7 +264,7 @@
   function approachTo(unit, target) {
     if (!unit || unit.q == null || !target || !canPlan()) return null;
     const R = simRoute(unit);
-    if (!R) return null;
+    if (!R || R.march) return null;
     const E = R.end;
     if (hexDistance(E.q, E.r, target.q, target.r) <= KBRules.attackRange(unit.range, mapHeight[`${E.q},${E.r}`] || 0, mapHeight[`${target.q},${target.r}`] || 0)) {
       return routeWaypoints(unit).length ? { q: E.q, r: E.r, path: R.path } : null;
@@ -242,7 +277,7 @@
     const unit = selectedUnit && myUnit(selectedUnit.id);
     if (!unit || !canPlan() || unit.isFleeing) return null;
     const R = simRoute(unit);
-    return R ? { waypoints: routeWaypoints(unit), cost: R.cost, left: R.left, budget: budgetFor(unit), tool: route.tool } : null;
+    return R ? { waypoints: routeWaypoints(unit), cost: R.cost, left: R.march ? 0 : R.left, budget: budgetFor(unit), tool: route.tool, march: !!R.march } : null;
   }
 
   function contextMenu(hex, clientX, clientY) {
@@ -841,7 +876,7 @@
   window.KBSim = {
     isSim,
     active: () => isSim() && gameState.phase === 'battle',
-    intercept, onState, click, select, contextMenu, pathTo, approachTo, draw, refresh, routeInfo,
+    intercept, onState, click, select, contextMenu, pathTo, marchPlan, approachTo, draw, refresh, routeInfo,
     routeWaypoints: () => routeWaypoints(selectedUnit),
     routePath: () => { const u = selectedUnit && myUnit(selectedUnit.id); return u ? simRoute(u) : null; },
     plannedOrders, planning,

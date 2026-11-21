@@ -238,6 +238,7 @@ export function mountBattleHud(bridge, view) {
         cls += placed ? ' placed' : ' todo';
         status = `<span class="s">${placed ? 'PLACÉ' : 'À PLACER'}</span>`;
       } else if (u.isFleeing) { cls += ' flee'; status = '<span class="s">FUITE</span>'; }
+      else if (u.march && u.march.route && u.march.route.length && !(sim && orders.has(String(u.id)))) status = '<span class="s">MARCHE</span>';
       else if (sim && orders.has(String(u.id))) status = '<span class="s">ORDRE</span>';
       else if (!sim && u.hasMoved && u.hasAttacked) { cls += ' done'; status = '<span class="s">JOUÉ</span>'; }
       else status = `<span class="v">${u.vitality ?? ''}</span>`;
@@ -324,6 +325,7 @@ export function mountBattleHud(bridge, view) {
     if (u.stunned) meta.push('<span class="flag">SONNÉ</span>');
     if (u.isMine && !deploying && !sim && u.hasMoved) meta.push('DÉPLACÉ');
     if (u.isMine && !deploying && !sim && u.hasAttacked) meta.push('A ATTAQUÉ');
+    if (u.isMine && u.march && u.march.route && u.march.route.length) meta.push(`<span class="flag ok">MARCHE · ${u.march.route.length} CASE${u.march.route.length > 1 ? 'S' : ''}</span>`);
     const pct = u.maxVitality ? Math.max(0, Math.min(100, (u.vitality / u.maxVitality) * 100)) : 0;
     const stanceShown = !sim && $('stance-panel')?.style.display === 'block';
     const sty = (s) => (window.stanceStyle ? window.stanceStyle(s) : { k: '', svg: '', c: '#000', name: names[s] || s, short: names[s] || s });
@@ -354,7 +356,7 @@ export function mountBattleHud(bridge, view) {
           ${u.isGeneral ? `<div class="stat inv"><span>${esc((u.weapon || 'ARME').toUpperCase())}</span><b>${u.power ?? '—'}</b></div>` : `<div class="stat inv"><span>MORAL</span><b>${u.morale ?? '—'}</b></div>`}</div>
         <div class="stances" ${stanceShown ? '' : 'hidden'}>${stanceBtns}</div>
       </div>
-      <div class="tools"><button data-card="sheet" title="Fiche complète (double-clic sur l'unité)">FICHE</button></div>`;
+      <div class="tools">${u.isMine && u.march && u.march.route && u.march.route.length ? '<button data-card="unmarch" title="Annuler la marche sur plusieurs tours">STOP MARCHE</button>' : ''}<button data-card="sheet" title="Fiche complète (double-clic sur l'unité)">FICHE</button></div>`;
   }
   el.card.addEventListener('click', (e) => {
     const sb = e.target.closest('[data-stance]');
@@ -362,6 +364,11 @@ export function mountBattleHud(bridge, view) {
       if (window.hideStanceTooltip) window.hideStanceTooltip();
       const legacy = document.querySelectorAll('#stance-list .stance-btn')[Number(sb.dataset.stance)];
       if (legacy) legacy.click();
+      return;
+    }
+    if (e.target.closest('[data-card=unmarch]')) {
+      const cu = bridge.selectedUnit;
+      if (cu && bridge.cancelMarch) bridge.cancelMarch(cu.id);
       return;
     }
     if (e.target.closest('[data-card=sheet]')) {

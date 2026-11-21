@@ -365,6 +365,16 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
       startTurnTimer(tx);
       emit(tx, 'all', { event: 'turn_change', currentPlayerId: room.getCurrentPlayerId(), turn: room.turn, manche: room.manche, ...room.timeState(), turnEndsAt: room.turnEndsAt || null });
       room._recordKeyframe();
+      // standing march orders go on at the start of their owner's turn
+      const cur = room.getCurrentPlayerId();
+      const marcher = cur && room.getPlayer(cur);
+      if (marcher && marcher.units.some(u => u.march)) {
+        for (const mv of room.runMarches(cur)) {
+          emitMoveAnim(tx, marcher, mv);
+          for (const t of mv.trampledAttacks || []) emitCombatResult(tx, t, t.combatLog, combatWitnesses(room, t));
+        }
+        tx.dirty = true;
+      }
     }
     if (res && res.fled && res.fled.length) {
       const owner = room.getCurrentPlayerId();
@@ -1040,9 +1050,25 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     });
   }
 
+  // move_unit { unitId, targetQ, targetR, path?, march? }: with march, path is the whole route to a destination beyond
+  // this turn's reach — the unit walks what it can now and goes on by itself at the start of its next turns
   H.move_unit = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
     const p = requireTurn(tx, connId);
     const room = tx.room;
+    if (data.march === true) {
+      const res = engine(room.marchUnit(p.id, v.id(data.unitId), v.path(data.path, 200)));
+      tx.dirty = true;
+      if (res.move) {
+        emitMoveAnim(tx, p, res.move);
+        if (res.move.trampledAttacks && res.move.trampledAttacks.length) {
+          for (const t of res.move.trampledAttacks) emitCombatResult(tx, t, t.combatLog, combatWitnesses(room, t));
+          settleFlow(tx);
+        }
+      }
+      autoEndFlow(tx);
+      emitState(tx);
+      return;
+    }
     const route = data.path != null ? v.path(data.path) : null;
     const result = engine(room.moveUnit(p.id, v.id(data.unitId), v.int(data.targetQ, -10000, 10000), v.int(data.targetR, -10000, 10000), route));
     tx.dirty = true;
@@ -1052,6 +1078,16 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
       settleFlow(tx);
     }
     autoEndFlow(tx);
+    emitState(tx);
+  });
+
+  // cancel_march { unitId }: drops a standing march order (any phase of the battle, the owner only)
+  H.cancel_march = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    const room = tx.room;
+    const me = requirePlayer(tx, connId);
+    requirePhase(tx, 'battle');
+    engine(room.cancelMarch(me.id, v.id(data.unitId)));
+    tx.dirty = true;
     emitState(tx);
   });
 

@@ -31,12 +31,59 @@ export function createPathPreview(world) {
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), s = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3();
   let pathPoints = null, phase = 0;
 
-  function samplePath(hexes) {
+  // March over several turns: the next turns' part is drawn with fainter chevrons, a numbered disc ends each turn
+  const FAR_MAX = 200;
+  const farMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5, depthWrite: false, fog: false, toneMapped: false, side: THREE.DoubleSide });
+  const farChev = new THREE.InstancedMesh(chevGeo, farMat, FAR_MAX);
+  farChev.count = 0;
+  farChev.frustumCulled = false;
+  farChev.renderOrder = 8;
+  scene.add(farChev);
+  const numTex = new Map();
+  function numberTexture(n) {
+    if (numTex.has(n)) return numTex.get(n);
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const g = c.getContext('2d');
+    g.fillStyle = n === 1 ? '#ffffff' : '#000000';
+    g.strokeStyle = n === 1 ? '#000000' : '#ffffff';
+    g.lineWidth = 6;
+    g.beginPath(); g.arc(32, 32, 27, 0, Math.PI * 2); g.fill(); g.stroke();
+    g.fillStyle = n === 1 ? '#000000' : '#ffffff';
+    g.font = 'bold 34px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(String(n), 32, 34);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    numTex.set(n, t);
+    return t;
+  }
+  const turnMarks = [];
+  function showTurnMarks(hexes, ends) {
+    const list = (ends || []).map((idx, k) => ({ idx, n: k + 1 })).filter((e) => e.idx > 0);
+    while (turnMarks.length < list.length) {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false, depthWrite: false, fog: false, toneMapped: false }));
+      sp.scale.set(0.42, 0.42, 1);
+      sp.renderOrder = 10;
+      scene.add(sp);
+      turnMarks.push(sp);
+    }
+    turnMarks.forEach((sp, i) => {
+      sp.visible = i < list.length;
+      if (!sp.visible) return;
+      const [hq, hr] = hexes[list[i].idx];
+      const c = hexToWorld(hq, hr);
+      sp.material.map = numberTexture(list[i].n);
+      sp.material.needsUpdate = true;
+      sp.position.set(c.x, groundHeight(c.x, c.z) + 0.45, c.z);
+    });
+  }
+
+  function samplePath(hexes, max = MAX) {
     const pts = hexes.map(([hq, hr]) => { const c = hexToWorld(hq, hr); return new THREE.Vector3(c.x, 0, c.z); });
     if (pts.length < 2) return [];
     const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal', 0.3);
     const len = curve.getLength();
-    const n = Math.min(MAX, Math.max(2, Math.floor(len / 0.32)));
+    const n = Math.min(max, Math.max(2, Math.floor(len / 0.32)));
     const out = [];
     for (let i = 1; i <= n; i++) {
       const t = i / n;
@@ -47,9 +94,27 @@ export function createPathPreview(world) {
     return out;
   }
 
-  function showPath(hexes) {
-    pathPoints = hexes && hexes.length > 1 ? samplePath(hexes) : null;
-    if (!pathPoints) { chevrons.count = 0; endMark.visible = false; return; }
+  // opts.turnEnds (march): index in hexes of the last hex of each turn
+  function showPath(hexes, opts = {}) {
+    const ends = opts.turnEnds && opts.turnEnds.length > 1 ? opts.turnEnds : null;
+    const first = ends ? ends[0] : hexes ? hexes.length - 1 : 0;
+    farChev.count = 0;
+    if (ends && hexes && first < hexes.length - 1) {
+      const far = samplePath(hexes.slice(first), FAR_MAX);
+      far.forEach((pt, i) => {
+        q.setFromAxisAngle(up, pt.a);
+        p.set(pt.x, groundHeight(pt.x, pt.z) + 0.07, pt.z);
+        s.set(0.85, 1, 0.85);
+        m.compose(p, q, s);
+        farChev.setMatrixAt(i, m);
+      });
+      farChev.count = far.length;
+      farChev.instanceMatrix.needsUpdate = true;
+    }
+    showTurnMarks(hexes || [], ends);
+    pathPoints = hexes && hexes.length > 1 && first > 0 ? samplePath(hexes.slice(0, first + 1)) : null;
+    if (!hexes || hexes.length < 2) { chevrons.count = 0; endMark.visible = false; return; }
+    if (!pathPoints) chevrons.count = 0;
     const last = hexes[hexes.length - 1];
     const c = hexToWorld(last[0], last[1]);
     endMark.position.set(c.x, groundHeight(c.x, c.z) + 0.08, c.z);
@@ -118,7 +183,7 @@ export function createPathPreview(world) {
 }
 
 // Planned orders (simultaneous mode): one chevron trail per move, an arc per attack, all in the player's colour
-export function createOrdersLayer(world) {
+export function createOrdersLayer(world, { opacity = 0.85 } = {}) {
   const { scene, hexToWorld } = world;
   const groundHeight = world.walkHeight || world.groundHeight;
   const MAX = 512;
@@ -128,7 +193,7 @@ export function createOrdersLayer(world) {
     0.09, 0, -0.08, 0, 0, 0.05, 0, 0, 0.1,
     -0.09, 0, -0.08, 0, 0, 0.1, 0, 0, 0.05,
   ], 3));
-  const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, depthWrite: false, fog: false, toneMapped: false, side: THREE.DoubleSide });
+  const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity, depthWrite: false, fog: false, toneMapped: false, side: THREE.DoubleSide });
   const chev = new THREE.InstancedMesh(geo, mat, MAX);
   chev.count = 0;
   chev.frustumCulled = false;
