@@ -33,7 +33,7 @@ body.v3-photo #v3-photo-bar { display:flex; }
 `;
 
 const CAM_CODES = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Equal', 'Minus', 'NumpadAdd', 'NumpadSubtract']);
-const DEFAULTS = { quality: 'auto', grid: 0.16, plates: 'auto', hour: 'auto', camSpeed: 1, staging: true, combatCard: 'full', followPlayback: true, dice: true };
+const DEFAULTS = { quality: 'auto', grid: 0.16, plates: 'auto', hour: 'auto', camSpeed: 1, staging: true, combatCard: 'full', followPlayback: true, dice: true, killCam: true, dof: true };
 
 export function createGameUI({ world, container, bridge, getView }) {
   const style = document.createElement('style');
@@ -69,6 +69,8 @@ export function createGameUI({ world, container, bridge, getView }) {
     <label>Fiche de combat <select data-k="combatCard"><option value="full">Grande</option><option value="small">Petite</option><option value="off">Aucune</option></select></label>
     <label>Caméra qui suit l'action <input type="checkbox" data-k="followPlayback"></label>
     <label>Dés 3D <input type="checkbox" data-k="dice"></label>
+    <label>Ralentis sur les unités détruites <input type="checkbox" data-k="killCam"></label>
+    <label>Profondeur de champ <input type="checkbox" data-k="dof"></label>
     <div class="row"><button data-act="photo">Mode photo (P)</button><button data-act="top">Vue du dessus (T)</button></div>
     <div class="hint">Clic gauche : sélection · glisser : déplacer la vue · clic droit glissé : pivoter · molette : zoom<br>
     ZQSD / WASD / flèches : déplacer · A/E : pivoter · Espace : centrer sur l’unité · Échap : désélectionner</div>`;
@@ -96,6 +98,7 @@ export function createGameUI({ world, container, bridge, getView }) {
       else { g.locked = true; g.set(parseInt(settings.quality, 10)); }
     }
     if (!k || k === 'grid') world.setGrid(settings.grid);
+    if (!k || k === 'dof') world.dof.setEnabled(settings.dof !== false);
     if (!k || k === 'hour') applyHour();
   }
   function applyHour() {
@@ -282,6 +285,7 @@ export function createGameUI({ world, container, bridge, getView }) {
     staging() { return !!settings.staging; },
     followPlayback() { return settings.followPlayback !== false; },
     dice() { return settings.dice !== false; },
+    killCam() { return settings.killCam !== false; },
     hide(on) { gear.style.display = on ? 'none' : ''; sep.style.display = on ? 'none' : ''; if (on) { panel.classList.remove('open'); setPhoto(false); } },
   };
 }
