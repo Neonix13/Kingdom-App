@@ -759,13 +759,13 @@ const cornerHeights = new Map();
             const rowT = Math.pow(Math.sin(Math.PI * v), 0.6);
             let disp = 0;
             if (!flat && drop > 0.05) {
-              const amp = Math.min(0.22, 0.06 + 0.075 * drop) * endT * rowT * Math.min(1, drop / 0.6);
+              const amp = Math.min(0.15, 0.05 + 0.06 * drop) * endT * rowT * Math.min(1, drop / 0.6);
               const u = (x * 0.83 + z * 0.57);
               const n1 = nFace(u * 2.3, y * 2.1), n2 = nFace(u * 5.1 + 17, y * 4.7 - 9);
               // strata: ledges that stick out a little, every ~0.45 of height
               const strata = nLedge(y * 2.2 + nFace(u * 0.7, 3) * 0.6, u * 0.15);
               const ledge = strata > 0.25 ? (strata - 0.25) * 1.4 : 0;
-              disp = amp * (0.45 + 0.4 * n1 + 0.2 * n2 + 0.55 * ledge);
+              disp = amp * (0.3 + 0.45 * n1 + 0.2 * n2 + 0.6 * ledge);
               x += ox * disp + (ex / (Math.hypot(ex, ez) || 1)) * amp * 0.25 * n2;
               z += oz * disp + (ez / (Math.hypot(ex, ez) || 1)) * amp * 0.25 * n2;
               y += amp * 0.35 * nFace(u * 3.7 - 5, y * 3.1 + 11) * rowT;
