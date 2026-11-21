@@ -48,7 +48,7 @@ export function validate(model, opts = {}) {
       const dh = Math.abs(h - H.get(n));
       if (dh < 2) continue;
       const s = model.segAt(q, r, q + DIRS[d][0], r + DIRS[d][1]);
-      if (s === 'cliff' || s === 'echelle' || s === 'mur') continue;
+      if (s === 'cliff' || s === 'echelle' || s === 'escalier' || s === 'mur') continue;
       push(warnings, 'steep', `Dénivelé de ${dh} sans falaise entre ${k} et ${n}`, { edge: `${k}|${n}` });
     }
   }

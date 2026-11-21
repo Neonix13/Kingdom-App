@@ -76,9 +76,9 @@ export async function mountGameView(bridge, { container }) {
   world.setGrid(0.16);
 
   let units3d = null;
+  const KINGDOM_OF = { ou_ki: '秦', mou_bu: '秦', ou_sen: '秦', kan_ki: '秦', ri_boku: '趙', kei_sha: '趙', shi_ba_shou: '趙', ren_pa: '趙', go_kei: '魏', go_hou_mei: '魏', gai_mou: '魏' };
   try {
     const mod = await import('./units3d.js');
-    const KINGDOM_OF = { ou_ki: '秦', mou_bu: '秦', ou_sen: '秦', kan_ki: '秦', ri_boku: '趙', kei_sha: '趙', shi_ba_shou: '趙', ren_pa: '趙', go_kei: '魏', go_hou_mei: '魏', gai_mou: '魏' };
     units3d = mod.createUnitLayer(world, {
       getPlayerColor: (pid) => bridge.getPlayerColor(pid),
       getPlayerEmblem: (pid) => {
@@ -223,6 +223,9 @@ export async function mountGameView(bridge, { container }) {
       world.objectives.setOwners(owners);
     }
     shownUnits = currentUnits().filter((u) => u.q != null);
+    // base-camp banners take the colours of the army deployed in each fixed zone; birds flee approaching troops
+    if (st && Array.isArray(st.players) && world.setCampColors) world.setCampColors(st.players.filter((p) => p.mapZone != null).map((p) => ({ zone: p.mapZone, color: bridge.getPlayerColor(p.id), emblem: KINGDOM_OF[p.generalId] || '' })));
+    if (world.setBirdThreats) world.setBirdThreats(shownUnits.map((u) => world.hexToWorld(u.q, u.r)));
     if (bridge.simultaneous && !bridge.playback) ordersLayer.show(bridge.plannedOrders || [], bridge.getPlayerColor(bridge.myId), (id) => { const u = shownUnits.find((x) => x.id === id); return u ? anchorOf(u).clone().setY(anchorOf(u).y - 0.3) : null; });
     else ordersLayer.clear();
     world.layers.setOccupied(new Set([...shownUnits.map((u) => hexKey(u.q, u.r)), ...editsLayer.clearedHexes(bridge.mapEdits, baseMap().ter)]));

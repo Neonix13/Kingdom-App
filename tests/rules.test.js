@@ -48,6 +48,16 @@ function put(room, unit, q, r) {
 const troop = (room, pid, i = 0) => room.getPlayer(pid).units.filter(u => !u.isGeneral)[i];
 const general = (room, pid) => room.getPlayer(pid).units.find(u => u.isGeneral);
 
+test('escalier de pierre : coût fixe de 2 quelle que soit la pente, interdit à la cavalerie et aux chars', () => {
+  const T = rules.MOVE_TABLE;
+  const flat = { terrain: 'plain', height: 0 }, wall = { terrain: 'plain', height: 2 };
+  assert.equal(rules.stepCost(T, flat, wall, 'escalier', false), 2, 'monter sur le rempart');
+  assert.equal(rules.stepCost(T, wall, flat, 'escalier', false), 2, 'redescendre');
+  assert.equal(rules.stepCost(T, { terrain: 'forest', height: 0 }, wall, 'escalier', false), 2, 'le terrain de départ ne compte pas');
+  assert.equal(rules.stepCost(T, flat, wall, 'escalier', true), Infinity, 'pas de chevaux dans un escalier');
+  assert.equal(T.seg.escalier.mountedBlocked, true);
+});
+
 test('mouvement : falaise infranchissable, échelle pour l\'infanterie seulement, pente +1 par niveau, route 1/3', () => {
   const T = rules.MOVE_TABLE;
   const flat = { terrain: 'plain', height: 0 }, high = { terrain: 'plain', height: 1 };

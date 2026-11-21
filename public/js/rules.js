@@ -13,7 +13,7 @@
       slopeDownPerLevel: 0,   // free downhill
       blockedSegments: ['cliff', 'mur'],          // impassable for everyone (line of sight is not affected)
       ladder: { segment: 'echelle', cost: 3 },    // infantry and generals only; fixed cost, ignores the slope
-      mountedCategories: ['Chevaux', 'Chars'],    // never cross cliffs, walls or ladders
+      mountedCategories: ['Chevaux', 'Chars'],    // never cross cliffs, walls, ladders or stone stairs (escalier: fixed cost in segments data)
     },
     time: {
       startHour: 8,          // battle starts at 8:00
