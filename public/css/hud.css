@@ -144,7 +144,9 @@ body.hud-d #hud-root { display: block; }
 .hud-mode:empty { display: none; }
 
 /* ---- seal (end turn / ready / orders ready) ---- */
-.hud-seal { position: absolute; right: 30px; bottom: 30px; width: 156px; height: 156px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #E5513F, var(--hud-red-dark)); color: #fff; border: 5px solid #000; box-shadow: 0 0 0 5px #fff, 0 0 0 10px #000, 8px 10px 0 10px rgba(0,0,0,.35); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; cursor: pointer; padding: 0; transition: transform .12s; }
+.hud-seal { position: absolute; right: 30px; bottom: 30px; width: 156px; height: 156px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #E5513F, var(--hud-red-dark)); color: #fff; border: 5px solid #000; box-shadow: 0 0 0 5px #fff, 0 0 0 10px #000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; cursor: pointer; padding: 0; transition: transform .12s; }
+.hud-seal-shadow { position: absolute; right: 30px; bottom: 30px; width: 156px; height: 156px; border-radius: 50%; box-shadow: 8px 10px 0 10px rgba(0,0,0,.35); pointer-events: none; }
+.hud-seal-shadow[hidden] { display: none; }
 .hud-seal[hidden] { display: none; }
 .hud-seal:hover { transform: scale(1.04) rotate(-3deg); }
 .hud-seal .kj { font: 400 58px/1 var(--hud-brush); }
@@ -290,7 +292,7 @@ body.hud-d.hud-coach .hud-feed { display: none; }
   .hud-card { width: 560px; }
   .hud-card .pic { width: 140px; }
   .hud-actions, .hud-mode, .hud-simslot { left: 606px; }
-  .hud-seal { width: 136px; height: 136px; right: 24px; bottom: 24px; }
+  .hud-seal, .hud-seal-shadow { width: 136px; height: 136px; right: 24px; bottom: 24px; }
   .hud-seal .kj { font-size: 50px; }
   .hud-feed { bottom: 230px; width: 270px; }
 }
