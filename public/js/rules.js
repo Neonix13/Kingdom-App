@@ -241,9 +241,11 @@
     return (Math.abs(q1 - q2) + Math.abs(q1 + r1 - q2 - r2) + Math.abs(r1 - r2)) / 2;
   }
 
-  // Attack range from a hex at height hFrom on a target at height hTo: +1 per level above the target, -1 per level below (min 1)
+  // Attack range from a hex at height hFrom on a target at height hTo. Shooters (range > 1): +1 per level above the target,
+  // -1 per level below (min 1). Melee units always strike adjacent hexes only.
   function attackRange(range, hFrom, hTo) {
-    return Math.max(1, (range || 1) + ((hFrom || 0) - (hTo || 0)));
+    if ((range || 1) <= 1) return 1;
+    return Math.max(1, range + ((hFrom || 0) - (hTo || 0)));
   }
 
   // Ability of a unit: { type, value, range, cost } (unit fields first, then the unit type table, then RULES defaults)

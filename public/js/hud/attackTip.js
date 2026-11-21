@@ -45,7 +45,7 @@ export function attackTipHtml(att, tgt, types, from = null) {
   // Stances of both sides and what they bring to this kind of attack
   const kind = ranged ? 'tir' : 'cac';
   const sty = (u) => (!u.isGeneral && u.stance && window.stanceStyle ? window.stanceStyle(u.stance) : null);
-  const chip = (u) => { const ss = sty(u); return ss ? `<i class="st-chip" style="background:${ss.c}">${ss.k}</i> ${ss.short}` : 'général'; };
+  const chip = (u) => { const ss = sty(u); return ss ? `<i class="st-chip" style="background:${ss.c}">${ss.svg || ''}</i> ${ss.short}` : 'général'; };
   const fx = (u, keys) => (window.stanceEffects && !u.isGeneral && u.stance ? window.stanceEffects(u.stance, kind).filter((e) => keys.test(e.key)) : []);
   const fmtFx = (list) => list.map((e) => `${e.v > 0 ? '+' : '−'}${Math.abs(e.v)} ${e.label}`).join(', ');
   const fa = fx(att, /^(attack|puissance|intimidation|precision)_/);
