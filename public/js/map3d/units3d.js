@@ -1727,6 +1727,7 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
     const skip = new Set([obs.hexKey(a.px, a.pz)]);
     if (!(b && levelAt(b.px, b.pz).garrison)) skip.add(obs.hexKey(tx, tz));
     const S = { x: 0, y: 0, z: 0 }, E = { x: 0, y: 0, z: 0 };
+    const shotFromWall = levelAt(a.px, a.pz).onWall;
     let sum = 0, n = 0;
     shooters.forEach((s, idx) => {
       const m = s.m;
@@ -1743,6 +1744,12 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
         const t0 = release + k2 * (0.35 + Math.random() * 0.15);
         const dur = 0.7 + dist * 0.07;
         S.x = p.x; S.y = p.y + 0.22; S.z = p.z;
+        if (shotFromWall) {
+          // on a wall-walk the archer shoots over the battlements: the arrow leaves from the parapet facing the target
+          const ux = ex - S.x, uz = ez - S.z, ul = Math.hypot(ux, uz) || 1;
+          for (let d = 0.08; d < 1; d += 0.08) { if (!obs.deckAt(S.x + ux / ul * d, S.z + uz / ul * d, 0, true)) { S.x += ux / ul * (d - 0.08); S.z += uz / ul * (d - 0.08); break; } }
+          S.y = p.y + 0.4;
+        }
         E.x = ex; E.z = ez; E.y = (tg ? standY(ex, ez, tg.m.L || b.L || levelAt(b.px, b.pz)) : groundHeight(ex, ez)) + 0.02;
         const plan = obs.planArrow(S, E, skip);
         shotStats.arrows++;
