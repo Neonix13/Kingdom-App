@@ -701,3 +701,5 @@ body.lobby-d.ld-at-home .ld-backdrop { display: none; }
 @media (min-width: 1280px) and (min-height: 680px) {
   .lobby-d.ld-in-lobby #screen-lobby { grid-template-columns: minmax(300px, 340px) minmax(0, 1fr) clamp(380px, 28vw, 560px); }
 }
+.lobby-d .ld-host-mark { position: absolute; top: 6px; right: 6px; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; background: var(--ld-red); color: #fff; font-size: 17px; line-height: 1; border-radius: 3px; box-shadow: 0 2px 6px rgba(0, 0, 0, .5); transform: rotate(4deg); cursor: default; }
+.lobby-d .player-list li { border-left-width: 6px; }

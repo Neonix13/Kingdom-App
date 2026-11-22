@@ -786,7 +786,7 @@ function renderPlayerList(data) {
     const color = p.color || '#4a90d9';
     const bot = (data.bots || []).find(b => b.id === p.id);
     const badge = bot ? `<span class="player-badge bot">IA · ${escapeHtml(bot.label)}</span>`
-      : `<span class="player-badge${p.id === hostId ? ' host' : ''}">${p.id === hostId ? 'Hôte' : 'Joueur'}</span>`;
+      : p.id === hostId ? '' : '<span class="player-badge">Joueur</span>';
     const mine = p.id === myId && phase === 'lobby';
     const team = !!(data.settings && data.settings.teamMode);
     const holders = (fid) => players.filter(o => o.id !== myId && o.flag === fid).map(o => o.name);
@@ -831,6 +831,7 @@ function renderPlayerList(data) {
         </div>
       </div>
       ${banner}
+      ${p.id === hostId ? '<span class="ld-host-mark ld-brush" title="Hôte de la partie" aria-label="Hôte">主</span>' : ''}
       ${bot && phase === 'lobby' && hostId === myId ? `<button class="bot-remove" onclick="removeBot('${escapeHtml(p.id)}')" title="Retirer cette IA" aria-label="Retirer cette IA">×</button>` : ''}
       ${swatches && flagWheelOpen ? `<div class="ld-pflags">${swatches}</div>` : ''}
     `;
