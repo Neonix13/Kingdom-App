@@ -819,13 +819,13 @@ function scrollHtml(g) {
 
 // Force ⚔, Stratégie ♞, Charisme ♛
 const STAT_SYMBOLS = [['force', '⚔', 'Force'], ['strategy', '♞', 'Stratégie'], ['charisma', '♛', 'Charisme']];
-const statMini = (g) => STAT_SYMBOLS.map(([key, k, label]) => `<i title="${label}">${k}</i>${g[key] ?? '—'}`).join('');
+const statMini = (g) => STAT_SYMBOLS.map(([key, k, label]) => `<span class="ld-st" title="${label}"><i>${k}</i>${g[key] ?? '—'}</span>`).join('');
 
 // ⚡ active ability (with its recharge ⟳), ⛨ passive ability
 function abilityItems(g) {
   const out = [];
-  if (g.activeAbility) out.push(`<div class="ld-abil-item"><b><span class="ld-abil-sym" title="Capacité active" aria-label="Capacité active">⚡︎</span>${escapeHtml(g.activeAbility.name)}<span class="ld-abil-cd" title="Recharge : ${g.activeAbility.cooldown} tours">⟳ ${g.activeAbility.cooldown}</span></b><p>${escapeHtml(g.activeAbility.description)}</p></div>`);
-  if (g.passiveAbility) out.push(`<div class="ld-abil-item passive"><b><span class="ld-abil-sym" title="Capacité passive" aria-label="Capacité passive">⛨</span>${escapeHtml(g.passiveAbility.name)}</b><p>${escapeHtml(g.passiveAbility.description)}</p></div>`);
+  if (g.activeAbility) out.push(`<div class="ld-abil-item" tabindex="0"><b><span class="ld-abil-sym" title="Capacité active" aria-label="Capacité active">⚡︎</span>${escapeHtml(g.activeAbility.name)}<span class="ld-abil-cd" title="Recharge : ${g.activeAbility.cooldown} tours">⟳ ${g.activeAbility.cooldown}</span></b><p>${escapeHtml(g.activeAbility.description)}</p></div>`);
+  if (g.passiveAbility) out.push(`<div class="ld-abil-item passive" tabindex="0"><b><span class="ld-abil-sym" title="Capacité passive" aria-label="Capacité passive">⛨</span>${escapeHtml(g.passiveAbility.name)}</b><p>${escapeHtml(g.passiveAbility.description)}</p></div>`);
   return out;
 }
 

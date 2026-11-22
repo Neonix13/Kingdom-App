@@ -863,3 +863,29 @@ body.lobby-d.ld-at-home .ld-backdrop { display: none; }
 .lobby-d .ld-abil-item.passive .ld-abil-sym { background: #3a5a8a; box-shadow: 0 0 0 3px rgba(108, 155, 224, .2); }
 .lobby-d .ld-abil-item.passive { border-left-color: var(--ld-blue); }
 .lobby-d .ld-abil-cd { margin-left: auto; padding: 1px 8px; border-radius: 999px; border: 1px solid rgba(239, 232, 216, .25); font: 700 12px var(--ld-body); color: var(--ld-soft); white-space: nowrap; }
+
+/* ---- symbol placement v2 ---- */
+.lobby-d .ld-bar > span:first-child { display: flex; align-items: center; gap: 9px; width: 122px; }
+.lobby-d .ld-army-side .ld-bar > span:first-child { width: 108px; gap: 7px; }
+.lobby-d .ld-sym { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 24px; height: 24px; margin: 0; border-radius: 50%; background: rgba(216, 53, 42, .14); border: 1px solid rgba(240, 112, 90, .45); font-size: 13px; line-height: 1; vertical-align: 0; color: var(--ld-red-text); }
+.lobby-d .ld-army-side .ld-sym { width: 20px; height: 20px; font-size: 11px; }
+.lobby-d .ld-abil { padding-left: 14px; }
+.lobby-d .ld-abil-item { position: relative; padding: 10px 12px 10px 22px; }
+.lobby-d .ld-abil-item b { display: block; padding-right: 44px; }
+.lobby-d .ld-abil-item.passive b { padding-right: 0; }
+.lobby-d .ld-abil-sym { position: absolute; left: -15px; top: 9px; width: 28px; height: 28px; font-size: 15px; box-shadow: 0 0 0 3px #141210, 0 3px 8px rgba(0, 0, 0, .5); }
+.lobby-d .ld-abil-cd { position: absolute; top: 10px; right: 10px; margin: 0; font-size: 11.5px; }
+.lobby-d .ld-gmini, .lobby-d .ld-gp-stats { display: flex; align-items: center; gap: 8px; }
+.lobby-d .ld-gmini i, .lobby-d .ld-gp-stats i { margin: 0 2px 0 0; }
+.lobby-d.ld-in-lobby .ld-gbtn .ld-gmini { gap: 6px; }
+.lobby-d .ld-st { display: inline-flex; align-items: center; white-space: nowrap; }
+
+/* ---- abilities: only the title; the effect shows in a framed card on hover ---- */
+.lobby-d .ld-abil-item, .lobby-d.ld-in-lobby .ld-abil-item { position: relative; padding: 11px 12px 11px 24px; cursor: help; outline: none; transition: background .15s; }
+.lobby-d .ld-abil-item:hover, .lobby-d .ld-abil-item:focus-visible { background: rgba(239, 232, 216, .06); }
+.lobby-d .ld-abil-item b { font-size: 16px; }
+.lobby-d .ld-abil-item p { position: absolute; left: -6px; top: calc(100% + 10px); z-index: 30; width: max(100%, 320px); margin: 0; padding: 14px 16px; background: linear-gradient(180deg, #221d18, #15120f); border: 1px solid rgba(201, 169, 78, .6); box-shadow: inset 0 0 0 3px #15120f, inset 0 0 0 4px rgba(201, 169, 78, .28), 0 16px 34px rgba(0, 0, 0, .75); color: var(--ld-text); font-size: 13.5px; line-height: 1.55; opacity: 0; transform: translateY(-6px); pointer-events: none; transition: opacity .18s ease, transform .2s ease; }
+.lobby-d .ld-abil-item p::before { content: ''; position: absolute; left: 26px; top: -7px; width: 12px; height: 12px; background: #221d18; border-left: 1px solid rgba(201, 169, 78, .6); border-top: 1px solid rgba(201, 169, 78, .6); transform: rotate(45deg); }
+.lobby-d .ld-abil-item:hover p, .lobby-d .ld-abil-item:focus-visible p { opacity: 1; transform: none; }
+.lobby-d .ld-gen-stage { overflow: visible; }
+.lobby-d .ld-gen-bg { inset: 0 0 0 35%; }
