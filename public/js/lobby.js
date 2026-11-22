@@ -38,17 +38,17 @@ const GENERAL_IMAGE1_MAP = {
 };
 
 const GENERALS_DATA = [
-  { id:'ou_ki', name:'Ou Ki', kingdom:'QIN', force:15, strategy:16, charisma:18, vitality:240, armor:4, weapon:{name:'Naginata',damage:12}, activeAbility:{name:'Sourire du Monstre',description:"Augmente la puissance de l'armée de 2 pendant 2 tours. Si l'armée ennemie est en infériorité numérique, réduit le moral de chaque unité adverse de 1.",cooldown:3}, passiveAbility:{name:'Oiseau Colossale',description:"Les généraux ennemis ont -3 en Force, Stratégie et Charisme. Les unités de l'armée d'Ou Ki ont +1 d'intimidation."}, citation:"«Ne l'as-tu pas encore compris ? La guerre, c'est amusant !»" },
-  { id:'mou_bu', name:'Mou Bu', kingdom:'QIN', force:18, strategy:12, charisma:15, vitality:320, armor:6, weapon:{name:'Masse',damage:14}, activeAbility:{name:'Poing du Titan',description:"Réduit l'armure d'une armée ennemie de 1 pendant 2 tours. Les unités ciblées éliminées octroient +1 de puissance à l'unité jusqu'à la fin de la journée.",cooldown:3}, passiveAbility:{name:'Force Inégalée',description:"Augmente la puissance des unités de l'armée de Mou Bu de 1."}, citation:"«Ce n'est pas la stratégie qui gagne les guerres… c'est la force !»" },
-  { id:'ou_sen', name:'Ou Sen', kingdom:'QIN', force:13, strategy:17, charisma:14, vitality:220, armor:5, weapon:{name:'Naginata',damage:12}, activeAbility:{name:"L'Architecte de la Guerre",description:"Réduit l'attaque et la vitesse d'une armée ennemie de 2 pendant 3 tours, et augmente la portée des unités à distance de l'armée de 200m pendant 2 tours.",cooldown:4}, passiveAbility:{name:'Forteresse Imprenable',description:"Les unités de l'armée d'Ou Sen gagnent 2 d'armure et subissent 1 d'intimidation en moins en position défensive."}, citation:"«La guerre n'est pas un duel de force… mais un jeu d'esprit où le perdant ne se relève jamais.»" },
-  { id:'kan_ki', name:'Kan Ki', kingdom:'QIN', force:14, strategy:16, charisma:16, vitality:220, armor:3, weapon:{name:'Arc',damage:8}, activeAbility:{name:'Tactiques Infernales',description:"Choisit 3 unités qui peuvent se déployer n'importe où sur le champ de bataille. Ces unités gagnent 2 de puissance et 1 d'intimidation pour la journée et ne subissent pas de malus d'éloignement.",cooldown:5}, passiveAbility:{name:'Terreur Psychologique',description:"Augmente l'intimidation des unités de 1 par embuscade réussie jusqu'à la fin de la bataille."}, citation:"«La guerre n'a jamais eu de règles. Ce sont juste les idiots qui s'en inventent.»" },
-  { id:'ri_boku', name:'Ri Boku', kingdom:'ZHAO', force:11, strategy:18, charisma:15, vitality:180, armor:2, weapon:{name:'Sabre',damage:10}, activeAbility:{name:'Vision du Sage',description:"Révèle l'emplacement d'une unité ennemie en embuscade.",cooldown:2}, passiveAbility:{name:'Maître de la Guerre Totale',description:"Lors d'un conflit, si une unité de l'armée est en avantage, elle reçoit un bonus de 1 en attaque ou en défense."}, citation:"«Gagner une guerre sans combattre est la plus grande des victoires.»" },
-  { id:'kei_sha', name:'Kei Sha', kingdom:'ZHAO', force:13, strategy:16, charisma:13, vitality:240, armor:4, weapon:{name:'Sabre',damage:10}, activeAbility:{name:'Piège Mortel',description:"Toute l'armée de Kei Sha recule instantanément de 2 cases et obtient un bonus de 1 de défense pendant les 2 prochains tours.",cooldown:4}, passiveAbility:{name:'Danse de la Guerre',description:"Chaque fois qu'une unité de l'armée de Kei Sha défend, l'unité adverse qui attaque perd 1 de vitalité en ignorant l'armure."}, citation:"«La guerre est un art, et seuls les plus fins stratèges en maîtrisent toutes les nuances.»" },
-  { id:'shi_ba_shou', name:'Shi Ba Shou', kingdom:'ZHAO', force:17, strategy:15, charisma:18, vitality:240, armor:4, weapon:{name:'Naginata',damage:12}, activeAbility:{name:'Forteresse Inviolable',description:"Les unités de l'armée en position de défense gagnent 5 d'armure pendant 2 tours et annule la charge d'une unité.",cooldown:4}, passiveAbility:{name:'Loyauté Absolue',description:"Lorsqu'une unité alliée est détruite, les unités alliées dans un rayon de 400m regagnent 1 de vitalité."}, citation:"«Tant que Zhao aura besoin de moi, je resterai son bouclier.»" },
-  { id:'ren_pa', name:'Ren Pa', kingdom:'ZHAO/WEI', force:17, strategy:16, charisma:17, vitality:310, armor:5, weapon:{name:'Naginata',damage:12}, activeAbility:{name:'Furie Martial',description:"Si une unité ennemie possède 12 de vitalité ou moins et se trouve au corps à corps avec Ren Pa, détruit cette unité peu importe son type.",cooldown:3}, passiveAbility:{name:'Volonté Indomptable',description:"La troupe de Ren Pa continue de se battre pendant 1 tour après avoir été démoralisée."}, citation:"«Un vrai guerrier ne fuit jamais la bataille. Seuls les faibles se cachent derrière les mots.»" },
-  { id:'go_kei', name:'Go Kei', kingdom:'WEI', force:14, strategy:17, charisma:15, vitality:240, armor:4, weapon:{name:'Sabre',damage:10}, activeAbility:{name:'Rempart Inébranlable',description:"Les unités de l'armée de Go Kei obtiennent 3 de défense et 2 de puissance supplémentaires en position de défense pendant 2 tours.",cooldown:3}, passiveAbility:{name:'Gardien de Wei',description:"Lorsqu'une unité de l'armée de Go Kei tue une unité ennemie en position de défense, l'unité gagne 1 de puissance et 1 de défense jusqu'à la fin de la bataille."}, citation:"«Un général qui se précipite vers la bataille a déjà perdu. Celui qui attend son heure triomphe sans effort.»" },
-  { id:'go_hou_mei', name:'Go Hou Mei', kingdom:'WEI', force:10, strategy:18, charisma:15, vitality:160, armor:2, weapon:{name:'-',damage:6}, activeAbility:{name:'Esprit Tactique Inégalé',description:"À la fin d'un tour, Go Hou Mei peut rejouer un de ses officiers ainsi que la troupe sous son commandement, mais ne peut pas attaquer.",cooldown:3}, passiveAbility:{name:'Génie Militaire',description:"Si Go Hou Mei réussit le test de Stratégie et commence le tour, ses unités ont +1 d'attaque et de défense."}, citation:"«La guerre est un jeu d'échecs où chaque mouvement détermine le vainqueur avant même que l'ennemi ne s'en rende compte.»" },
-  { id:'gai_mou', name:'Gai Mou', kingdom:'WEI', force:18, strategy:12, charisma:15, vitality:360, armor:4, weapon:{name:'Naginata',damage:12}, activeAbility:{name:'Rugissement du Lion',description:"Toutes les troupes ennemies (à l'exception des officiers) perdent 1 d'intimidation dans un rayon de 1000m autour de Gai Mou.",cooldown:3}, passiveAbility:{name:'Fierté Inflexible',description:"Lors d'un combat impliquant une unité de l'armée de Gai Mou, si l'unité adverse est en supériorité numérique (plus de vitalité), l'unité alliée obtient un bonus de 1 de puissance."}, citation:"«Que ce soit dix, cent ou mille ennemis… je les écraserai tous de mes propres mains !»" },
+  { id:'ou_ki', name:'Ou Ki', kingdom:'QIN', force:15, strategy:16, charisma:18, vitality:240, armor:4, activeAbility:{name:'Sourire du Monstre',description:"Augmente la puissance de l'armée de 2 pendant 2 tours. Si l'armée ennemie est en infériorité numérique, réduit le moral de chaque unité adverse de 1.",cooldown:3}, passiveAbility:{name:'Oiseau Colossale',description:"Les généraux ennemis ont -3 en Force, Stratégie et Charisme. Les unités de l'armée d'Ou Ki ont +1 d'intimidation."}, citation:"«Ne l'as-tu pas encore compris ? La guerre, c'est amusant !»" },
+  { id:'mou_bu', name:'Mou Bu', kingdom:'QIN', force:18, strategy:12, charisma:15, vitality:320, armor:6, activeAbility:{name:'Poing du Titan',description:"Réduit l'armure d'une armée ennemie de 1 pendant 2 tours. Les unités ciblées éliminées octroient +1 de puissance à l'unité jusqu'à la fin de la journée.",cooldown:3}, passiveAbility:{name:'Force Inégalée',description:"Augmente la puissance des unités de l'armée de Mou Bu de 1."}, citation:"«Ce n'est pas la stratégie qui gagne les guerres… c'est la force !»" },
+  { id:'ou_sen', name:'Ou Sen', kingdom:'QIN', force:13, strategy:17, charisma:14, vitality:220, armor:5, activeAbility:{name:"L'Architecte de la Guerre",description:"Réduit l'attaque et la vitesse d'une armée ennemie de 2 pendant 3 tours, et augmente la portée des unités à distance de l'armée de 200m pendant 2 tours.",cooldown:4}, passiveAbility:{name:'Forteresse Imprenable',description:"Les unités de l'armée d'Ou Sen gagnent 2 d'armure et subissent 1 d'intimidation en moins en position défensive."}, citation:"«La guerre n'est pas un duel de force… mais un jeu d'esprit où le perdant ne se relève jamais.»" },
+  { id:'kan_ki', name:'Kan Ki', kingdom:'QIN', force:14, strategy:16, charisma:16, vitality:220, armor:3, activeAbility:{name:'Tactiques Infernales',description:"Choisit 3 unités qui peuvent se déployer n'importe où sur le champ de bataille. Ces unités gagnent 2 de puissance et 1 d'intimidation pour la journée et ne subissent pas de malus d'éloignement.",cooldown:5}, passiveAbility:{name:'Terreur Psychologique',description:"Augmente l'intimidation des unités de 1 par embuscade réussie jusqu'à la fin de la bataille."}, citation:"«La guerre n'a jamais eu de règles. Ce sont juste les idiots qui s'en inventent.»" },
+  { id:'ri_boku', name:'Ri Boku', kingdom:'ZHAO', force:11, strategy:18, charisma:15, vitality:180, armor:2, activeAbility:{name:'Vision du Sage',description:"Révèle l'emplacement d'une unité ennemie en embuscade.",cooldown:2}, passiveAbility:{name:'Maître de la Guerre Totale',description:"Lors d'un conflit, si une unité de l'armée est en avantage, elle reçoit un bonus de 1 en attaque ou en défense."}, citation:"«Gagner une guerre sans combattre est la plus grande des victoires.»" },
+  { id:'kei_sha', name:'Kei Sha', kingdom:'ZHAO', force:13, strategy:16, charisma:13, vitality:240, armor:4, activeAbility:{name:'Piège Mortel',description:"Toute l'armée de Kei Sha recule instantanément de 2 cases et obtient un bonus de 1 de défense pendant les 2 prochains tours.",cooldown:4}, passiveAbility:{name:'Danse de la Guerre',description:"Chaque fois qu'une unité de l'armée de Kei Sha défend, l'unité adverse qui attaque perd 1 de vitalité en ignorant l'armure."}, citation:"«La guerre est un art, et seuls les plus fins stratèges en maîtrisent toutes les nuances.»" },
+  { id:'shi_ba_shou', name:'Shi Ba Shou', kingdom:'ZHAO', force:17, strategy:15, charisma:18, vitality:240, armor:4, activeAbility:{name:'Forteresse Inviolable',description:"Les unités de l'armée en position de défense gagnent 5 d'armure pendant 2 tours et annule la charge d'une unité.",cooldown:4}, passiveAbility:{name:'Loyauté Absolue',description:"Lorsqu'une unité alliée est détruite, les unités alliées dans un rayon de 400m regagnent 1 de vitalité."}, citation:"«Tant que Zhao aura besoin de moi, je resterai son bouclier.»" },
+  { id:'ren_pa', name:'Ren Pa', kingdom:'ZHAO/WEI', force:17, strategy:16, charisma:17, vitality:310, armor:5, activeAbility:{name:'Furie Martial',description:"Si une unité ennemie possède 12 de vitalité ou moins et se trouve au corps à corps avec Ren Pa, détruit cette unité peu importe son type.",cooldown:3}, passiveAbility:{name:'Volonté Indomptable',description:"La troupe de Ren Pa continue de se battre pendant 1 tour après avoir été démoralisée."}, citation:"«Un vrai guerrier ne fuit jamais la bataille. Seuls les faibles se cachent derrière les mots.»" },
+  { id:'go_kei', name:'Go Kei', kingdom:'WEI', force:14, strategy:17, charisma:15, vitality:240, armor:4, activeAbility:{name:'Rempart Inébranlable',description:"Les unités de l'armée de Go Kei obtiennent 3 de défense et 2 de puissance supplémentaires en position de défense pendant 2 tours.",cooldown:3}, passiveAbility:{name:'Gardien de Wei',description:"Lorsqu'une unité de l'armée de Go Kei tue une unité ennemie en position de défense, l'unité gagne 1 de puissance et 1 de défense jusqu'à la fin de la bataille."}, citation:"«Un général qui se précipite vers la bataille a déjà perdu. Celui qui attend son heure triomphe sans effort.»" },
+  { id:'go_hou_mei', name:'Go Hou Mei', kingdom:'WEI', force:10, strategy:18, charisma:15, vitality:160, armor:2, activeAbility:{name:'Esprit Tactique Inégalé',description:"À la fin d'un tour, Go Hou Mei peut rejouer un de ses officiers ainsi que la troupe sous son commandement, mais ne peut pas attaquer.",cooldown:3}, passiveAbility:{name:'Génie Militaire',description:"Si Go Hou Mei réussit le test de Stratégie et commence le tour, ses unités ont +1 d'attaque et de défense."}, citation:"«La guerre est un jeu d'échecs où chaque mouvement détermine le vainqueur avant même que l'ennemi ne s'en rende compte.»" },
+  { id:'gai_mou', name:'Gai Mou', kingdom:'WEI', force:18, strategy:12, charisma:15, vitality:360, armor:4, activeAbility:{name:'Rugissement du Lion',description:"Toutes les troupes ennemies (à l'exception des officiers) perdent 1 d'intimidation dans un rayon de 1000m autour de Gai Mou.",cooldown:3}, passiveAbility:{name:'Fierté Inflexible',description:"Lors d'un combat impliquant une unité de l'armée de Gai Mou, si l'unité adverse est en supériorité numérique (plus de vitalité), l'unité alliée obtient un bonus de 1 de puissance."}, citation:"«Que ce soit dix, cent ou mille ennemis… je les écraserai tous de mes propres mains !»" },
 ];
 
 const UNIT_IMAGE1_MAP = {
@@ -87,6 +87,9 @@ function show(id) {
   });
   const home = id === 'screen-home';
   document.body.classList.toggle('ld-at-home', home);
+  document.body.classList.toggle('ld-in-lobby', id === 'screen-lobby');
+  document.body.classList.toggle('ld-in-army', id === 'screen-army');
+  if (window.mapPreview3d) window.mapPreview3d.setActive(id === 'screen-lobby');
   if (!home) closeHomePanel();
   if (window.homeScene) window.homeScene.setActive(home);
 }
@@ -99,12 +102,17 @@ const NEW_KIND_UI = {
   tuto: { go: 'Commencer le tutoriel', hint: 'Une courte bataille guidée contre une IA passive.' },
 };
 
-function openHomePanel(which) {
+function openHomePanel(which, kind) {
   const sheet = document.getElementById('home-sheet');
   sheet.hidden = false;
   sheet.querySelectorAll('.ld-sheet-panel').forEach(el => { el.hidden = el.dataset.panel !== which; });
   document.body.classList.add('ld-sheet-open');
-  if (which === 'new') { setNewKind(newKind); document.getElementById('create-name').focus(); }
+  if (which === 'new') {
+    setNewKind(kind || 'friends');
+    document.getElementById('new-title').textContent = newKind === 'tuto' ? 'Tutoriel' : 'Nouvelle partie';
+    document.getElementById('new-title-k').textContent = newKind === 'tuto' ? '学' : '戦';
+    document.getElementById('create-name').focus();
+  }
   if (which === 'join') { renderResume(); (document.getElementById('join-name').value ? document.getElementById('join-code') : document.getElementById('join-name')).focus(); }
   if (which === 'about') sheet.querySelector('.ld-sheet-box').scrollTop = 0;
 }
@@ -275,8 +283,182 @@ function flagImg(flagId, cls = 'ld-flag') {
   return `<img class="${cls}" src="/assets/flag/${f.file}" alt="Drapeau ${escapeHtml(f.name)}" title="${escapeHtml(f.name)}">`;
 }
 
+// inline menu open under one player card: { id, kind: 'flag' | 'level' }
+let openMenu = null;
+function togglePlayerMenu(id, kind) {
+  openMenu = openMenu && openMenu.id === id && openMenu.kind === kind ? null : { id, kind };
+  if (lastLobby) renderPlayerList(lastLobby);
+}
+
+// Stylised map of the seven Warring States: each kingdom is a clickable territory filled with its flag.
+// Junctions are shared by neighbouring kingdoms and every border between two junctions is the same jagged line
+// seen from both sides, so the territories fit together exactly.
+const CJ = {
+  a: [6, 48], b: [96, 30], c: [112, 72], d: [106, 122], e: [90, 152], f: [44, 166], g: [8, 142],
+  h: [124, 10], i: [186, 8], j: [196, 40], k: [176, 76], l: [140, 86],
+  m: [290, 14], n: [292, 58], o: [242, 62], p: [206, 56],
+  q: [298, 124], r: [252, 132], s: [216, 106], t: [200, 80],
+  u: [186, 116], v: [150, 110], w: [126, 100], x: [150, 138], y: [120, 148],
+  z1: [288, 204], z2: [200, 218], z3: [82, 212],
+};
+const STATE_RINGS = {
+  qin: 'a b c d e f g', zhao: 'b h i j k l c', yan: 'i m n o p j', qi: 'p o n q r s t',
+  wei: 'c l k j p t s u v w d', han: 'd w v x y e', chu: 'e y x v u s r q z1 z2 z3 f',
+};
+const COAST = new Set(['a-b', 'b-h', 'h-i', 'i-m', 'm-n', 'n-q', 'q-z1', 'z1-z2', 'z2-z3', 'f-z3', 'f-g', 'a-g']);
+const borderCache = {};
+function borderLine(k1, k2) {
+  const [s1, s2] = [k1, k2].sort();
+  const key = `${s1}-${s2}`;
+  if (!borderCache[key]) {
+    let seed = 0;
+    for (const ch of key) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
+    const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296 - 0.5; };
+    const amp = COAST.has(key) ? 0.09 : 0.16;
+    let pts = [CJ[s1], CJ[s2]];
+    for (let depth = 0; depth < 3; depth++) {
+      const next = [pts[0]];
+      for (let i = 1; i < pts.length; i++) {
+        const [x1, y1] = pts[i - 1], [x2, y2] = pts[i];
+        const len = Math.hypot(x2 - x1, y2 - y1), d = rnd() * len * amp * 2;
+        next.push([(x1 + x2) / 2 - (y2 - y1) / len * d, (y1 + y2) / 2 + (x2 - x1) / len * d], pts[i]);
+      }
+      pts = next;
+    }
+    borderCache[key] = pts;
+  }
+  const line = borderCache[key];
+  return k1 === s1 ? line : [...line].reverse();
+}
+function statePath(id) {
+  const ring = STATE_RINGS[id].split(' ');
+  const pts = [];
+  ring.forEach((k, i) => pts.push(...borderLine(k, ring[(i + 1) % ring.length]).slice(0, -1)));
+  return { pts, d: 'M' + pts.map(q => `${q[0].toFixed(1)},${q[1].toFixed(1)}`).join('L') + 'Z' };
+}
+const STATE_COLORS = { qin: '#2f7fd8', zhao: '#e07820', wei: '#2a9a4a', chu: '#20b8c8', yan: '#d8c44a', qi: '#e8e8e8', han: '#9060c0' };
+function chinaMapHtml(p, players, team) {
+  const pid = escapeHtml(p.id);
+  const cur = FLAGS.find(f => f.id === p.flag);
+  const idle = cur ? mapTitleHtml(cur.k, cur.name, 'Votre drapeau') : mapTitleHtml('', 'Choisissez un royaume', '');
+  const parts = FLAGS.map(f => {
+    const { pts, d } = statePath(f.id);
+    const xs = pts.map(q => q[0]), ys = pts.map(q => q[1]);
+    const x0 = Math.min(...xs), y0 = Math.min(...ys), w = Math.max(...xs) - x0, h = Math.max(...ys) - y0;
+    const ring = STATE_RINGS[f.id].split(' ').map(k => CJ[k]);
+    const cx = ring.reduce((a, q) => a + q[0], 0) / ring.length, cy = ring.reduce((a, q) => a + q[1], 0) / ring.length;
+    const others = players.filter(o => o.id !== p.id && o.flag === f.id).map(o => o.name);
+    const taken = !team && others.length > 0;
+    const active = f.id === p.flag;
+    const status = others.length ? `${team ? 'Alliés' : 'Pris par'} : ${others.join(', ')}` : active ? 'Votre drapeau' : '';
+    const label = mapTitleHtml(f.k, f.name, status);
+    const rawSeal = taken ? others.join(', ') : p.name;
+    const sealText = rawSeal.length > 14 ? rawSeal.slice(0, 13) + '…' : rawSeal;
+    const sealW = Math.min(96, sealText.length * 6.4 + 16);
+    const side = Math.max(w, h) * 1.05;
+    return { active, d, color: STATE_COLORS[f.id], svg: `<g class="ld-state${active ? ' active' : ''}${taken ? ' taken' : ''}" data-d="${d}" data-color="${STATE_COLORS[f.id]}"
+      data-label="${escapeHtml(label)}" onmouseenter="hoverState(this)" onfocus="hoverState(this)" onmouseleave="hoverState(null, this)" onblur="hoverState(null, this)"
+      ${taken ? 'aria-disabled="true"' : `role="button" tabindex="0" onclick="chooseState(this, '${pid}', '${f.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();chooseState(this, '${pid}', '${f.id}')}"`}
+      aria-label="${escapeHtml(`${f.name}${status ? ' — ' + status : ''}`)}">
+      <clipPath id="kbm-${f.id}"><path d="${d}"/></clipPath>
+      <g clip-path="url(#kbm-${f.id})">
+        <rect x="${x0}" y="${y0}" width="${w}" height="${h}" class="ld-state-bg"/>
+        <image href="/assets/flag/${f.file}" x="${(cx - side / 2).toFixed(1)}" y="${(cy - side / 2).toFixed(1)}" width="${side.toFixed(1)}" height="${side.toFixed(1)}" preserveAspectRatio="xMidYMid slice" class="ld-state-img"/>
+        <rect x="${x0}" y="${y0}" width="${w}" height="${h}" class="ld-state-shade"/>
+      </g>
+      <path d="${d}" class="ld-state-edge"/>
+      <g transform="translate(${cx.toFixed(1)} ${cy.toFixed(1)})"><g class="ld-state-seal${taken ? ' owned' : ''}" opacity="${taken ? 1 : 0}"><rect x="${(-sealW / 2).toFixed(1)}" y="-10" width="${sealW.toFixed(1)}" height="20" rx="2" fill="${taken ? '#3a3632' : '#D8352A'}"/><text y="4" fill="#fff">${escapeHtml(sealText)}</text></g></g>
+    </g>` };
+  });
+  const act = parts.find(x => x.active);
+  return `<div class="ld-china-title" data-idle="${escapeHtml(idle)}"><div class="ld-ct-layer in">${idle}</div></div>
+  <svg class="ld-china" viewBox="0 0 304 224" role="group" aria-label="Carte des royaumes : choisissez votre drapeau">
+    <defs><filter id="kbm-lift" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000" flood-opacity=".7"/></filter></defs>
+    <path class="ld-china-river" d="M4,70 C40,64 70,58 104,66 S150,58 176,52 S220,64 248,70 S280,80 296,86"/>
+    <path class="ld-china-river" d="M30,150 C70,160 110,150 150,160 S220,168 296,160"/>
+    <g class="ld-states">${parts.map(x => x.svg).join('')}</g>
+    <g class="ld-sel-outline" style="--sc:${act ? act.color : 'transparent'}"><path class="ld-sel-halo" d="${act ? act.d : ''}"/><path class="ld-sel-line" d="${act ? act.d : ''}"/></g>
+    <g class="ld-hover-layer"></g>
+  </svg>`;
+}
+function mapTitleHtml(k, name, status) {
+  return `${k ? `<span class="ld-ct-k">${k}</span>` : ''}<span class="ld-ct-name">${escapeHtml(name)}</span>${status ? `<span class="ld-ct-status">${escapeHtml(status)}</span>` : ''}`;
+}
+// cross-fade of the title: the old name dissolves upward while the new one settles in
+function setMapTitle(title, html) {
+  const cur = title.querySelector('.ld-ct-layer:not(.out)');
+  if (cur && cur.innerHTML === html) return;
+  if (cur) { cur.classList.remove('in'); cur.classList.add('out'); setTimeout(() => cur.remove(), 450); }
+  const layer = document.createElement('div');
+  layer.className = 'ld-ct-layer';
+  layer.innerHTML = html;
+  title.appendChild(layer);
+  requestAnimationFrame(() => requestAnimationFrame(() => layer.classList.add('in')));
+}
+function hoverState(el, leaving) {
+  const pop = (el || leaving).closest('.ld-flag-pop');
+  const title = pop && pop.querySelector('.ld-china-title');
+  if (!title) return;
+  if (el) {
+    const top = el.closest('svg').querySelector('.ld-hover-layer');
+    if (el.parentNode !== top) top.appendChild(el);
+    setMapTitle(title, el.dataset.label);
+    title.classList.add('hover');
+  } else {
+    if (!leaving.classList.contains('stamped')) leaving.closest('svg').querySelector('.ld-states').appendChild(leaving);
+    setMapTitle(title, title.dataset.idle);
+    title.classList.remove('hover');
+  }
+}
+function chooseState(el, playerId, flagId) {
+  if (el.classList.contains('stamped')) return;
+  const svg = el.closest('svg');
+  svg.querySelectorAll('.ld-state').forEach(s => s.classList.toggle('stamped', s === el));
+  svg.querySelector('.ld-hover-layer').appendChild(el);
+  const sel = svg.querySelector('.ld-sel-outline');
+  sel.style.setProperty('--sc', el.dataset.color);
+  sel.querySelectorAll('path').forEach(pth => pth.setAttribute('d', el.dataset.d));
+  sel.classList.add('fresh');
+  setTimeout(() => pickFlagFor(playerId, flagId), 420);
+}
+
+// the flag picker floats over the page next to the banner that opened it (the card keeps its size)
+function placeFlagPop() {
+  const pop = document.querySelector('.ld-flag-pop');
+  if (!pop) return;
+  const anchor = pop.parentElement.querySelector('.ld-pbanner');
+  if (!anchor) return;
+  const r = anchor.getBoundingClientRect(), W = pop.offsetWidth, H = pop.offsetHeight, M = 8;
+  let x = r.right + M, y = r.top + r.height / 2 - H / 2;
+  if (x + W > innerWidth - M) x = r.left - W - M;
+  y = Math.max(M, Math.min(innerHeight - H - M, y));
+  pop.style.left = `${Math.round(x)}px`;
+  pop.style.top = `${Math.round(y)}px`;
+}
+function closePlayerMenu() {
+  if (!openMenu) return;
+  openMenu = null;
+  if (lastLobby) renderPlayerList(lastLobby);
+}
+document.addEventListener('pointerdown', (e) => { if (openMenu && !e.target.closest('.ld-flag-pop, .ld-pbanner')) closePlayerMenu(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePlayerMenu(); });
+window.addEventListener('resize', placeFlagPop);
+document.addEventListener('scroll', placeFlagPop, true);
+
 function pickFlag(flagId) {
+  openMenu = null;
   KBNet.send('set_player_flag', { flagId });
+}
+
+function pickFlagFor(playerId, flagId) {
+  if (playerId === myId) return pickFlag(flagId);
+  openMenu = null;
+  KBNet.send('set_bot_flag', { playerId, flagId });
+}
+
+function setBotLevel(playerId, difficulty) {
+  openMenu = null;
+  KBNet.send('set_bot_difficulty', { playerId, difficulty });
 }
 
 function setTeamMode(on) {
@@ -348,7 +530,7 @@ const MODE_HINTS = {
 function renderModeSeg(modes, current, host) {
   const box = document.getElementById('mode-seg');
   if (!box) return;
-  box.innerHTML = modes.map(m => `<button type="button" role="radio" data-mode="${escapeHtml(m.id)}" aria-checked="${m.id === current}"${!host || !m.available ? ' disabled' : ''}>${escapeHtml(MODE_SHORT[m.id] || m.name)}</button>`).join('');
+  box.innerHTML = modes.map(m => `<button type="button" role="radio" data-mode="${escapeHtml(m.id)}" aria-checked="${m.id === current}" title="${escapeHtml(MODE_HINTS[m.id] || '')}"${!host || !m.available ? ' disabled' : ''}>${escapeHtml(MODE_SHORT[m.id] || m.name)}</button>`).join('');
   const hint = document.getElementById('mode-hint');
   if (hint) hint.textContent = MODE_HINTS[current] || '';
 }
@@ -388,6 +570,7 @@ const PREVIEW_COLORS = { forest: [47, 74, 42], river: [61, 111, 154], road: [179
 function drawMapPreview(mapId) {
   const cv = document.getElementById('map-preview');
   if (!cv || !mapId) return;
+  if (window.mapPreview3d) window.mapPreview3d.show(mapId);
   if (!(mapId in mapDocs)) {
     mapDocs[mapId] = null;
     fetch('/api/maps/' + encodeURIComponent(mapId)).then(r => (r.ok ? r.json() : false)).catch(() => false).then(d => {
@@ -497,7 +680,7 @@ function renderBotControls(data) {
   const box = document.getElementById('bot-controls');
   if (!box) return;
   const show = data.phase === 'lobby' && data.hostId === myId && data.players.length < 8;
-  box.style.display = show ? 'flex' : 'none';
+  box.style.display = show ? 'grid' : 'none';
   if (!show) return;
   const prev = document.getElementById('bot-difficulty');
   const current = prev ? prev.value : 'veteran';
@@ -505,15 +688,7 @@ function renderBotControls(data) {
   const curFlag = prevFlag ? prevFlag.value : '';
   const team = !!(data.settings && data.settings.teamMode);
   const taken = new Set(data.players.map(p => p.flag).filter(Boolean));
-  box.innerHTML = `<label for="bot-difficulty" class="ld-label" style="margin:0;align-self:center">IA</label>
-    <select id="bot-difficulty">${BOT_DIFFICULTIES.map(d => `<option value="${d.id}"${d.id === current ? ' selected' : ''}>${d.name}</option>`).join('')}</select>
-    <select id="bot-flag" aria-label="Drapeau de l'IA"><option value="">Drapeau : auto</option>${FLAGS.map(f => `<option value="${f.id}"${f.id === curFlag ? ' selected' : ''}${!team && taken.has(f.id) ? ' disabled' : ''}>${f.k} ${f.name}</option>`).join('')}</select>
-    <button type="button" class="ld-btn ld-bot-gen" onclick="chooseBotGeneral()" title="Choisir le général de l'IA">${(() => {
-      const g = botGeneralChoice && GENERALS_DATA.find(x => x.id === botGeneralChoice);
-      const img = g && generalImageUrl(g);
-      return g ? `${img ? `<img src="${img}" alt="">` : ''}${escapeHtml(g.name)}` : 'Général : au hasard';
-    })()}</button>
-    <button class="ld-btn" onclick="addBot()">Ajouter une IA</button>`;
+  box.innerHTML = `<button type="button" class="ld-addbot" onclick="addBot()" aria-label="Ajouter une IA" title="Ajouter une IA"><span class="ld-addbot-plus" aria-hidden="true"></span></button>`;
   if (botGeneralChoice && (data.takenGenerals || []).includes(botGeneralChoice)) botGeneralChoice = null;
 }
 
@@ -542,7 +717,7 @@ function renderGeneralPicker(box, { selected = null, taken = [], allowRandom = f
       aria-pressed="${g.id === selected}" title="${escapeHtml(g.name)}${tk ? ' (déjà pris)' : ''}">
       <span class="ld-gp-face">${img ? `<img src="${img}" alt="" loading="lazy">` : `<span class="ld-brush">${escapeHtml(g.name.charAt(0))}</span>`}</span>
       <span class="ld-gp-name">${escapeHtml(g.name)}</span>
-      <span class="ld-gp-stats"><i>F</i>${g.force ?? '—'}<i>S</i>${g.strategy ?? '—'}<i>C</i>${g.charisma ?? '—'}</span>
+      <span class="ld-gp-stats">${statMini(g)}</span>
       ${tk ? '<span class="ld-gp-flag">Pris</span>' : g.id === selected ? '<span class="ld-gp-flag on">Choisi</span>' : ''}</button>`;
   };
   box.innerHTML = `<div class="ld-gp-tabs" role="group" aria-label="Royaume">
@@ -600,8 +775,7 @@ function showGeneralSheet(id) {
   const g = GENERALS_DATA.find(x => x.id === id);
   if (!g) return;
   const abil = [];
-  if (g.activeAbility) abil.push(`<div class="ld-abil-item"><span class="ld-abil-kind">Capacité active · recharge ${g.activeAbility.cooldown} tours</span><b>${escapeHtml(g.activeAbility.name)}</b><p>${escapeHtml(g.activeAbility.description)}</p></div>`);
-  if (g.passiveAbility) abil.push(`<div class="ld-abil-item"><span class="ld-abil-kind">Passif</span><b>${escapeHtml(g.passiveAbility.name)}</b><p>${escapeHtml(g.passiveAbility.description)}</p></div>`);
+  abil.push(...abilityItems(g));
   document.getElementById('general-card-content').innerHTML = `<div class="ld-gsheet">
       ${scrollHtml(g)}
       <div class="ld-gen-info">
@@ -624,6 +798,13 @@ const kingdomsOf = (g) => String(g.kingdom || '').split('/');
 const kingdomInfo = (g) => KINGDOMS.find(k => k.id === kingdomsOf(g)[0]) || KINGDOMS[0];
 const kingdomLabel = (g) => kingdomsOf(g).map(id => (KINGDOMS.find(k => k.id === id) || { name: id }).name).join(' / ');
 
+// signature unit of each general's army in the anime, shown behind their sheet
+const GENERAL_SIGNATURE_UNIT = {
+  ou_ki: 'cavalier_lourd', mou_bu: 'soldats', ou_sen: 'phalange', kan_ki: 'assassin',
+  ri_boku: 'cavalier_leger', kei_sha: 'archer_elite', shi_ba_shou: 'lancier', ren_pa: 'archer',
+  go_kei: 'char', go_hou_mei: 'batisseurs', gai_mou: 'pietaille',
+};
+
 function generalImageUrl(g) {
   const e = GENERAL_IMAGE1_MAP[g.id];
   return e ? `/assets/unites/GENERAL IMAGE 1-1/${encodeURIComponent(e.file)}.${e.ext}` : null;
@@ -642,8 +823,20 @@ function scrollHtml(g) {
     <span class="ld-stamp">${k}</span></div><div class="ld-rod"></div></div>`;
 }
 
+// Force ⚔, Stratégie ♞, Charisme ♛
+const STAT_SYMBOLS = [['force', '⚔', 'Force'], ['strategy', '♞', 'Stratégie'], ['charisma', '♛', 'Charisme']];
+const statMini = (g) => STAT_SYMBOLS.map(([key, k, label]) => `<span class="ld-st" title="${label}"><i>${k}</i>${g[key] ?? '—'}</span>`).join('');
+
+// ⚡ active ability (with its recharge ⟳), ⛨ passive ability
+function abilityItems(g) {
+  const out = [];
+  if (g.activeAbility) out.push(`<div class="ld-abil-item" tabindex="0"><b><span class="ld-abil-sym" title="Capacité active" aria-label="Capacité active">⚡︎</span>${escapeHtml(g.activeAbility.name)}<span class="ld-abil-cd" title="Recharge : ${g.activeAbility.cooldown} tours">⟳ ${g.activeAbility.cooldown}</span></b><p>${escapeHtml(g.activeAbility.description)}</p></div>`);
+  if (g.passiveAbility) out.push(`<div class="ld-abil-item passive" tabindex="0"><b><span class="ld-abil-sym" title="Capacité passive" aria-label="Capacité passive">⛨</span>${escapeHtml(g.passiveAbility.name)}</b><p>${escapeHtml(g.passiveAbility.description)}</p></div>`);
+  return out;
+}
+
 function statBars(g) {
-  const rows = [['Force', g.force], ['Stratégie', g.strategy], ['Charisme', g.charisma]];
+  const rows = STAT_SYMBOLS.map(([key, k, label]) => [`<b class="ld-sym" aria-hidden="true">${k}</b>${label}`, g[key]]);
   const best = Math.max(...rows.map(r => r[1] || 0));
   return `<div class="ld-bars">${rows.map(([label, v]) => `<div class="ld-bar"><span>${label}</span>
     <span class="ld-track"><i class="${v === best ? 'red' : ''}" style="width:${Math.min(100, (v || 0) / 20 * 100)}%"></i></span>
@@ -652,9 +845,7 @@ function statBars(g) {
 
 function generalFacts(g) {
   const facts = [];
-  if (g.army) facts.push(['Armée', Number(g.army).toLocaleString('fr-FR')]);
   if (g.vitality) facts.push(['Vitalité', g.vitality]);
-  if (g.weapon) facts.push(['Arme', `${g.weapon.name}${g.weapon.damage != null ? ' · ' + g.weapon.damage : ''}`]);
   if (g.armor != null) facts.push(['Armure', g.armor]);
   if (g.power != null) facts.push(['Puissance', g.power]);
   if (g.intimidation != null) facts.push(['Intimidation', g.intimidation]);
@@ -673,14 +864,13 @@ function renderGenerals(takenList) {
   const player = myRole === 'player';
   let status;
   if (!player) status = '';
-  else if (g.id === selectedGeneral) status = '<span class="ld-btn ld-btn-red" role="status" style="cursor:default">Votre général</span>';
+  else if (g.id === selectedGeneral) status = '';
   else if (isTaken(g)) status = '<span class="ld-gen-taken">Déjà choisi par un autre joueur</span>';
-  else status = `<button class="ld-btn ld-btn-red" data-pick="${escapeHtml(g.id)}">Choisir ${escapeHtml(g.name)}</button>`;
+  else status = '';
   const abil = [];
-  if (g.activeAbility) abil.push(`<div class="ld-abil-item"><span class="ld-abil-kind">Capacité active · recharge ${g.activeAbility.cooldown} tours</span><b>${escapeHtml(g.activeAbility.name)}</b><p>${escapeHtml(g.activeAbility.description)}</p></div>`);
-  if (g.passiveAbility) abil.push(`<div class="ld-abil-item"><span class="ld-abil-kind">Passif</span><b>${escapeHtml(g.passiveAbility.name)}</b><p>${escapeHtml(g.passiveAbility.description)}</p></div>`);
-  const heroImg = generalImageUrl(g);
-  const fc = (x) => `<span class="ld-gmini"><i>F</i>${x.force ?? '—'}<i>S</i>${x.strategy ?? '—'}<i>C</i>${x.charisma ?? '—'}</span>`;
+  abil.push(...abilityItems(g));
+  const heroImg = unitImageUrl({ id: GENERAL_SIGNATURE_UNIT[g.id] || 'soldats' });
+  const fc = (x) => `<span class="ld-gmini">${statMini(x)}</span>`;
   grid.innerHTML = `
     <div class="ld-tabs" role="group" aria-label="Royaume">${KINGDOMS.map(k => `<button class="ld-tab" data-tab="${k.id}" aria-pressed="${k.id === genTab}" title="${k.name}"><span class="ld-brush" aria-hidden="true">${k.k}</span><span>${k.name}</span></button>`).join('')}</div>
     <div class="ld-gen-stage">
@@ -728,7 +918,7 @@ function showUnitCardLobby(u) {
   const imgEntry = UNIT_IMAGE1_MAP[u.id];
   const imgHtml = imgEntry
     ? `<img class="uc-pdf-img" src="/assets/unites/UNIT IMAGE 1-1/${encodeURIComponent(imgEntry.file)}.${imgEntry.ext}" alt="${u.name}">`
-    : `<div class="uc-pdf-img-placeholder">${UNIT_KANJI[u.id] || u.name.charAt(0)}</div>`;
+    : `<div class="uc-pdf-img-placeholder">${self.KBUnitIcon(u.id)}</div>`;
 
   const stats = [
     { label: 'Vitalité',      value: u.vitality },
@@ -776,16 +966,17 @@ function renderPlayerList(data) {
     const color = p.color || '#4a90d9';
     const bot = (data.bots || []).find(b => b.id === p.id);
     const badge = bot ? `<span class="player-badge bot">IA · ${escapeHtml(bot.label)}</span>`
-      : `<span class="player-badge${p.id === hostId ? ' host' : ''}">${p.id === hostId ? 'Hôte' : 'Joueur'}</span>`;
+      : p.id === hostId ? '' : '<span class="player-badge">Joueur</span>';
     const mine = p.id === myId && phase === 'lobby';
+    const botEdit = !!bot && phase === 'lobby' && hostId === myId;
+    const canFlag = mine || botEdit;
     const team = !!(data.settings && data.settings.teamMode);
-    const takenFlags = new Set(players.filter(o => o.id !== myId).map(o => o.flag).filter(Boolean));
-    const swatches = mine ? `<div class="ld-flags" role="group" aria-label="Votre drapeau">${FLAGS.map(f => {
-      const taken = !team && takenFlags.has(f.id);
-      const active = f.id === p.flag;
-      return `<button class="ld-flag-btn${active ? ' active' : ''}${taken ? ' taken' : ''}" title="${f.name}${taken ? ' (pris)' : ''}"
-        aria-label="Drapeau ${f.name}${taken ? ' (pris)' : ''}" aria-pressed="${active}"${taken ? ' disabled' : ` onclick="pickFlag('${f.id}')"`}><img src="/assets/flag/${f.file}" alt=""></button>`;
-    }).join('')}</div>` : '';
+    const holders = (fid) => players.filter(o => o.id !== p.id && o.flag === fid).map(o => o.name);
+    const pid = escapeHtml(p.id);
+    const menu = openMenu && openMenu.id === p.id ? openMenu.kind : null;
+    const swatches = canFlag && menu === 'flag' ? chinaMapHtml(p, players, team) : '';
+    const levelSelect = botEdit ? `<select class="ld-plevel" aria-label="Niveau de l'IA" title="Niveau de l'IA" onchange="setBotLevel('${pid}', this.value)">${BOT_DIFFICULTIES.map(d =>
+      `<option value="${d.id}"${bot.difficulty === d.id ? ' selected' : ''}>${escapeHtml(d.name.split(' (')[0])}</option>`).join('')}</select>` : '';
     let statusText, ready = false;
     if (!p.connected) statusText = 'hors ligne';
     else if (phase === 'army_building') { ready = p.armySubmitted || p.isReady; statusText = ready ? 'armée prête' : 'recrute…'; }
@@ -793,20 +984,36 @@ function renderPlayerList(data) {
     else if (!p.generalId) statusText = 'choisit un général';
     else if (!p.flag) statusText = 'choisit un drapeau';
     else { ready = !!p.isReady; statusText = p.isReady ? 'prêt' : 'se prépare'; }
+    const gen = p.generalId && GENERALS_DATA.find(g => g.id === p.generalId);
+    const genImg = gen && generalImageUrl(gen);
+    if (p.id === myId) li.classList.add('me');
+    li.style.setProperty('--pc', color);
+    const pf = FLAGS.find(f => f.id === p.flag);
+    const cloth = `<span class="ld-banner-pole" aria-hidden="true"></span><span class="ld-banner-cloth${pf ? '' : ' empty'}">${pf ? `<img src="/assets/flag/${pf.file}" alt="">` : `<span>${bot ? 'auto' : '?'}</span>`}</span>`;
+    const banner = canFlag
+      ? `<button type="button" class="ld-pbanner" onclick="togglePlayerMenu('${pid}', 'flag')" aria-expanded="${menu === 'flag'}" title="${pf ? `Drapeau ${pf.name} — cliquer pour changer` : 'Choisir un drapeau'}">${cloth}</button>`
+      : `<span class="ld-pbanner" title="${pf ? `Drapeau ${pf.name}` : 'Pas encore de drapeau'}">${cloth}</span>`;
+    const faceInner = genImg ? `<img src="${genImg}" alt="">` : `<span class="ld-brush" aria-hidden="true">${gen ? escapeHtml(gen.name.charAt(0)) : '?'}</span>`;
+    const nameInner = `<span class="ld-pname">${escapeHtml(p.name)}${p.id === myId ? ' <em>(vous)</em>' : ''}</span>${levelSelect ? '' : badge}`;
     li.innerHTML = `
-      <span class="ld-dot" style="background:${escapeHtml(color)}"></span>
-      ${flagImg(p.flag)}
-      <span class="ld-pname">${escapeHtml(p.name)}${p.id === myId ? ' <em>(vous)</em>' : ''}</span>
-      ${badge}
-      ${bot && phase === 'lobby' && hostId === myId
-        ? `<button type="button" class="ld-pgen ld-pgen-btn" onclick="changeBotGeneral('${escapeHtml(p.id)}')" title="Changer le général de cette IA">${escapeHtml(genName)} <span aria-hidden="true">▾</span></button>`
-        : `<span class="ld-pgen">${escapeHtml(genName)}</span>`}
-      <span class="player-status${ready ? ' ready' : ''}">${statusText}</span>
-      ${bot && phase === 'lobby' && hostId === myId ? `<button class="ld-btn bot-remove" onclick="removeBot('${escapeHtml(p.id)}')" title="Retirer cette IA">Retirer</button>` : ''}
-      ${swatches}
+      ${botEdit ? `<button type="button" class="ld-pface" onclick="changeBotGeneral('${pid}')" title="Changer le général de cette IA">${faceInner}</button>` : `<span class="ld-pface">${faceInner}</span>`}
+      <div class="ld-pbody">
+        <div class="ld-pline">${nameInner}</div>
+        <div class="ld-pbottom">
+          ${botEdit
+            ? `<button type="button" class="ld-pgen ld-pgen-btn" onclick="changeBotGeneral('${pid}')" title="Changer le général de cette IA">${escapeHtml(genName)}</button>`
+            : `<span class="ld-pgen">${escapeHtml(genName)}</span>`}
+          ${levelSelect || `<span class="player-status${ready ? ' ready' : ''}">${statusText}</span>`}
+        </div>
+      </div>
+      ${banner}
+      ${p.id === hostId ? '<span class="ld-host-mark ld-brush" title="Hôte de la partie" aria-label="Hôte">主</span>' : ''}
+      ${botEdit ? `<button class="bot-remove" onclick="removeBot('${pid}')" title="Retirer cette IA" aria-label="Retirer cette IA">×</button>` : ''}
+      ${swatches ? `<div class="ld-flag-pop">${swatches}</div>` : ''}
     `;
     list.appendChild(li);
   }
+  placeFlagPop();
   document.getElementById('player-count').textContent = players.length;
   renderBotControls(data);
   const specs = data.spectators || [];
@@ -878,11 +1085,10 @@ function renderSettings(data) {
 
 // Army builder
 const UNIT_GROUPS = [
-  { id: 'inf', name: 'Infanterie', hint: 'Le cœur de la ligne : tient le terrain et encaisse.', ids: ['pietaille', 'soldats', 'phalange', 'lancier'], cats: ['Infanterie'] },
+  { id: 'inf', name: 'Infanterie', hint: 'Le cœur de la ligne : tient le terrain et encaisse.', ids: ['pietaille', 'soldats', 'phalange', 'lancier', 'espion', 'assassin'], cats: ['Infanterie'] },
   { id: 'tir', name: 'Tireurs', hint: 'Frappent à distance, sans riposte possible.', ids: ['archer', 'archer_elite'], cats: ['Tireurs'] },
   { id: 'cav', name: 'Cavalerie', hint: 'Rapide et décisive en charge, fragile au contact prolongé.', ids: ['cavalier_leger', 'cavalier_lourd'], cats: ['Chevaux', 'Cavalerie'] },
-  { id: 'char', name: 'Chars', hint: 'Lourds, ils traversent les lignes ennemies.', ids: ['char'], cats: ['Chars'] },
-  { id: 'spe', name: 'Unités spéciales', hint: 'Renseignement, sabotage et génie.', ids: ['espion', 'assassin', 'batisseurs'], cats: [] },
+  { id: 'char', name: 'Chars', hint: 'Lourds, ils traversent les lignes ennemies.', ids: ['char', 'batisseurs'], cats: ['Chars'] },
 ];
 const GROUP_ICONS = {
   inf: '<path d="M12 3l7 3v5c0 5-3.5 8-7 10-3.5-2-7-5-7-10V6z"/><path d="M12 7v9M9 11h6"/>',
@@ -896,7 +1102,66 @@ const UNIT_STATS = [['attack', 'Attaque', 'ATQ'], ['defense', 'Défense', 'DÉF'
 const fmtGold = (n) => Number(n || 0).toLocaleString('fr-FR');
 
 function unitGroupOf(u) {
-  return UNIT_GROUPS.find(g => g.ids.includes(u.id)) || UNIT_GROUPS.find(g => g.cats.includes(u.category)) || UNIT_GROUPS[UNIT_GROUPS.length - 1];
+  return UNIT_GROUPS.find(g => g.ids.includes(u.id)) || UNIT_GROUPS.find(g => g.cats.includes(u.category)) || UNIT_GROUPS[0];
+}
+
+// Army builder in three columns: full sheet of the last selected unit (left), unit tiles (centre), general + recruited army (right)
+let armySheetId = null;
+const SHEET_STATS = [['vitality', 'Vitalité'], ['morale', 'Moral'], ['attack', 'Attaque'], ['defense', 'Défense'], ['power', 'Puissance'], ['armor', 'Armure'], ['intimidation', 'Intimidation'], ['speed', 'Vitesse']];
+let sheetMax = null;
+
+function unitTileHtml(u, { count = 0, army = false } = {}) {
+  const img = unitImageUrl(u);
+  const price = u.cost;
+  return `<button type="button" class="ld-utile${armySheetId === u.id ? ' sel' : ''}${count ? ' has' : ''}" ${army ? '' : `id="unit-row-${u.id}"`} data-unit="${escapeHtml(u.id)}" title="${escapeHtml(u.name)}${army ? ' — double-clic pour retirer' : ' — double-clic pour recruter'}">
+    <span class="ld-utile-art">${img ? `<img src="${img}" alt="" loading="lazy">` : ''}</span>
+    <span class="ld-utile-sym">${self.KBUnitIcon(u.id)}</span>
+    <span class="ld-utile-price"><b>${fmtGold(price)}</b> or</span>
+  </button>`;
+}
+
+const SHEET_GROUPS = [
+  { name: 'Endurance', sym: '♥', keys: [['vitality', 'Vitalité'], ['morale', 'Moral']] },
+  { name: 'Combat', sym: '⚔', keys: [['attack', 'Attaque'], ['defense', 'Défense'], ['power', 'Puissance'], ['armor', 'Armure'], ['intimidation', 'Intimidation']] },
+  { name: 'Mouvement', sym: '➶', keys: [['speed', 'Vitesse'], ['range', 'Portée']] },
+];
+function renderArmySheet() {
+  const box = document.getElementById('army-sheet');
+  if (!box) return;
+  const u = UNITS_DATA.find(x => x.id === armySheetId) || UNITS_DATA[0];
+  if (!u) { box.innerHTML = ''; return; }
+  armySheetId = u.id;
+  if (!sheetMax) { sheetMax = {}; for (const g of SHEET_GROUPS) for (const [k] of g.keys) sheetMax[k] = Math.max(1, ...UNITS_DATA.map(x => x[k] || 0)); }
+  const img = unitImageUrl(u);
+  const n = armyQuantities[u.id] || 0;
+  const left = budget - computeSpent();
+  const groups = SHEET_GROUPS.map(g => {
+    const rows = g.keys.filter(([k]) => k !== 'range' || u.range > 1).map(([k, label]) => {
+      const v = u[k] ?? 0;
+      const pct = Math.max(4, Math.min(100, v / sheetMax[k] * 100));
+      return `<div class="ld-ss"><span>${label}</span><span class="ld-ss-track"><i style="width:${pct}%"></i></span><b>${v}</b></div>`;
+    }).join('');
+    return `<section class="ld-as-grp"><h4><span class="ld-as-gsym" aria-hidden="true">${g.sym}</span>${g.name}</h4>${rows}</section>`;
+  }).join('');
+  box.innerHTML = `<div class="ld-as-art">${img ? `<img src="${img}" alt="">` : ''}
+      <span class="ld-as-sym">${self.KBUnitIcon(u.id)}</span>
+      <div class="ld-as-title"><span class="ld-label">${escapeHtml(unitGroupOf(u).name)}</span><h3>${escapeHtml(u.name)}</h3></div>
+      <span class="ld-as-cost"><b>${fmtGold(u.cost)}</b> or</span>
+    </div>
+    <div class="ld-as-groups">${groups}</div>
+    ${u.bonus ? `<p class="ld-as-bonus"><span class="ld-as-gsym" aria-hidden="true">★</span>${escapeHtml(u.bonus)}</p>` : ''}
+    <div class="ld-as-qty">
+      <button class="ld-q" data-q="-1" ${n === 0 ? 'disabled' : ''} aria-label="Retirer : ${escapeHtml(u.name)}">−</button>
+      <span class="ld-as-n"><b>${n}</b><small>${n ? `recrutée${n > 1 ? 's' : ''} · <span class="ld-gold">${fmtGold(u.cost * n)}</span> or` : 'aucune recrutée'}</small></span>
+      <button class="ld-q" data-q="1" ${u.cost > left ? 'disabled title="Budget insuffisant"' : ''} aria-label="Ajouter : ${escapeHtml(u.name)}">+</button>
+    </div>`;
+  box.onclick = (e) => { const q = e.target.closest('[data-q]'); if (q && !q.disabled) changeQty(u.id, Number(q.dataset.q)); };
+}
+
+function selectArmyUnit(id) {
+  armySheetId = id;
+  document.querySelectorAll('.ld-utile').forEach(t => t.classList.toggle('sel', t.dataset.unit === id));
+  renderArmySheet();
 }
 
 function renderArmyGeneral() {
@@ -905,71 +1170,36 @@ function renderArmyGeneral() {
   const img = g ? generalImageUrl(g) : null;
   const chosen = UNITS_DATA.filter(u => (armyQuantities[u.id] || 0) > 0);
   const totalUnits = chosen.reduce((n, u) => n + armyQuantities[u.id], 0);
-  const summary = chosen.length
-    ? `<ul class="ld-army-list">${chosen.map(u => `<li><span class="ld-al-ico">${groupIcon(unitGroupOf(u).id, 16)}</span>
-        <span class="ld-al-name">${escapeHtml(u.name)}</span><span class="ld-al-n">× ${armyQuantities[u.id]}</span>
-        <span class="ld-gold">${fmtGold(u.cost * armyQuantities[u.id])}</span></li>`).join('')}</ul>`
-    : '<p class="ld-army-empty">Aucune unité recrutée. Ajoutez des troupes avec les boutons +.</p>';
-  box.innerHTML = `${g ? `<button type="button" class="ld-army-hero" onclick="showGeneralSheet('${escapeHtml(g.id)}')" title="Voir la fiche de ${escapeHtml(g.name)}">
-      ${img ? `<div class="ld-army-face"><img src="${img}" alt=""></div>` : ''}
-      <div class="ld-army-hero-txt"><div class="ld-gen-kicker">Votre général · ${escapeHtml(kingdomLabel(g))}</div>
-      <div class="ld-gen-name">${escapeHtml(g.name)}</div>${statBars(g)}<span class="ld-army-more">Voir la fiche</span></div></button>` : ''}
-    <div class="ld-army-sum">
+  box.innerHTML = `${g ? `<div class="ld-a3-gen">
+      <button type="button" class="ld-a3-face" onclick="showGeneralSheet('${escapeHtml(g.id)}')" title="Voir la fiche de ${escapeHtml(g.name)}">${img ? `<img src="${img}" alt="">` : ''}</button>
+      <div class="ld-a3-gtxt"><div class="ld-gen-kicker">Votre général · ${escapeHtml(kingdomLabel(g))}</div><div class="ld-gen-name">${escapeHtml(g.name)}</div>
+        <div class="ld-a3-main">${STAT_SYMBOLS.map(([key, k, label]) => `<span title="${label}"><i>${k}</i><b>${g[key] ?? '—'}</b></span>`).join('')}</div></div>
+      <div class="ld-a3-sub">${[['Vitalité', g.vitality], ['Armure', g.armor], ['Puissance', g.power], ['Intimid.', g.intimidation]].filter(x => x[1] != null).map(([l, v]) => `<span><small>${l}</small><b>${v}</b></span>`).join('')}</div>
+      <div class="ld-abil">${abilityItems(g).join('')}</div>
+    </div>` : ''}
+    <div class="ld-a3-army">
       <div class="ld-army-sum-head"><span>Votre armée</span><b>${totalUnits} unité${totalUnits > 1 ? 's' : ''}</b></div>
-      ${summary}
+      ${chosen.length ? `<div class="ld-a3-grid ld-a3-mine">${chosen.flatMap(u => Array.from({ length: armyQuantities[u.id] }, () => unitTileHtml(u, { count: 1, army: true }))).join('')}</div>`
+        : '<p class="ld-army-empty">Aucune unité recrutée. Choisissez une unité au centre puis ajoutez-la avec +.</p>'}
     </div>`;
-}
-
-function unitCardHtml(u, max) {
-  const img = unitImageUrl(u);
-  const stats = UNIT_STATS.map(([k, label, short]) => {
-    const v = u[k] ?? 0;
-    return `<div class="ld-us" title="${label} : ${v}"><span>${short}</span><b>${v}</b><span class="ld-us-track"><i style="width:${Math.max(6, Math.min(100, v / (max[k] || 1) * 100))}%"></i></span></div>`;
-  }).join('');
-  const extra = [`${u.vitality} vitalité`, `${u.morale} moral`];
-  if (u.range > 1) extra.push(`portée ${u.range}`);
-  return `<article class="ld-ucard" id="unit-row-${u.id}" data-unit="${escapeHtml(u.id)}">
-    <button class="ld-ucard-art" data-sheet="${escapeHtml(u.id)}" aria-label="Fiche complète : ${escapeHtml(u.name)}">
-      ${img ? `<img src="${img}" alt="" loading="lazy">` : `<span class="ld-ucard-ico">${groupIcon(unitGroupOf(u).id, 48)}</span>`}
-      <span class="ld-ucard-cost"><b>${fmtGold(u.cost)}</b> or</span>
-      <span class="ld-ucard-count" id="badge-${u.id}" aria-hidden="true"></span>
-      <span class="ld-ucard-info" aria-hidden="true">Fiche</span>
-    </button>
-    <div class="ld-ucard-body">
-      <div class="ld-ucard-title"><b>${escapeHtml(u.name)}</b><small>${extra.join(' · ')}</small></div>
-      <div class="ld-ustats">${stats}</div>
-      ${u.bonus ? `<p class="ld-ucard-bonus" title="${escapeHtml(u.bonus)}">${escapeHtml(u.bonus)}</p>` : ''}
-    </div>
-    <div class="ld-ucard-foot unit-qty">
-      <button class="ld-q" data-q="-1" aria-label="Retirer : ${escapeHtml(u.name)}">−</button>
-      <span id="qty-${u.id}" aria-live="polite">0</span>
-      <button class="ld-q" data-q="1" aria-label="Ajouter : ${escapeHtml(u.name)}">+</button>
-    </div>
-  </article>`;
+  box.onclick = (e) => { const t = e.target.closest('.ld-utile'); if (t) selectArmyUnit(t.dataset.unit); };
+  box.ondblclick = (e) => { const t = e.target.closest('.ld-a3-mine .ld-utile'); if (t) changeQty(t.dataset.unit, -1); };
 }
 
 function renderArmyBuilder() {
   const shop = document.getElementById('unit-shop');
   armyQuantities = {};
   UNITS_DATA.forEach(u => { armyQuantities[u.id] = 0; });
-  const max = {};
-  for (const [k] of UNIT_STATS) max[k] = Math.max(...UNITS_DATA.map(u => u[k] || 0));
+  if (!armySheetId) armySheetId = (UNITS_DATA[0] || {}).id;
   const groups = UNIT_GROUPS.map(g => ({ g, units: UNITS_DATA.filter(u => unitGroupOf(u) === g) })).filter(x => x.units.length);
-  shop.innerHTML = groups.map(({ g, units }) => `<section class="ld-cat" data-group="${g.id}">
-      <header class="ld-cat-head"><span class="ld-cat-ico">${groupIcon(g.id, 20)}</span><h3>${g.name}</h3><p>${g.hint}</p><span class="ld-cat-n" id="cat-n-${g.id}"></span></header>
-      <div class="ld-cat-grid">${units.map(u => unitCardHtml(u, max)).join('')}</div>
-    </section>`).join('');
-  shop.onclick = (e) => {
-    const card = e.target.closest('.ld-ucard');
-    if (!card) return;
-    const q = e.target.closest('[data-q]');
-    if (q) { changeQty(card.dataset.unit, Number(q.dataset.q)); return; }
-    if (e.target.closest('[data-sheet]')) {
-      const u = UNITS_DATA.find(x => x.id === card.dataset.unit);
-      if (u) showUnitCardLobby(u);
-    }
-  };
+  shop.innerHTML = `<div class="ld-a3-groups">${groups.map(({ g, units }) => `<section class="ld-a3-cat" data-group="${g.id}">
+      <header><span class="ld-cat-ico">${groupIcon(g.id, 16)}</span><h3>${g.name}</h3><span class="ld-cat-n" id="cat-n-${g.id}"></span></header>
+      <div class="ld-a3-grid ld-a3-shop">${units.map(u => unitTileHtml(u)).join('')}</div>
+    </section>`).join('')}</div>`;
+  shop.onclick = (e) => { const t = e.target.closest('.ld-utile'); if (t) selectArmyUnit(t.dataset.unit); };
+  shop.ondblclick = (e) => { const t = e.target.closest('.ld-utile'); if (t) changeQty(t.dataset.unit, 1); };
   renderArmyGeneral();
+  renderArmySheet();
   updateBudgetDisplay();
 }
 
@@ -1002,17 +1232,12 @@ function updateBudgetDisplay() {
   if (fill) fill.style.width = `${budget > 0 ? Math.min(100, spent / budget * 100) : 0}%`;
   for (const u of UNITS_DATA) {
     const n = armyQuantities[u.id] || 0;
-    const card = document.getElementById(`unit-row-${u.id}`);
-    if (!card) continue;
-    card.classList.toggle('has', n > 0);
-    card.classList.toggle('pricey', u.cost > left);
-    document.getElementById(`qty-${u.id}`).textContent = n;
+    const tile = document.getElementById(`unit-row-${u.id}`);
+    if (!tile) continue;
+    tile.classList.toggle('has', n > 0);
+    tile.classList.toggle('pricey', u.cost > left);
     const badge = document.getElementById(`badge-${u.id}`);
     if (badge) badge.textContent = n > 0 ? `× ${n}` : '';
-    const plus = card.querySelector('[data-q="1"]');
-    if (plus) { plus.disabled = u.cost > left; plus.title = u.cost > left ? 'Budget insuffisant' : ''; }
-    const minus = card.querySelector('[data-q="-1"]');
-    if (minus) minus.disabled = n === 0;
   }
   for (const g of UNIT_GROUPS) {
     const el = document.getElementById(`cat-n-${g.id}`);
@@ -1020,6 +1245,7 @@ function updateBudgetDisplay() {
     const n = UNITS_DATA.filter(u => unitGroupOf(u) === g).reduce((t, u) => t + (armyQuantities[u.id] || 0), 0);
     el.textContent = n ? `${n} recrutée${n > 1 ? 's' : ''}` : '';
   }
+  renderArmySheet();
 }
 
 function submitArmy() {

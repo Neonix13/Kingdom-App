@@ -356,7 +356,7 @@ class GameRoom {
       force: generalData.force,
       strategy: generalData.strategy,
       charisma: generalData.charisma,
-      power: generalData.power != null ? generalData.power : (generalData.weapon.damage || 5),
+      power: generalData.power != null ? generalData.power : 5,
       armor: generalData.armor,
       maxArmor: generalData.armor,
       intimidation: generalData.intimidation != null ? generalData.intimidation : Math.floor(generalData.charisma / 2),
@@ -372,7 +372,6 @@ class GameRoom {
       buffs: [],
       category: 'Général',
       kingdom: generalData.kingdom,
-      weapon: generalData.weapon.name,
       activeAbility: generalAbility(generalData),
       passiveAbility: generalData.passiveAbility,
       citation: generalData.citation,
@@ -1629,7 +1628,7 @@ class GameRoom {
   }
 
   // ---- general duel ----
-  // A few exchanges: each one, both roll d20 + Force; the higher strikes for weapon damage + margin - armor x factor.
+  // A few exchanges: each one, both roll d20 + Force; the higher strikes for power + margin - armor x factor.
   // The winner (most exchanges, then most damage) shakes the loser's army; death only if the vitality reaches 0.
   _resolveDuel(attacker, target, attackerPlayer, targetPlayer) {
     const D = RULES.duel;

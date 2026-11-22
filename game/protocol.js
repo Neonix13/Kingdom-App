@@ -49,6 +49,7 @@ const FLAG_VARIANTS = {
   han: ['#9060c0', '#7040a0', '#b080e0', '#502080'],
 };
 const KINGDOM_FLAG = { QIN: 'qin', ZHAO: 'zhao', WEI: 'wei', CHU: 'chu', YAN: 'yan', QI: 'qi', HAN: 'han' };
+const KING_NAMES = { qin: 'Roi Ei Sei', zhao: 'Roi Tou Jou', wei: 'Roi Kei Bin', chu: 'Roi Kou Retsu', yan: 'Roi Ki', qi: 'Roi Ou Ken', han: 'Roi Ou An' };
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const DEFENSE_CHOICES = ['rien', 'counter', 'absorb'];
 
@@ -261,6 +262,18 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     player.color = FLAG_VARIANTS[flagId][Math.min(teammates, FLAG_VARIANTS[flagId].length - 1)];
   }
 
+  // AIs are named after the king of their flag's kingdom (no flag yet: their general's kingdom, else a free one)
+  function nameBot(room, bot) {
+    const others = new Set(room.players.filter(o => o !== bot).map(o => o.name));
+    const gd = GENERALS.find(g => g.id === bot.generalId);
+    const pref = bot.flag || (gd ? KINGDOM_FLAG[String(gd.kingdom || '').split('/')[0]] : null);
+    const order = [pref, ...Object.keys(KING_NAMES)].filter(Boolean);
+    const flag = bot.flag || order.find(f => !others.has(KING_NAMES[f])) || pref || 'qin';
+    let name = KING_NAMES[flag], n = 2;
+    while (others.has(name)) name = `${KING_NAMES[flag]} ${n++}`;
+    bot.name = name;
+  }
+
   // Players without a flag get one at the start: their general's kingdom when free (team mode: always), else any free flag
   function assignFlags(room) {
     const team = room.options.teamMode;
@@ -274,6 +287,7 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
         const color = p.color;
         setFlag(room, p, flag);
         if (color && !team && !room.players.some(o => o !== p && (o.color || '').toLowerCase() === color.toLowerCase())) p.color = color;
+        if (p.isBot && !room.tutorial) nameBot(room, p);
       }
     }
   }
@@ -948,6 +962,7 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
       const flagId = v.oneOf(data.flagId, Object.keys(FLAG_VARIANTS), 'invalid_flag', 'Drapeau inconnu.');
       if (room.options.teamMode || !room.players.some(o => o !== bot && o.flag === flagId)) setFlag(room, bot, flagId);
     }
+    nameBot(room, bot);
     tx.dirty = true;
     emit(tx, 'all', { event: 'player_joined', playerId: bot.id, name: bot.name, isBot: true });
     emit(tx, 'all', lobbyMessage(room));
@@ -966,7 +981,31 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     if (!general) fail('invalid_general', 'Général inconnu.');
     if (room.players.some(o => o !== bot && o.generalId === general.id)) fail('general_taken', 'Ce général est déjà pris.');
     bot.generalId = general.id;
-    bot.name = `${general.name} (IA)`;
+    if (!bot.flag) nameBot(room, bot);
+    tx.dirty = true;
+    emit(tx, 'all', lobbyMessage(room));
+  });
+
+  H.set_bot_difficulty = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    requireHost(tx, connId);
+    requirePhase(tx, 'lobby');
+    const bot = tx.room.getPlayer(v.id(data.playerId));
+    if (!bot || !bot.isBot) fail('bot_not_found', 'IA introuvable.');
+    bot.botDifficulty = v.oneOf(data.difficulty, bots.DIFFICULTIES, 'invalid_difficulty', 'Difficulté inconnue.');
+    tx.dirty = true;
+    emit(tx, 'all', lobbyMessage(tx.room));
+  });
+
+  H.set_bot_flag = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    requireHost(tx, connId);
+    requirePhase(tx, 'lobby');
+    const room = tx.room;
+    const bot = room.getPlayer(v.id(data.playerId));
+    if (!bot || !bot.isBot) fail('bot_not_found', 'IA introuvable.');
+    const flagId = v.oneOf(data.flagId, Object.keys(FLAG_VARIANTS), 'invalid_flag', 'Drapeau inconnu.');
+    if (!room.options.teamMode && room.players.some(o => o !== bot && o.flag === flagId)) fail('flag_taken', 'Ce drapeau est déjà pris.');
+    setFlag(room, bot, flagId);
+    nameBot(room, bot);
     tx.dirty = true;
     emit(tx, 'all', lobbyMessage(room));
   });

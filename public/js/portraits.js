@@ -14,4 +14,4 @@ export const UNIT_KANJI = { pietaille: '卒', soldats: '兵', phalange: '盾', l
 const url = (folder, e) => (e ? `/assets/unites/${folder}/${encodeURIComponent(e[0])}.${e[1]}` : null);
 export const generalPortrait = (generalId) => url('GENERAL IMAGE 1-1', GENERALS[generalId]);
 export const unitPortrait = (typeId) => url('UNIT IMAGE 1-1', UNITS[typeId]);
-export const unitKanji = (u) => (u.isGeneral ? '将' : UNIT_KANJI[u.typeId] || '兵');
+export const unitKanji = (u) => self.KBUnitIcon(u.typeId, u.isGeneral);
