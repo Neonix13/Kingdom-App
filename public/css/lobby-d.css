@@ -643,3 +643,12 @@ body.lobby-d.ld-at-home .ld-backdrop { display: none; }
   .lobby-d.ld-in-lobby #map-meta { text-shadow: 0 1px 3px #000; }
   .lobby-d.ld-in-lobby .ld-map-view-hint { top: 10px; bottom: auto; }
 }
+@media (min-width: 1280px) and (min-height: 680px) {
+  .lobby-d.ld-in-lobby .ld-main { display: flex; flex-direction: column; }
+  .lobby-d.ld-in-lobby .generals-grid { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .lobby-d.ld-in-lobby .ld-tabs, .lobby-d.ld-in-lobby .ld-roster { flex-shrink: 0; }
+  .lobby-d.ld-in-lobby .ld-gen-stage { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .lobby-d.ld-in-lobby .ld-gen { flex: 1; min-height: 0; }
+  .lobby-d.ld-in-lobby .ld-gen-info { align-self: stretch; display: flex; flex-direction: column; }
+  .lobby-d.ld-in-lobby .ld-gen-actions { margin-top: auto; padding-top: 16px; }
+}
