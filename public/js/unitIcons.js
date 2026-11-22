@@ -4,10 +4,11 @@
   const horse = 'M12 45C10 36 10 26 14 18L15 10L17 4L20.5 10C24 10 27 12 30 16L38 25C41 28 42 31 40 33.5C38.5 35 36 34.5 34 33L29 31C27 31 25.5 32 25.5 34C25.5 38 27.5 42 29 45Z'
     + 'M23.4 17.2a1.7 1.2 0 1 0 3.4 0a1.7 1.2 0 1 0-3.4 0Z' + 'M36.4 29.4a1.1 1.1 0 1 0 2.2 0a1.1 1.1 0 1 0-2.2 0Z';
   const mane = '<path d="M14 18C9 20 6.5 26 7.5 33C8.5 29 10 26 12.5 24C9.5 29 9.5 35 11 40C11.3 34 12.4 29.5 14.2 26.5Z"/>';
-  const bow = '<path d="M21 3C17 3 15 6 15 9C8 15 6 20 6 24S8 33 15 39C15 42 17 45 21 45C18 43 18 41 18.5 39.5C11.5 33.5 9.5 28 9.5 24S11.5 14.5 18.5 8.5C18 7 18 5 21 3Z"/>'
-    + '<path d="M20 5L13 24L20 43" fill="none" stroke="currentColor" stroke-width="1.3"/>'
-    + '<path d="M13 22.8H38V25.2H13Z"/><path d="M45 24L36.5 19.3L38.2 24L36.5 28.7Z"/>'
-    + '<path d="M14 24L9.5 19.8H13.5L17.2 24Z"/><path d="M14 24L9.5 28.2H13.5L17.2 24Z"/>';
+  const bow = '<path d="M5 17C6 9 9 6 17 5C29 6 40 14 42 27C43 35 40 40 31 43" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>'
+    + '<path d="M5 17L31 43" stroke="currentColor" stroke-width="1.4"/>'
+    + '<path d="M9 39L36 12" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>'
+    + '<path d="M43 5L40.5 15.5L32.5 7.5Z"/>'
+    + '<path d="M11 37L5 37L3 40L8.5 40Z"/><path d="M11 37L11 43L8 45L8 39.5Z"/>';
   const ICONS = {
     pietaille: S('<path d="M14 4V12C14 17 18 20.5 24 20.5S34 17 34 12V4" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/>'
       + '<rect x="22.4" y="3" width="3.2" height="19" rx="1.6"/><rect x="22.4" y="19" width="3.2" height="26" rx="1.6"/><rect x="19" y="21" width="10" height="3" rx="1.5"/>'),
@@ -27,7 +28,7 @@
     cavalier_lourd: S(`<path d="${horse}M24.2 14.2L34.6 22.6L33.2 24.2L22.8 15.8Z"/>${mane}`
       + '<path d="M17 4.5C14.5 1 18.5-.5 21.5 1.5C23.2 2.6 24 4.4 23.5 6C22 4.5 20 4 18.5 5.5Z"/><path d="M9 39H31L28.5 46H11.5Z"/>'),
     archer: S(bow),
-    archer_elite: S(bow + '<path d="M38 3L39.6 6.6L43.5 7L40.6 9.6L41.4 13.4L38 11.4L34.6 13.4L35.4 9.6L32.5 7L36.4 6.6Z"/>'),
+    archer_elite: S(bow + '<path d="M22 18.5L23.5 21.8L27.1 22.2L24.4 24.6L25.2 28.1L22 26.3L18.8 28.1L19.6 24.6L16.9 22.2L20.5 21.8Z"/>'),
     batisseurs: S('<g transform="rotate(-38 24 24)"><path d="M11 5H33C35 5 36.5 6.5 36.5 8.5V12.5C36.5 14.5 35 16 33 16H11Z"/><path d="M11 5L7 7V14L11 16Z"/><rect x="21.6" y="16" width="4.8" height="29" rx="2.2"/></g>'
       + '<g transform="rotate(38 24 24)"><path d="M21.5 4H26.5V16H21.5ZM21.5 4L24 1.5L26.5 4Z"/><rect x="20.8" y="18" width="6.4" height="25" rx="3"/><rect x="22.4" y="16" width="3.2" height="2.5"/></g>'),
     char: S('<path d="M24 3a21 21 0 1 0 .01 0ZM24 7.6a16.4 16.4 0 1 1-.01 0Z"/><circle cx="24" cy="24" r="5"/>'
