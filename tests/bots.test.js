@@ -108,7 +108,8 @@ test('lobby : l\'hôte ajoute et retire des IA', async () => {
   await host.send('set_bot_general', { playerId: renPa.id, generalId: 'gai_mou' });
   const changed = guest.last('room_update').players.find(p => p.id === renPa.id);
   assert.equal(changed.generalId, 'gai_mou');
-  assert.equal(changed.name, 'Roi Kei Bin');
+  const weiTaken = guest.last('room_update').players.some(p => p.id !== renPa.id && p.name === 'Roi Kei Bin');
+  assert.ok(weiTaken ? /^Roi /.test(changed.name) && changed.name !== 'Roi Kei Bin' : changed.name === 'Roi Kei Bin', 'le nom suit le royaume du nouveau général (ou un roi libre)');
 
   await guest.send('set_bot_difficulty', { playerId: renPa.id, difficulty: 'recrue' });
   assert.equal(guest.last('error').code, 'not_host');
