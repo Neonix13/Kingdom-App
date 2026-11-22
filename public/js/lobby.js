@@ -277,6 +277,19 @@ function flagImg(flagId, cls = 'ld-flag') {
   return `<img class="${cls}" src="/assets/flag/${f.file}" alt="Drapeau ${escapeHtml(f.name)}" title="${escapeHtml(f.name)}">`;
 }
 
+function flagWheelHover(btn, name, img) {
+  const c = btn.closest('.ld-flag-wheel')?.querySelector('.ld-wheel-center');
+  if (!c) return;
+  const n = name || c.dataset.name, src = name ? img : c.dataset.img;
+  c.querySelector('.ld-wheel-name').textContent = n;
+  const el = c.querySelector('img, .ld-brush');
+  if (src) {
+    if (el.tagName === 'IMG') el.src = src;
+    else el.outerHTML = `<img src="${src}" alt="">`;
+  } else if (el.tagName === 'IMG') el.outerHTML = '<span class="ld-brush" aria-hidden="true">旗</span>';
+  c.classList.toggle('preview', !!name);
+}
+
 function pickFlag(flagId) {
   KBNet.send('set_player_flag', { flagId });
 }
@@ -783,16 +796,20 @@ function renderPlayerList(data) {
     const mine = p.id === myId && phase === 'lobby';
     const team = !!(data.settings && data.settings.teamMode);
     const holders = (fid) => players.filter(o => o.id !== myId && o.flag === fid).map(o => o.name);
-    const swatches = mine ? `<div class="ld-flags" role="group" aria-label="Votre drapeau">${FLAGS.map(f => {
+    const curFlag = FLAGS.find(f => f.id === p.flag);
+    const swatches = mine ? `<div class="ld-flag-wheel" role="group" aria-label="Votre drapeau">
+      <div class="ld-wheel-center" data-name="${curFlag ? curFlag.name : 'Choisissez'}" data-img="${curFlag ? '/assets/flag/' + curFlag.file : ''}">
+        ${curFlag ? `<img src="/assets/flag/${curFlag.file}" alt="">` : '<span class="ld-brush" aria-hidden="true">旗</span>'}
+        <span class="ld-wheel-name">${curFlag ? curFlag.name : 'Choisissez'}</span>
+      </div>${FLAGS.map((f, i) => {
       const others = holders(f.id);
       const taken = !team && others.length > 0;
       const active = f.id === p.flag;
       const who = others.length ? `${team ? 'Alliés' : 'Pris par'} : ${others.join(', ')}` : '';
       const tip = `${f.name}${who ? ' — ' + who : ''}`;
-      return `<button class="ld-flag-btn${active ? ' active' : ''}${taken ? ' taken' : ''}" title="${escapeHtml(tip)}"
-        aria-label="Drapeau ${escapeHtml(tip)}" aria-pressed="${active}"${taken ? ' disabled' : ` onclick="pickFlag('${f.id}')"`}>
+      return `<button class="ld-flag-btn${active ? ' active' : ''}${taken ? ' taken' : ''}" title="${escapeHtml(tip)}" style="--a:${(i * 360 / FLAGS.length).toFixed(2)}deg"
+        aria-label="Drapeau ${escapeHtml(tip)}" aria-pressed="${active}" onmouseenter="flagWheelHover(this, '${f.name}', '/assets/flag/${f.file}')" onmouseleave="flagWheelHover(this)"${taken ? ' disabled' : ` onclick="pickFlag('${f.id}')"`}>
         <span class="ld-flag-img"><img src="/assets/flag/${f.file}" alt=""></span>
-        <span class="ld-flag-name">${f.name}</span>
         ${taken ? '<span class="ld-flag-tag">Pris</span>' : team && others.length ? `<span class="ld-flag-tag ally">${others.length} allié${others.length > 1 ? 's' : ''}</span>` : ''}
       </button>`;
     }).join('')}</div>` : '';

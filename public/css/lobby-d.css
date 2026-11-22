@@ -657,16 +657,20 @@ body.lobby-d.ld-at-home .ld-backdrop { display: none; }
   .lobby-d.ld-in-lobby .ld-gen-actions { margin-top: auto; padding-top: 10px; }
 }
 
-/* ---- flag picker (player's own card) ---- */
-.lobby-d .ld-pflags .ld-flags { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding: 0; }
-.lobby-d .ld-pflags .ld-flag-btn { width: auto; height: auto; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 7px 4px 6px; border-radius: 0; border: 1px solid var(--ld-line); background: rgba(0, 0, 0, .25); color: var(--ld-soft); overflow: visible; transition: border-color .12s, background .12s, transform .12s; }
-.lobby-d .ld-pflags .ld-flag-img { width: 40px; height: 40px; border-radius: 4px; overflow: hidden; box-shadow: 0 2px 6px rgba(0, 0, 0, .5); }
-.lobby-d .ld-pflags .ld-flag-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.lobby-d .ld-pflags .ld-flag-name { font: 700 11px var(--ld-body); letter-spacing: 1px; text-transform: uppercase; }
-.lobby-d .ld-pflags .ld-flag-btn:hover:not(:disabled) { border-color: rgba(239, 232, 216, .55); background: rgba(239, 232, 216, .06); color: #fff; transform: translateY(-2px); }
-.lobby-d .ld-pflags .ld-flag-btn.active { border-color: var(--ld-red); background: rgba(216, 53, 42, .18); color: #fff; box-shadow: inset 0 0 0 1px var(--ld-red); }
-.lobby-d .ld-pflags .ld-flag-btn.active::after { content: '✓'; position: absolute; top: -7px; right: -7px; width: 18px; height: 18px; border-radius: 50%; background: var(--ld-red); color: #fff; font: 900 11px/18px var(--ld-body); text-align: center; }
-.lobby-d .ld-pflags .ld-flag-btn.taken { opacity: 1; cursor: not-allowed; }
-.lobby-d .ld-pflags .ld-flag-btn.taken .ld-flag-img, .lobby-d .ld-pflags .ld-flag-btn.taken .ld-flag-name { opacity: .3; filter: grayscale(1); }
-.lobby-d .ld-pflags .ld-flag-tag { position: absolute; top: 18px; left: 50%; transform: translateX(-50%) rotate(-8deg); padding: 1px 6px; background: #3a3632; color: var(--ld-soft); font: 900 9.5px var(--ld-body); letter-spacing: 1px; text-transform: uppercase; white-space: nowrap; }
-.lobby-d .ld-pflags .ld-flag-tag.ally { top: auto; bottom: -7px; transform: translateX(-50%); background: var(--ld-blue); color: #0E0D0C; }
+/* ---- flag wheel (player's own card): the seven flags around a medallion showing the chosen or hovered one ---- */
+.lobby-d .ld-flag-wheel { position: relative; width: 224px; height: 224px; margin: 6px auto 2px; border-radius: 50%; background: radial-gradient(circle, rgba(239, 232, 216, .05) 0 38%, transparent 39%), radial-gradient(circle, transparent 0 60%, rgba(0, 0, 0, .35) 61% 100%); }
+.lobby-d .ld-flag-wheel::before { content: ''; position: absolute; inset: 22px; border-radius: 50%; border: 1px dashed rgba(239, 232, 216, .18); pointer-events: none; }
+.lobby-d .ld-wheel-center { position: absolute; left: 50%; top: 50%; width: 92px; height: 92px; margin: -46px 0 0 -46px; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; background: #141210; border: 2px solid var(--ld-red); box-shadow: 0 0 0 4px rgba(216, 53, 42, .15), 0 8px 20px rgba(0, 0, 0, .6); }
+.lobby-d .ld-wheel-center.preview { border-color: var(--ld-paper); box-shadow: 0 0 0 4px rgba(239, 232, 216, .12), 0 8px 20px rgba(0, 0, 0, .6); }
+.lobby-d .ld-wheel-center img { width: 46px; height: 46px; object-fit: cover; border-radius: 4px; }
+.lobby-d .ld-wheel-center .ld-brush { font-size: 34px; line-height: 46px; color: var(--ld-muted); }
+.lobby-d .ld-wheel-name { font: 700 11px var(--ld-body); letter-spacing: 1.5px; text-transform: uppercase; color: var(--ld-text); }
+.lobby-d .ld-flag-wheel .ld-flag-btn { position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px; padding: 0; border-radius: 50%; border: 2px solid rgba(239, 232, 216, .25); background: #141210; overflow: visible; transform: rotate(var(--a)) translateY(-89px) rotate(calc(-1 * var(--a))); transition: transform .15s, border-color .15s, box-shadow .15s; }
+.lobby-d .ld-flag-wheel .ld-flag-img { display: block; width: 100%; height: 100%; border-radius: 50%; overflow: hidden; }
+.lobby-d .ld-flag-wheel .ld-flag-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.lobby-d .ld-flag-wheel .ld-flag-btn:hover:not(:disabled), .lobby-d .ld-flag-wheel .ld-flag-btn:focus-visible { border-color: var(--ld-paper); transform: rotate(var(--a)) translateY(-89px) rotate(calc(-1 * var(--a))) scale(1.15); z-index: 2; }
+.lobby-d .ld-flag-wheel .ld-flag-btn.active { border-color: var(--ld-red); box-shadow: 0 0 0 3px rgba(216, 53, 42, .35); }
+.lobby-d .ld-flag-wheel .ld-flag-btn.taken { opacity: 1; cursor: not-allowed; }
+.lobby-d .ld-flag-wheel .ld-flag-btn.taken .ld-flag-img { opacity: .3; filter: grayscale(1); }
+.lobby-d .ld-flag-wheel .ld-flag-tag { position: absolute; left: 50%; bottom: -8px; transform: translateX(-50%); padding: 0 5px; background: #3a3632; color: var(--ld-soft); font: 900 8.5px/14px var(--ld-body); letter-spacing: 1px; text-transform: uppercase; white-space: nowrap; }
+.lobby-d .ld-flag-wheel .ld-flag-tag.ally { background: var(--ld-blue); color: #0E0D0C; }
