@@ -866,7 +866,7 @@ function renderGenerals(takenList) {
   if (!player) status = '';
   else if (g.id === selectedGeneral) status = '';
   else if (isTaken(g)) status = '<span class="ld-gen-taken">Déjà choisi par un autre joueur</span>';
-  else status = `<button class="ld-btn ld-btn-red" data-pick="${escapeHtml(g.id)}">Choisir ${escapeHtml(g.name)}</button>`;
+  else status = '';
   const abil = [];
   abil.push(...abilityItems(g));
   const heroImg = unitImageUrl({ id: GENERAL_SIGNATURE_UNIT[g.id] || 'soldats' });
