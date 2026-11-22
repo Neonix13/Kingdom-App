@@ -127,7 +127,8 @@ export function createObstacles(world) {
   const ANG = Array.from({ length: 12 }, (_, i) => [Math.cos(i / 12 * Math.PI * 2), Math.sin(i / 12 * Math.PI * 2)]);
   function fit(x, z, L, cx, cz, out = {}) {
     out.hide = false;
-    if (L.garrison && isBuilding(x, z)) { out.x = x; out.z = z; out.hide = true; return out; }
+    // garrison: soldiers stand in the room (seen when the roof opens), never hidden
+    if (L.garrison && isBuilding(x, z)) { out.x = x; out.z = z; return out; }
     if (free(x, z, L, cx, cz)) { out.x = x; out.z = z; return out; }
     const dx = cx - x, dz = cz - z, dl = Math.hypot(dx, dz);
     if (dl > 0.05) {

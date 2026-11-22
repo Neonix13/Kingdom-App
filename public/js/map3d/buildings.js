@@ -243,6 +243,14 @@ uniform int uCutN;`)
           float col = ( vPWorld.x * 0.7 + vPWorld.z * 0.7 ) * 6.0 + 0.5 * floor( row );
           float j = max( smoothstep( 0.82, 0.95, abs( fract( row ) - 0.5 ) * 2.0 ), smoothstep( 0.88, 0.97, abs( fract( col ) - 0.5 ) * 2.0 ) );
           m *= ( 1.0 - 0.35 * j ) * ( 0.85 + 0.3 * texture2D( uNoise, floor( vec2( row, col ) ) * 0.0731 ).g );
+        } else if ( vK > 3.5 ) {
+          // floor planks: parallel boards with seams, staggered butt joints and grain
+          float pr = vPWorld.z * 11.0;
+          float pl = vPWorld.x * 1.6 + 0.37 * floor( pr );
+          float seam = max( smoothstep( 0.86, 0.97, abs( fract( pr ) - 0.5 ) * 2.0 ), smoothstep( 0.95, 0.995, abs( fract( pl ) - 0.5 ) * 2.0 ) );
+          float tone = texture2D( uNoise, vec2( floor( pr ) * 0.173, floor( pl ) * 0.291 ) ).g;
+          float grain = texture2D( uNoise, vec2( vPWorld.x * 3.0, pr * 0.02 + floor( pr ) * 0.31 ) ).b;
+          m = ( 0.8 + 0.32 * tone ) * ( 0.92 + 0.12 * grain ) * ( 1.0 - 0.45 * seam );
         } else if ( vK > 2.5 ) {
           m *= 0.88 + 0.24 * texture2D( uNoise, vec2( ( vPWorld.x + vPWorld.z ) * 0.5, vPWorld.y * 9.0 ) ).r;
         }
@@ -444,6 +452,37 @@ uniform int uCutN;`)
         if (c.count === 1) lifts.push({ x: c.o.x, z: c.o.z, U: 0.15, R: 0.7 });
       }
       const hf = (x, z, l) => baseY + H * curveH((l - baseY) / H) + liftAt(lifts, x, z);
+
+      // Interior (seen when the roof opens for a garrison): plank floor, low furniture against the outer walls only,
+      // below the cut height, so the soldiers standing in the room are never hidden. Visual only.
+      {
+        const irng = makeRng(Math.round(cluster[0].q * 131 + cluster[0].r * 977));
+        const fy = groundY + 0.012;
+        const floorCol = C(0x8a6440);
+        for (const { wp, cs } of hexInfo) {
+          const ctr = V(wp.x, fy, wp.z);
+          for (let i = 0; i < 6; i++) {
+            const a = cs[i], b = cs[(i + 1) % 6];
+            B.tri(ctr, V(b.x, fy, b.z), V(a.x, fy, a.z), floorCol, 4);
+          }
+        }
+        const FURN = [
+          (x, z, T, S) => box(B, V(x, fy + 0.06, z), T, UP, S, 0.11, 0.06, 0.065, COL.woodDark, 3),                       // chest
+          (x, z, T, S) => { box(B, V(x, fy + 0.11, z), T, UP, S, 0.16, 0.012, 0.05, COL.wood, 3); for (const sx of [-0.13, 0.13]) box(B, V(x, fy + 0.055, z).addScaledVector(T, sx), T, UP, S, 0.012, 0.055, 0.04, COL.woodDark, 3); }, // bench
+          (x, z, T, S) => { box(B, V(x, fy + 0.13, z), T, UP, S, 0.13, 0.13, 0.04, COL.woodDark, 3); for (const sy of [0.06, 0.15]) box(B, V(x, fy + sy, z).addScaledVector(S, -0.045), T, UP, S, 0.12, 0.008, 0.01, COL.wood, 3); }, // shelf
+          (x, z, T, S) => { for (const [ox, r] of [[-0.06, 0.045], [0.05, 0.038], [0.0, 0.03]]) prism(B, x + T.x * ox, fy, z + T.z * ox, r, r * 0.75, 0.09 + r, C(0x9a6a44), 3, 7); }, // jars
+          (x, z, T, S) => box(B, V(x, fy + 0.05, z), T, UP, S, 0.09, 0.05, 0.09, C(0x6b5a3a), 3),                         // crate
+        ];
+        for (const e of boundary) {
+          if (irng() < 0.35) continue;
+          const t = 0.3 + irng() * 0.4;
+          const ex = e.c0.x + (e.c1.x - e.c0.x) * t, ez = e.c0.z + (e.c1.z - e.c0.z) * t;
+          const T = V(e.c1.x - e.c0.x, 0, e.c1.z - e.c0.z).normalize();
+          const S = V(-e.n.x, 0, -e.n.z);
+          const x = ex - e.n.x * 0.12, z = ez - e.n.z * 0.12;
+          FURN[Math.floor(irng() * FURN.length)](x, z, T, S);
+        }
+      }
 
       // Roof sheet: one fan per hex, curved by height remap
       for (const { cs, center } of hexInfo) {
