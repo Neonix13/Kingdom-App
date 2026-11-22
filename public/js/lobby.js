@@ -284,16 +284,60 @@ function togglePlayerMenu(id, kind) {
   if (lastLobby) renderPlayerList(lastLobby);
 }
 
-// the flag wheel floats over the page next to the banner that opened it (the card keeps its size)
+// Stylised map of the seven Warring States: each kingdom is a clickable territory filled with its flag
+const STATE_SHAPES = {
+  qin: [[4, 46], [96, 30], [112, 72], [106, 122], [90, 152], [42, 164], [6, 142]],
+  zhao: [[96, 30], [122, 10], [186, 6], [196, 40], [176, 76], [140, 86], [112, 72]],
+  yan: [[186, 6], [292, 12], [294, 56], [242, 62], [206, 56], [196, 40]],
+  qi: [[206, 56], [242, 62], [294, 56], [298, 122], [252, 132], [216, 106], [200, 80]],
+  wei: [[112, 72], [140, 86], [176, 76], [196, 40], [206, 56], [200, 80], [216, 106], [186, 116], [150, 110], [126, 100], [106, 122]],
+  han: [[106, 122], [126, 100], [150, 110], [150, 136], [120, 146], [90, 152]],
+  chu: [[90, 152], [120, 146], [150, 136], [150, 110], [186, 116], [216, 106], [252, 132], [298, 122], [290, 204], [200, 218], [80, 212], [42, 164]],
+};
+function chinaMapHtml(p, players, team) {
+  const pid = escapeHtml(p.id);
+  const parts = FLAGS.map(f => {
+    const pts = STATE_SHAPES[f.id];
+    const xs = pts.map(q => q[0]), ys = pts.map(q => q[1]);
+    const x0 = Math.min(...xs), y0 = Math.min(...ys), w = Math.max(...xs) - x0, h = Math.max(...ys) - y0;
+    const cx = xs.reduce((a, b) => a + b, 0) / xs.length, cy = ys.reduce((a, b) => a + b, 0) / ys.length;
+    const others = players.filter(o => o.id !== p.id && o.flag === f.id).map(o => o.name);
+    const taken = !team && others.length > 0;
+    const active = f.id === p.flag;
+    const tip = `${f.name}${others.length ? ` — ${team ? 'Alliés' : 'Pris par'} : ${others.join(', ')}` : ''}`;
+    const poly = pts.map(q => q.join(',')).join(' ');
+    const side = Math.max(w, h) * 1.05;
+    return { active, svg: `<g class="ld-state${active ? ' active' : ''}${taken ? ' taken' : ''}" ${taken ? 'aria-disabled="true"' : `role="button" tabindex="0" onclick="pickFlagFor('${pid}', '${f.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();pickFlagFor('${pid}', '${f.id}')}"`} aria-label="${escapeHtml(tip)}">
+      <title>${escapeHtml(tip)}</title>
+      <clipPath id="kbm-${f.id}"><polygon points="${poly}"/></clipPath>
+      <g clip-path="url(#kbm-${f.id})">
+        <rect x="${x0}" y="${y0}" width="${w}" height="${h}" class="ld-state-bg"/>
+        <image href="/assets/flag/${f.file}" x="${(cx - side / 2).toFixed(1)}" y="${(cy - side / 2).toFixed(1)}" width="${side.toFixed(1)}" height="${side.toFixed(1)}" preserveAspectRatio="xMidYMid slice" class="ld-state-img"/>
+        <rect x="${x0}" y="${y0}" width="${w}" height="${h}" class="ld-state-shade"/>
+      </g>
+      <polygon points="${poly}" class="ld-state-edge"/>
+      <text x="${cx.toFixed(1)}" y="${(cy + 4).toFixed(1)}" class="ld-state-name">${f.name}${taken ? ' · pris' : team && others.length ? ` · ${others.length}` : ''}</text>
+    </g>` };
+  });
+  // the chosen kingdom is drawn last so its outline sits on top
+  parts.sort((a, b) => a.active - b.active);
+  return `<svg class="ld-china" viewBox="0 0 302 222" role="group" aria-label="Carte des royaumes : choisissez votre drapeau">
+    <path class="ld-china-river" d="M4,70 C40,64 70,58 104,66 S150,58 176,52 S220,64 248,70 S280,80 296,86"/>
+    <path class="ld-china-river" d="M30,150 C70,160 110,150 150,160 S220,168 296,160"/>
+    ${parts.map(x => x.svg).join('')}
+  </svg>`;
+}
+
+// the flag picker floats over the page next to the banner that opened it (the card keeps its size)
 function placeFlagPop() {
   const pop = document.querySelector('.ld-flag-pop');
   if (!pop) return;
   const anchor = pop.parentElement.querySelector('.ld-pbanner');
   if (!anchor) return;
-  const r = anchor.getBoundingClientRect(), S = 184, M = 8;
-  let x = r.right + M, y = r.top + r.height / 2 - S / 2;
-  if (x + S > innerWidth - M) x = r.left - S - M;
-  y = Math.max(M, Math.min(innerHeight - S - M, y));
+  const r = anchor.getBoundingClientRect(), W = pop.offsetWidth, H = pop.offsetHeight, M = 8;
+  let x = r.right + M, y = r.top + r.height / 2 - H / 2;
+  if (x + W > innerWidth - M) x = r.left - W - M;
+  y = Math.max(M, Math.min(innerHeight - H - M, y));
   pop.style.left = `${Math.round(x)}px`;
   pop.style.top = `${Math.round(y)}px`;
 }
@@ -818,21 +862,9 @@ function renderPlayerList(data) {
     const canFlag = mine || botEdit;
     const team = !!(data.settings && data.settings.teamMode);
     const holders = (fid) => players.filter(o => o.id !== p.id && o.flag === fid).map(o => o.name);
-    const selIdx = Math.max(0, FLAGS.findIndex(f => f.id === p.flag));
     const pid = escapeHtml(p.id);
     const menu = openMenu && openMenu.id === p.id ? openMenu.kind : null;
-    const swatches = canFlag && menu === 'flag' ? `<div class="ld-flag-wheel" role="group" aria-label="Drapeau de ${escapeHtml(p.name)}">${FLAGS.map((f, i) => {
-      const others = holders(f.id);
-      const taken = !team && others.length > 0;
-      const active = f.id === p.flag;
-      const who = others.length ? `${team ? 'Alliés' : 'Pris par'} : ${others.join(', ')}` : '';
-      const tip = `${f.name}${who ? ' — ' + who : ''}`;
-      return `<button class="ld-flag-btn${active ? ' active' : ''}${taken ? ' taken' : ''}" title="${escapeHtml(tip)}" style="--a:${((i - selIdx) * 360 / FLAGS.length).toFixed(2)}deg"
-        aria-label="Drapeau ${escapeHtml(tip)}" aria-pressed="${active}"${taken ? ' disabled' : ` onclick="pickFlagFor('${pid}', '${f.id}')"`}>
-        <span class="ld-flag-img"><img src="/assets/flag/${f.file}" alt=""></span>
-        ${taken ? '<span class="ld-flag-tag">Pris</span>' : team && others.length ? `<span class="ld-flag-tag ally">${others.length} allié${others.length > 1 ? 's' : ''}</span>` : ''}
-      </button>`;
-    }).join('')}</div>` : '';
+    const swatches = canFlag && menu === 'flag' ? chinaMapHtml(p, players, team) : '';
     const levelSelect = botEdit ? `<select class="ld-plevel" aria-label="Niveau de l'IA" title="Niveau de l'IA" onchange="setBotLevel('${pid}', this.value)">${BOT_DIFFICULTIES.map(d =>
       `<option value="${d.id}"${bot.difficulty === d.id ? ' selected' : ''}>${escapeHtml(d.name.split(' (')[0])}</option>`).join('')}</select>` : '';
     let statusText, ready = false;

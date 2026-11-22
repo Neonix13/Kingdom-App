@@ -773,3 +773,27 @@ body.lobby-d.ld-at-home .ld-backdrop { display: none; }
 .lobby-d .bot-controls { grid-template-columns: 1fr; grid-template-rows: 1fr; grid-template-areas: none; }
 .lobby-d .ld-pbottom .ld-plevel { max-width: 100%; }
 .lobby-d .ld-pbottom .ld-plevel { text-transform: none; letter-spacing: 0; font-size: 11.5px; padding: 1px 20px 1px 8px; }
+
+/* ---- flag picker: small map of the Warring States, each kingdom filled with its flag ---- */
+.lobby-d .ld-flag-pop { width: 340px; height: auto; padding: 12px 12px 8px; border-radius: 4px; display: block; background: radial-gradient(ellipse at 50% 40%, #2a251f, #161310 75%); }
+.lobby-d .ld-china { display: block; width: 100%; height: auto; overflow: visible; }
+.lobby-d .ld-china-river { fill: none; stroke: rgba(108, 155, 224, .35); stroke-width: 2.5; stroke-linecap: round; pointer-events: none; }
+.lobby-d .ld-state { cursor: pointer; outline: none; }
+.lobby-d .ld-state-bg { fill: #efe8d8; }
+.lobby-d .ld-state-img { opacity: .9; }
+.lobby-d .ld-state-shade { fill: rgba(20, 16, 12, .28); transition: fill .15s; }
+.lobby-d .ld-state-edge { fill: none; stroke: #0e0d0c; stroke-width: 2; stroke-linejoin: round; transition: stroke .15s, stroke-width .15s; }
+.lobby-d .ld-state-name { font: 900 11px var(--ld-body); letter-spacing: 1.5px; text-transform: uppercase; text-anchor: middle; fill: #fff; paint-order: stroke; stroke: rgba(0, 0, 0, .85); stroke-width: 3px; pointer-events: none; }
+.lobby-d .ld-state:hover .ld-state-shade, .lobby-d .ld-state:focus-visible .ld-state-shade { fill: rgba(255, 255, 255, .06); }
+.lobby-d .ld-state:hover .ld-state-edge, .lobby-d .ld-state:focus-visible .ld-state-edge { stroke: var(--ld-paper); stroke-width: 2.5; }
+.lobby-d .ld-state.active .ld-state-shade { fill: rgba(0, 0, 0, 0); }
+.lobby-d .ld-state.active .ld-state-edge { stroke: var(--ld-red); stroke-width: 3.5; }
+.lobby-d .ld-state.taken { cursor: not-allowed; }
+.lobby-d .ld-state.taken .ld-state-img { filter: grayscale(1); opacity: .35; }
+.lobby-d .ld-state.taken .ld-state-shade { fill: rgba(14, 13, 12, .55); }
+.lobby-d .ld-state.taken .ld-state-name { fill: var(--ld-muted); }
+.lobby-d .ld-flag-pop { width: 400px; padding: 14px; background: radial-gradient(ellipse at 50% 40%, #3a3127, #1a1612 80%); border: 1px solid rgba(201, 169, 78, .45); box-shadow: inset 0 0 0 3px #141210, inset 0 0 0 4px rgba(201, 169, 78, .25), 0 18px 40px rgba(0, 0, 0, .7); }
+.lobby-d .ld-state-img { opacity: .72; }
+.lobby-d .ld-state-shade { fill: rgba(40, 30, 18, .22); }
+.lobby-d .ld-state-edge { stroke: #1a140e; stroke-width: 2.5; }
+.lobby-d .ld-state-name { font-size: 12px; }
