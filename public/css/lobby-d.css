@@ -703,3 +703,13 @@ body.lobby-d.ld-at-home .ld-backdrop { display: none; }
 }
 .lobby-d .ld-host-mark { position: absolute; top: 6px; right: 6px; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; background: var(--ld-red); color: #fff; font-size: 17px; line-height: 1; border-radius: 3px; box-shadow: 0 2px 6px rgba(0, 0, 0, .5); transform: rotate(4deg); cursor: default; }
 .lobby-d .player-list li { border-left-width: 6px; }
+
+/* ---- "add an AI" placeholder card, same size as a player card ---- */
+.lobby-d .bot-controls { display: grid; grid-template-columns: 72px minmax(0, 1fr); grid-template-areas: "face title" "face opts"; grid-template-rows: auto 1fr; gap: 0 12px; margin-top: 8px; padding: 10px 10px 10px 12px; border: 1px dashed rgba(239, 232, 216, .22); border-left: 6px solid rgba(239, 232, 216, .12); background: rgba(239, 232, 216, .025); }
+.lobby-d .bot-controls:hover { border-color: rgba(239, 232, 216, .4); background: rgba(239, 232, 216, .05); }
+.lobby-d .ld-addbot-face { grid-area: face; width: 72px; height: 96px; border: 1px dashed rgba(239, 232, 216, .3); background: rgba(0, 0, 0, .25); color: var(--ld-muted); font: 300 44px/1 var(--ld-body); cursor: pointer; transition: color .15s, border-color .15s, background .15s; }
+.lobby-d .bot-controls:hover .ld-addbot-face, .lobby-d .ld-addbot-face:focus-visible { color: #fff; border-color: var(--ld-red); background: rgba(216, 53, 42, .15); }
+.lobby-d .ld-addbot-title { grid-area: title; justify-self: start; padding: 2px 0 0; border: 0; background: none; color: var(--ld-soft); font: 700 15.5px var(--ld-body); cursor: pointer; }
+.lobby-d .ld-addbot-title:hover { color: #fff; }
+.lobby-d .ld-addbot-opts { grid-area: opts; align-self: end; display: flex; flex-direction: column; gap: 6px; }
+.lobby-d .ld-addbot-opts select { width: 100%; min-height: 30px; padding: 3px 8px; font-size: 12.5px; }

@@ -515,16 +515,12 @@ function renderBotControls(data) {
   const curFlag = prevFlag ? prevFlag.value : '';
   const team = !!(data.settings && data.settings.teamMode);
   const taken = new Set(data.players.map(p => p.flag).filter(Boolean));
-  box.innerHTML = `<span class="ld-label ld-bot-title">Ajouter une IA</span>
-    <label for="bot-difficulty" class="ld-sr">Niveau de l'IA</label>
-    <select id="bot-difficulty">${BOT_DIFFICULTIES.map(d => `<option value="${d.id}"${d.id === current ? ' selected' : ''}>${d.name}</option>`).join('')}</select>
-    <select id="bot-flag" aria-label="Drapeau de l'IA"><option value="">Drapeau : auto</option>${FLAGS.map(f => `<option value="${f.id}"${f.id === curFlag ? ' selected' : ''}${!team && taken.has(f.id) ? ' disabled' : ''}>${f.k} ${f.name}</option>`).join('')}</select>
-    <button type="button" class="ld-btn ld-bot-gen" onclick="chooseBotGeneral()" title="Choisir le général de l'IA">${(() => {
-      const g = botGeneralChoice && GENERALS_DATA.find(x => x.id === botGeneralChoice);
-      const img = g && generalImageUrl(g);
-      return g ? `${img ? `<img src="${img}" alt="">` : ''}${escapeHtml(g.name)}` : 'Général : au hasard';
-    })()}</button>
-    <button class="ld-btn ld-bot-add" onclick="addBot()">+ Ajouter l'IA</button>`;
+  box.innerHTML = `<button type="button" class="ld-addbot-face" onclick="addBot()" aria-label="Ajouter une IA" title="Ajouter une IA">+</button>
+    <button type="button" class="ld-addbot-title" onclick="addBot()">Ajouter une IA</button>
+    <div class="ld-addbot-opts">
+      <select id="bot-difficulty" aria-label="Niveau de l'IA">${BOT_DIFFICULTIES.map(d => `<option value="${d.id}"${d.id === current ? ' selected' : ''}>${d.name}</option>`).join('')}</select>
+      <select id="bot-flag" aria-label="Drapeau de l'IA"><option value="">Drapeau : auto</option>${FLAGS.map(f => `<option value="${f.id}"${f.id === curFlag ? ' selected' : ''}${!team && taken.has(f.id) ? ' disabled' : ''}>${f.k} ${f.name}</option>`).join('')}</select>
+    </div>`;
   if (botGeneralChoice && (data.takenGenerals || []).includes(botGeneralChoice)) botGeneralChoice = null;
 }
 
