@@ -971,6 +971,29 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     emit(tx, 'all', lobbyMessage(room));
   });
 
+  H.set_bot_difficulty = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    requireHost(tx, connId);
+    requirePhase(tx, 'lobby');
+    const bot = tx.room.getPlayer(v.id(data.playerId));
+    if (!bot || !bot.isBot) fail('bot_not_found', 'IA introuvable.');
+    bot.botDifficulty = v.oneOf(data.difficulty, bots.DIFFICULTIES, 'invalid_difficulty', 'Difficulté inconnue.');
+    tx.dirty = true;
+    emit(tx, 'all', lobbyMessage(tx.room));
+  });
+
+  H.set_bot_flag = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    requireHost(tx, connId);
+    requirePhase(tx, 'lobby');
+    const room = tx.room;
+    const bot = room.getPlayer(v.id(data.playerId));
+    if (!bot || !bot.isBot) fail('bot_not_found', 'IA introuvable.');
+    const flagId = v.oneOf(data.flagId, Object.keys(FLAG_VARIANTS), 'invalid_flag', 'Drapeau inconnu.');
+    if (!room.options.teamMode && room.players.some(o => o !== bot && o.flag === flagId)) fail('flag_taken', 'Ce drapeau est déjà pris.');
+    setFlag(room, bot, flagId);
+    tx.dirty = true;
+    emit(tx, 'all', lobbyMessage(room));
+  });
+
   H.remove_bot = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
     requireHost(tx, connId);
     requirePhase(tx, 'lobby');

@@ -110,6 +110,17 @@ test('lobby : l\'hôte ajoute et retire des IA', async () => {
   assert.equal(changed.generalId, 'gai_mou');
   assert.equal(changed.name, 'Gai Mou (IA)');
 
+  await guest.send('set_bot_difficulty', { playerId: renPa.id, difficulty: 'recrue' });
+  assert.equal(guest.last('error').code, 'not_host');
+  await host.send('set_bot_difficulty', { playerId: renPa.id, difficulty: 'nope' });
+  assert.equal(host.last('error').code, 'invalid_difficulty');
+  await host.send('set_bot_difficulty', { playerId: renPa.id, difficulty: 'recrue' });
+  assert.equal(guest.last('room_update').bots.find(b => b.id === renPa.id).difficulty, 'recrue');
+  await host.send('set_bot_flag', { playerId: renPa.id, flagId: 'wei' });
+  assert.equal(guest.last('room_update').players.find(p => p.id === renPa.id).flag, 'wei');
+  await host.send('set_player_flag', { flagId: 'wei' });
+  assert.equal(host.last('error').code, 'flag_taken');
+
   await host.send('remove_bot', { playerId: host.session.playerId });
   assert.equal(host.last('error').code, 'bot_not_found');
   await host.send('remove_bot', { playerId: renPa.id });

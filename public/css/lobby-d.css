@@ -713,3 +713,44 @@ body.lobby-d.ld-at-home .ld-backdrop { display: none; }
 .lobby-d .ld-addbot-title:hover { color: #fff; }
 .lobby-d .ld-addbot-opts { grid-area: opts; align-self: end; display: flex; flex-direction: column; gap: 6px; }
 .lobby-d .ld-addbot-opts select { width: 100%; min-height: 30px; padding: 3px 8px; font-size: 12.5px; }
+
+/* ---- editable AI card: portrait/general = change general, name = level, banner = flag ---- */
+.lobby-d button.ld-pface { padding: 0; border: 1px solid transparent; cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+.lobby-d button.ld-pface:hover, .lobby-d button.ld-pface:focus-visible { border-color: var(--ld-paper); box-shadow: 0 0 0 2px rgba(239, 232, 216, .25); }
+.lobby-d .ld-pline-btn { border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; align-items: center; justify-content: flex-start; }
+.lobby-d .ld-pline-btn:hover .ld-pname, .lobby-d .ld-pline-btn:focus-visible .ld-pname { color: #fff; text-decoration: underline dashed rgba(239, 232, 216, .5); text-underline-offset: 3px; }
+.lobby-d .ld-pline-btn:hover .player-badge.bot, .lobby-d .ld-pline-btn[aria-expanded="true"] .player-badge.bot { background: var(--ld-blue); color: #0E0D0C; }
+.lobby-d .ld-pbottom .ld-pgen-btn { border-bottom: 1px dashed transparent; }
+.lobby-d .ld-pbottom .ld-pgen-btn:hover { border-bottom-color: var(--ld-red); }
+.lobby-d .ld-banner-cloth.empty span { font-size: 11px; letter-spacing: .5px; }
+.lobby-d .ld-plevels { display: flex; flex-direction: column; gap: 6px; padding-top: 4px; }
+.lobby-d .ld-plevels button { min-height: 34px; padding: 0 12px; border: 1px solid var(--ld-line); background: rgba(0, 0, 0, .25); color: var(--ld-soft); font: 700 13px var(--ld-body); text-align: left; cursor: pointer; }
+.lobby-d .ld-plevels button:hover { border-color: rgba(239, 232, 216, .5); color: #fff; }
+.lobby-d .ld-plevels button.active { border-color: var(--ld-blue); background: rgba(108, 155, 224, .15); color: #fff; }
+
+/* ---- banner v2: hanging war banner (pole, crossbar, cloth in the player's colour, whole flag shown, swallow tail) ---- */
+.lobby-d .ld-pbanner { width: 56px; height: 74px; filter: drop-shadow(2px 4px 5px rgba(0, 0, 0, .6)); }
+.lobby-d .ld-pbanner::before { content: ''; position: absolute; left: 4px; right: 0; top: 5px; height: 3px; border-radius: 2px; background: linear-gradient(180deg, #c49a52, #6b4f2a); z-index: 2; }
+.lobby-d .ld-banner-pole { left: 4px; top: 0; width: 3px; height: 74px; transform: none; background: linear-gradient(90deg, #c49a52, #6b4f2a); }
+.lobby-d .ld-banner-pole::before { content: ''; position: absolute; left: -2.5px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #f6dc8a, #a87b2c); }
+.lobby-d .ld-banner-cloth { left: 9px; top: 7px; width: 45px; height: 62px; padding: 4px 0 0; border: 0; box-shadow: none; overflow: visible; display: flex; justify-content: center; align-items: flex-start; background: linear-gradient(90deg, rgba(0, 0, 0, .18), rgba(255, 255, 255, .06) 45%, rgba(0, 0, 0, .14)), var(--pc, #6b6258); clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 82%, 0 100%); transform-origin: 50% 0; transform: none; transition: transform .25s; }
+.lobby-d .ld-banner-cloth img { position: static; inset: auto; width: 37px; height: 37px; object-fit: contain; transform: none; border-radius: 2px; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .35); }
+.lobby-d .ld-banner-cloth.empty { border: 0; background: repeating-linear-gradient(45deg, rgba(239, 232, 216, .14) 0 4px, rgba(239, 232, 216, .07) 4px 8px); align-items: flex-start; padding-top: 12px; }
+.lobby-d .ld-banner-cloth.empty span { transform: none; font: 900 12px var(--ld-body); color: var(--ld-soft); }
+.lobby-d button.ld-pbanner:hover .ld-banner-cloth, .lobby-d button.ld-pbanner:focus-visible .ld-banner-cloth, .lobby-d button.ld-pbanner[aria-expanded="true"] .ld-banner-cloth { transform: skewY(-4deg) rotate(2deg); box-shadow: none; }
+.lobby-d button.ld-pbanner[aria-expanded="true"] { filter: drop-shadow(0 0 4px rgba(216, 53, 42, .8)) drop-shadow(2px 4px 5px rgba(0, 0, 0, .6)); }
+@media (prefers-reduced-motion: no-preference) {
+  .lobby-d button.ld-pbanner:hover .ld-banner-cloth { animation: ld-banner-wave 1.6s ease-in-out infinite; }
+}
+@keyframes ld-banner-wave { 0%, 100% { transform: skewY(-3deg) rotate(1.5deg); } 50% { transform: skewY(2deg) rotate(-1deg); } }
+.lobby-d .bot-controls { grid-template-areas: "face title"; grid-template-rows: auto; }
+.lobby-d .ld-addbot-title { align-self: center; text-align: left; line-height: 1.3; }
+.lobby-d .ld-addbot-title small { display: block; margin-top: 6px; font: 500 12px/1.4 var(--ld-body); color: var(--ld-muted); }
+
+/* ---- flag wheel as a floating popover; AI level as a drop-down list ---- */
+.lobby-d .ld-flag-pop { position: fixed; z-index: 60; width: 184px; height: 184px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle, #1d1a17 0 62%, #141210 63%); border: 1px solid rgba(239, 232, 216, .22); box-shadow: 0 0 0 4px rgba(14, 13, 12, .6), 0 18px 40px rgba(0, 0, 0, .7); animation: ld-pop-in .14s ease-out; }
+.lobby-d .ld-flag-pop .ld-flag-wheel { margin: 0; }
+@keyframes ld-pop-in { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: none; } }
+.lobby-d .ld-plevel { width: auto; min-height: 0; padding: 1px 22px 1px 8px; border: 1px solid var(--ld-blue); border-radius: 999px; background-color: rgba(108, 155, 224, .1); color: var(--ld-blue); font: 700 10.5px var(--ld-body); letter-spacing: 1px; text-transform: uppercase; cursor: pointer; }
+.lobby-d .ld-plevel:hover, .lobby-d .ld-plevel:focus { background-color: rgba(108, 155, 224, .22); color: #fff; border-bottom-color: var(--ld-blue); }
+.lobby-d .ld-plevel option { text-transform: none; letter-spacing: 0; font-size: 13px; }

@@ -277,15 +277,50 @@ function flagImg(flagId, cls = 'ld-flag') {
   return `<img class="${cls}" src="/assets/flag/${f.file}" alt="Drapeau ${escapeHtml(f.name)}" title="${escapeHtml(f.name)}">`;
 }
 
-let flagWheelOpen = false;
-function toggleFlagWheel() {
-  flagWheelOpen = !flagWheelOpen;
+// inline menu open under one player card: { id, kind: 'flag' | 'level' }
+let openMenu = null;
+function togglePlayerMenu(id, kind) {
+  openMenu = openMenu && openMenu.id === id && openMenu.kind === kind ? null : { id, kind };
   if (lastLobby) renderPlayerList(lastLobby);
 }
 
+// the flag wheel floats over the page next to the banner that opened it (the card keeps its size)
+function placeFlagPop() {
+  const pop = document.querySelector('.ld-flag-pop');
+  if (!pop) return;
+  const anchor = pop.parentElement.querySelector('.ld-pbanner');
+  if (!anchor) return;
+  const r = anchor.getBoundingClientRect(), S = 184, M = 8;
+  let x = r.right + M, y = r.top + r.height / 2 - S / 2;
+  if (x + S > innerWidth - M) x = r.left - S - M;
+  y = Math.max(M, Math.min(innerHeight - S - M, y));
+  pop.style.left = `${Math.round(x)}px`;
+  pop.style.top = `${Math.round(y)}px`;
+}
+function closePlayerMenu() {
+  if (!openMenu) return;
+  openMenu = null;
+  if (lastLobby) renderPlayerList(lastLobby);
+}
+document.addEventListener('pointerdown', (e) => { if (openMenu && !e.target.closest('.ld-flag-pop, .ld-pbanner')) closePlayerMenu(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePlayerMenu(); });
+window.addEventListener('resize', placeFlagPop);
+document.addEventListener('scroll', placeFlagPop, true);
+
 function pickFlag(flagId) {
-  flagWheelOpen = false;
+  openMenu = null;
   KBNet.send('set_player_flag', { flagId });
+}
+
+function pickFlagFor(playerId, flagId) {
+  if (playerId === myId) return pickFlag(flagId);
+  openMenu = null;
+  KBNet.send('set_bot_flag', { playerId, flagId });
+}
+
+function setBotLevel(playerId, difficulty) {
+  openMenu = null;
+  KBNet.send('set_bot_difficulty', { playerId, difficulty });
 }
 
 function setTeamMode(on) {
@@ -516,11 +551,7 @@ function renderBotControls(data) {
   const team = !!(data.settings && data.settings.teamMode);
   const taken = new Set(data.players.map(p => p.flag).filter(Boolean));
   box.innerHTML = `<button type="button" class="ld-addbot-face" onclick="addBot()" aria-label="Ajouter une IA" title="Ajouter une IA">+</button>
-    <button type="button" class="ld-addbot-title" onclick="addBot()">Ajouter une IA</button>
-    <div class="ld-addbot-opts">
-      <select id="bot-difficulty" aria-label="Niveau de l'IA">${BOT_DIFFICULTIES.map(d => `<option value="${d.id}"${d.id === current ? ' selected' : ''}>${d.name}</option>`).join('')}</select>
-      <select id="bot-flag" aria-label="Drapeau de l'IA"><option value="">Drapeau : auto</option>${FLAGS.map(f => `<option value="${f.id}"${f.id === curFlag ? ' selected' : ''}${!team && taken.has(f.id) ? ' disabled' : ''}>${f.k} ${f.name}</option>`).join('')}</select>
-    </div>`;
+    <button type="button" class="ld-addbot-title" onclick="addBot()">Ajouter une IA<small>Général, niveau et drapeau se règlent ensuite sur sa carte</small></button>`;
   if (botGeneralChoice && (data.takenGenerals || []).includes(botGeneralChoice)) botGeneralChoice = null;
 }
 
@@ -784,21 +815,27 @@ function renderPlayerList(data) {
     const badge = bot ? `<span class="player-badge bot">IA · ${escapeHtml(bot.label)}</span>`
       : p.id === hostId ? '' : '<span class="player-badge">Joueur</span>';
     const mine = p.id === myId && phase === 'lobby';
+    const botEdit = !!bot && phase === 'lobby' && hostId === myId;
+    const canFlag = mine || botEdit;
     const team = !!(data.settings && data.settings.teamMode);
-    const holders = (fid) => players.filter(o => o.id !== myId && o.flag === fid).map(o => o.name);
+    const holders = (fid) => players.filter(o => o.id !== p.id && o.flag === fid).map(o => o.name);
     const selIdx = Math.max(0, FLAGS.findIndex(f => f.id === p.flag));
-    const swatches = mine ? `<div class="ld-flag-wheel" role="group" aria-label="Votre drapeau">${FLAGS.map((f, i) => {
+    const pid = escapeHtml(p.id);
+    const menu = openMenu && openMenu.id === p.id ? openMenu.kind : null;
+    const swatches = canFlag && menu === 'flag' ? `<div class="ld-flag-wheel" role="group" aria-label="Drapeau de ${escapeHtml(p.name)}">${FLAGS.map((f, i) => {
       const others = holders(f.id);
       const taken = !team && others.length > 0;
       const active = f.id === p.flag;
       const who = others.length ? `${team ? 'Alliés' : 'Pris par'} : ${others.join(', ')}` : '';
       const tip = `${f.name}${who ? ' — ' + who : ''}`;
       return `<button class="ld-flag-btn${active ? ' active' : ''}${taken ? ' taken' : ''}" title="${escapeHtml(tip)}" style="--a:${((i - selIdx) * 360 / FLAGS.length).toFixed(2)}deg"
-        aria-label="Drapeau ${escapeHtml(tip)}" aria-pressed="${active}"${taken ? ' disabled' : ` onclick="pickFlag('${f.id}')"`}>
+        aria-label="Drapeau ${escapeHtml(tip)}" aria-pressed="${active}"${taken ? ' disabled' : ` onclick="pickFlagFor('${pid}', '${f.id}')"`}>
         <span class="ld-flag-img"><img src="/assets/flag/${f.file}" alt=""></span>
         ${taken ? '<span class="ld-flag-tag">Pris</span>' : team && others.length ? `<span class="ld-flag-tag ally">${others.length} allié${others.length > 1 ? 's' : ''}</span>` : ''}
       </button>`;
     }).join('')}</div>` : '';
+    const levelSelect = botEdit ? `<select class="ld-plevel" aria-label="Niveau de l'IA" title="Niveau de l'IA" onchange="setBotLevel('${pid}', this.value)">${BOT_DIFFICULTIES.map(d =>
+      `<option value="${d.id}"${bot.difficulty === d.id ? ' selected' : ''}>IA · ${escapeHtml(d.name.split(' (')[0])}</option>`).join('')}</select>` : '';
     let statusText, ready = false;
     if (!p.connected) statusText = 'hors ligne';
     else if (phase === 'army_building') { ready = p.armySubmitted || p.isReady; statusText = ready ? 'armée prête' : 'recrute…'; }
@@ -811,28 +848,31 @@ function renderPlayerList(data) {
     if (p.id === myId) li.classList.add('me');
     li.style.setProperty('--pc', color);
     const pf = FLAGS.find(f => f.id === p.flag);
-    const cloth = `<span class="ld-banner-pole" aria-hidden="true"></span><span class="ld-banner-cloth${pf ? '' : ' empty'}">${pf ? `<img src="/assets/flag/${pf.file}" alt="">` : '<span>?</span>'}</span>`;
-    const banner = mine
-      ? `<button type="button" class="ld-pbanner" onclick="toggleFlagWheel()" aria-expanded="${flagWheelOpen}" title="${pf ? `Drapeau ${pf.name} — cliquer pour changer` : 'Choisir un drapeau'}">${cloth}</button>`
+    const cloth = `<span class="ld-banner-pole" aria-hidden="true"></span><span class="ld-banner-cloth${pf ? '' : ' empty'}">${pf ? `<img src="/assets/flag/${pf.file}" alt="">` : `<span>${bot ? 'auto' : '?'}</span>`}</span>`;
+    const banner = canFlag
+      ? `<button type="button" class="ld-pbanner" onclick="togglePlayerMenu('${pid}', 'flag')" aria-expanded="${menu === 'flag'}" title="${pf ? `Drapeau ${pf.name} — cliquer pour changer` : 'Choisir un drapeau'}">${cloth}</button>`
       : `<span class="ld-pbanner" title="${pf ? `Drapeau ${pf.name}` : 'Pas encore de drapeau'}">${cloth}</span>`;
+    const faceInner = genImg ? `<img src="${genImg}" alt="">` : `<span class="ld-brush" aria-hidden="true">${gen ? escapeHtml(gen.name.charAt(0)) : '?'}</span>`;
+    const nameInner = `<span class="ld-pname">${escapeHtml(p.name)}${p.id === myId ? ' <em>(vous)</em>' : ''}</span>${levelSelect || badge}`;
     li.innerHTML = `
-      <span class="ld-pface">${genImg ? `<img src="${genImg}" alt="">` : `<span class="ld-brush" aria-hidden="true">${gen ? escapeHtml(gen.name.charAt(0)) : '?'}</span>`}</span>
+      ${botEdit ? `<button type="button" class="ld-pface" onclick="changeBotGeneral('${pid}')" title="Changer le général de cette IA">${faceInner}</button>` : `<span class="ld-pface">${faceInner}</span>`}
       <div class="ld-pbody">
-        <div class="ld-pline"><span class="ld-pname">${escapeHtml(p.name)}${p.id === myId ? ' <em>(vous)</em>' : ''}</span>${badge}</div>
+        <div class="ld-pline">${nameInner}</div>
         <div class="ld-pbottom">
-          ${bot && phase === 'lobby' && hostId === myId
-            ? `<button type="button" class="ld-pgen ld-pgen-btn" onclick="changeBotGeneral('${escapeHtml(p.id)}')" title="Changer le général de cette IA">${escapeHtml(genName)} <span aria-hidden="true">▾</span></button>`
+          ${botEdit
+            ? `<button type="button" class="ld-pgen ld-pgen-btn" onclick="changeBotGeneral('${pid}')" title="Changer le général de cette IA">${escapeHtml(genName)}</button>`
             : `<span class="ld-pgen">${escapeHtml(genName)}</span>`}
           <span class="player-status${ready ? ' ready' : ''}">${statusText}</span>
         </div>
       </div>
       ${banner}
       ${p.id === hostId ? '<span class="ld-host-mark ld-brush" title="Hôte de la partie" aria-label="Hôte">主</span>' : ''}
-      ${bot && phase === 'lobby' && hostId === myId ? `<button class="bot-remove" onclick="removeBot('${escapeHtml(p.id)}')" title="Retirer cette IA" aria-label="Retirer cette IA">×</button>` : ''}
-      ${swatches && flagWheelOpen ? `<div class="ld-pflags">${swatches}</div>` : ''}
+      ${botEdit ? `<button class="bot-remove" onclick="removeBot('${pid}')" title="Retirer cette IA" aria-label="Retirer cette IA">×</button>` : ''}
+      ${swatches ? `<div class="ld-flag-pop">${swatches}</div>` : ''}
     `;
     list.appendChild(li);
   }
+  placeFlagPop();
   document.getElementById('player-count').textContent = players.length;
   renderBotControls(data);
   const specs = data.spectators || [];
