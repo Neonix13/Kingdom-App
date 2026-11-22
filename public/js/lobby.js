@@ -859,7 +859,7 @@ function renderGenerals(takenList) {
   const player = myRole === 'player';
   let status;
   if (!player) status = '';
-  else if (g.id === selectedGeneral) status = '<span class="ld-btn ld-btn-red" role="status" style="cursor:default">Votre général</span>';
+  else if (g.id === selectedGeneral) status = '';
   else if (isTaken(g)) status = '<span class="ld-gen-taken">Déjà choisi par un autre joueur</span>';
   else status = `<button class="ld-btn ld-btn-red" data-pick="${escapeHtml(g.id)}">Choisir ${escapeHtml(g.name)}</button>`;
   const abil = [];
