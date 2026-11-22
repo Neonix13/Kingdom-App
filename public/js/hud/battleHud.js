@@ -4,7 +4,6 @@
 import { createCombatSplash } from './combatSplash.js';
 import { attackTipHtml } from './attackTip.js';
 import { createGameOver } from './gameOver.js';
-import { createUnitRing } from './unitRing.js';
 export const KANJI = { pietaille: '卒', soldats: '兵', phalange: '盾', lancier: '槍', espion: '諜', assassin: '刺', cavalier_leger: '騎', cavalier_lourd: '騎', archer: '弓', archer_elite: '弓', batisseurs: '工', char: '車' };
 const CAM_CODES = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Equal', 'Minus', 'NumpadAdd', 'NumpadSubtract']);
 const ACTIONS = [
@@ -75,7 +74,6 @@ export function mountBattleHud(bridge, view) {
     <div class="hud-seal-shadow" hidden aria-hidden="true"></div>
     <button class="hud-seal" hidden></button>`;
   document.body.appendChild(root);
-  const ring = createUnitRing(bridge, root);
   const q = (sel) => root.querySelector(sel);
   const el = {
     turn: q('.hud-turn'), sub: q('.hud-sub'), callout: q('.hud-callout'), presence: q('.hud-presence'), scores: q('.hud-scores'), timer: q('.hud-timer'),
@@ -155,7 +153,6 @@ export function mountBattleHud(bridge, view) {
 
   // ---- render ----
   function render() {
-    ring.refresh();
     watchSim();
     const st = bridge.state;
     const ds = bridge.deployState;
@@ -329,13 +326,18 @@ export function mountBattleHud(bridge, view) {
     if (u.isMine && !deploying && !sim && u.hasAttacked) meta.push('A ATTAQUÉ');
     if (u.isMine && u.march && u.march.route && u.march.route.length) meta.push(`<span class="flag ok">MARCHE · ${u.march.route.length} CASE${u.march.route.length > 1 ? 'S' : ''}</span>`);
     const pct = u.maxVitality ? Math.max(0, Math.min(100, (u.vitality / u.maxVitality) * 100)) : 0;
-    const stanceShown = !sim && $('stance-panel')?.style.display === 'block';
+    const simOrder = sim && bridge.simOrderOf ? bridge.simOrderOf(u) : null;
+    const curStance = simOrder && simOrder.stance ? simOrder.stance : u.stance;
+    const canAct = u.isMine && !deploying && !u.isGeneral && !u.isFleeing && u.q != null
+      && (sim ? !!(bridge.planning && bridge.planning.canPlan) : st?.currentPlayerId === bridge.myId);
+    const stCost = bridge.orientCosts ? bridge.orientCosts().stance : 2;
+    const stanceShown = canAct;
     const sty = (s) => (window.stanceStyle ? window.stanceStyle(s) : { k: '', svg: '', c: '#000', name: names[s] || s, short: names[s] || s });
     const stanceBtns = list.map((s, i) => {
-      const on = u.stance === s;
+      const on = curStance === s;
       const ss = sty(s);
-      const label = on ? esc(ss.short) : '';
-      return `<button class="hud-para st-btn${on ? ' on' : ''}" data-stance="${i}" title="${esc(ss.name)} (${i + 1})" aria-label="${esc(ss.name)}"><span><i class="st-chip" style="background:${esc(ss.c)}">${ss.svg || ''}</i>${label}</span></button>`;
+      const off = !sim && !on && (u.speedRemaining || 0) < stCost;
+      return `<button class="hud-para st-btn${on ? ' on' : ''}" data-stance="${i}" ${off ? 'disabled' : ''} title="${esc(ss.name)} (${i + 1})${on ? ' — actuelle' : ` — −${stCost} vitesse${sim ? ', au début de la résolution' : ''}`}" aria-label="${esc(ss.name)}"><span><i class="st-chip" style="background:${esc(ss.c)}">${ss.svg || ''}</i>${esc(ss.short)}</span></button>`;
     }).join('');
     let stanceNow = '';
     if (!u.isGeneral && u.stance) {
@@ -364,8 +366,9 @@ export function mountBattleHud(bridge, view) {
     const sb = e.target.closest('[data-stance]');
     if (sb) {
       if (window.hideStanceTooltip) window.hideStanceTooltip();
-      const legacy = document.querySelectorAll('#stance-list .stance-btn')[Number(sb.dataset.stance)];
-      if (legacy) legacy.click();
+      const cu = bridge.selectedUnit;
+      const sid = (G('stanceList') || [])[Number(sb.dataset.stance)];
+      if (cu && sid && !sb.disabled && bridge.setUnitStance) bridge.setUnitStance(cu, sid);
       return;
     }
     if (e.target.closest('[data-card=unmarch]')) {

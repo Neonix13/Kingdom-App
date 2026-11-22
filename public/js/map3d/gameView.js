@@ -107,13 +107,30 @@ export async function mountGameView(bridge, { container }) {
   if (window.KBCorpses) window.KBCorpses.onChange((list) => corpses.set(list));
 
   // --- Input: click vs drag, hover, context menu ---
-  let down = null;
+  let down = null, orienting = false;
+  // right-drag starting on the selected unit orients it; captured on the container so the orbit controls never start
+  container.addEventListener('pointerdown', (e) => {
+    if (e.button !== 2 || e.target !== canvas || !window.KBOrient) return;
+    const u = bridge.selectedUnit;
+    const hex = u && world.pickHex(e.clientX, e.clientY);
+    if (!hex || hex.q !== u.q || hex.r !== u.r || !KBOrient.start(bridge, u)) return;
+    orienting = true;
+    world.controls.enabled = false;
+  }, true);
+  window.addEventListener('pointermove', (e) => { if (orienting) KBOrient.move(world.pickHex(e.clientX, e.clientY), e.clientX, e.clientY); });
+  window.addEventListener('pointerup', () => {
+    if (!orienting) return;
+    orienting = false;
+    KBOrient.end();
+    world.controls.enabled = true;
+    down = null;
+  });
   canvas.addEventListener('pointerdown', (e) => {
     down = { x: e.clientX, y: e.clientY, t: performance.now(), b: e.button };
     canvas.focus();
   });
   canvas.addEventListener('pointerup', (e) => {
-    if (!down) return;
+    if (!down || orienting) return;
     const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
     const quick = performance.now() - down.t < 450;
     const b = down.b;

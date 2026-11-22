@@ -279,7 +279,9 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     if (route.waypoints.length) route.waypoints.pop(); else route.tool = false;
     refreshRouteTiles();
+    return;
   }
+  if (e.key === 'Escape' && !(window.view3d && window.view3d.active) && window.gameBridge) window.gameBridge.deselect();
 });
 
 function fmtSpeed(v) {
@@ -1278,6 +1280,10 @@ canvas.addEventListener('dblclick', (e) => {
 });
 
 canvas.addEventListener('mousedown', (e) => {
+  if (e.button === 2 && selectedUnit && window.KBOrient) {
+    const hex = getHexUnderMouse(e);
+    if (hex && hex.q === selectedUnit.q && hex.r === selectedUnit.r && KBOrient.start(window.gameBridge, selectedUnit)) { dragStart = { x: e.clientX, y: e.clientY }; return; }
+  }
   if (e.button === 1 || e.button === 2) {
     isDragging = true;
     dragStart = { x: e.clientX, y: e.clientY };
@@ -1294,6 +1300,7 @@ canvas.addEventListener('mousedown', (e) => {
 });
 
 canvas.addEventListener('mousemove', (e) => {
+  if (window.KBOrient && KBOrient.active()) { KBOrient.move(getHexUnderMouse(e), e.clientX, e.clientY); return; }
   if (isDragging) {
     camX = camAtDrag.x + (e.clientX - dragStart.x);
     camY = camAtDrag.y + (e.clientY - dragStart.y);
@@ -1324,16 +1331,17 @@ canvas.addEventListener('mousemove', (e) => {
 
 canvas.addEventListener('mouseleave', hideTerrainTooltip);
 
-canvas.addEventListener('mouseup', () => { isDragging = false; });
+let orientJustEnded = false;
+canvas.addEventListener('mouseup', () => {
+  isDragging = false;
+  if (window.KBOrient && KBOrient.active()) { KBOrient.end(); orientJustEnded = true; }
+});
+// Right click: deselect (a right-drag pans the map, or orients the selected unit when it starts on it)
 canvas.addEventListener('contextmenu', (e) => {
   e.preventDefault();
-  if (window.KBSim && KBSim.active()) { KBSim.contextMenu(getHexUnderMouse(e), e.clientX, e.clientY); return; }
-  if (gameState?.phase !== 'battle' || gameState?.currentPlayerId !== myId) return;
-  const hex = getHexUnderMouse(e);
-  const unit = gameState.units.find(u => u.q === hex.q && u.r === hex.r && u.isMine);
-  if (!unit) return;
-  if (unit.speedRemaining <= 0) { notify('Plus de vitesse disponible.', 'info'); return; }
-  showFacingPopup(unit, e.clientX, e.clientY);
+  if (orientJustEnded) { orientJustEnded = false; return; }
+  if (dragStart && Math.hypot(e.clientX - dragStart.x, e.clientY - dragStart.y) > 6) return;
+  window.gameBridge.deselect();
 });
 
 // ---- ORIENTATION / POSTURE as orders (on-unit controls, HUD button, right-click) ----
@@ -1354,7 +1362,7 @@ function facingToward(unit, hex) {
 }
 function setUnitFacing(unit, facing) {
   if (window.KBSim && KBSim.active()) { KBSim.setFacing(unit, facing); return; }
-  if (gameState?.currentPlayerId !== myId) return;
+  if (gameState?.currentPlayerId !== myId || unit.facing === facing) return;
   if ((unit.speedRemaining || 0) <= 0) { notify('Plus de vitesse disponible.', 'info'); return; }
   wsSend('rotate_facing', { roomCode, unitId: unit.id, facing });
 }
@@ -3631,13 +3639,13 @@ window.gameBridge = {
     const unit = units.find(u => u.q === hex.q && u.r === hex.r);
     if (unit) showUnitCard(unit);
   },
-  contextMenu(hex, clientX, clientY) {
-    if (window.KBSim && KBSim.active()) { KBSim.contextMenu(hex, clientX, clientY); return; }
-    if (gameState?.phase !== 'battle' || gameState?.currentPlayerId !== myId || !hex) return;
-    const unit = gameState.units.find(u => u.q === hex.q && u.r === hex.r && u.isMine);
-    if (!unit) return;
-    if (unit.speedRemaining <= 0) { notify('Plus de vitesse disponible.', 'info'); return; }
-    showFacingPopup(unit, clientX, clientY);
+  contextMenu() { this.deselect(); },
+  facingToward(unit, hex) { return facingToward(unit, hex); },
+  // the selected unit can receive a facing now (simultaneous planning, or my turn with speed left)
+  canOrient(unit) {
+    if (!unit || !unit.isMine || unit.q == null || unit.isFleeing || mode === 'deploy') return false;
+    if (window.KBSim && KBSim.active()) return !!(KBSim.planning && KBSim.planning() && KBSim.planning().canPlan);
+    return gameState?.phase === 'battle' && gameState.currentPlayerId === myId && (unit.speedRemaining || 0) > 0;
   },
   hover(hex, e) {
     hoveredHex = hex;
@@ -3700,6 +3708,7 @@ window.gameBridge = {
   },
   segmentTooltip(segType, e) { showTerrainTooltip(buildSegmentTooltip(segType), e); },
   deselect() {
+    if (window.KBSim && KBSim.active()) { KBSim.select(null); render(); return; }
     if (mode === 'deploy' || !selectedUnit) return;
     selectedUnit = null;
     movableTiles.clear(); attackableTiles.clear();
