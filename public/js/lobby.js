@@ -101,12 +101,17 @@ const NEW_KIND_UI = {
   tuto: { go: 'Commencer le tutoriel', hint: 'Une courte bataille guidée contre une IA passive.' },
 };
 
-function openHomePanel(which) {
+function openHomePanel(which, kind) {
   const sheet = document.getElementById('home-sheet');
   sheet.hidden = false;
   sheet.querySelectorAll('.ld-sheet-panel').forEach(el => { el.hidden = el.dataset.panel !== which; });
   document.body.classList.add('ld-sheet-open');
-  if (which === 'new') { setNewKind(newKind); document.getElementById('create-name').focus(); }
+  if (which === 'new') {
+    setNewKind(kind || 'friends');
+    document.getElementById('new-title').textContent = newKind === 'tuto' ? 'Tutoriel' : 'Nouvelle partie';
+    document.getElementById('new-title-k').textContent = newKind === 'tuto' ? '学' : '戦';
+    document.getElementById('create-name').focus();
+  }
   if (which === 'join') { renderResume(); (document.getElementById('join-name').value ? document.getElementById('join-code') : document.getElementById('join-name')).focus(); }
   if (which === 'about') sheet.querySelector('.ld-sheet-box').scrollTop = 0;
 }

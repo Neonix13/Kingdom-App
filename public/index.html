@@ -46,9 +46,9 @@
         </div>
 
         <nav class="ld-home-menu" aria-label="Menu principal">
-          <button class="ld-big ld-big-red" onclick="openHomePanel('new')">
+          <button class="ld-big ld-big-red" onclick="openHomePanel('new', 'friends')">
             <span class="ld-big-k ld-brush" aria-hidden="true">戦</span>
-            <span class="ld-big-txt"><b>Nouvelle partie</b><small>Avec des amis, contre l'IA ou en tutoriel</small></span>
+            <span class="ld-big-txt"><b>Nouvelle partie</b><small>Créez une salle, invitez vos amis ou ajoutez des IA</small></span>
           </button>
           <button class="ld-big" onclick="openHomePanel('join')">
             <span class="ld-big-k ld-brush" aria-hidden="true">門</span>
@@ -57,6 +57,10 @@
           <button class="ld-big" onclick="openHomePanel('about')">
             <span class="ld-big-k ld-brush" aria-hidden="true">書</span>
             <span class="ld-big-txt"><b>Règles et à propos</b><small>Comment se joue une bataille</small></span>
+          </button>
+          <button class="ld-big" onclick="openHomePanel('new', 'tuto')">
+            <span class="ld-big-k ld-brush" aria-hidden="true">学</span>
+            <span class="ld-big-txt"><b>Tutoriel</b><small>Une bataille guidée pour apprendre les règles</small></span>
           </button>
         </nav>
       </div>
@@ -68,12 +72,12 @@
           </button>
 
           <div class="ld-sheet-panel" data-panel="new">
-            <h2 id="home-sheet-title"><span class="ld-brush ld-k" aria-hidden="true">戦</span>Nouvelle partie</h2>
+            <h2 id="home-sheet-title"><span class="ld-brush ld-k" aria-hidden="true" id="new-title-k">戦</span><span id="new-title">Nouvelle partie</span></h2>
             <div class="input-group">
               <label for="create-name">Votre nom</label>
               <input type="text" id="create-name" placeholder="Ex : Shin" maxlength="20" autocomplete="nickname">
             </div>
-            <div class="ld-choices" role="radiogroup" aria-label="Type de partie">
+            <div class="ld-choices" role="radiogroup" aria-label="Type de partie" hidden>
               <button type="button" class="ld-choice" role="radio" data-kind="friends" aria-checked="true">
                 <span class="ld-brush" aria-hidden="true">盟</span><b>Avec des amis</b><small>Une salle avec un code et un lien d'invitation. Vous pourrez y ajouter des IA.</small>
               </button>
