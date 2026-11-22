@@ -284,48 +284,109 @@ function togglePlayerMenu(id, kind) {
   if (lastLobby) renderPlayerList(lastLobby);
 }
 
-// Stylised map of the seven Warring States: each kingdom is a clickable territory filled with its flag
-const STATE_SHAPES = {
-  qin: [[4, 46], [96, 30], [112, 72], [106, 122], [90, 152], [42, 164], [6, 142]],
-  zhao: [[96, 30], [122, 10], [186, 6], [196, 40], [176, 76], [140, 86], [112, 72]],
-  yan: [[186, 6], [292, 12], [294, 56], [242, 62], [206, 56], [196, 40]],
-  qi: [[206, 56], [242, 62], [294, 56], [298, 122], [252, 132], [216, 106], [200, 80]],
-  wei: [[112, 72], [140, 86], [176, 76], [196, 40], [206, 56], [200, 80], [216, 106], [186, 116], [150, 110], [126, 100], [106, 122]],
-  han: [[106, 122], [126, 100], [150, 110], [150, 136], [120, 146], [90, 152]],
-  chu: [[90, 152], [120, 146], [150, 136], [150, 110], [186, 116], [216, 106], [252, 132], [298, 122], [290, 204], [200, 218], [80, 212], [42, 164]],
+// Stylised map of the seven Warring States: each kingdom is a clickable territory filled with its flag.
+// Junctions are shared by neighbouring kingdoms and every border between two junctions is the same jagged line
+// seen from both sides, so the territories fit together exactly.
+const CJ = {
+  a: [6, 48], b: [96, 30], c: [112, 72], d: [106, 122], e: [90, 152], f: [44, 166], g: [8, 142],
+  h: [124, 10], i: [186, 8], j: [196, 40], k: [176, 76], l: [140, 86],
+  m: [290, 14], n: [292, 58], o: [242, 62], p: [206, 56],
+  q: [298, 124], r: [252, 132], s: [216, 106], t: [200, 80],
+  u: [186, 116], v: [150, 110], w: [126, 100], x: [150, 138], y: [120, 148],
+  z1: [288, 204], z2: [200, 218], z3: [82, 212],
 };
+const STATE_RINGS = {
+  qin: 'a b c d e f g', zhao: 'b h i j k l c', yan: 'i m n o p j', qi: 'p o n q r s t',
+  wei: 'c l k j p t s u v w d', han: 'd w v x y e', chu: 'e y x v u s r q z1 z2 z3 f',
+};
+const COAST = new Set(['a-b', 'b-h', 'h-i', 'i-m', 'm-n', 'n-q', 'q-z1', 'z1-z2', 'z2-z3', 'f-z3', 'f-g', 'a-g']);
+const borderCache = {};
+function borderLine(k1, k2) {
+  const [s1, s2] = [k1, k2].sort();
+  const key = `${s1}-${s2}`;
+  if (!borderCache[key]) {
+    let seed = 0;
+    for (const ch of key) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
+    const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296 - 0.5; };
+    const amp = COAST.has(key) ? 0.09 : 0.16;
+    let pts = [CJ[s1], CJ[s2]];
+    for (let depth = 0; depth < 3; depth++) {
+      const next = [pts[0]];
+      for (let i = 1; i < pts.length; i++) {
+        const [x1, y1] = pts[i - 1], [x2, y2] = pts[i];
+        const len = Math.hypot(x2 - x1, y2 - y1), d = rnd() * len * amp * 2;
+        next.push([(x1 + x2) / 2 - (y2 - y1) / len * d, (y1 + y2) / 2 + (x2 - x1) / len * d], pts[i]);
+      }
+      pts = next;
+    }
+    borderCache[key] = pts;
+  }
+  const line = borderCache[key];
+  return k1 === s1 ? line : [...line].reverse();
+}
+function statePath(id) {
+  const ring = STATE_RINGS[id].split(' ');
+  const pts = [];
+  ring.forEach((k, i) => pts.push(...borderLine(k, ring[(i + 1) % ring.length]).slice(0, -1)));
+  return { pts, d: 'M' + pts.map(q => `${q[0].toFixed(1)},${q[1].toFixed(1)}`).join('L') + 'Z' };
+}
 function chinaMapHtml(p, players, team) {
   const pid = escapeHtml(p.id);
+  const cur = FLAGS.find(f => f.id === p.flag);
+  const idle = cur ? `Drapeau actuel : <b>${cur.k} ${cur.name}</b>` : 'Choisissez un royaume';
   const parts = FLAGS.map(f => {
-    const pts = STATE_SHAPES[f.id];
+    const { pts, d } = statePath(f.id);
     const xs = pts.map(q => q[0]), ys = pts.map(q => q[1]);
     const x0 = Math.min(...xs), y0 = Math.min(...ys), w = Math.max(...xs) - x0, h = Math.max(...ys) - y0;
-    const cx = xs.reduce((a, b) => a + b, 0) / xs.length, cy = ys.reduce((a, b) => a + b, 0) / ys.length;
+    const ring = STATE_RINGS[f.id].split(' ').map(k => CJ[k]);
+    const cx = ring.reduce((a, q) => a + q[0], 0) / ring.length, cy = ring.reduce((a, q) => a + q[1], 0) / ring.length;
     const others = players.filter(o => o.id !== p.id && o.flag === f.id).map(o => o.name);
     const taken = !team && others.length > 0;
     const active = f.id === p.flag;
-    const tip = `${f.name}${others.length ? ` — ${team ? 'Alliés' : 'Pris par'} : ${others.join(', ')}` : ''}`;
-    const poly = pts.map(q => q.join(',')).join(' ');
+    const status = others.length ? `${team ? 'Alliés' : 'Pris par'} : ${others.join(', ')}` : active ? 'Votre drapeau' : '';
+    const label = `<b>${f.k} ${f.name}</b>${status ? ` <span>· ${escapeHtml(status)}</span>` : ''}`;
     const side = Math.max(w, h) * 1.05;
-    return { active, svg: `<g class="ld-state${active ? ' active' : ''}${taken ? ' taken' : ''}" ${taken ? 'aria-disabled="true"' : `role="button" tabindex="0" onclick="pickFlagFor('${pid}', '${f.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();pickFlagFor('${pid}', '${f.id}')}"`} aria-label="${escapeHtml(tip)}">
-      <title>${escapeHtml(tip)}</title>
-      <clipPath id="kbm-${f.id}"><polygon points="${poly}"/></clipPath>
+    return { active, svg: `<g class="ld-state${active ? ' active' : ''}${taken ? ' taken' : ''}" style="--cx:${cx.toFixed(1)}px;--cy:${cy.toFixed(1)}px"
+      data-label="${escapeHtml(label)}" onmouseenter="hoverState(this)" onfocus="hoverState(this)" onmouseleave="hoverState(null, this)" onblur="hoverState(null, this)"
+      ${taken ? 'aria-disabled="true"' : `role="button" tabindex="0" onclick="chooseState(this, '${pid}', '${f.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();chooseState(this, '${pid}', '${f.id}')}"`}
+      aria-label="${escapeHtml(`${f.name}${status ? ' — ' + status : ''}`)}">
+      <clipPath id="kbm-${f.id}"><path d="${d}"/></clipPath>
       <g clip-path="url(#kbm-${f.id})">
         <rect x="${x0}" y="${y0}" width="${w}" height="${h}" class="ld-state-bg"/>
         <image href="/assets/flag/${f.file}" x="${(cx - side / 2).toFixed(1)}" y="${(cy - side / 2).toFixed(1)}" width="${side.toFixed(1)}" height="${side.toFixed(1)}" preserveAspectRatio="xMidYMid slice" class="ld-state-img"/>
         <rect x="${x0}" y="${y0}" width="${w}" height="${h}" class="ld-state-shade"/>
       </g>
-      <polygon points="${poly}" class="ld-state-edge"/>
-      <text x="${cx.toFixed(1)}" y="${(cy + 4).toFixed(1)}" class="ld-state-name">${f.name}${taken ? ' · pris' : team && others.length ? ` · ${others.length}` : ''}</text>
+      <path d="${d}" class="ld-state-edge"/>
+      <g transform="translate(${cx.toFixed(1)} ${cy.toFixed(1)})"><g class="ld-state-seal"><rect x="-13" y="-13" width="26" height="26" rx="3"/><text y="7">${f.k}</text></g></g>
     </g>` };
   });
-  // the chosen kingdom is drawn last so its outline sits on top
   parts.sort((a, b) => a.active - b.active);
-  return `<svg class="ld-china" viewBox="0 0 302 222" role="group" aria-label="Carte des royaumes : choisissez votre drapeau">
+  return `<div class="ld-china-title" data-idle="${escapeHtml(idle)}">${idle}</div>
+  <svg class="ld-china" viewBox="0 0 304 224" role="group" aria-label="Carte des royaumes : choisissez votre drapeau">
+    <defs><filter id="kbm-lift" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000" flood-opacity=".7"/></filter></defs>
     <path class="ld-china-river" d="M4,70 C40,64 70,58 104,66 S150,58 176,52 S220,64 248,70 S280,80 296,86"/>
     <path class="ld-china-river" d="M30,150 C70,160 110,150 150,160 S220,168 296,160"/>
-    ${parts.map(x => x.svg).join('')}
+    <g class="ld-states">${parts.map(x => x.svg).join('')}</g>
   </svg>`;
+}
+function hoverState(el, leaving) {
+  const pop = (el || leaving).closest('.ld-flag-pop');
+  const title = pop && pop.querySelector('.ld-china-title');
+  if (!title) return;
+  if (el) {
+    if (el.parentNode.lastElementChild !== el) el.parentNode.appendChild(el);
+    title.innerHTML = el.dataset.label;
+    title.classList.add('hover');
+  } else {
+    title.innerHTML = title.dataset.idle;
+    title.classList.remove('hover');
+  }
+}
+function chooseState(el, playerId, flagId) {
+  if (el.classList.contains('stamped')) return;
+  el.parentNode.querySelectorAll('.ld-state').forEach(s => s.classList.toggle('stamped', s === el));
+  el.parentNode.appendChild(el);
+  setTimeout(() => pickFlagFor(playerId, flagId), 420);
 }
 
 // the flag picker floats over the page next to the banner that opened it (the card keeps its size)

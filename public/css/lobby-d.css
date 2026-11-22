@@ -797,3 +797,26 @@ body.lobby-d.ld-at-home .ld-backdrop { display: none; }
 .lobby-d .ld-state-shade { fill: rgba(40, 30, 18, .22); }
 .lobby-d .ld-state-edge { stroke: #1a140e; stroke-width: 2.5; }
 .lobby-d .ld-state-name { font-size: 12px; }
+
+/* ---- China map v2: hovered kingdom named above, lift on hover, red seal stamped on the choice ---- */
+.lobby-d .ld-china-title { height: 24px; margin-bottom: 6px; text-align: center; font: 500 13px/24px var(--ld-body); color: var(--ld-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lobby-d .ld-china-title b { font-family: var(--ld-mincho); font-weight: 900; font-size: 16px; color: var(--ld-text); letter-spacing: .5px; }
+.lobby-d .ld-china-title span { color: var(--ld-muted); font-size: 12px; }
+.lobby-d .ld-china-title.hover b { color: #fff; }
+.lobby-d .ld-state { transform-box: fill-box; transform-origin: center; transition: transform .18s ease-out, filter .18s; }
+.lobby-d .ld-state-edge { stroke: #17110b; stroke-width: 1.8; }
+.lobby-d .ld-states:hover .ld-state:not(:hover) .ld-state-shade { fill: rgba(12, 10, 8, .5); }
+.lobby-d .ld-state:not(.taken):hover, .lobby-d .ld-state:not(.taken):focus-visible { transform: translateY(-3px) scale(1.05); filter: url(#kbm-lift); }
+.lobby-d .ld-state:not(.taken):hover .ld-state-shade, .lobby-d .ld-state:not(.taken):focus-visible .ld-state-shade { fill: rgba(255, 240, 210, .08); }
+.lobby-d .ld-state:not(.taken):hover .ld-state-img { opacity: 1; }
+.lobby-d .ld-state:not(.taken):hover .ld-state-edge, .lobby-d .ld-state:not(.taken):focus-visible .ld-state-edge { stroke: var(--ld-gold); stroke-width: 2.5; }
+.lobby-d .ld-state.taken:hover .ld-state-edge { stroke: rgba(239, 232, 216, .35); }
+.lobby-d .ld-state.active .ld-state-edge { stroke: var(--ld-red); stroke-width: 3; }
+.lobby-d .ld-state-seal { opacity: 0; transform-box: fill-box; transform-origin: center; pointer-events: none; }
+.lobby-d .ld-state-seal rect { fill: var(--ld-red); stroke: rgba(255, 255, 255, .85); stroke-width: 1.5; }
+.lobby-d .ld-state-seal text { font: 400 17px var(--ld-brush); text-anchor: middle; fill: #fff; }
+.lobby-d .ld-state.active .ld-state-seal { opacity: .95; transform: rotate(-6deg) scale(.8); }
+.lobby-d .ld-state.stamped .ld-state-seal { animation: ld-stamp .38s cubic-bezier(.2, .9, .3, 1.3) forwards; }
+.lobby-d .ld-state.stamped .ld-state-edge { stroke: var(--ld-red); stroke-width: 3.5; }
+.lobby-d .ld-state.stamped { transform: scale(1.06); filter: url(#kbm-lift); }
+@keyframes ld-stamp { 0% { opacity: 0; transform: rotate(-6deg) scale(2.6); } 70% { opacity: 1; transform: rotate(-6deg) scale(.92); } 100% { opacity: 1; transform: rotate(-6deg) scale(1.05); } }
