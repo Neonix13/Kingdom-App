@@ -566,6 +566,9 @@ body.lobby-d.ld-at-home .ld-backdrop { display: none; }
   .lobby-d.ld-in-lobby .ld-map-info { flex: 1; min-width: 0; }
   .lobby-d.ld-in-lobby .ld-seal-row { grid-area: seal; position: static; max-width: none; flex-wrap: wrap; gap: 12px; padding: 4px 14px 10px 0; }
   .lobby-d.ld-in-lobby .ld-seal-row > :not(.ld-seal) { margin-right: 4px; }
+  .lobby-d.ld-in-lobby .ld-seal-row { flex-wrap: nowrap; }
+  .lobby-d.ld-in-lobby .ld-seal-row .ld-ready-btn { white-space: nowrap; flex-shrink: 0; }
+  .lobby-d.ld-in-lobby .ld-seal-row .ld-muted { font-size: 12px; text-align: right; max-width: 240px; }
   .lobby-d.ld-in-lobby .ld-seal { width: 112px; height: 112px; }
 
   .lobby-d.ld-in-lobby .ld-tabs { margin-bottom: 12px; }
@@ -592,3 +595,32 @@ body.lobby-d.ld-at-home .ld-backdrop { display: none; }
   .lobby-d.ld-in-lobby .ld-gbtn .ld-gname { align-self: flex-start; padding-top: 9px; }
   .lobby-d.ld-in-lobby .ld-gbtn .ld-flag { top: auto; bottom: 0; left: 0; font-size: 8.5px; padding: 1px 4px; }
 }
+
+/* ---- player cards ---- */
+.lobby-d .player-list { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.lobby-d .player-list li { position: relative; display: grid; grid-template-columns: 46px minmax(0, 1fr) auto; align-items: center; gap: 4px 12px; padding: 8px 10px 8px 12px; border: 1px solid var(--ld-line); border-left: 3px solid var(--pc, var(--ld-muted)); background: rgba(0, 0, 0, .22); font-size: 14px; }
+.lobby-d .player-list li.me { background: rgba(239, 232, 216, .05); }
+.lobby-d .ld-pface { width: 46px; height: 54px; background: var(--ld-scroll); overflow: hidden; display: flex; align-items: center; justify-content: center; color: #0E0D0C; font-size: 24px; }
+.lobby-d .ld-pface img { width: 100%; height: 100%; object-fit: cover; object-position: 55% 18%; filter: grayscale(1) contrast(1.25); mix-blend-mode: multiply; }
+.lobby-d .ld-pbody { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.lobby-d .ld-pline { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.lobby-d .ld-pline .ld-pname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.lobby-d .ld-pline .player-badge { flex-shrink: 0; font-size: 10px; padding: 0 7px; }
+.lobby-d .ld-pline .ld-pgen { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.lobby-d .ld-pline .player-status { margin-left: auto; flex-shrink: 0; font-size: 11px; padding: 1px 8px; border-radius: 999px; background: rgba(239, 232, 216, .07); }
+.lobby-d .ld-pline .player-status.ready { background: rgba(143, 209, 143, .14); }
+.lobby-d .player-list .bot-remove { width: 28px; height: 28px; min-height: 0; padding: 0; border-radius: 50%; border: 1px solid var(--ld-line); background: none; color: var(--ld-muted); font-size: 18px; line-height: 1; cursor: pointer; }
+.lobby-d .player-list .bot-remove:hover { border-color: var(--ld-red); color: #fff; background: var(--ld-red); }
+.lobby-d .ld-pflags { grid-column: 1 / -1; margin-top: 6px; padding-top: 8px; border-top: 1px dashed var(--ld-line); }
+.lobby-d .ld-pflags .ld-label { margin-bottom: 6px; font-size: 10px; }
+.lobby-d .ld-pflags .ld-flags { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; padding: 0; }
+.lobby-d .ld-pflags .ld-flag-btn { width: 100%; height: auto; aspect-ratio: 1; }
+
+.lobby-d .bot-controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--ld-line); }
+.lobby-d .bot-controls .ld-bot-title { grid-column: 1 / -1; margin: 0; }
+.lobby-d .bot-controls #bot-difficulty { grid-column: 1 / -1; }
+.lobby-d .bot-controls select { width: 100%; min-height: 38px; padding: 6px 10px; font-size: 14px; }
+.lobby-d .bot-controls .ld-bot-gen { max-width: none; min-height: 38px; padding: 0 12px; font-size: 13px; border-radius: 0; }
+.lobby-d .bot-controls .ld-bot-add { grid-column: 1 / -1; min-height: 40px; border-color: var(--ld-red); color: var(--ld-red-text); }
+.lobby-d .bot-controls .ld-bot-add:hover { background: var(--ld-red); color: #fff; }
+.lobby-d .spectator-list:empty { display: none; }

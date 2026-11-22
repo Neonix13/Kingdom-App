@@ -498,7 +498,7 @@ function renderBotControls(data) {
   const box = document.getElementById('bot-controls');
   if (!box) return;
   const show = data.phase === 'lobby' && data.hostId === myId && data.players.length < 8;
-  box.style.display = show ? 'flex' : 'none';
+  box.style.display = show ? 'grid' : 'none';
   if (!show) return;
   const prev = document.getElementById('bot-difficulty');
   const current = prev ? prev.value : 'veteran';
@@ -506,7 +506,8 @@ function renderBotControls(data) {
   const curFlag = prevFlag ? prevFlag.value : '';
   const team = !!(data.settings && data.settings.teamMode);
   const taken = new Set(data.players.map(p => p.flag).filter(Boolean));
-  box.innerHTML = `<label for="bot-difficulty" class="ld-label" style="margin:0;align-self:center">IA</label>
+  box.innerHTML = `<span class="ld-label ld-bot-title">Ajouter une IA</span>
+    <label for="bot-difficulty" class="ld-sr">Niveau de l'IA</label>
     <select id="bot-difficulty">${BOT_DIFFICULTIES.map(d => `<option value="${d.id}"${d.id === current ? ' selected' : ''}>${d.name}</option>`).join('')}</select>
     <select id="bot-flag" aria-label="Drapeau de l'IA"><option value="">Drapeau : auto</option>${FLAGS.map(f => `<option value="${f.id}"${f.id === curFlag ? ' selected' : ''}${!team && taken.has(f.id) ? ' disabled' : ''}>${f.k} ${f.name}</option>`).join('')}</select>
     <button type="button" class="ld-btn ld-bot-gen" onclick="chooseBotGeneral()" title="Choisir le général de l'IA">${(() => {
@@ -514,7 +515,7 @@ function renderBotControls(data) {
       const img = g && generalImageUrl(g);
       return g ? `${img ? `<img src="${img}" alt="">` : ''}${escapeHtml(g.name)}` : 'Général : au hasard';
     })()}</button>
-    <button class="ld-btn" onclick="addBot()">Ajouter une IA</button>`;
+    <button class="ld-btn ld-bot-add" onclick="addBot()">+ Ajouter l'IA</button>`;
   if (botGeneralChoice && (data.takenGenerals || []).includes(botGeneralChoice)) botGeneralChoice = null;
 }
 
@@ -793,17 +794,23 @@ function renderPlayerList(data) {
     else if (!p.generalId) statusText = 'choisit un général';
     else if (!p.flag) statusText = 'choisit un drapeau';
     else { ready = !!p.isReady; statusText = p.isReady ? 'prêt' : 'se prépare'; }
+    const gen = p.generalId && GENERALS_DATA.find(g => g.id === p.generalId);
+    const genImg = gen && generalImageUrl(gen);
+    if (p.id === myId) li.classList.add('me');
+    li.style.setProperty('--pc', color);
     li.innerHTML = `
-      <span class="ld-dot" style="background:${escapeHtml(color)}"></span>
-      ${flagImg(p.flag)}
-      <span class="ld-pname">${escapeHtml(p.name)}${p.id === myId ? ' <em>(vous)</em>' : ''}</span>
-      ${badge}
-      ${bot && phase === 'lobby' && hostId === myId
-        ? `<button type="button" class="ld-pgen ld-pgen-btn" onclick="changeBotGeneral('${escapeHtml(p.id)}')" title="Changer le général de cette IA">${escapeHtml(genName)} <span aria-hidden="true">▾</span></button>`
-        : `<span class="ld-pgen">${escapeHtml(genName)}</span>`}
-      <span class="player-status${ready ? ' ready' : ''}">${statusText}</span>
-      ${bot && phase === 'lobby' && hostId === myId ? `<button class="ld-btn bot-remove" onclick="removeBot('${escapeHtml(p.id)}')" title="Retirer cette IA">Retirer</button>` : ''}
-      ${swatches}
+      <span class="ld-pface">${genImg ? `<img src="${genImg}" alt="">` : `<span class="ld-brush" aria-hidden="true">${gen ? escapeHtml(gen.name.charAt(0)) : '?'}</span>`}</span>
+      <div class="ld-pbody">
+        <div class="ld-pline">${flagImg(p.flag)}<span class="ld-pname">${escapeHtml(p.name)}${p.id === myId ? ' <em>(vous)</em>' : ''}</span>${badge}</div>
+        <div class="ld-pline">
+          ${bot && phase === 'lobby' && hostId === myId
+            ? `<button type="button" class="ld-pgen ld-pgen-btn" onclick="changeBotGeneral('${escapeHtml(p.id)}')" title="Changer le général de cette IA">${escapeHtml(genName)} <span aria-hidden="true">▾</span></button>`
+            : `<span class="ld-pgen">${escapeHtml(genName)}</span>`}
+          <span class="player-status${ready ? ' ready' : ''}">${statusText}</span>
+        </div>
+      </div>
+      ${bot && phase === 'lobby' && hostId === myId ? `<button class="bot-remove" onclick="removeBot('${escapeHtml(p.id)}')" title="Retirer cette IA" aria-label="Retirer cette IA">×</button>` : ''}
+      ${swatches ? `<div class="ld-pflags"><span class="ld-label">Votre drapeau</span>${swatches}</div>` : ''}
     `;
     list.appendChild(li);
   }
