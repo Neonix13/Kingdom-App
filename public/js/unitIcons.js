@@ -1,22 +1,41 @@
-// Line icons for unit types (24×24, drawn with currentColor): used wherever a unit needs a small symbol
+// Unit emblems (48×48 filled silhouettes in currentColor): used wherever a unit needs a small symbol
 (function () {
-  const S = (d) => `<svg class="ku-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
-  const horse = '<path d="M6 21l1-7c-2-2-2-6 0-8l1-4 2 3c2-.5 5 0 7 2l4 4c.5 1 0 2-1 2l-3-.5-3-1.5-1 3 2 7"/><path d="M8 6c-1 3-1 6 0 8"/><circle cx="13" cy="8" r=".7" fill="currentColor"/>';
-  const bow = '<path d="M8 3C2 8 2 16 8 21"/><path d="M8 3v18"/><path d="M5 12h16"/><path d="M18 9l3 3-3 3"/><path d="M5 12l-2-2M5 12l-2 2"/>';
+  const S = (d) => `<svg class="ku-ico" viewBox="0 0 48 48" fill="currentColor" fill-rule="evenodd" aria-hidden="true">${d}</svg>`;
+  const horse = 'M12 45C10 36 10 26 14 18L15 10L17 4L20.5 10C24 10 27 12 30 16L38 25C41 28 42 31 40 33.5C38.5 35 36 34.5 34 33L29 31C27 31 25.5 32 25.5 34C25.5 38 27.5 42 29 45Z'
+    + 'M23.4 17.2a1.7 1.2 0 1 0 3.4 0a1.7 1.2 0 1 0-3.4 0Z' + 'M36.4 29.4a1.1 1.1 0 1 0 2.2 0a1.1 1.1 0 1 0-2.2 0Z';
+  const mane = '<path d="M14 18C9 20 6.5 26 7.5 33C8.5 29 10 26 12.5 24C9.5 29 9.5 35 11 40C11.3 34 12.4 29.5 14.2 26.5Z"/>';
+  const bow = '<path d="M21 3C17 3 15 6 15 9C8 15 6 20 6 24S8 33 15 39C15 42 17 45 21 45C18 43 18 41 18.5 39.5C11.5 33.5 9.5 28 9.5 24S11.5 14.5 18.5 8.5C18 7 18 5 21 3Z"/>'
+    + '<path d="M20 5L13 24L20 43" fill="none" stroke="currentColor" stroke-width="1.3"/>'
+    + '<path d="M13 22.8H38V25.2H13Z"/><path d="M45 24L36.5 19.3L38.2 24L36.5 28.7Z"/>'
+    + '<path d="M14 24L9.5 19.8H13.5L17.2 24Z"/><path d="M14 24L9.5 28.2H13.5L17.2 24Z"/>';
   const ICONS = {
-    pietaille: S('<path d="M12 21V9"/><path d="M7 3v3a5 5 0 0 0 10 0V3"/><path d="M12 3v8"/>'),
-    soldats: S('<path d="M8 16L19 5l1-1"/><path d="M6 13l5 5"/><path d="M8 16l-3.5 3.5"/><circle cx="4" cy="20" r="1"/>'),
-    phalange: S('<path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6z"/><path d="M12 8v8"/><path d="M8.5 11.5h7"/>'),
-    lancier: S('<path d="M4 20L15 9"/><path d="M14 10l2-6.5L20.5 8 14 10z"/><path d="M11 10.5l2.5 2.5"/>'),
-    espion: S('<path d="M2 12c3-6 17-6 20 0-3 6-17 6-20 0z"/><circle cx="12" cy="12" r="3"/>'),
-    assassin: S('<path d="M12 2l2 7h-4z" fill="currentColor"/><path d="M8 9h8"/><path d="M12 9v9"/><circle cx="12" cy="20" r="1.5"/>'),
-    cavalier_leger: S(horse),
-    cavalier_lourd: S(horse + '<path d="M14 7l5 3.5"/><path d="M8 9.5h3"/><path d="M8.5 2.5c0-1.5 2-2 3-1"/>'),
+    pietaille: S('<path d="M14 4V12C14 17 18 20.5 24 20.5S34 17 34 12V4" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/>'
+      + '<rect x="22.4" y="3" width="3.2" height="19" rx="1.6"/><rect x="22.4" y="19" width="3.2" height="26" rx="1.6"/><rect x="19" y="21" width="10" height="3" rx="1.5"/>'),
+    soldats: S('<path d="M24 2L27.5 9V31H20.5V9ZM23.3 10.5V29H24.7V10.5Z"/><rect x="12.5" y="31" width="23" height="4" rx="2"/>'
+      + '<rect x="21.8" y="35" width="4.4" height="7" rx="1"/><circle cx="24" cy="44" r="2.7"/>'),
+    phalange: S(''
+      + '<path d="M24 5L40 10V22C40 33 33 40 24 44C15 40 8 33 8 22V10ZM24 9L36.4 12.9V22C36.4 30.8 31 36.4 24 40C17 36.4 11.6 30.8 11.6 22V12.9Z"/>'
+      + '<path d="M24 13L32.8 15.8V22C32.8 28.5 29 33 24 35.9C19 33 15.2 28.5 15.2 22V15.8ZM22.8 17V32H25.2V17Z"/>'),
+    lancier: S('<path d="M24 1.5C28.3 6.5 28.3 11.5 24 16.5C19.7 11.5 19.7 6.5 24 1.5ZM23.4 5V14H24.6V5Z"/><rect x="21.2" y="16.5" width="5.6" height="2.6" rx="1"/>'
+      + '<rect x="22.7" y="19" width="2.6" height="27" rx="1.3"/><path d="M22.4 20C17.5 22.5 15.8 27.5 17.6 32.5C18.6 28.5 20.4 25.6 22.4 23.6Z"/><path d="M25.6 20C30.5 22.5 32.2 27.5 30.4 32.5C29.4 28.5 27.6 25.6 25.6 23.6Z"/>'),
+    espion: S('<path d="M24 3C34.5 3 42.5 12.5 42.5 26C42.5 36.5 36 43.5 24 45C12 43.5 5.5 36.5 5.5 26C5.5 12.5 13.5 3 24 3ZM24 13.5C30.8 13.5 35 18.6 35 25S30.8 37 24 37S13 31.4 13 25S17.2 13.5 24 13.5Z"/>'
+      + '<path d="M13 21.5H35V28.5H13ZM16.6 25a2.9 1.8 0 1 0 5.8 0a2.9 1.8 0 1 0-5.8 0ZM25.6 25a2.9 1.8 0 1 0 5.8 0a2.9 1.8 0 1 0-5.8 0Z"/>'),
+    assassin: S('<path d="M24 46L20.2 31V20.5H27.8V31ZM23.4 22V33H24.6V22Z"/><rect x="14.5" y="17" width="19" height="3.6" rx="1.8"/>'
+      + '<rect x="21.8" y="7.5" width="4.4" height="9.5" rx="1"/><circle cx="24" cy="5.2" r="2.8"/>'
+      + '<path d="M35.5 31C35.5 31 31.5 36 31.5 38.8a4 4 0 0 0 8 0C39.5 36 35.5 31 35.5 31Z"/>'),
+    cavalier_leger: S(`<path d="${horse}"/>${mane}`),
+    cavalier_lourd: S(`<path d="${horse}M24.2 14.2L34.6 22.6L33.2 24.2L22.8 15.8Z"/>${mane}`
+      + '<path d="M17 4.5C14.5 1 18.5-.5 21.5 1.5C23.2 2.6 24 4.4 23.5 6C22 4.5 20 4 18.5 5.5Z"/><path d="M9 39H31L28.5 46H11.5Z"/>'),
     archer: S(bow),
-    archer_elite: S(bow + '<path d="M19.5 1.8l.7 1.5 1.6.2-1.2 1.1.3 1.6-1.4-.8-1.4.8.3-1.6-1.2-1.1 1.6-.2z" fill="currentColor" stroke-width="1"/>'),
-    batisseurs: S('<path d="M3.5 8.5L10 3.5l3 3-6.5 5z"/><path d="M10.5 8.5L20 19"/>'),
-    char: S('<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2"/><path d="M12 3.5v6.5M12 14v6.5M3.5 12H10M14 12h6.5M6 6l4.6 4.6M13.4 13.4L18 18M18 6l-4.6 4.6M10.6 13.4L6 18"/>'),
-    general: S('<path d="M5 21V3"/><path d="M5 4h13l-3 4 3 4H5"/>'),
+    archer_elite: S(bow + '<path d="M38 3L39.6 6.6L43.5 7L40.6 9.6L41.4 13.4L38 11.4L34.6 13.4L35.4 9.6L32.5 7L36.4 6.6Z"/>'),
+    batisseurs: S('<g transform="rotate(-38 24 24)"><path d="M11 5H33C35 5 36.5 6.5 36.5 8.5V12.5C36.5 14.5 35 16 33 16H11Z"/><path d="M11 5L7 7V14L11 16Z"/><rect x="21.6" y="16" width="4.8" height="29" rx="2.2"/></g>'
+      + '<g transform="rotate(38 24 24)"><path d="M21.5 4H26.5V16H21.5ZM21.5 4L24 1.5L26.5 4Z"/><rect x="20.8" y="18" width="6.4" height="25" rx="3"/><rect x="22.4" y="16" width="3.2" height="2.5"/></g>'),
+    char: S('<path d="M24 3a21 21 0 1 0 .01 0ZM24 7.6a16.4 16.4 0 1 1-.01 0Z"/><circle cx="24" cy="24" r="5"/>'
+      + '<g stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M24 8V19M24 29V40M8 24H19M29 24H40M12.7 12.7L20.5 20.5M27.5 27.5L35.3 35.3M35.3 12.7L27.5 20.5M20.5 27.5L12.7 35.3"/></g>'
+      + '<path d="M24 22.2a1.8 1.8 0 1 0 .01 0Z" fill="#000" fill-opacity=".35"/>'),
+    general: S('<rect x="8.5" y="5" width="3.2" height="41" rx="1.6"/><circle cx="10.1" cy="4" r="3"/>'
+      + '<path d="M11.7 7C19.5 3.5 25.5 10 33.5 6.8C36.5 5.6 39.5 5.4 42.5 6.5L38.5 14.5L42.5 22.5C34.5 21.3 28.5 25.8 20 22.8C17 21.8 14.3 21.8 11.7 22.8Z'
+      + 'M25 10.5L26.3 13.2L29.2 13.5L27 15.5L27.6 18.4L25 16.9L22.4 18.4L23 15.5L20.8 13.5L23.7 13.2Z"/>'),
   };
   self.KB_UNIT_ICONS = ICONS;
   self.KBUnitIcon = (typeId, isGeneral) => (isGeneral ? ICONS.general : ICONS[typeId] || ICONS.soldats);
