@@ -1085,11 +1085,10 @@ function renderSettings(data) {
 
 // Army builder
 const UNIT_GROUPS = [
-  { id: 'inf', name: 'Infanterie', hint: 'Le cœur de la ligne : tient le terrain et encaisse.', ids: ['pietaille', 'soldats', 'phalange', 'lancier'], cats: ['Infanterie'] },
+  { id: 'inf', name: 'Infanterie', hint: 'Le cœur de la ligne : tient le terrain et encaisse.', ids: ['pietaille', 'soldats', 'phalange', 'lancier', 'espion', 'assassin'], cats: ['Infanterie'] },
   { id: 'tir', name: 'Tireurs', hint: 'Frappent à distance, sans riposte possible.', ids: ['archer', 'archer_elite'], cats: ['Tireurs'] },
   { id: 'cav', name: 'Cavalerie', hint: 'Rapide et décisive en charge, fragile au contact prolongé.', ids: ['cavalier_leger', 'cavalier_lourd'], cats: ['Chevaux', 'Cavalerie'] },
-  { id: 'char', name: 'Chars', hint: 'Lourds, ils traversent les lignes ennemies.', ids: ['char'], cats: ['Chars'] },
-  { id: 'spe', name: 'Unités spéciales', hint: 'Renseignement, sabotage et génie.', ids: ['espion', 'assassin', 'batisseurs'], cats: [] },
+  { id: 'char', name: 'Chars', hint: 'Lourds, ils traversent les lignes ennemies.', ids: ['char', 'batisseurs'], cats: ['Chars'] },
 ];
 const GROUP_ICONS = {
   inf: '<path d="M12 3l7 3v5c0 5-3.5 8-7 10-3.5-2-7-5-7-10V6z"/><path d="M12 7v9M9 11h6"/>',
@@ -1103,7 +1102,7 @@ const UNIT_STATS = [['attack', 'Attaque', 'ATQ'], ['defense', 'Défense', 'DÉF'
 const fmtGold = (n) => Number(n || 0).toLocaleString('fr-FR');
 
 function unitGroupOf(u) {
-  return UNIT_GROUPS.find(g => g.ids.includes(u.id)) || UNIT_GROUPS.find(g => g.cats.includes(u.category)) || UNIT_GROUPS[UNIT_GROUPS.length - 1];
+  return UNIT_GROUPS.find(g => g.ids.includes(u.id)) || UNIT_GROUPS.find(g => g.cats.includes(u.category)) || UNIT_GROUPS[0];
 }
 
 // Army builder in three columns: full sheet of the last selected unit (left), unit tiles (centre), general + recruited army (right)
