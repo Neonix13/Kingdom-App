@@ -970,3 +970,10 @@ body.lobby-d.ld-at-home .ld-backdrop { display: none; }
 .lobby-d .ld-a3-shop { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
 .lobby-d .ld-a3-shop .ld-utile-sym { width: 36px; height: 36px; font-size: 21px; }
 .lobby-d .ld-a3-shop .ld-utile-price b { font-size: 19px; }
+
+/* ---- unit symbols in rounded frames, centred on top of the tile ---- */
+.lobby-d .ld-utile-sym, .lobby-d .ld-a3-shop .ld-utile-sym, .lobby-d .ld-a3-mine .ld-utile-sym { left: 50%; top: 8px; transform: translateX(-50%); width: 40px; height: 40px; border-radius: 11px; background: linear-gradient(180deg, rgba(34, 29, 24, .95), rgba(14, 13, 12, .95)); border: 1.5px solid rgba(201, 169, 78, .75); box-shadow: inset 0 0 0 2px rgba(14, 13, 12, .9), inset 0 0 0 3px rgba(201, 169, 78, .25), 0 4px 10px rgba(0, 0, 0, .55); color: var(--ld-paper); font-size: 24px; }
+.lobby-d .ld-a3-mine .ld-utile-sym { width: 32px; height: 32px; border-radius: 9px; font-size: 19px; top: 6px; }
+.lobby-d .ld-utile:hover .ld-utile-sym { border-color: var(--ld-gold); color: #fff; }
+.lobby-d .ld-utile.sel .ld-utile-sym { background: linear-gradient(180deg, #e5513f, #b8261c); border-color: #fff; color: #fff; }
+.lobby-d .ld-as-sym { left: 50%; bottom: auto; top: 12px; transform: translateX(-50%); width: 56px; height: 56px; border-radius: 15px; background: linear-gradient(180deg, #e5513f, #b8261c); border: 2px solid rgba(255, 255, 255, .85); box-shadow: inset 0 0 0 3px rgba(0, 0, 0, .25), 0 6px 16px rgba(0, 0, 0, .6); font-size: 34px; }
