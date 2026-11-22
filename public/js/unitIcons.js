@@ -28,7 +28,7 @@
     cavalier_lourd: S(`<path d="${horse}M24.2 14.2L34.6 22.6L33.2 24.2L22.8 15.8Z"/>${mane}`
       + '<path d="M17 4.5C14.5 1 18.5-.5 21.5 1.5C23.2 2.6 24 4.4 23.5 6C22 4.5 20 4 18.5 5.5Z"/><path d="M9 39H31L28.5 46H11.5Z"/>'),
     archer: S(bow),
-    archer_elite: S(bow + '<path d="M22 18.5L23.5 21.8L27.1 22.2L24.4 24.6L25.2 28.1L22 26.3L18.8 28.1L19.6 24.6L16.9 22.2L20.5 21.8Z"/>'),
+    archer_elite: S('<g transform="translate(10 11) scale(.76)">' + bow + '</g><path d="M1.5 12L2.6 2.5L6.6 6.6L9.5 1L12.4 6.6L16.4 2.5L17.5 12Z"/><rect x="1.5" y="13.3" width="16" height="2.8" rx="1"/>'),
     batisseurs: S('<g transform="rotate(-38 24 24)"><path d="M11 5H33C35 5 36.5 6.5 36.5 8.5V12.5C36.5 14.5 35 16 33 16H11Z"/><path d="M11 5L7 7V14L11 16Z"/><rect x="21.6" y="16" width="4.8" height="29" rx="2.2"/></g>'
       + '<g transform="rotate(38 24 24)"><path d="M21.5 4H26.5V16H21.5ZM21.5 4L24 1.5L26.5 4Z"/><rect x="20.8" y="18" width="6.4" height="25" rx="3"/><rect x="22.4" y="16" width="3.2" height="2.5"/></g>'),
     char: S('<path d="M24 3a21 21 0 1 0 .01 0ZM24 7.6a16.4 16.4 0 1 1-.01 0Z"/><circle cx="24" cy="24" r="5"/>'
