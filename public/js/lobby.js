@@ -333,7 +333,7 @@ function statePath(id) {
 function chinaMapHtml(p, players, team) {
   const pid = escapeHtml(p.id);
   const cur = FLAGS.find(f => f.id === p.flag);
-  const idle = cur ? `Drapeau actuel : <b>${cur.k} ${cur.name}</b>` : 'Choisissez un royaume';
+  const idle = cur ? mapTitleHtml(cur.k, cur.name, 'Votre drapeau') : mapTitleHtml('', 'Choisissez un royaume', '');
   const parts = FLAGS.map(f => {
     const { pts, d } = statePath(f.id);
     const xs = pts.map(q => q[0]), ys = pts.map(q => q[1]);
@@ -344,7 +344,7 @@ function chinaMapHtml(p, players, team) {
     const taken = !team && others.length > 0;
     const active = f.id === p.flag;
     const status = others.length ? `${team ? 'Alliés' : 'Pris par'} : ${others.join(', ')}` : active ? 'Votre drapeau' : '';
-    const label = `<b>${f.k} ${f.name}</b>${status ? ` <span>· ${escapeHtml(status)}</span>` : ''}`;
+    const label = mapTitleHtml(f.k, f.name, status);
     const side = Math.max(w, h) * 1.05;
     return { active, svg: `<g class="ld-state${active ? ' active' : ''}${taken ? ' taken' : ''}" style="--cx:${cx.toFixed(1)}px;--cy:${cy.toFixed(1)}px"
       data-label="${escapeHtml(label)}" onmouseenter="hoverState(this)" onfocus="hoverState(this)" onmouseleave="hoverState(null, this)" onblur="hoverState(null, this)"
@@ -357,11 +357,11 @@ function chinaMapHtml(p, players, team) {
         <rect x="${x0}" y="${y0}" width="${w}" height="${h}" class="ld-state-shade"/>
       </g>
       <path d="${d}" class="ld-state-edge"/>
-      <g transform="translate(${cx.toFixed(1)} ${cy.toFixed(1)})"><g class="ld-state-seal"><rect x="-13" y="-13" width="26" height="26" rx="3"/><text y="7">${f.k}</text></g></g>
+      <g transform="translate(${cx.toFixed(1)} ${cy.toFixed(1)})"><g class="ld-state-seal" opacity="0"><rect x="-13" y="-13" width="26" height="26" rx="3" fill="#D8352A"/><text y="7" fill="#fff">${f.k}</text></g></g>
     </g>` };
   });
   parts.sort((a, b) => a.active - b.active);
-  return `<div class="ld-china-title" data-idle="${escapeHtml(idle)}">${idle}</div>
+  return `<div class="ld-china-title" data-idle="${escapeHtml(idle)}"><div class="ld-ct-layer in">${idle}</div></div>
   <svg class="ld-china" viewBox="0 0 304 224" role="group" aria-label="Carte des royaumes : choisissez votre drapeau">
     <defs><filter id="kbm-lift" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000" flood-opacity=".7"/></filter></defs>
     <path class="ld-china-river" d="M4,70 C40,64 70,58 104,66 S150,58 176,52 S220,64 248,70 S280,80 296,86"/>
@@ -369,16 +369,30 @@ function chinaMapHtml(p, players, team) {
     <g class="ld-states">${parts.map(x => x.svg).join('')}</g>
   </svg>`;
 }
+function mapTitleHtml(k, name, status) {
+  return `${k ? `<span class="ld-ct-k">${k}</span>` : ''}<span class="ld-ct-name">${escapeHtml(name)}</span>${status ? `<span class="ld-ct-status">${escapeHtml(status)}</span>` : ''}`;
+}
+// cross-fade of the title: the old name dissolves upward while the new one settles in
+function setMapTitle(title, html) {
+  const cur = title.querySelector('.ld-ct-layer:not(.out)');
+  if (cur && cur.innerHTML === html) return;
+  if (cur) { cur.classList.remove('in'); cur.classList.add('out'); setTimeout(() => cur.remove(), 450); }
+  const layer = document.createElement('div');
+  layer.className = 'ld-ct-layer';
+  layer.innerHTML = html;
+  title.appendChild(layer);
+  requestAnimationFrame(() => requestAnimationFrame(() => layer.classList.add('in')));
+}
 function hoverState(el, leaving) {
   const pop = (el || leaving).closest('.ld-flag-pop');
   const title = pop && pop.querySelector('.ld-china-title');
   if (!title) return;
   if (el) {
     if (el.parentNode.lastElementChild !== el) el.parentNode.appendChild(el);
-    title.innerHTML = el.dataset.label;
+    setMapTitle(title, el.dataset.label);
     title.classList.add('hover');
   } else {
-    title.innerHTML = title.dataset.idle;
+    setMapTitle(title, title.dataset.idle);
     title.classList.remove('hover');
   }
 }

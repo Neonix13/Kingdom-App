@@ -799,10 +799,6 @@ body.lobby-d.ld-at-home .ld-backdrop { display: none; }
 .lobby-d .ld-state-name { font-size: 12px; }
 
 /* ---- China map v2: hovered kingdom named above, lift on hover, red seal stamped on the choice ---- */
-.lobby-d .ld-china-title { height: 24px; margin-bottom: 6px; text-align: center; font: 500 13px/24px var(--ld-body); color: var(--ld-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lobby-d .ld-china-title b { font-family: var(--ld-mincho); font-weight: 900; font-size: 16px; color: var(--ld-text); letter-spacing: .5px; }
-.lobby-d .ld-china-title span { color: var(--ld-muted); font-size: 12px; }
-.lobby-d .ld-china-title.hover b { color: #fff; }
 .lobby-d .ld-state { transform-box: fill-box; transform-origin: center; transition: transform .18s ease-out, filter .18s; }
 .lobby-d .ld-state-edge { stroke: #17110b; stroke-width: 1.8; }
 .lobby-d .ld-states:hover .ld-state:not(:hover) .ld-state-shade { fill: rgba(12, 10, 8, .5); }
@@ -820,3 +816,14 @@ body.lobby-d.ld-at-home .ld-backdrop { display: none; }
 .lobby-d .ld-state.stamped .ld-state-edge { stroke: var(--ld-red); stroke-width: 3.5; }
 .lobby-d .ld-state.stamped { transform: scale(1.06); filter: url(#kbm-lift); }
 @keyframes ld-stamp { 0% { opacity: 0; transform: rotate(-6deg) scale(2.6); } 70% { opacity: 1; transform: rotate(-6deg) scale(.92); } 100% { opacity: 1; transform: rotate(-6deg) scale(1.05); } }
+
+/* ---- map title: big brush lettering, cross-faded when the hovered kingdom changes ---- */
+.lobby-d .ld-china-title { position: relative; height: 58px; margin: 0 0 8px; overflow: hidden; }
+.lobby-d .ld-ct-layer { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 12px; opacity: 0; transform: translateY(10px) scale(.96); filter: blur(6px); transition: opacity .38s ease, transform .45s cubic-bezier(.2, .8, .2, 1), filter .4s ease; }
+.lobby-d .ld-ct-layer.in { opacity: 1; transform: none; filter: none; }
+.lobby-d .ld-ct-layer.out { opacity: 0; transform: translateY(-12px) scale(1.04); filter: blur(8px); letter-spacing: 3px; }
+.lobby-d .ld-ct-k { font: 400 40px/1 var(--ld-brush); color: var(--ld-red); text-shadow: 0 2px 10px rgba(216, 53, 42, .45); }
+.lobby-d .ld-ct-name { font: 900 28px/1 var(--ld-mincho); color: var(--ld-text); letter-spacing: 2px; text-shadow: 0 2px 12px rgba(0, 0, 0, .8); background: linear-gradient(180deg, #fff 30%, var(--ld-gold) 120%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.lobby-d .ld-ct-layer:not(:has(.ld-ct-k)) .ld-ct-name { font-size: 20px; -webkit-text-fill-color: var(--ld-muted); background: none; }
+.lobby-d .ld-ct-status { position: absolute; left: 0; right: 0; bottom: 0; text-align: center; font: 500 11px var(--ld-body); letter-spacing: 1.5px; text-transform: uppercase; color: var(--ld-muted); }
+.lobby-d .ld-ct-layer:has(.ld-ct-status) { padding-bottom: 12px; }
