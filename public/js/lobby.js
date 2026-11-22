@@ -1180,7 +1180,10 @@ function renderArmyBuilder() {
   UNITS_DATA.forEach(u => { armyQuantities[u.id] = 0; });
   if (!armySheetId) armySheetId = (UNITS_DATA[0] || {}).id;
   const groups = UNIT_GROUPS.map(g => ({ g, units: UNITS_DATA.filter(u => unitGroupOf(u) === g) })).filter(x => x.units.length);
-  shop.innerHTML = `<div class="ld-a3-grid ld-a3-shop">${groups.flatMap(({ units }) => units).map(u => unitTileHtml(u)).join('')}</div>`;
+  shop.innerHTML = `<div class="ld-a3-groups">${groups.map(({ g, units }) => `<section class="ld-a3-cat" data-group="${g.id}">
+      <header><span class="ld-cat-ico">${groupIcon(g.id, 16)}</span><h3>${g.name}</h3><span class="ld-cat-n" id="cat-n-${g.id}"></span></header>
+      <div class="ld-a3-grid ld-a3-shop">${units.map(u => unitTileHtml(u)).join('')}</div>
+    </section>`).join('')}</div>`;
   shop.onclick = (e) => { const t = e.target.closest('.ld-utile'); if (t) selectArmyUnit(t.dataset.unit); };
   shop.ondblclick = (e) => { const t = e.target.closest('.ld-utile'); if (t) changeQty(t.dataset.unit, 1); };
   renderArmyGeneral();
