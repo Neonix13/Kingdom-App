@@ -77,10 +77,6 @@ const SPEC = {
       int('power', 'Puissance', 0, 100, { hint: 'attaque du général : (Force − d20 + 80) × Puissance / 5 × ratio d\'armure / 2' }),
       int('armor', 'Armure', 0, 60),
       int('intimidation', 'Intimidation', 0, 30, { hint: 'moral infligé : (Charisme − d20 + 80) × Intimidation / 100' }),
-      {
-        key: 'weapon', label: 'Arme', type: 'object',
-        fields: [str('name', 'Arme', 1, 40), int('damage', 'Dégâts', 0, 100, { optional: true, hint: 'duels' })],
-      },
       int('force', 'Force', 1, 30, { hint: 'attaque et défense du général' }),
       int('strategy', 'Stratégie', 1, 30, { hint: 'portée de vision (cases) et initiative' }),
       int('charisma', 'Charisme', 1, 30, { hint: 'moral infligé, motivation, rayon de la piétaille (Charisme / 5)' }),
