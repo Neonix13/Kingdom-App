@@ -889,3 +889,4 @@ body.lobby-d.ld-at-home .ld-backdrop { display: none; }
 .lobby-d .ld-abil-item:hover p, .lobby-d .ld-abil-item:focus-visible p { opacity: 1; transform: none; }
 .lobby-d .ld-gen-stage { overflow: visible; }
 .lobby-d .ld-gen-bg { inset: 0 0 0 35%; }
+.lobby-d .ku-ico { width: 1em; height: 1em; vertical-align: -0.14em; display: inline-block; }

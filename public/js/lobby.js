@@ -918,7 +918,7 @@ function showUnitCardLobby(u) {
   const imgEntry = UNIT_IMAGE1_MAP[u.id];
   const imgHtml = imgEntry
     ? `<img class="uc-pdf-img" src="/assets/unites/UNIT IMAGE 1-1/${encodeURIComponent(imgEntry.file)}.${imgEntry.ext}" alt="${u.name}">`
-    : `<div class="uc-pdf-img-placeholder">${UNIT_KANJI[u.id] || u.name.charAt(0)}</div>`;
+    : `<div class="uc-pdf-img-placeholder">${self.KBUnitIcon(u.id)}</div>`;
 
   const stats = [
     { label: 'Vitalité',      value: u.vitality },

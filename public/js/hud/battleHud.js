@@ -222,7 +222,7 @@ export function mountBattleHud(bridge, view) {
     el.timer.classList.toggle('urgent', left <= 10);
   }
 
-  function unitKanji(u) { return u.isGeneral ? '将' : (KANJI[u.typeId] || '兵'); }
+  function unitKanji(u) { return self.KBUnitIcon(u.typeId, u.isGeneral); }
 
   function renderRoster(st, ds, deploying, sim) {
     let units = [];
