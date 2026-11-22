@@ -711,7 +711,7 @@ function renderGeneralPicker(box, { selected = null, taken = [], allowRandom = f
       aria-pressed="${g.id === selected}" title="${escapeHtml(g.name)}${tk ? ' (déjà pris)' : ''}">
       <span class="ld-gp-face">${img ? `<img src="${img}" alt="" loading="lazy">` : `<span class="ld-brush">${escapeHtml(g.name.charAt(0))}</span>`}</span>
       <span class="ld-gp-name">${escapeHtml(g.name)}</span>
-      <span class="ld-gp-stats"><i>F</i>${g.force ?? '—'}<i>S</i>${g.strategy ?? '—'}<i>C</i>${g.charisma ?? '—'}</span>
+      <span class="ld-gp-stats">${statMini(g)}</span>
       ${tk ? '<span class="ld-gp-flag">Pris</span>' : g.id === selected ? '<span class="ld-gp-flag on">Choisi</span>' : ''}</button>`;
   };
   box.innerHTML = `<div class="ld-gp-tabs" role="group" aria-label="Royaume">
@@ -811,8 +811,12 @@ function scrollHtml(g) {
     <span class="ld-stamp">${k}</span></div><div class="ld-rod"></div></div>`;
 }
 
+// Force 武 (武力), Stratégie 知 (知略), Charisme 魅 (魅力)
+const STAT_SYMBOLS = [['force', '武', 'Force'], ['strategy', '知', 'Stratégie'], ['charisma', '魅', 'Charisme']];
+const statMini = (g) => STAT_SYMBOLS.map(([key, k, label]) => `<i title="${label}">${k}</i>${g[key] ?? '—'}`).join('');
+
 function statBars(g) {
-  const rows = [['Force', g.force], ['Stratégie', g.strategy], ['Charisme', g.charisma]];
+  const rows = STAT_SYMBOLS.map(([key, k, label]) => [`<b class="ld-sym" aria-hidden="true">${k}</b>${label}`, g[key]]);
   const best = Math.max(...rows.map(r => r[1] || 0));
   return `<div class="ld-bars">${rows.map(([label, v]) => `<div class="ld-bar"><span>${label}</span>
     <span class="ld-track"><i class="${v === best ? 'red' : ''}" style="width:${Math.min(100, (v || 0) / 20 * 100)}%"></i></span>
@@ -848,7 +852,7 @@ function renderGenerals(takenList) {
   if (g.activeAbility) abil.push(`<div class="ld-abil-item"><span class="ld-abil-kind">Capacité active · recharge ${g.activeAbility.cooldown} tours</span><b>${escapeHtml(g.activeAbility.name)}</b><p>${escapeHtml(g.activeAbility.description)}</p></div>`);
   if (g.passiveAbility) abil.push(`<div class="ld-abil-item"><span class="ld-abil-kind">Passif</span><b>${escapeHtml(g.passiveAbility.name)}</b><p>${escapeHtml(g.passiveAbility.description)}</p></div>`);
   const heroImg = '/assets/unites/UNIT%20IMAGE%201-1/SOLDAT.jpg';
-  const fc = (x) => `<span class="ld-gmini"><i>F</i>${x.force ?? '—'}<i>S</i>${x.strategy ?? '—'}<i>C</i>${x.charisma ?? '—'}</span>`;
+  const fc = (x) => `<span class="ld-gmini">${statMini(x)}</span>`;
   grid.innerHTML = `
     <div class="ld-tabs" role="group" aria-label="Royaume">${KINGDOMS.map(k => `<button class="ld-tab" data-tab="${k.id}" aria-pressed="${k.id === genTab}" title="${k.name}"><span class="ld-brush" aria-hidden="true">${k.k}</span><span>${k.name}</span></button>`).join('')}</div>
     <div class="ld-gen-stage">

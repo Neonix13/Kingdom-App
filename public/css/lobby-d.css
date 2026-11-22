@@ -843,3 +843,12 @@ body.lobby-d.ld-at-home .ld-backdrop { display: none; }
 .lobby-d .ld-state-seal.owned { opacity: .9; transform: rotate(-5deg); }
 .lobby-d .ld-state-seal.owned text { fill: var(--ld-soft); }
 .lobby-d .ld-state-seal.owned rect { fill: #3a3632; stroke: rgba(239, 232, 216, .4); }
+
+/* ---- stat symbols: 武 Force, 知 Stratégie, 魅 Charisme ---- */
+.lobby-d .ld-sym { display: inline-block; width: 20px; margin-right: 6px; font: 400 17px/1 var(--ld-brush); color: var(--ld-red-text); text-transform: none; letter-spacing: 0; vertical-align: -2px; }
+.lobby-d .ld-bar > span:first-child { width: 112px; white-space: nowrap; }
+.lobby-d .ld-army-side .ld-bar > span:first-child { width: 100px; }
+.lobby-d .ld-gmini i, .lobby-d .ld-gp-stats i { font: 400 12px/1 var(--ld-brush); color: var(--ld-red-text); margin: 0 2px 0 6px; }
+.lobby-d .ld-gmini i:first-child, .lobby-d .ld-gp-stats i:first-child { margin-left: 0; }
+.lobby-d.ld-in-lobby .ld-gbtn .ld-gmini { gap: 0; padding-right: 4px; white-space: nowrap; }
+.lobby-d .ld-gmini i { font-size: 11px; margin: 0 1px 0 4px; }
