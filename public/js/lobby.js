@@ -550,8 +550,7 @@ function renderBotControls(data) {
   const curFlag = prevFlag ? prevFlag.value : '';
   const team = !!(data.settings && data.settings.teamMode);
   const taken = new Set(data.players.map(p => p.flag).filter(Boolean));
-  box.innerHTML = `<button type="button" class="ld-addbot-face" onclick="addBot()" aria-label="Ajouter une IA" title="Ajouter une IA">+</button>
-    <button type="button" class="ld-addbot-title" onclick="addBot()">Ajouter une IA<small>Général, niveau et drapeau se règlent ensuite sur sa carte</small></button>`;
+  box.innerHTML = `<button type="button" class="ld-addbot" onclick="addBot()" aria-label="Ajouter une IA" title="Ajouter une IA"><span class="ld-addbot-plus" aria-hidden="true"></span></button>`;
   if (botGeneralChoice && (data.takenGenerals || []).includes(botGeneralChoice)) botGeneralChoice = null;
 }
 
@@ -835,7 +834,7 @@ function renderPlayerList(data) {
       </button>`;
     }).join('')}</div>` : '';
     const levelSelect = botEdit ? `<select class="ld-plevel" aria-label="Niveau de l'IA" title="Niveau de l'IA" onchange="setBotLevel('${pid}', this.value)">${BOT_DIFFICULTIES.map(d =>
-      `<option value="${d.id}"${bot.difficulty === d.id ? ' selected' : ''}>IA · ${escapeHtml(d.name.split(' (')[0])}</option>`).join('')}</select>` : '';
+      `<option value="${d.id}"${bot.difficulty === d.id ? ' selected' : ''}>${escapeHtml(d.name.split(' (')[0])}</option>`).join('')}</select>` : '';
     let statusText, ready = false;
     if (!p.connected) statusText = 'hors ligne';
     else if (phase === 'army_building') { ready = p.armySubmitted || p.isReady; statusText = ready ? 'armée prête' : 'recrute…'; }
@@ -853,7 +852,7 @@ function renderPlayerList(data) {
       ? `<button type="button" class="ld-pbanner" onclick="togglePlayerMenu('${pid}', 'flag')" aria-expanded="${menu === 'flag'}" title="${pf ? `Drapeau ${pf.name} — cliquer pour changer` : 'Choisir un drapeau'}">${cloth}</button>`
       : `<span class="ld-pbanner" title="${pf ? `Drapeau ${pf.name}` : 'Pas encore de drapeau'}">${cloth}</span>`;
     const faceInner = genImg ? `<img src="${genImg}" alt="">` : `<span class="ld-brush" aria-hidden="true">${gen ? escapeHtml(gen.name.charAt(0)) : '?'}</span>`;
-    const nameInner = `<span class="ld-pname">${escapeHtml(p.name)}${p.id === myId ? ' <em>(vous)</em>' : ''}</span>${levelSelect || badge}`;
+    const nameInner = `<span class="ld-pname">${escapeHtml(p.name)}${p.id === myId ? ' <em>(vous)</em>' : ''}</span>${levelSelect ? '' : badge}`;
     li.innerHTML = `
       ${botEdit ? `<button type="button" class="ld-pface" onclick="changeBotGeneral('${pid}')" title="Changer le général de cette IA">${faceInner}</button>` : `<span class="ld-pface">${faceInner}</span>`}
       <div class="ld-pbody">
@@ -862,7 +861,7 @@ function renderPlayerList(data) {
           ${botEdit
             ? `<button type="button" class="ld-pgen ld-pgen-btn" onclick="changeBotGeneral('${pid}')" title="Changer le général de cette IA">${escapeHtml(genName)}</button>`
             : `<span class="ld-pgen">${escapeHtml(genName)}</span>`}
-          <span class="player-status${ready ? ' ready' : ''}">${statusText}</span>
+          ${levelSelect || `<span class="player-status${ready ? ' ready' : ''}">${statusText}</span>`}
         </div>
       </div>
       ${banner}
