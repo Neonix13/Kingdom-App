@@ -647,8 +647,14 @@ body.lobby-d.ld-at-home .ld-backdrop { display: none; }
   .lobby-d.ld-in-lobby .ld-main { display: flex; flex-direction: column; }
   .lobby-d.ld-in-lobby .generals-grid { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .lobby-d.ld-in-lobby .ld-tabs, .lobby-d.ld-in-lobby .ld-roster { flex-shrink: 0; }
-  .lobby-d.ld-in-lobby .ld-gen-stage { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .lobby-d.ld-in-lobby .ld-gen-stage { flex: 0 1 auto; height: 590px; min-height: 0; display: flex; flex-direction: column; padding: 18px 22px 18px; }
+  .lobby-d.ld-in-lobby .ld-gen-name { font-size: clamp(38px, 3vw, 52px); }
+  .lobby-d.ld-in-lobby .ld-gen-quote { margin-bottom: 10px; }
+  .lobby-d.ld-in-lobby .ld-facts { margin-top: 10px; }
+  .lobby-d.ld-in-lobby .ld-abil { margin-top: 10px; }
+  .lobby-d.ld-in-lobby .ld-abil-item { padding: 8px 10px 8px 12px; }
+  .lobby-d.ld-in-lobby .ld-gen { grid-template-columns: minmax(0, 1fr) clamp(160px, 14vw, 230px); }
   .lobby-d.ld-in-lobby .ld-gen { flex: 1; min-height: 0; }
   .lobby-d.ld-in-lobby .ld-gen-info { align-self: stretch; display: flex; flex-direction: column; }
-  .lobby-d.ld-in-lobby .ld-gen-actions { margin-top: auto; padding-top: 16px; }
+  .lobby-d.ld-in-lobby .ld-gen-actions { margin-top: auto; padding-top: 10px; }
 }
