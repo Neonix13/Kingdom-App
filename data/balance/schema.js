@@ -72,7 +72,6 @@ const SPEC = {
       str('id', 'Identifiant', 1, 40, { pattern: ID_PATTERN, readOnly: true }),
       str('name', 'Nom', 1, 60),
       str('kingdom', 'Royaume', 2, 40, { pattern: KINGDOM_PATTERN, options: [...KINGDOMS, 'ZHAO/WEI'], hint: 'QIN, ZHAO, WEI, CHU, HAN, YAN, QI ou combinaison avec /' }),
-      int('army', 'Armée', 0, 100000),
       int('vitality', 'Vitalité', 1, 500, { group: 'Vitalité' }),
       int('maxVitality', 'Vitalité max', 1, 500, { group: 'Vitalité' }),
       int('power', 'Puissance', 0, 100, { hint: 'attaque du général : (Force − d20 + 80) × Puissance / 5 × ratio d\'armure / 2' }),

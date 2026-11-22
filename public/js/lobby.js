@@ -652,7 +652,6 @@ function statBars(g) {
 
 function generalFacts(g) {
   const facts = [];
-  if (g.army) facts.push(['Armée', Number(g.army).toLocaleString('fr-FR')]);
   if (g.vitality) facts.push(['Vitalité', g.vitality]);
   if (g.weapon) facts.push(['Arme', `${g.weapon.name}${g.weapon.damage != null ? ' · ' + g.weapon.damage : ''}`]);
   if (g.armor != null) facts.push(['Armure', g.armor]);
