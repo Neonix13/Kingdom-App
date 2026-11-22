@@ -4,6 +4,8 @@
 -------
 Priorité:
 
+- bug de cam en passant le mur
+- pouvoir changer de stance 
 
 
 -------
