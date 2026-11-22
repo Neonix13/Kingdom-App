@@ -856,3 +856,10 @@ body.lobby-d.ld-at-home .ld-backdrop { display: none; }
 .lobby-d .ld-sym { font-size: 15px; }
 .lobby-d .ld-sym { font-size: 18px; width: 22px; vertical-align: -3px; }
 .lobby-d .ld-gmini i, .lobby-d .ld-gp-stats i { font-size: 13px; }
+
+/* ---- ability symbols: ⚡ active (with recharge ⟳), ⛨ passive ---- */
+.lobby-d .ld-abil-item b { display: flex; align-items: center; gap: 8px; }
+.lobby-d .ld-abil-sym { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; flex-shrink: 0; border-radius: 50%; background: var(--ld-red); color: #fff; font: 400 15px/1 'Segoe UI Symbol', 'Noto Sans Symbols 2', 'DejaVu Sans', sans-serif; box-shadow: 0 0 0 3px rgba(216, 53, 42, .2); }
+.lobby-d .ld-abil-item.passive .ld-abil-sym { background: #3a5a8a; box-shadow: 0 0 0 3px rgba(108, 155, 224, .2); }
+.lobby-d .ld-abil-item.passive { border-left-color: var(--ld-blue); }
+.lobby-d .ld-abil-cd { margin-left: auto; padding: 1px 8px; border-radius: 999px; border: 1px solid rgba(239, 232, 216, .25); font: 700 12px var(--ld-body); color: var(--ld-soft); white-space: nowrap; }

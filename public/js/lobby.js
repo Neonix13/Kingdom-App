@@ -769,8 +769,7 @@ function showGeneralSheet(id) {
   const g = GENERALS_DATA.find(x => x.id === id);
   if (!g) return;
   const abil = [];
-  if (g.activeAbility) abil.push(`<div class="ld-abil-item"><span class="ld-abil-kind">Capacité active · recharge ${g.activeAbility.cooldown} tours</span><b>${escapeHtml(g.activeAbility.name)}</b><p>${escapeHtml(g.activeAbility.description)}</p></div>`);
-  if (g.passiveAbility) abil.push(`<div class="ld-abil-item"><span class="ld-abil-kind">Passif</span><b>${escapeHtml(g.passiveAbility.name)}</b><p>${escapeHtml(g.passiveAbility.description)}</p></div>`);
+  abil.push(...abilityItems(g));
   document.getElementById('general-card-content').innerHTML = `<div class="ld-gsheet">
       ${scrollHtml(g)}
       <div class="ld-gen-info">
@@ -822,6 +821,14 @@ function scrollHtml(g) {
 const STAT_SYMBOLS = [['force', '⚔', 'Force'], ['strategy', '♞', 'Stratégie'], ['charisma', '♛', 'Charisme']];
 const statMini = (g) => STAT_SYMBOLS.map(([key, k, label]) => `<i title="${label}">${k}</i>${g[key] ?? '—'}`).join('');
 
+// ⚡ active ability (with its recharge ⟳), ⛨ passive ability
+function abilityItems(g) {
+  const out = [];
+  if (g.activeAbility) out.push(`<div class="ld-abil-item"><b><span class="ld-abil-sym" title="Capacité active" aria-label="Capacité active">⚡︎</span>${escapeHtml(g.activeAbility.name)}<span class="ld-abil-cd" title="Recharge : ${g.activeAbility.cooldown} tours">⟳ ${g.activeAbility.cooldown}</span></b><p>${escapeHtml(g.activeAbility.description)}</p></div>`);
+  if (g.passiveAbility) out.push(`<div class="ld-abil-item passive"><b><span class="ld-abil-sym" title="Capacité passive" aria-label="Capacité passive">⛨</span>${escapeHtml(g.passiveAbility.name)}</b><p>${escapeHtml(g.passiveAbility.description)}</p></div>`);
+  return out;
+}
+
 function statBars(g) {
   const rows = STAT_SYMBOLS.map(([key, k, label]) => [`<b class="ld-sym" aria-hidden="true">${k}</b>${label}`, g[key]]);
   const best = Math.max(...rows.map(r => r[1] || 0));
@@ -856,8 +863,7 @@ function renderGenerals(takenList) {
   else if (isTaken(g)) status = '<span class="ld-gen-taken">Déjà choisi par un autre joueur</span>';
   else status = `<button class="ld-btn ld-btn-red" data-pick="${escapeHtml(g.id)}">Choisir ${escapeHtml(g.name)}</button>`;
   const abil = [];
-  if (g.activeAbility) abil.push(`<div class="ld-abil-item"><span class="ld-abil-kind">Capacité active · recharge ${g.activeAbility.cooldown} tours</span><b>${escapeHtml(g.activeAbility.name)}</b><p>${escapeHtml(g.activeAbility.description)}</p></div>`);
-  if (g.passiveAbility) abil.push(`<div class="ld-abil-item"><span class="ld-abil-kind">Passif</span><b>${escapeHtml(g.passiveAbility.name)}</b><p>${escapeHtml(g.passiveAbility.description)}</p></div>`);
+  abil.push(...abilityItems(g));
   const heroImg = unitImageUrl({ id: GENERAL_SIGNATURE_UNIT[g.id] || 'soldats' });
   const fc = (x) => `<span class="ld-gmini">${statMini(x)}</span>`;
   grid.innerHTML = `
