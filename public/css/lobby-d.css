@@ -754,3 +754,6 @@ body.lobby-d.ld-at-home .ld-backdrop { display: none; }
 .lobby-d .ld-plevel { width: auto; min-height: 0; padding: 1px 22px 1px 8px; border: 1px solid var(--ld-blue); border-radius: 999px; background-color: rgba(108, 155, 224, .1); color: var(--ld-blue); font: 700 10.5px var(--ld-body); letter-spacing: 1px; text-transform: uppercase; cursor: pointer; }
 .lobby-d .ld-plevel:hover, .lobby-d .ld-plevel:focus { background-color: rgba(108, 155, 224, .22); color: #fff; border-bottom-color: var(--ld-blue); }
 .lobby-d .ld-plevel option { text-transform: none; letter-spacing: 0; font-size: 13px; }
+.lobby-d .player-list li, .lobby-d .bot-controls { height: 118px; box-sizing: border-box; overflow: visible; }
+.lobby-d .player-list li { grid-template-rows: auto minmax(0, 1fr); }
+.lobby-d .ld-pbottom .player-status { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
