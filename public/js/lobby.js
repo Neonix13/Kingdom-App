@@ -87,6 +87,7 @@ function show(id) {
   });
   const home = id === 'screen-home';
   document.body.classList.toggle('ld-at-home', home);
+  document.body.classList.toggle('ld-in-lobby', id === 'screen-lobby');
   if (!home) closeHomePanel();
   if (window.homeScene) window.homeScene.setActive(home);
 }
