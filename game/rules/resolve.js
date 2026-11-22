@@ -160,6 +160,11 @@ function run(room, ordersByPlayer, seed) {
   }
   RANK = shuffledRanks([...ctl.keys()], seed);
   const ctls = () => [...ctl.values()].filter(c => alive(room, c.u)).sort(byId);
+  function applyStance(u, s) {
+    u.stance = s;
+    room._record('stance', { u: u.id, s });
+    sendSeen(u, { k: 'stance', u: u.id, s });
+  }
   const pathTrail = new Map(); // replay: unitId -> visited hexes since the last flush
   const flushTrails = () => {
     for (const [id, trail] of pathTrail) if (trail.length > 1) room._record('move', { u: id, path: trail });
@@ -193,10 +198,10 @@ function run(room, ordersByPlayer, seed) {
       const { u, o } = c;
       if (u.isFleeing) { c.done = true; continue; }
       if (o.stance && !u.isGeneral && o.stance !== u.stance && c.budget > 0) {
-        u.stance = o.stance;
         c.budget = Math.max(0, rules.snap(c.budget - S.stanceCost));
-        room._record('stance', { u: u.id, s: u.stance });
-        sendSeen(u, { k: 'stance', u: u.id, s: u.stance });
+        // posture on a waypoint: paid now, taken after the stanceAt-th step (or at the end of the turn if stopped before)
+        if (o.stanceAt) c.pendingStance = o.stance;
+        else applyStance(u, o.stance);
       }
       if (o.facing != null) c.budget = Math.max(0, rules.snap(c.budget - S.facingCost));
       if (o.unitAbility && !u.isGeneral) {
@@ -517,6 +522,7 @@ function run(room, ordersByPlayer, seed) {
       c.moved++;
       if (c.path.length) c.path.shift();
       room.unitMap[hexKey(u.q, u.r)] = u;
+      if (c.pendingStance && c.moved >= c.o.stanceAt && !u.isFleeing) { applyStance(u, c.pendingStance); c.pendingStance = null; }
       moved.set(u.id, { u, from: p.from, to: [u.q, u.r], kind: 'move' });
       if (!pathTrail.has(u.id)) pathTrail.set(u.id, [p.from]);
       pathTrail.get(u.id).push([u.q, u.r]);
@@ -627,6 +633,7 @@ function run(room, ordersByPlayer, seed) {
       if (c.ranged && !c.fired && !c.u.isFleeing) {
         for (const id of [c.owner, ALL]) send(id, { k: 'shot_lost', u: c.u.id, targetId: c.target });
       }
+      if (c.pendingStance && !c.u.isFleeing) { applyStance(c.u, c.pendingStance); c.pendingStance = null; }
       if (c.o.facing != null && !c.u.isFleeing && !c.struck) {
         c.u.facing = c.o.facing;
         room._record('facing', { u: c.u.id, f: c.o.facing });

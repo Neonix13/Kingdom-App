@@ -12,6 +12,7 @@
 //                        | { type: 'attack' | 'charge', targetId }     (target visible when ordered; shooters fire, melee units close in)
 //                        | { type: 'hold' } | { type: 'motivate' }     (motivate: generals)
 //                        + optional stance: stanceId (-2 speed), facing: 0-5 (-1 speed, applied at the end), ability: { targetId? } (generals)
+//                        + optional stanceAt: n (with stance and a path: the stance changes after the n-th step instead of at tick 0)
 //                        + optional unitAbility: { kind: 'sabotage'|'build'|'vanish', q?, r?, build? } (espion, bâtisseurs, assassin;
 //                          ability cost in speed, applied at the start of the resolution)
 //                  -> orders_update { turn, orders, commandPoints: { max, used }, committed }   (to the sender only)
@@ -201,6 +202,11 @@ function validateOrder(room, playerId, unit, raw) {
     order.targetId = target.id;
   } else if (order.type === 'motivate') {
     if (!unit.isGeneral) return { error: 'Seul un général peut motiver.' };
+  }
+  if (order.stance && raw.stanceAt != null) {
+    if (!order.path || !isInt(raw.stanceAt) || raw.stanceAt < 1 || raw.stanceAt > order.path.length + (order.marchRest ? order.marchRest.length : 0)) return { error: 'Étape de changement de posture invalide.' };
+    if (raw.stanceAt <= order.path.length) order.stanceAt = raw.stanceAt;
+    else order.stanceAt = order.path.length;
   }
   if (order.type === 'hold' && !order.stance && order.facing == null && !order.ability && !order.unitAbility) return { order: null };
   return { order };

@@ -362,6 +362,11 @@ export function mountBattleHud(bridge, view) {
       </div>
       <div class="tools">${u.isMine && u.march && u.march.route && u.march.route.length ? '<button data-card="unmarch" title="Annuler la marche sur plusieurs tours">STOP MARCHE</button>' : ''}<button data-card="sheet" title="Fiche complète (double-clic sur l'unité)">FICHE</button></div>`;
   }
+  el.card.addEventListener('change', (e) => {
+    const sel = e.target.closest('[data-card=stance-at]');
+    const cu = bridge.selectedUnit;
+    if (sel && cu && bridge.setStanceAt) bridge.setStanceAt(cu, Number(sel.value));
+  });
   el.card.addEventListener('click', (e) => {
     const sb = e.target.closest('[data-stance]');
     if (sb) {

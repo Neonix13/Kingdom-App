@@ -541,3 +541,6 @@ body.hud-d #toolbar .tuto-highlight { outline: 3px solid var(--hud-red); outline
 #ability-banner .ab-name { font: 900 40px/1.05 "Zen Old Mincho", Georgia, serif; color: #fff; text-shadow: 0 3px 16px rgba(0, 0, 0, .8); }
 #ability-banner .ab-fx { font: 500 15px "Zen Kaku Gothic New", "Segoe UI", sans-serif; color: #F2E3A0; }
 #ability-banner.enemy .ab-name { color: #ffd8d0; }
+.hud-card .st-at { display: flex; align-items: center; gap: 8px; margin-top: 6px; font: 700 10.5px "Zen Kaku Gothic New", "Segoe UI", sans-serif; letter-spacing: 1px; text-transform: uppercase; color: #3a3632; }
+.hud-card .st-at select { flex: 1; min-width: 0; height: 26px; padding: 0 6px; border: 2px solid #111; background: #fff; font: 700 12px "Zen Kaku Gothic New", "Segoe UI", sans-serif; text-transform: none; letter-spacing: 0; cursor: pointer; }
+.sim-stance-at { flex: 1; min-height: 30px; padding: 2px 8px; font-weight: 700; }

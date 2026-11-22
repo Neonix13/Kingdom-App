@@ -358,3 +358,19 @@ test('simultané : capacités d\'unité en ordre (bâtisseurs, assassin) au déb
   assert.equal(hit.length, 1);
   assert.equal(hit[0].log.targetId, B[0].id);
 });
+
+test('simultané : posture sur une étape du trajet — payée au départ, prise après le n-ième pas', () => {
+  const { room, A, T } = setup();
+  put(room, A[0], 2, 4, { speed: 6, stance: 'marche' });
+  assert.match(T.setOrders(room, 'p0', { [A[0].id]: { type: 'move', path: [[3, 4], [4, 4], [5, 4]], stance: 'defense_combat', stanceAt: 5 } }).error, /posture/);
+  order(room, 'p0', { [A[0].id]: { type: 'move', path: [[3, 4], [4, 4], [5, 4]], stance: 'defense_combat', stanceAt: 2 } });
+  const res = T.resolve(room, 3);
+  const ev = events(res).filter(e => e.u === A[0].id);
+  const st = ev.find(e => e.k === 'stance');
+  assert.ok(st, 'changement de posture');
+  assert.ok(st.t > 0, 'pas au tick 0');
+  const movesBefore = ev.filter(e => e.k === 'move' && e.t <= st.t).length;
+  assert.equal(movesBefore, 2, 'après le 2e pas');
+  assert.deepEqual(at(A[0]), [5, 4]);
+  assert.equal(A[0].stance, 'defense_combat');
+});

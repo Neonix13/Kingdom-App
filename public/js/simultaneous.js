@@ -22,6 +22,7 @@
     endsAt: null,
     startsAt: null,
     tool: null,          // 'charge' | 'ability' (waiting for a click)
+    wps: {},             // unitId -> waypoints chosen for its move order (stance change on a waypoint)
     playback: null,
     tickSent: 0,
     popupTurn: null,
@@ -128,6 +129,7 @@
     if (o.type !== 'move' || ('path' in patch && !patch.march)) delete o.march;
     for (const k of Object.keys(o)) if (o[k] === undefined) delete o[k];
     const routed = o.type === 'attack' || o.type === 'charge';
+    if (o.stanceAt != null && (!o.stance || !o.path || o.stanceAt > o.path.length)) delete o.stanceAt;
     if (o.type !== 'move' && !routed) delete o.path;
     if (o.type !== 'attack' && o.type !== 'charge') delete o.targetId;
     // a stance or facing change shrinks the budget: drop a path that no longer fits (checked step by step)
@@ -153,7 +155,7 @@
       parts[0] += ` → ${t ? t.name : 'cible'}`;
       if (order.type === 'attack' && unit && unit.range > 1) parts[0] += ' (tir dès qu\'elle est à portée)';
     }
-    if (order.stance) parts.push(`posture ${stanceNames[order.stance] || order.stance}`);
+    if (order.stance) parts.push(`posture ${stanceNames[order.stance] || order.stance}${order.stanceAt ? ` à l'étape ${order.stanceAt}` : ''}`);
     if (order.facing != null) parts.push('orientation');
     if (order.ability) parts.push('capacité');
     if (order.unitAbility) parts.push(order.unitAbility.kind === 'vanish' ? 'disparaître' : order.unitAbility.kind === 'sabotage' ? 'sabotage' : `construire : ${(KBRules.RULES.abilities.build_kinds[order.unitAbility.build] || {}).label || ''}`);
@@ -216,7 +218,7 @@
       }
       if (movableTiles.has(key)) {
         const path = pathTo(sel, hex.q, hex.r);
-        if (path) patchOrder(sel, { type: 'move', path: path.path.slice(1) });
+        if (path) { st.wps[sel.id] = routeWaypoints(sel).map(w => w.slice()); patchOrder(sel, { type: 'move', path: path.path.slice(1) }); }
         resetRoute();
         computeTiles(sel);
         return;
@@ -227,6 +229,7 @@
         if (mp.path.length - 1 > 200) { notify('Destination trop lointaine pour une seule marche.', 'info'); return; }
         if (st.pendingMarch === `${sel.id}|${key}`) {
           st.pendingMarch = null;
+          st.wps[sel.id] = routeWaypoints(sel).map(w => w.slice());
           patchOrder(sel, { type: 'move', path: mp.path.slice(1), march: true, targetId: undefined });
           resetRoute();
           computeTiles(sel);
@@ -420,18 +423,9 @@
       html += '</div>';
       st.uaOpts = opts;
     }
-    if (!unit.isGeneral) {
-      html += `<div class="sim-label">Posture (coût ${S.stanceCost} vitesse, au début de la résolution)</div><div class="sim-row">`;
-      for (const s of stanceList) {
-        const active = (o && o.stance) ? o.stance === s : unit.stance === s;
-        const sst = stanceStyle(s);
-        html += `<button data-stance="${s}" class="${active ? 'active' : ''}"><i class="st-chip" style="background:${sst.c}">${sst.svg || ''}</i> ${escapeHtml(stanceNames[s] || s)}</button>`;
-      }
-      html += '</div>';
-    }
-    html += `<div class="sim-label">Orientation finale (coût ${S.facingCost}) — ou clic droit sur l'unité</div><div class="sim-row">`;
-    for (const { idx, label } of FACING_BTNS) html += `<button data-facing="${idx}" class="sim-facing-btn${o && o.facing === idx ? ' active' : ''}">${label}</button>`;
-    html += '</div>';
+    const steps = KBSimStanceSteps(unit);
+    if (steps) html += `<div class="sim-label">Changer de posture (${escapeHtml(stanceNames[o.stance] || o.stance)})</div><div class="sim-row"><select data-stance-at class="sim-stance-at">${steps.choices.map(c => `<option value="${c.n}"${c.n === steps.value ? ' selected' : ''}>${escapeHtml(c.label)}</option>`).join('')}</select></div>`;
+    html += `<div class="sim-label">Posture : sous la fiche de l'unité · orientation finale (coût ${S.facingCost}) : clic droit glissé depuis l'unité${o && o.facing != null ? ' (choisie)' : ''}</div>`;
     if (unit.isGeneral && unit.activeAbility && unit.activeAbility.target === 'enemy_army' && st.tool === 'ability') {
       html += '<div class="sim-label">Armée ciblée</div><div class="sim-row">';
       for (const p of gameState.players) if (p.id !== myId && !p.isEliminated) html += `<button data-ability-target="${escapeHtml(p.id)}" style="color:${p.color}">${escapeHtml(p.name)}</button>`;
@@ -446,6 +440,8 @@
       b.addEventListener('mousemove', positionStanceTooltip);
       b.addEventListener('mouseleave', hideStanceTooltip);
     });
+    const sa = panel.querySelector('[data-stance-at]');
+    if (sa) sa.onchange = () => patchOrder(unit, { stanceAt: Number(sa.value) > 0 ? Number(sa.value) : undefined });
     panel.querySelectorAll('button[data-facing]').forEach(b => {
       const f = Number(b.dataset.facing);
       b.onclick = () => patchOrder(unit, { facing: o && o.facing === f ? undefined : f });
@@ -873,6 +869,22 @@
     if (left < -1000 && now - st.tickSent > 5000) { st.tickSent = now; send('tick'); }
   }, 500);
 
+  // where a planned stance change can happen: the start, every waypoint chosen for the path, the arrival
+  function KBSimStanceSteps(unit) {
+    const u = unit && myUnit(unit.id);
+    const o = u && current(u);
+    if (!o || !o.stance || !o.path || !o.path.length) return null;
+    const out = [{ n: 0, label: 'au départ' }];
+    const wps = st.wps[u.id] || [];
+    wps.forEach(([q, r], i) => {
+      const n = o.path.findIndex(([pq, pr]) => pq === q && pr === r) + 1;
+      if (n > 0 && n < o.path.length) out.push({ n, label: `à l'étape ${i + 1}` });
+    });
+    out.push({ n: o.path.length, label: `à l'arrivée (${o.path.length} case${o.path.length > 1 ? 's' : ''})` });
+    if (o.stanceAt && !out.some(x => x.n === o.stanceAt)) out.splice(1, 0, { n: o.stanceAt, label: `après ${o.stanceAt} case${o.stanceAt > 1 ? 's' : ''}` });
+    return { value: o.stanceAt || 0, choices: out };
+  }
+
   window.KBSim = {
     isSim,
     active: () => isSim() && gameState.phase === 'battle',
@@ -898,5 +910,12 @@
       if (!u || !canPlan()) return;
       patchOrder(u, { stance: s === u.stance ? undefined : s });
     },
+    // where the planned stance change happens: 0 = at the start, n = after the n-th step of the path
+    setStanceAt(unit, n) {
+      const u = unit && myUnit(unit.id);
+      if (!u || !canPlan()) return;
+      patchOrder(u, { stanceAt: n > 0 ? n : undefined });
+    },
+    stanceSteps: (unit) => KBSimStanceSteps(unit),
   };
 })();

@@ -3688,6 +3688,8 @@ window.gameBridge = {
   },
   setUnitFacing(unit, f) { setUnitFacing(unit, f); },
   setUnitStance(unit, s) { setUnitStance(unit, s); },
+  setStanceAt(unit, n) { if (window.KBSim && KBSim.setStanceAt) KBSim.setStanceAt(unit, n); },
+  stanceSteps(unit) { return window.KBSim && KBSim.active() && KBSim.stanceSteps ? KBSim.stanceSteps(unit) : null; },
   simOrderOf(unit) { return window.KBSim && KBSim.orderOf ? KBSim.orderOf(unit) : null; },
   orientCosts() { const S = KBRules.RULES.simultaneous || {}; return { facing: S.facingCost ?? 1, stance: S.stanceCost ?? 2 }; },
   stanceChoices() { return stanceList.map((id) => { const st = stanceStyle(id); return { id, svg: st.svg, color: st.c, name: st.name }; }); },
