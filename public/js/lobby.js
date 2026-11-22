@@ -682,7 +682,7 @@ function renderGenerals(takenList) {
   const abil = [];
   if (g.activeAbility) abil.push(`<div class="ld-abil-item"><span class="ld-abil-kind">Capacité active · recharge ${g.activeAbility.cooldown} tours</span><b>${escapeHtml(g.activeAbility.name)}</b><p>${escapeHtml(g.activeAbility.description)}</p></div>`);
   if (g.passiveAbility) abil.push(`<div class="ld-abil-item"><span class="ld-abil-kind">Passif</span><b>${escapeHtml(g.passiveAbility.name)}</b><p>${escapeHtml(g.passiveAbility.description)}</p></div>`);
-  const heroImg = generalImageUrl(g);
+  const heroImg = '/assets/unites/UNIT%20IMAGE%201-1/SOLDAT.jpg';
   const fc = (x) => `<span class="ld-gmini"><i>F</i>${x.force ?? '—'}<i>S</i>${x.strategy ?? '—'}<i>C</i>${x.charisma ?? '—'}</span>`;
   grid.innerHTML = `
     <div class="ld-tabs" role="group" aria-label="Royaume">${KINGDOMS.map(k => `<button class="ld-tab" data-tab="${k.id}" aria-pressed="${k.id === genTab}" title="${k.name}"><span class="ld-brush" aria-hidden="true">${k.k}</span><span>${k.name}</span></button>`).join('')}</div>
