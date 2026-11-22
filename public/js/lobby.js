@@ -330,6 +330,7 @@ function statePath(id) {
   ring.forEach((k, i) => pts.push(...borderLine(k, ring[(i + 1) % ring.length]).slice(0, -1)));
   return { pts, d: 'M' + pts.map(q => `${q[0].toFixed(1)},${q[1].toFixed(1)}`).join('L') + 'Z' };
 }
+const STATE_COLORS = { qin: '#2f7fd8', zhao: '#e07820', wei: '#2a9a4a', chu: '#20b8c8', yan: '#d8c44a', qi: '#e8e8e8', han: '#9060c0' };
 function chinaMapHtml(p, players, team) {
   const pid = escapeHtml(p.id);
   const cur = FLAGS.find(f => f.id === p.flag);
@@ -345,8 +346,11 @@ function chinaMapHtml(p, players, team) {
     const active = f.id === p.flag;
     const status = others.length ? `${team ? 'Alliés' : 'Pris par'} : ${others.join(', ')}` : active ? 'Votre drapeau' : '';
     const label = mapTitleHtml(f.k, f.name, status);
+    const rawSeal = taken ? others.join(', ') : p.name;
+    const sealText = rawSeal.length > 14 ? rawSeal.slice(0, 13) + '…' : rawSeal;
+    const sealW = Math.min(96, sealText.length * 6.4 + 16);
     const side = Math.max(w, h) * 1.05;
-    return { active, svg: `<g class="ld-state${active ? ' active' : ''}${taken ? ' taken' : ''}" style="--cx:${cx.toFixed(1)}px;--cy:${cy.toFixed(1)}px"
+    return { active, d, color: STATE_COLORS[f.id], svg: `<g class="ld-state${active ? ' active' : ''}${taken ? ' taken' : ''}" data-d="${d}" data-color="${STATE_COLORS[f.id]}"
       data-label="${escapeHtml(label)}" onmouseenter="hoverState(this)" onfocus="hoverState(this)" onmouseleave="hoverState(null, this)" onblur="hoverState(null, this)"
       ${taken ? 'aria-disabled="true"' : `role="button" tabindex="0" onclick="chooseState(this, '${pid}', '${f.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();chooseState(this, '${pid}', '${f.id}')}"`}
       aria-label="${escapeHtml(`${f.name}${status ? ' — ' + status : ''}`)}">
@@ -357,16 +361,18 @@ function chinaMapHtml(p, players, team) {
         <rect x="${x0}" y="${y0}" width="${w}" height="${h}" class="ld-state-shade"/>
       </g>
       <path d="${d}" class="ld-state-edge"/>
-      <g transform="translate(${cx.toFixed(1)} ${cy.toFixed(1)})"><g class="ld-state-seal" opacity="0"><rect x="-13" y="-13" width="26" height="26" rx="3" fill="#D8352A"/><text y="7" fill="#fff">${f.k}</text></g></g>
+      <g transform="translate(${cx.toFixed(1)} ${cy.toFixed(1)})"><g class="ld-state-seal${taken ? ' owned' : ''}" opacity="${taken ? 1 : 0}"><rect x="${(-sealW / 2).toFixed(1)}" y="-10" width="${sealW.toFixed(1)}" height="20" rx="2" fill="${taken ? '#3a3632' : '#D8352A'}"/><text y="4" fill="#fff">${escapeHtml(sealText)}</text></g></g>
     </g>` };
   });
-  parts.sort((a, b) => a.active - b.active);
+  const act = parts.find(x => x.active);
   return `<div class="ld-china-title" data-idle="${escapeHtml(idle)}"><div class="ld-ct-layer in">${idle}</div></div>
   <svg class="ld-china" viewBox="0 0 304 224" role="group" aria-label="Carte des royaumes : choisissez votre drapeau">
     <defs><filter id="kbm-lift" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000" flood-opacity=".7"/></filter></defs>
     <path class="ld-china-river" d="M4,70 C40,64 70,58 104,66 S150,58 176,52 S220,64 248,70 S280,80 296,86"/>
     <path class="ld-china-river" d="M30,150 C70,160 110,150 150,160 S220,168 296,160"/>
     <g class="ld-states">${parts.map(x => x.svg).join('')}</g>
+    <g class="ld-sel-outline" style="--sc:${act ? act.color : 'transparent'}"><path class="ld-sel-halo" d="${act ? act.d : ''}"/><path class="ld-sel-line" d="${act ? act.d : ''}"/></g>
+    <g class="ld-hover-layer"></g>
   </svg>`;
 }
 function mapTitleHtml(k, name, status) {
@@ -388,18 +394,25 @@ function hoverState(el, leaving) {
   const title = pop && pop.querySelector('.ld-china-title');
   if (!title) return;
   if (el) {
-    if (el.parentNode.lastElementChild !== el) el.parentNode.appendChild(el);
+    const top = el.closest('svg').querySelector('.ld-hover-layer');
+    if (el.parentNode !== top) top.appendChild(el);
     setMapTitle(title, el.dataset.label);
     title.classList.add('hover');
   } else {
+    if (!leaving.classList.contains('stamped')) leaving.closest('svg').querySelector('.ld-states').appendChild(leaving);
     setMapTitle(title, title.dataset.idle);
     title.classList.remove('hover');
   }
 }
 function chooseState(el, playerId, flagId) {
   if (el.classList.contains('stamped')) return;
-  el.parentNode.querySelectorAll('.ld-state').forEach(s => s.classList.toggle('stamped', s === el));
-  el.parentNode.appendChild(el);
+  const svg = el.closest('svg');
+  svg.querySelectorAll('.ld-state').forEach(s => s.classList.toggle('stamped', s === el));
+  svg.querySelector('.ld-hover-layer').appendChild(el);
+  const sel = svg.querySelector('.ld-sel-outline');
+  sel.style.setProperty('--sc', el.dataset.color);
+  sel.querySelectorAll('path').forEach(pth => pth.setAttribute('d', el.dataset.d));
+  sel.classList.add('fresh');
   setTimeout(() => pickFlagFor(playerId, flagId), 420);
 }
 

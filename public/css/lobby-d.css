@@ -827,3 +827,19 @@ body.lobby-d.ld-at-home .ld-backdrop { display: none; }
 .lobby-d .ld-ct-layer:not(:has(.ld-ct-k)) .ld-ct-name { font-size: 20px; -webkit-text-fill-color: var(--ld-muted); background: none; }
 .lobby-d .ld-ct-status { position: absolute; left: 0; right: 0; bottom: 0; text-align: center; font: 500 11px var(--ld-body); letter-spacing: 1.5px; text-transform: uppercase; color: var(--ld-muted); }
 .lobby-d .ld-ct-layer:has(.ld-ct-status) { padding-bottom: 12px; }
+
+/* ---- chosen kingdom outline: its own layer above the map, in the kingdom's colour; a hovered kingdom lifts above it ---- */
+.lobby-d .ld-state.active .ld-state-edge, .lobby-d .ld-state.stamped .ld-state-edge { stroke: #17110b; stroke-width: 1.8; }
+.lobby-d .ld-sel-outline { pointer-events: none; }
+.lobby-d .ld-sel-halo { fill: none; stroke: #0e0d0c; stroke-width: 6; stroke-linejoin: round; opacity: .85; }
+.lobby-d .ld-sel-line { fill: none; stroke: var(--sc); stroke-width: 3; stroke-linejoin: round; filter: drop-shadow(0 0 3px var(--sc)); }
+.lobby-d .ld-sel-outline.fresh .ld-sel-line { animation: ld-sel-draw .45s ease-out; stroke-dasharray: 900; }
+@keyframes ld-sel-draw { from { stroke-dashoffset: 900; } to { stroke-dashoffset: 0; } }
+.lobby-d .ld-hover-layer .ld-state:not(.taken) .ld-state-edge { stroke: var(--ld-gold); stroke-width: 2.5; }
+.lobby-d .ld-china:has(.ld-hover-layer .ld-state:hover) .ld-states .ld-state-shade, .lobby-d .ld-china:has(.ld-hover-layer .ld-state:focus-visible) .ld-states .ld-state-shade { fill: rgba(12, 10, 8, .5); }
+.lobby-d .ld-china:has(.ld-hover-layer .ld-state:hover) .ld-sel-outline { opacity: .55; }
+.lobby-d .ld-state-seal text { font: 700 10.5px var(--ld-body); letter-spacing: .5px; }
+.lobby-d .ld-state.active .ld-state-seal { transform: rotate(-5deg) scale(1); }
+.lobby-d .ld-state-seal.owned { opacity: .9; transform: rotate(-5deg); }
+.lobby-d .ld-state-seal.owned text { fill: var(--ld-soft); }
+.lobby-d .ld-state-seal.owned rect { fill: #3a3632; stroke: rgba(239, 232, 216, .4); }
