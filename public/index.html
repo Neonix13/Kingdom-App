@@ -212,7 +212,10 @@
         <fieldset class="ld-set-group">
           <legend><span class="ld-brush" aria-hidden="true">地</span>Carte</legend>
           <div class="ld-map-pick">
-            <canvas id="map-preview" width="240" height="150" aria-hidden="true"></canvas>
+            <div class="ld-map-view" id="map-view">
+              <canvas id="map-preview" width="240" height="150" aria-hidden="true"></canvas>
+              <span class="ld-map-view-hint" aria-hidden="true">Glisser pour tourner · molette pour zoomer</span>
+            </div>
             <div class="ld-map-info">
               <label for="map-select" class="ld-sr">Carte</label>
               <select id="map-select" onchange="setMap(this.value)"></select>
@@ -412,6 +415,15 @@
       })
       .catch((e) => { console.warn('[accueil] décor 3D indisponible', e); box.classList.add('failed'); });
     if (document.readyState === 'complete') setTimeout(go, 200); else addEventListener('load', () => setTimeout(go, 200));
+  </script>
+  <script type="module">
+    if (!matchMedia('(max-width: 700px)').matches) {
+      import('/js/mapPreview3d.js').then((m) => {
+        window.mapPreview3d = m.createMapPreview3d(document.getElementById('map-view'));
+        window.mapPreview3d.setActive(document.getElementById('screen-lobby').style.display === 'block');
+        if (typeof lastLobby !== 'undefined' && lastLobby && lastLobby.mapId) window.mapPreview3d.show(lastLobby.mapId);
+      }).catch((e) => console.warn('[salle] aperçu 3D indisponible', e));
+    }
   </script>
 </body>
 </html>

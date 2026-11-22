@@ -88,6 +88,7 @@ function show(id) {
   const home = id === 'screen-home';
   document.body.classList.toggle('ld-at-home', home);
   document.body.classList.toggle('ld-in-lobby', id === 'screen-lobby');
+  if (window.mapPreview3d) window.mapPreview3d.setActive(id === 'screen-lobby');
   if (!home) closeHomePanel();
   if (window.homeScene) window.homeScene.setActive(home);
 }
@@ -349,7 +350,7 @@ const MODE_HINTS = {
 function renderModeSeg(modes, current, host) {
   const box = document.getElementById('mode-seg');
   if (!box) return;
-  box.innerHTML = modes.map(m => `<button type="button" role="radio" data-mode="${escapeHtml(m.id)}" aria-checked="${m.id === current}"${!host || !m.available ? ' disabled' : ''}>${escapeHtml(MODE_SHORT[m.id] || m.name)}</button>`).join('');
+  box.innerHTML = modes.map(m => `<button type="button" role="radio" data-mode="${escapeHtml(m.id)}" aria-checked="${m.id === current}" title="${escapeHtml(MODE_HINTS[m.id] || '')}"${!host || !m.available ? ' disabled' : ''}>${escapeHtml(MODE_SHORT[m.id] || m.name)}</button>`).join('');
   const hint = document.getElementById('mode-hint');
   if (hint) hint.textContent = MODE_HINTS[current] || '';
 }
@@ -389,6 +390,7 @@ const PREVIEW_COLORS = { forest: [47, 74, 42], river: [61, 111, 154], road: [179
 function drawMapPreview(mapId) {
   const cv = document.getElementById('map-preview');
   if (!cv || !mapId) return;
+  if (window.mapPreview3d) window.mapPreview3d.show(mapId);
   if (!(mapId in mapDocs)) {
     mapDocs[mapId] = null;
     fetch('/api/maps/' + encodeURIComponent(mapId)).then(r => (r.ok ? r.json() : false)).catch(() => false).then(d => {
