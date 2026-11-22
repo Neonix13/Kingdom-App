@@ -793,6 +793,13 @@ const kingdomsOf = (g) => String(g.kingdom || '').split('/');
 const kingdomInfo = (g) => KINGDOMS.find(k => k.id === kingdomsOf(g)[0]) || KINGDOMS[0];
 const kingdomLabel = (g) => kingdomsOf(g).map(id => (KINGDOMS.find(k => k.id === id) || { name: id }).name).join(' / ');
 
+// signature unit of each general's army in the anime, shown behind their sheet
+const GENERAL_SIGNATURE_UNIT = {
+  ou_ki: 'cavalier_lourd', mou_bu: 'soldats', ou_sen: 'phalange', kan_ki: 'assassin',
+  ri_boku: 'cavalier_leger', kei_sha: 'archer_elite', shi_ba_shou: 'lancier', ren_pa: 'archer',
+  go_kei: 'char', go_hou_mei: 'batisseurs', gai_mou: 'pietaille',
+};
+
 function generalImageUrl(g) {
   const e = GENERAL_IMAGE1_MAP[g.id];
   return e ? `/assets/unites/GENERAL IMAGE 1-1/${encodeURIComponent(e.file)}.${e.ext}` : null;
@@ -811,8 +818,8 @@ function scrollHtml(g) {
     <span class="ld-stamp">${k}</span></div><div class="ld-rod"></div></div>`;
 }
 
-// Force 武 (武力), Stratégie 知 (知略), Charisme 魅 (魅力)
-const STAT_SYMBOLS = [['force', '武', 'Force'], ['strategy', '知', 'Stratégie'], ['charisma', '魅', 'Charisme']];
+// Force ⚔, Stratégie ♞, Charisme ♛
+const STAT_SYMBOLS = [['force', '⚔', 'Force'], ['strategy', '♞', 'Stratégie'], ['charisma', '♛', 'Charisme']];
 const statMini = (g) => STAT_SYMBOLS.map(([key, k, label]) => `<i title="${label}">${k}</i>${g[key] ?? '—'}`).join('');
 
 function statBars(g) {
@@ -851,7 +858,7 @@ function renderGenerals(takenList) {
   const abil = [];
   if (g.activeAbility) abil.push(`<div class="ld-abil-item"><span class="ld-abil-kind">Capacité active · recharge ${g.activeAbility.cooldown} tours</span><b>${escapeHtml(g.activeAbility.name)}</b><p>${escapeHtml(g.activeAbility.description)}</p></div>`);
   if (g.passiveAbility) abil.push(`<div class="ld-abil-item"><span class="ld-abil-kind">Passif</span><b>${escapeHtml(g.passiveAbility.name)}</b><p>${escapeHtml(g.passiveAbility.description)}</p></div>`);
-  const heroImg = '/assets/unites/UNIT%20IMAGE%201-1/SOLDAT.jpg';
+  const heroImg = unitImageUrl({ id: GENERAL_SIGNATURE_UNIT[g.id] || 'soldats' });
   const fc = (x) => `<span class="ld-gmini">${statMini(x)}</span>`;
   grid.innerHTML = `
     <div class="ld-tabs" role="group" aria-label="Royaume">${KINGDOMS.map(k => `<button class="ld-tab" data-tab="${k.id}" aria-pressed="${k.id === genTab}" title="${k.name}"><span class="ld-brush" aria-hidden="true">${k.k}</span><span>${k.name}</span></button>`).join('')}</div>

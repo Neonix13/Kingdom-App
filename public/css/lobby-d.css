@@ -852,3 +852,7 @@ body.lobby-d.ld-at-home .ld-backdrop { display: none; }
 .lobby-d .ld-gmini i:first-child, .lobby-d .ld-gp-stats i:first-child { margin-left: 0; }
 .lobby-d.ld-in-lobby .ld-gbtn .ld-gmini { gap: 0; padding-right: 4px; white-space: nowrap; }
 .lobby-d .ld-gmini i { font-size: 11px; margin: 0 1px 0 4px; }
+.lobby-d .ld-sym, .lobby-d .ld-gmini i, .lobby-d .ld-gp-stats i { font-family: 'Segoe UI Symbol', 'Noto Sans Symbols 2', 'DejaVu Sans', sans-serif; font-weight: 400; }
+.lobby-d .ld-sym { font-size: 15px; }
+.lobby-d .ld-sym { font-size: 18px; width: 22px; vertical-align: -3px; }
+.lobby-d .ld-gmini i, .lobby-d .ld-gp-stats i { font-size: 13px; }
