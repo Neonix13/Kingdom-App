@@ -782,12 +782,19 @@ function renderPlayerList(data) {
       : `<span class="player-badge${p.id === hostId ? ' host' : ''}">${p.id === hostId ? 'Hôte' : 'Joueur'}</span>`;
     const mine = p.id === myId && phase === 'lobby';
     const team = !!(data.settings && data.settings.teamMode);
-    const takenFlags = new Set(players.filter(o => o.id !== myId).map(o => o.flag).filter(Boolean));
+    const holders = (fid) => players.filter(o => o.id !== myId && o.flag === fid).map(o => o.name);
     const swatches = mine ? `<div class="ld-flags" role="group" aria-label="Votre drapeau">${FLAGS.map(f => {
-      const taken = !team && takenFlags.has(f.id);
+      const others = holders(f.id);
+      const taken = !team && others.length > 0;
       const active = f.id === p.flag;
-      return `<button class="ld-flag-btn${active ? ' active' : ''}${taken ? ' taken' : ''}" title="${f.name}${taken ? ' (pris)' : ''}"
-        aria-label="Drapeau ${f.name}${taken ? ' (pris)' : ''}" aria-pressed="${active}"${taken ? ' disabled' : ` onclick="pickFlag('${f.id}')"`}><img src="/assets/flag/${f.file}" alt=""></button>`;
+      const who = others.length ? `${team ? 'Alliés' : 'Pris par'} : ${others.join(', ')}` : '';
+      const tip = `${f.name}${who ? ' — ' + who : ''}`;
+      return `<button class="ld-flag-btn${active ? ' active' : ''}${taken ? ' taken' : ''}" title="${escapeHtml(tip)}"
+        aria-label="Drapeau ${escapeHtml(tip)}" aria-pressed="${active}"${taken ? ' disabled' : ` onclick="pickFlag('${f.id}')"`}>
+        <span class="ld-flag-img"><img src="/assets/flag/${f.file}" alt=""></span>
+        <span class="ld-flag-name">${f.name}</span>
+        ${taken ? '<span class="ld-flag-tag">Pris</span>' : team && others.length ? `<span class="ld-flag-tag ally">${others.length} allié${others.length > 1 ? 's' : ''}</span>` : ''}
+      </button>`;
     }).join('')}</div>` : '';
     let statusText, ready = false;
     if (!p.connected) statusText = 'hors ligne';

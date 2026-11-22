@@ -610,8 +610,6 @@ body.lobby-d.ld-at-home .ld-backdrop { display: none; }
 .lobby-d .player-list .bot-remove:hover { border-color: var(--ld-red); color: #fff; background: var(--ld-red); }
 .lobby-d .ld-pflags { grid-column: 1 / -1; margin-top: 6px; padding-top: 8px; border-top: 1px dashed var(--ld-line); }
 .lobby-d .ld-pflags .ld-label { margin-bottom: 6px; font-size: 10px; }
-.lobby-d .ld-pflags .ld-flags { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; padding: 0; }
-.lobby-d .ld-pflags .ld-flag-btn { width: 100%; height: auto; aspect-ratio: 1; }
 
 .lobby-d .bot-controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--ld-line); }
 .lobby-d .bot-controls .ld-bot-title { grid-column: 1 / -1; margin: 0; }
@@ -658,3 +656,17 @@ body.lobby-d.ld-at-home .ld-backdrop { display: none; }
   .lobby-d.ld-in-lobby .ld-gen-info { align-self: stretch; display: flex; flex-direction: column; }
   .lobby-d.ld-in-lobby .ld-gen-actions { margin-top: auto; padding-top: 10px; }
 }
+
+/* ---- flag picker (player's own card) ---- */
+.lobby-d .ld-pflags .ld-flags { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding: 0; }
+.lobby-d .ld-pflags .ld-flag-btn { width: auto; height: auto; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 7px 4px 6px; border-radius: 0; border: 1px solid var(--ld-line); background: rgba(0, 0, 0, .25); color: var(--ld-soft); overflow: visible; transition: border-color .12s, background .12s, transform .12s; }
+.lobby-d .ld-pflags .ld-flag-img { width: 40px; height: 40px; border-radius: 4px; overflow: hidden; box-shadow: 0 2px 6px rgba(0, 0, 0, .5); }
+.lobby-d .ld-pflags .ld-flag-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.lobby-d .ld-pflags .ld-flag-name { font: 700 11px var(--ld-body); letter-spacing: 1px; text-transform: uppercase; }
+.lobby-d .ld-pflags .ld-flag-btn:hover:not(:disabled) { border-color: rgba(239, 232, 216, .55); background: rgba(239, 232, 216, .06); color: #fff; transform: translateY(-2px); }
+.lobby-d .ld-pflags .ld-flag-btn.active { border-color: var(--ld-red); background: rgba(216, 53, 42, .18); color: #fff; box-shadow: inset 0 0 0 1px var(--ld-red); }
+.lobby-d .ld-pflags .ld-flag-btn.active::after { content: '✓'; position: absolute; top: -7px; right: -7px; width: 18px; height: 18px; border-radius: 50%; background: var(--ld-red); color: #fff; font: 900 11px/18px var(--ld-body); text-align: center; }
+.lobby-d .ld-pflags .ld-flag-btn.taken { opacity: 1; cursor: not-allowed; }
+.lobby-d .ld-pflags .ld-flag-btn.taken .ld-flag-img, .lobby-d .ld-pflags .ld-flag-btn.taken .ld-flag-name { opacity: .3; filter: grayscale(1); }
+.lobby-d .ld-pflags .ld-flag-tag { position: absolute; top: 18px; left: 50%; transform: translateX(-50%) rotate(-8deg); padding: 1px 6px; background: #3a3632; color: var(--ld-soft); font: 900 9.5px var(--ld-body); letter-spacing: 1px; text-transform: uppercase; white-space: nowrap; }
+.lobby-d .ld-pflags .ld-flag-tag.ally { top: auto; bottom: -7px; transform: translateX(-50%); background: var(--ld-blue); color: #0E0D0C; }
