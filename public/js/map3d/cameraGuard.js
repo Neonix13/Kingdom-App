@@ -139,6 +139,9 @@ export function createCameraGuard({ camera, controls, top, groundHeight, bounds,
   renderCam.quaternion.copy(camera.quaternion);
   const surface = (x, z) => { const t = top(x, z); const g = groundHeight(x, z); return Math.max(Number.isFinite(t) ? t : -Infinity, Number.isFinite(g) ? g : -Infinity); };
   const floor = bounds ? buildFloor(surface, bounds) : surface;
+  // ground under the orbit target, smoothed the same way (no step when the target passes over a rampart or a cliff)
+  const groundFloor = bounds ? buildFloor(groundHeight, bounds, 0.5) : groundHeight;
+  const liftFor = (T) => Math.max(0, groundFloor(T.x, T.z) - T.y);
 
   const NEAR_ZONE = 3.5;               // length of the target→camera segment, from the camera, kept clear
   const PHI_MIN = 0.12;                // highest pitch the rig may use to see over an obstacle (rad from vertical)
@@ -192,7 +195,7 @@ export function createCameraGuard({ camera, controls, top, groundHeight, bounds,
     // teleports (applyView, instant focus, mode switches): no spring across them
     if (!primed || lastT.distanceTo(T) > 6) {
       dist.x = L; dist.v = 0;
-      lift.x = enabled ? Math.max(0, groundHeight(T.x, T.z) - T.y) : 0; lift.v = 0;
+      lift.x = enabled ? liftFor(T) : 0; lift.v = 0;
       if (!primed) { dphi.x = dphi.v = shrink.x = shrink.v = 0; }
       primed = true;
     }
@@ -214,7 +217,7 @@ export function createCameraGuard({ camera, controls, top, groundHeight, bounds,
     } else {
       // smoothed zoom, orbit target lifted above the ground under it
       spring(dist, L, 16, dt);
-      spring(lift, Math.max(0, groundHeight(T.x, T.z) - T.y), 10, dt);
+      spring(lift, liftFor(T), 4, dt);
     }
     const d = Math.max(0.3, dist.x);
     Tr.copy(T); Tr.y += lift.x;
