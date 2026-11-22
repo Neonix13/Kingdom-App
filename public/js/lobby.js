@@ -1113,11 +1113,10 @@ let sheetMax = null;
 
 function unitTileHtml(u, { count = 0, army = false } = {}) {
   const img = unitImageUrl(u);
-  const price = army ? u.cost * count : u.cost;
-  return `<button type="button" class="ld-utile${armySheetId === u.id ? ' sel' : ''}${count ? ' has' : ''}" ${army ? '' : `id="unit-row-${u.id}"`} data-unit="${escapeHtml(u.id)}" title="${escapeHtml(u.name)}">
+  const price = u.cost;
+  return `<button type="button" class="ld-utile${armySheetId === u.id ? ' sel' : ''}${count ? ' has' : ''}" ${army ? '' : `id="unit-row-${u.id}"`} data-unit="${escapeHtml(u.id)}" title="${escapeHtml(u.name)}${army ? ' — double-clic pour retirer' : ' — double-clic pour recruter'}">
     <span class="ld-utile-art">${img ? `<img src="${img}" alt="" loading="lazy">` : ''}</span>
     <span class="ld-utile-sym">${self.KBUnitIcon(u.id)}</span>
-    <span class="ld-utile-count" ${army ? '' : `id="badge-${u.id}"`}>${count ? `× ${count}` : ''}</span>
     <span class="ld-utile-price"><b>${fmtGold(price)}</b> or</span>
   </button>`;
 }
@@ -1168,10 +1167,11 @@ function renderArmyGeneral() {
     </div>` : ''}
     <div class="ld-a3-army">
       <div class="ld-army-sum-head"><span>Votre armée</span><b>${totalUnits} unité${totalUnits > 1 ? 's' : ''}</b></div>
-      ${chosen.length ? `<div class="ld-a3-grid ld-a3-mine">${chosen.map(u => unitTileHtml(u, { count: armyQuantities[u.id], army: true })).join('')}</div>`
+      ${chosen.length ? `<div class="ld-a3-grid ld-a3-mine">${chosen.flatMap(u => Array.from({ length: armyQuantities[u.id] }, () => unitTileHtml(u, { count: 1, army: true }))).join('')}</div>`
         : '<p class="ld-army-empty">Aucune unité recrutée. Choisissez une unité au centre puis ajoutez-la avec +.</p>'}
     </div>`;
   box.onclick = (e) => { const t = e.target.closest('.ld-utile'); if (t) selectArmyUnit(t.dataset.unit); };
+  box.ondblclick = (e) => { const t = e.target.closest('.ld-a3-mine .ld-utile'); if (t) changeQty(t.dataset.unit, -1); };
 }
 
 function renderArmyBuilder() {
