@@ -1121,30 +1121,41 @@ function unitTileHtml(u, { count = 0, army = false } = {}) {
   </button>`;
 }
 
+const SHEET_GROUPS = [
+  { name: 'Endurance', sym: '♥', keys: [['vitality', 'Vitalité'], ['morale', 'Moral']] },
+  { name: 'Combat', sym: '⚔', keys: [['attack', 'Attaque'], ['defense', 'Défense'], ['power', 'Puissance'], ['armor', 'Armure'], ['intimidation', 'Intimidation']] },
+  { name: 'Mouvement', sym: '➶', keys: [['speed', 'Vitesse'], ['range', 'Portée']] },
+];
 function renderArmySheet() {
   const box = document.getElementById('army-sheet');
   if (!box) return;
   const u = UNITS_DATA.find(x => x.id === armySheetId) || UNITS_DATA[0];
   if (!u) { box.innerHTML = ''; return; }
   armySheetId = u.id;
-  if (!sheetMax) { sheetMax = {}; for (const [k] of SHEET_STATS) sheetMax[k] = Math.max(1, ...UNITS_DATA.map(x => x[k] || 0)); }
+  if (!sheetMax) { sheetMax = {}; for (const g of SHEET_GROUPS) for (const [k] of g.keys) sheetMax[k] = Math.max(1, ...UNITS_DATA.map(x => x[k] || 0)); }
   const img = unitImageUrl(u);
   const n = armyQuantities[u.id] || 0;
   const left = budget - computeSpent();
-  const stats = SHEET_STATS.map(([k, label]) => {
-    const v = u[k] ?? 0;
-    return `<div class="ld-ss"><span>${label}</span><span class="ld-ss-track"><i style="width:${Math.max(4, Math.min(100, v / sheetMax[k] * 100))}%"></i></span><b>${v}</b></div>`;
-  }).join('') + (u.range > 1 ? `<div class="ld-ss"><span>Portée</span><span class="ld-ss-track"><i style="width:${Math.min(100, u.range / 5 * 100)}%"></i></span><b>${u.range}</b></div>` : '');
-  box.innerHTML = `<div class="ld-as-art">${img ? `<img src="${img}" alt="">` : ''}<span class="ld-as-sym">${self.KBUnitIcon(u.id)}</span></div>
-    <div class="ld-as-head"><div><span class="ld-label">${escapeHtml(unitGroupOf(u).name)}</span><h3>${escapeHtml(u.name)}</h3></div><span class="ld-as-cost"><b>${fmtGold(u.cost)}</b> or</span></div>
-    <div class="ld-as-stats">${stats}</div>
-    ${u.bonus ? `<p class="ld-as-bonus">${escapeHtml(u.bonus)}</p>` : ''}
+  const groups = SHEET_GROUPS.map(g => {
+    const rows = g.keys.filter(([k]) => k !== 'range' || u.range > 1).map(([k, label]) => {
+      const v = u[k] ?? 0;
+      const pct = Math.max(4, Math.min(100, v / sheetMax[k] * 100));
+      return `<div class="ld-ss"><span>${label}</span><span class="ld-ss-track"><i style="width:${pct}%"></i></span><b>${v}</b></div>`;
+    }).join('');
+    return `<section class="ld-as-grp"><h4><span class="ld-as-gsym" aria-hidden="true">${g.sym}</span>${g.name}</h4>${rows}</section>`;
+  }).join('');
+  box.innerHTML = `<div class="ld-as-art">${img ? `<img src="${img}" alt="">` : ''}
+      <span class="ld-as-sym">${self.KBUnitIcon(u.id)}</span>
+      <div class="ld-as-title"><span class="ld-label">${escapeHtml(unitGroupOf(u).name)}</span><h3>${escapeHtml(u.name)}</h3></div>
+      <span class="ld-as-cost"><b>${fmtGold(u.cost)}</b> or</span>
+    </div>
+    <div class="ld-as-groups">${groups}</div>
+    ${u.bonus ? `<p class="ld-as-bonus"><span class="ld-as-gsym" aria-hidden="true">★</span>${escapeHtml(u.bonus)}</p>` : ''}
     <div class="ld-as-qty">
       <button class="ld-q" data-q="-1" ${n === 0 ? 'disabled' : ''} aria-label="Retirer : ${escapeHtml(u.name)}">−</button>
-      <span class="ld-as-n"><b>${n}</b><small>recrutée${n > 1 ? 's' : ''}</small></span>
+      <span class="ld-as-n"><b>${n}</b><small>${n ? `recrutée${n > 1 ? 's' : ''} · <span class="ld-gold">${fmtGold(u.cost * n)}</span> or` : 'aucune recrutée'}</small></span>
       <button class="ld-q" data-q="1" ${u.cost > left ? 'disabled title="Budget insuffisant"' : ''} aria-label="Ajouter : ${escapeHtml(u.name)}">+</button>
-    </div>
-    <p class="ld-as-sub">${n ? `Total : <b class="ld-gold">${fmtGold(u.cost * n)}</b> or` : '&nbsp;'}</p>`;
+    </div>`;
   box.onclick = (e) => { const q = e.target.closest('[data-q]'); if (q && !q.disabled) changeQty(u.id, Number(q.dataset.q)); };
 }
 
@@ -1162,8 +1173,10 @@ function renderArmyGeneral() {
   const totalUnits = chosen.reduce((n, u) => n + armyQuantities[u.id], 0);
   box.innerHTML = `${g ? `<div class="ld-a3-gen">
       <button type="button" class="ld-a3-face" onclick="showGeneralSheet('${escapeHtml(g.id)}')" title="Voir la fiche de ${escapeHtml(g.name)}">${img ? `<img src="${img}" alt="">` : ''}</button>
-      <div class="ld-a3-gtxt"><div class="ld-gen-kicker">Votre général · ${escapeHtml(kingdomLabel(g))}</div><div class="ld-gen-name">${escapeHtml(g.name)}</div></div>
-      ${statBars(g)}${generalFacts(g)}<div class="ld-abil">${abilityItems(g).join('')}</div>
+      <div class="ld-a3-gtxt"><div class="ld-gen-kicker">Votre général · ${escapeHtml(kingdomLabel(g))}</div><div class="ld-gen-name">${escapeHtml(g.name)}</div>
+        <div class="ld-a3-main">${STAT_SYMBOLS.map(([key, k, label]) => `<span title="${label}"><i>${k}</i><b>${g[key] ?? '—'}</b></span>`).join('')}</div></div>
+      <div class="ld-a3-sub">${[['Vitalité', g.vitality], ['Armure', g.armor], ['Puissance', g.power], ['Intimid.', g.intimidation]].filter(x => x[1] != null).map(([l, v]) => `<span><small>${l}</small><b>${v}</b></span>`).join('')}</div>
+      <div class="ld-abil">${abilityItems(g).join('')}</div>
     </div>` : ''}
     <div class="ld-a3-army">
       <div class="ld-army-sum-head"><span>Votre armée</span><b>${totalUnits} unité${totalUnits > 1 ? 's' : ''}</b></div>
