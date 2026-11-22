@@ -3112,15 +3112,39 @@ function cancelStanceChange() {
   document.getElementById('overlay-stance').style.display = 'none';
 }
 
+// ---- GENERAL ABILITY BANNER: a wide band across the screen with the general's portrait, the ability and its effects ----
+function showAbilityBanner(log) {
+  const player = gameState?.players?.find(p => p.id === log.playerId);
+  const gid = log.generalId || player?.generalId;
+  const src = gid ? img1Url(GENERAL_IMAGE1_MAP, gid, 'GENERAL IMAGE 1-1') : null;
+  const color = getPlayerColor(log.playerId);
+  const mine = log.playerId === myId;
+  const target = log.targetPlayerId ? gameState?.players?.find(p => p.id === log.targetPlayerId) : null;
+  document.getElementById('ability-banner')?.remove();
+  const el = document.createElement('div');
+  el.id = 'ability-banner';
+  el.className = mine ? 'mine' : 'enemy';
+  el.style.setProperty('--pc', color);
+  const who = mine ? 'Votre général' : escapeHtml(player?.name || 'Ennemi');
+  el.innerHTML = '<div class="ab-band">'
+    + '<div class="ab-face">' + (src ? '<img src="' + src + '" alt="">' : '') + '</div>'
+    + '<div class="ab-txt">'
+    + '<span class="ab-kicker">' + who + ' · capacité' + (target ? ' contre ' + escapeHtml(target.name) : '') + '</span>'
+    + '<b class="ab-name">' + escapeHtml(log.abilityUsed) + '</b>'
+    + '<span class="ab-fx">' + (log.effects || []).map(escapeHtml).join(' · ') + '</span>'
+    + '</div></div>';
+  document.body.appendChild(el);
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')));
+  setTimeout(() => { el.classList.remove('in'); el.classList.add('out'); }, 3600);
+  setTimeout(() => el.remove(), 4300);
+}
+
 // ---- COMBAT RESULT ----
 function showCombatResult(log) {
   const el = document.getElementById('combat-result-box');
   if (!el) return;
   if (log.abilityUsed) {
-    el.innerHTML = `<b>${escapeHtml(log.abilityUsed)}</b><br>${(log.effects || []).map(escapeHtml).join('<br>')}`;
-    el.style.display = 'block';
-    clearTimeout(window._combatResultTimer);
-    window._combatResultTimer = setTimeout(() => { el.style.display = 'none'; }, 5000);
+    showAbilityBanner(log);
     return;
   }
   if (log.duel) {

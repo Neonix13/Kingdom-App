@@ -526,3 +526,18 @@ body.hud-d #toolbar .tuto-highlight { outline: 3px solid var(--hud-red); outline
 .hud-card .stances .st-btn > span { gap: 4px; font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; justify-content: center; }
 .hud-card .stances .st-btn .st-chip { width: 18px; height: 18px; flex-shrink: 0; }
 .hud-card .stances .st-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+/* ---- general ability banner ---- */
+#ability-banner { position: fixed; left: 0; right: 0; top: 22%; z-index: 400; pointer-events: none; display: flex; justify-content: center; }
+#ability-banner .ab-band { position: relative; display: flex; align-items: center; gap: 22px; width: min(980px, 92vw); padding: 14px 40px 14px 18px; background: linear-gradient(90deg, rgba(14, 13, 12, 0) 0%, rgba(14, 13, 12, .96) 12%, rgba(14, 13, 12, .96) 88%, rgba(14, 13, 12, 0) 100%); border-top: 3px solid var(--pc); border-bottom: 3px solid var(--pc); transform: scaleX(.2); opacity: 0; transition: transform .45s cubic-bezier(.2, .9, .3, 1.15), opacity .3s; }
+#ability-banner.in .ab-band { transform: none; opacity: 1; }
+#ability-banner.out .ab-band { transform: translateY(-14px); opacity: 0; transition: transform .5s ease-in, opacity .5s; }
+#ability-banner .ab-face { width: 96px; height: 96px; flex-shrink: 0; margin-left: 8%; border-radius: 50%; overflow: hidden; background: #EFE8D8; border: 3px solid var(--pc); box-shadow: 0 0 0 4px rgba(14, 13, 12, .9), 0 0 28px var(--pc); transform: translateX(-40px); opacity: 0; transition: transform .5s .15s cubic-bezier(.2, .9, .3, 1.2), opacity .3s .15s; }
+#ability-banner .ab-face img { width: 100%; height: 100%; object-fit: cover; object-position: 55% 18%; filter: grayscale(1) contrast(1.25); mix-blend-mode: multiply; }
+#ability-banner.in .ab-face { transform: none; opacity: 1; }
+#ability-banner .ab-txt { display: flex; flex-direction: column; gap: 3px; min-width: 0; transform: translateX(30px); opacity: 0; transition: transform .5s .25s ease-out, opacity .4s .25s; }
+#ability-banner.in .ab-txt { transform: none; opacity: 1; }
+#ability-banner .ab-kicker { font: 700 12px "Zen Kaku Gothic New", "Segoe UI", sans-serif; letter-spacing: 3px; text-transform: uppercase; color: var(--pc); }
+#ability-banner .ab-name { font: 900 40px/1.05 "Zen Old Mincho", Georgia, serif; color: #fff; text-shadow: 0 3px 16px rgba(0, 0, 0, .8); }
+#ability-banner .ab-fx { font: 500 15px "Zen Kaku Gothic New", "Segoe UI", sans-serif; color: #F2E3A0; }
+#ability-banner.enemy .ab-name { color: #ffd8d0; }
