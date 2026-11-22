@@ -88,6 +88,7 @@ function show(id) {
   const home = id === 'screen-home';
   document.body.classList.toggle('ld-at-home', home);
   document.body.classList.toggle('ld-in-lobby', id === 'screen-lobby');
+  document.body.classList.toggle('ld-in-army', id === 'screen-army');
   if (window.mapPreview3d) window.mapPreview3d.setActive(id === 'screen-lobby');
   if (!home) closeHomePanel();
   if (window.homeScene) window.homeScene.setActive(home);
@@ -1106,77 +1107,85 @@ function unitGroupOf(u) {
   return UNIT_GROUPS.find(g => g.ids.includes(u.id)) || UNIT_GROUPS.find(g => g.cats.includes(u.category)) || UNIT_GROUPS[UNIT_GROUPS.length - 1];
 }
 
+// Army builder in three columns: full sheet of the last selected unit (left), unit tiles (centre), general + recruited army (right)
+let armySheetId = null;
+const SHEET_STATS = [['vitality', 'Vitalité'], ['morale', 'Moral'], ['attack', 'Attaque'], ['defense', 'Défense'], ['power', 'Puissance'], ['armor', 'Armure'], ['intimidation', 'Intimidation'], ['speed', 'Vitesse']];
+let sheetMax = null;
+
+function unitTileHtml(u, { count = 0, army = false } = {}) {
+  const img = unitImageUrl(u);
+  const price = army ? u.cost * count : u.cost;
+  return `<button type="button" class="ld-utile${armySheetId === u.id ? ' sel' : ''}${count ? ' has' : ''}" ${army ? '' : `id="unit-row-${u.id}"`} data-unit="${escapeHtml(u.id)}" title="${escapeHtml(u.name)}">
+    <span class="ld-utile-art">${img ? `<img src="${img}" alt="" loading="lazy">` : ''}</span>
+    <span class="ld-utile-sym">${self.KBUnitIcon(u.id)}</span>
+    <span class="ld-utile-count" ${army ? '' : `id="badge-${u.id}"`}>${count ? `× ${count}` : ''}</span>
+    <span class="ld-utile-price"><b>${fmtGold(price)}</b> or</span>
+  </button>`;
+}
+
+function renderArmySheet() {
+  const box = document.getElementById('army-sheet');
+  if (!box) return;
+  const u = UNITS_DATA.find(x => x.id === armySheetId) || UNITS_DATA[0];
+  if (!u) { box.innerHTML = ''; return; }
+  armySheetId = u.id;
+  if (!sheetMax) { sheetMax = {}; for (const [k] of SHEET_STATS) sheetMax[k] = Math.max(1, ...UNITS_DATA.map(x => x[k] || 0)); }
+  const img = unitImageUrl(u);
+  const n = armyQuantities[u.id] || 0;
+  const left = budget - computeSpent();
+  const stats = SHEET_STATS.map(([k, label]) => {
+    const v = u[k] ?? 0;
+    return `<div class="ld-ss"><span>${label}</span><span class="ld-ss-track"><i style="width:${Math.max(4, Math.min(100, v / sheetMax[k] * 100))}%"></i></span><b>${v}</b></div>`;
+  }).join('') + (u.range > 1 ? `<div class="ld-ss"><span>Portée</span><span class="ld-ss-track"><i style="width:${Math.min(100, u.range / 5 * 100)}%"></i></span><b>${u.range}</b></div>` : '');
+  box.innerHTML = `<div class="ld-as-art">${img ? `<img src="${img}" alt="">` : ''}<span class="ld-as-sym">${self.KBUnitIcon(u.id)}</span></div>
+    <div class="ld-as-head"><div><span class="ld-label">${escapeHtml(unitGroupOf(u).name)}</span><h3>${escapeHtml(u.name)}</h3></div><span class="ld-as-cost"><b>${fmtGold(u.cost)}</b> or</span></div>
+    <div class="ld-as-stats">${stats}</div>
+    ${u.bonus ? `<p class="ld-as-bonus">${escapeHtml(u.bonus)}</p>` : ''}
+    <div class="ld-as-qty">
+      <button class="ld-q" data-q="-1" ${n === 0 ? 'disabled' : ''} aria-label="Retirer : ${escapeHtml(u.name)}">−</button>
+      <span class="ld-as-n"><b>${n}</b><small>recrutée${n > 1 ? 's' : ''}</small></span>
+      <button class="ld-q" data-q="1" ${u.cost > left ? 'disabled title="Budget insuffisant"' : ''} aria-label="Ajouter : ${escapeHtml(u.name)}">+</button>
+    </div>
+    <p class="ld-as-sub">${n ? `Total : <b class="ld-gold">${fmtGold(u.cost * n)}</b> or` : '&nbsp;'}</p>`;
+  box.onclick = (e) => { const q = e.target.closest('[data-q]'); if (q && !q.disabled) changeQty(u.id, Number(q.dataset.q)); };
+}
+
+function selectArmyUnit(id) {
+  armySheetId = id;
+  document.querySelectorAll('.ld-utile').forEach(t => t.classList.toggle('sel', t.dataset.unit === id));
+  renderArmySheet();
+}
+
 function renderArmyGeneral() {
   const box = document.getElementById('ld-army-general');
   const g = GENERALS_DATA.find(x => x.id === selectedGeneral);
   const img = g ? generalImageUrl(g) : null;
   const chosen = UNITS_DATA.filter(u => (armyQuantities[u.id] || 0) > 0);
   const totalUnits = chosen.reduce((n, u) => n + armyQuantities[u.id], 0);
-  const summary = chosen.length
-    ? `<ul class="ld-army-list">${chosen.map(u => `<li><span class="ld-al-ico">${groupIcon(unitGroupOf(u).id, 16)}</span>
-        <span class="ld-al-name">${escapeHtml(u.name)}</span><span class="ld-al-n">× ${armyQuantities[u.id]}</span>
-        <span class="ld-gold">${fmtGold(u.cost * armyQuantities[u.id])}</span></li>`).join('')}</ul>`
-    : '<p class="ld-army-empty">Aucune unité recrutée. Ajoutez des troupes avec les boutons +.</p>';
-  box.innerHTML = `${g ? `<button type="button" class="ld-army-hero" onclick="showGeneralSheet('${escapeHtml(g.id)}')" title="Voir la fiche de ${escapeHtml(g.name)}">
-      ${img ? `<div class="ld-army-face"><img src="${img}" alt=""></div>` : ''}
-      <div class="ld-army-hero-txt"><div class="ld-gen-kicker">Votre général · ${escapeHtml(kingdomLabel(g))}</div>
-      <div class="ld-gen-name">${escapeHtml(g.name)}</div>${statBars(g)}<span class="ld-army-more">Voir la fiche</span></div></button>` : ''}
-    <div class="ld-army-sum">
+  box.innerHTML = `${g ? `<div class="ld-a3-gen">
+      <button type="button" class="ld-a3-face" onclick="showGeneralSheet('${escapeHtml(g.id)}')" title="Voir la fiche de ${escapeHtml(g.name)}">${img ? `<img src="${img}" alt="">` : ''}</button>
+      <div class="ld-a3-gtxt"><div class="ld-gen-kicker">Votre général · ${escapeHtml(kingdomLabel(g))}</div><div class="ld-gen-name">${escapeHtml(g.name)}</div></div>
+      ${statBars(g)}${generalFacts(g)}<div class="ld-abil">${abilityItems(g).join('')}</div>
+    </div>` : ''}
+    <div class="ld-a3-army">
       <div class="ld-army-sum-head"><span>Votre armée</span><b>${totalUnits} unité${totalUnits > 1 ? 's' : ''}</b></div>
-      ${summary}
+      ${chosen.length ? `<div class="ld-a3-grid ld-a3-mine">${chosen.map(u => unitTileHtml(u, { count: armyQuantities[u.id], army: true })).join('')}</div>`
+        : '<p class="ld-army-empty">Aucune unité recrutée. Choisissez une unité au centre puis ajoutez-la avec +.</p>'}
     </div>`;
-}
-
-function unitCardHtml(u, max) {
-  const img = unitImageUrl(u);
-  const stats = UNIT_STATS.map(([k, label, short]) => {
-    const v = u[k] ?? 0;
-    return `<div class="ld-us" title="${label} : ${v}"><span>${short}</span><b>${v}</b><span class="ld-us-track"><i style="width:${Math.max(6, Math.min(100, v / (max[k] || 1) * 100))}%"></i></span></div>`;
-  }).join('');
-  const extra = [`${u.vitality} vitalité`, `${u.morale} moral`];
-  if (u.range > 1) extra.push(`portée ${u.range}`);
-  return `<article class="ld-ucard" id="unit-row-${u.id}" data-unit="${escapeHtml(u.id)}">
-    <button class="ld-ucard-art" data-sheet="${escapeHtml(u.id)}" aria-label="Fiche complète : ${escapeHtml(u.name)}">
-      ${img ? `<img src="${img}" alt="" loading="lazy">` : `<span class="ld-ucard-ico">${groupIcon(unitGroupOf(u).id, 48)}</span>`}
-      <span class="ld-ucard-cost"><b>${fmtGold(u.cost)}</b> or</span>
-      <span class="ld-ucard-count" id="badge-${u.id}" aria-hidden="true"></span>
-      <span class="ld-ucard-info" aria-hidden="true">Fiche</span>
-    </button>
-    <div class="ld-ucard-body">
-      <div class="ld-ucard-title"><b>${escapeHtml(u.name)}</b><small>${extra.join(' · ')}</small></div>
-      <div class="ld-ustats">${stats}</div>
-      ${u.bonus ? `<p class="ld-ucard-bonus" title="${escapeHtml(u.bonus)}">${escapeHtml(u.bonus)}</p>` : ''}
-    </div>
-    <div class="ld-ucard-foot unit-qty">
-      <button class="ld-q" data-q="-1" aria-label="Retirer : ${escapeHtml(u.name)}">−</button>
-      <span id="qty-${u.id}" aria-live="polite">0</span>
-      <button class="ld-q" data-q="1" aria-label="Ajouter : ${escapeHtml(u.name)}">+</button>
-    </div>
-  </article>`;
+  box.onclick = (e) => { const t = e.target.closest('.ld-utile'); if (t) selectArmyUnit(t.dataset.unit); };
 }
 
 function renderArmyBuilder() {
   const shop = document.getElementById('unit-shop');
   armyQuantities = {};
   UNITS_DATA.forEach(u => { armyQuantities[u.id] = 0; });
-  const max = {};
-  for (const [k] of UNIT_STATS) max[k] = Math.max(...UNITS_DATA.map(u => u[k] || 0));
+  if (!armySheetId) armySheetId = (UNITS_DATA[0] || {}).id;
   const groups = UNIT_GROUPS.map(g => ({ g, units: UNITS_DATA.filter(u => unitGroupOf(u) === g) })).filter(x => x.units.length);
-  shop.innerHTML = groups.map(({ g, units }) => `<section class="ld-cat" data-group="${g.id}">
-      <header class="ld-cat-head"><span class="ld-cat-ico">${groupIcon(g.id, 20)}</span><h3>${g.name}</h3><p>${g.hint}</p><span class="ld-cat-n" id="cat-n-${g.id}"></span></header>
-      <div class="ld-cat-grid">${units.map(u => unitCardHtml(u, max)).join('')}</div>
-    </section>`).join('');
-  shop.onclick = (e) => {
-    const card = e.target.closest('.ld-ucard');
-    if (!card) return;
-    const q = e.target.closest('[data-q]');
-    if (q) { changeQty(card.dataset.unit, Number(q.dataset.q)); return; }
-    if (e.target.closest('[data-sheet]')) {
-      const u = UNITS_DATA.find(x => x.id === card.dataset.unit);
-      if (u) showUnitCardLobby(u);
-    }
-  };
+  shop.innerHTML = `<div class="ld-a3-grid ld-a3-shop">${groups.flatMap(({ units }) => units).map(u => unitTileHtml(u)).join('')}</div>`;
+  shop.onclick = (e) => { const t = e.target.closest('.ld-utile'); if (t) selectArmyUnit(t.dataset.unit); };
+  shop.ondblclick = (e) => { const t = e.target.closest('.ld-utile'); if (t) changeQty(t.dataset.unit, 1); };
   renderArmyGeneral();
+  renderArmySheet();
   updateBudgetDisplay();
 }
 
@@ -1209,17 +1218,12 @@ function updateBudgetDisplay() {
   if (fill) fill.style.width = `${budget > 0 ? Math.min(100, spent / budget * 100) : 0}%`;
   for (const u of UNITS_DATA) {
     const n = armyQuantities[u.id] || 0;
-    const card = document.getElementById(`unit-row-${u.id}`);
-    if (!card) continue;
-    card.classList.toggle('has', n > 0);
-    card.classList.toggle('pricey', u.cost > left);
-    document.getElementById(`qty-${u.id}`).textContent = n;
+    const tile = document.getElementById(`unit-row-${u.id}`);
+    if (!tile) continue;
+    tile.classList.toggle('has', n > 0);
+    tile.classList.toggle('pricey', u.cost > left);
     const badge = document.getElementById(`badge-${u.id}`);
     if (badge) badge.textContent = n > 0 ? `× ${n}` : '';
-    const plus = card.querySelector('[data-q="1"]');
-    if (plus) { plus.disabled = u.cost > left; plus.title = u.cost > left ? 'Budget insuffisant' : ''; }
-    const minus = card.querySelector('[data-q="-1"]');
-    if (minus) minus.disabled = n === 0;
   }
   for (const g of UNIT_GROUPS) {
     const el = document.getElementById(`cat-n-${g.id}`);
@@ -1227,6 +1231,7 @@ function updateBudgetDisplay() {
     const n = UNITS_DATA.filter(u => unitGroupOf(u) === g).reduce((t, u) => t + (armyQuantities[u.id] || 0), 0);
     el.textContent = n ? `${n} recrutée${n > 1 ? 's' : ''}` : '';
   }
+  renderArmySheet();
 }
 
 function submitArmy() {
