@@ -85,6 +85,57 @@ function show(id) {
   ['screen-home', 'screen-lobby', 'screen-army', 'screen-wait'].forEach(s => {
     document.getElementById(s).style.display = s === id ? 'block' : 'none';
   });
+  const home = id === 'screen-home';
+  document.body.classList.toggle('ld-at-home', home);
+  if (!home) closeHomePanel();
+  if (window.homeScene) window.homeScene.setActive(home);
+}
+
+// ---- Home: three big buttons, each opening a sheet ----
+let newKind = 'friends';
+const NEW_KIND_UI = {
+  friends: { go: 'Créer la salle', hint: "Invitez vos amis avec le code ou le lien de la salle. Vous pourrez aussi y ajouter des IA." },
+  ai: { go: 'Lancer la bataille', hint: "Vous recrutez votre armée, l'IA aussi, puis la bataille commence." },
+  tuto: { go: 'Commencer le tutoriel', hint: 'Une courte bataille guidée contre une IA passive.' },
+};
+
+function openHomePanel(which) {
+  const sheet = document.getElementById('home-sheet');
+  sheet.hidden = false;
+  sheet.querySelectorAll('.ld-sheet-panel').forEach(el => { el.hidden = el.dataset.panel !== which; });
+  document.body.classList.add('ld-sheet-open');
+  if (which === 'new') { setNewKind(newKind); document.getElementById('create-name').focus(); }
+  if (which === 'join') { renderResume(); (document.getElementById('join-name').value ? document.getElementById('join-code') : document.getElementById('join-name')).focus(); }
+  if (which === 'about') sheet.querySelector('.ld-sheet-box').scrollTop = 0;
+}
+
+function closeHomePanel() {
+  const sheet = document.getElementById('home-sheet');
+  if (!sheet || sheet.hidden) return;
+  sheet.hidden = true;
+  document.body.classList.remove('ld-sheet-open');
+}
+
+function setNewKind(kind) {
+  newKind = NEW_KIND_UI[kind] ? kind : 'friends';
+  document.querySelectorAll('.ld-choice').forEach(b => b.setAttribute('aria-checked', String(b.dataset.kind === newKind)));
+  document.querySelectorAll('.ld-choice-opts').forEach(el => { el.hidden = el.dataset.for !== newKind; });
+  document.getElementById('new-go').textContent = NEW_KIND_UI[newKind].go;
+  document.getElementById('new-hint').textContent = NEW_KIND_UI[newKind].hint;
+  if (newKind === 'ai') fillSoloGenerals();
+}
+
+function startNewGame() {
+  if (newKind === 'ai') return playSolo();
+  if (newKind === 'tuto') return startTutorial();
+  return createRoom();
+}
+
+// Room code from a code or a pasted invite link (…/?join=CODE)
+function parseJoinCode(raw) {
+  const v = String(raw || '').trim();
+  const m = v.match(/[?&]join=([A-Za-z0-9]+)/);
+  return (m ? m[1] : v).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
 }
 
 function notify(msg, type = 'error') {
@@ -123,7 +174,10 @@ function createRoom() {
 
 function joinRoom(asSpectator) {
   const name = readName('join-name');
-  const code = document.getElementById('join-code').value.trim().toUpperCase();
+  const raw = document.getElementById('join-code').value;
+  const code = parseJoinCode(raw);
+  const spectateLink = /[?&]spectate=1/.test(raw);
+  if (spectateLink) asSpectator = true;
   if (!name) return notify('Entrez votre nom.');
   if (code.length < 4) return notify('Entrez le code de la salle.');
   KBNet.clearSession();
@@ -148,6 +202,9 @@ function renderResume() {
   const card = document.getElementById('resume-card');
   const list = KBNet.getSession() ? [] : KBNet.recentSessions().slice(0, 3);
   resumeList = list;
+  const joinBox = document.getElementById('join-resume');
+  if (joinBox) joinBox.innerHTML = list.length ? `<span class="ld-label">Parties en cours</span>${list.map((s, i) =>
+    `<button class="ld-btn" onclick="resumeSession(${i})">Reprendre : salle ${escapeHtml(s.roomCode)} — ${escapeHtml(s.name || '')}${s.role === 'spectator' ? ' (spectateur)' : ''}</button>`).join('')}` : '';
   if (!list.length) { card.style.display = 'none'; return; }
   document.getElementById('resume-text').textContent = list.length > 1 ? 'Vous avez des parties en cours :' : '';
   card.querySelector('.btn-row').innerHTML = list.map((s, i) =>
@@ -428,7 +485,8 @@ function startTutorial() {
 function addBot() {
   const sel = document.getElementById('bot-difficulty');
   const flag = document.getElementById('bot-flag');
-  KBNet.send('add_bot', { difficulty: sel ? sel.value : 'veteran', flagId: flag && flag.value ? flag.value : undefined });
+  KBNet.send('add_bot', { difficulty: sel ? sel.value : 'veteran', flagId: flag && flag.value ? flag.value : undefined, generalId: botGeneralChoice || undefined });
+  botGeneralChoice = null;
 }
 
 function removeBot(id) {
@@ -450,13 +508,110 @@ function renderBotControls(data) {
   box.innerHTML = `<label for="bot-difficulty" class="ld-label" style="margin:0;align-self:center">IA</label>
     <select id="bot-difficulty">${BOT_DIFFICULTIES.map(d => `<option value="${d.id}"${d.id === current ? ' selected' : ''}>${d.name}</option>`).join('')}</select>
     <select id="bot-flag" aria-label="Drapeau de l'IA"><option value="">Drapeau : auto</option>${FLAGS.map(f => `<option value="${f.id}"${f.id === curFlag ? ' selected' : ''}${!team && taken.has(f.id) ? ' disabled' : ''}>${f.k} ${f.name}</option>`).join('')}</select>
+    <button type="button" class="ld-btn ld-bot-gen" onclick="chooseBotGeneral()" title="Choisir le général de l'IA">${(() => {
+      const g = botGeneralChoice && GENERALS_DATA.find(x => x.id === botGeneralChoice);
+      const img = g && generalImageUrl(g);
+      return g ? `${img ? `<img src="${img}" alt="">` : ''}${escapeHtml(g.name)}` : 'Général : au hasard';
+    })()}</button>
     <button class="ld-btn" onclick="addBot()">Ajouter une IA</button>`;
+  if (botGeneralChoice && (data.takenGenerals || []).includes(botGeneralChoice)) botGeneralChoice = null;
 }
 
 function fillSoloGenerals() {
-  const sel = document.getElementById('solo-general');
-  if (!sel || sel.options.length > 1) return;
-  for (const g of GENERALS_DATA) sel.insertAdjacentHTML('beforeend', `<option value="${escapeHtml(g.id)}">${escapeHtml(g.name)}</option>`);
+  const box = document.getElementById('solo-general-pick');
+  const input = document.getElementById('solo-general');
+  if (!box || !input) return;
+  renderGeneralPicker(box, {
+    selected: input.value || null, allowRandom: true, tabKey: 'solo',
+    onPick: (id) => { input.value = id || ''; fillSoloGenerals(); },
+  });
+}
+
+const pickerTabs = {};
+// Portrait grid with kingdom tabs. onPick(id | null for "au hasard"); taken ids are greyed out.
+function renderGeneralPicker(box, { selected = null, taken = [], allowRandom = false, onPick, tabKey = 'x' }) {
+  const sel = GENERALS_DATA.find(g => g.id === selected);
+  if (!pickerTabs[tabKey]) pickerTabs[tabKey] = sel ? kingdomInfo(sel).id : 'QIN';
+  const tab = pickerTabs[tabKey];
+  const list = GENERALS_DATA.filter(g => kingdomsOf(g).includes(tab));
+  const takenSet = new Set(taken.filter(id => id !== selected));
+  const card = (g) => {
+    const img = generalImageUrl(g);
+    const tk = takenSet.has(g.id);
+    return `<button type="button" class="ld-gp-card${g.id === selected ? ' on' : ''}${tk ? ' taken' : ''}" data-gp="${escapeHtml(g.id)}"${tk ? ' disabled' : ''}
+      aria-pressed="${g.id === selected}" title="${escapeHtml(g.name)}${tk ? ' (déjà pris)' : ''}">
+      <span class="ld-gp-face">${img ? `<img src="${img}" alt="" loading="lazy">` : `<span class="ld-brush">${escapeHtml(g.name.charAt(0))}</span>`}</span>
+      <span class="ld-gp-name">${escapeHtml(g.name)}</span>
+      <span class="ld-gp-stats"><i>F</i>${g.force ?? '—'}<i>S</i>${g.strategy ?? '—'}<i>C</i>${g.charisma ?? '—'}</span>
+      ${tk ? '<span class="ld-gp-flag">Pris</span>' : g.id === selected ? '<span class="ld-gp-flag on">Choisi</span>' : ''}</button>`;
+  };
+  box.innerHTML = `<div class="ld-gp-tabs" role="group" aria-label="Royaume">
+      ${allowRandom ? `<button type="button" class="ld-gp-tab ld-gp-random${!selected ? ' on' : ''}" data-gp-random="1" aria-pressed="${!selected}">Au hasard</button>` : ''}
+      ${KINGDOMS.map(k => `<button type="button" class="ld-gp-tab" data-gp-tab="${k.id}" aria-pressed="${k.id === tab}"><span class="ld-brush" aria-hidden="true">${k.k}</span>${k.name}</button>`).join('')}
+    </div>
+    <div class="ld-gp-grid">${list.map(card).join('')}</div>
+    ${sel ? `<p class="ld-gp-sel">${escapeHtml(sel.name)} · ${escapeHtml(kingdomLabel(sel))}${sel.citation ? ` — <i>${escapeHtml(sel.citation)}</i>` : ''}</p>` : allowRandom ? '<p class="ld-gp-sel">Un général sera tiré au hasard.</p>' : ''}`;
+  box.onclick = (e) => {
+    const b = e.target.closest('button');
+    if (!b || b.disabled) return;
+    if (b.dataset.gpTab) { pickerTabs[tabKey] = b.dataset.gpTab; renderGeneralPicker(box, { selected, taken, allowRandom, onPick, tabKey }); return; }
+    if (b.dataset.gpRandom) { onPick(null); return; }
+    if (b.dataset.gp) onPick(b.dataset.gp);
+  };
+}
+
+// Modal version (room: AI general)
+function openGeneralPicker({ title, selected, taken, allowRandom, onPick }) {
+  let ov = document.getElementById('ld-gpicker');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'ld-gpicker';
+    ov.className = 'ld-sheet';
+    ov.innerHTML = `<div class="ld-sheet-box" role="dialog" aria-modal="true"><button class="ld-close" aria-label="Fermer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg></button><h2></h2><div class="ld-gpick"></div></div>`;
+    document.body.appendChild(ov);
+    ov.addEventListener('click', (e) => { if (e.target === ov || e.target.closest('.ld-close')) ov.hidden = true; });
+  }
+  ov.querySelector('h2').textContent = title;
+  const box = ov.querySelector('.ld-gpick');
+  const render = (sel) => renderGeneralPicker(box, { selected: sel, taken, allowRandom, tabKey: 'modal', onPick: (id) => { ov.hidden = true; onPick(id); } });
+  delete pickerTabs.modal;
+  render(selected);
+  ov.hidden = false;
+}
+
+let botGeneralChoice = null;
+function chooseBotGeneral() {
+  openGeneralPicker({
+    title: "Général de l'IA", selected: botGeneralChoice, taken: lastTaken, allowRandom: true,
+    onPick: (id) => { botGeneralChoice = id; if (lastLobby) renderBotControls(lastLobby); },
+  });
+}
+
+function changeBotGeneral(botId) {
+  const bot = lastLobby && lastLobby.players.find(p => p.id === botId);
+  if (!bot) return;
+  openGeneralPicker({
+    title: `Général de ${bot.name}`, selected: bot.generalId, taken: lastTaken, allowRandom: false,
+    onPick: (id) => { if (id && id !== bot.generalId) KBNet.send('set_bot_general', { playerId: botId, generalId: id }); },
+  });
+}
+
+function showGeneralSheet(id) {
+  const g = GENERALS_DATA.find(x => x.id === id);
+  if (!g) return;
+  const abil = [];
+  if (g.activeAbility) abil.push(`<div class="ld-abil-item"><span class="ld-abil-kind">Capacité active · recharge ${g.activeAbility.cooldown} tours</span><b>${escapeHtml(g.activeAbility.name)}</b><p>${escapeHtml(g.activeAbility.description)}</p></div>`);
+  if (g.passiveAbility) abil.push(`<div class="ld-abil-item"><span class="ld-abil-kind">Passif</span><b>${escapeHtml(g.passiveAbility.name)}</b><p>${escapeHtml(g.passiveAbility.description)}</p></div>`);
+  document.getElementById('general-card-content').innerHTML = `<div class="ld-gsheet">
+      ${scrollHtml(g)}
+      <div class="ld-gen-info">
+        <div class="ld-gen-kicker">Général · ${escapeHtml(kingdomLabel(g))}</div>
+        <div class="ld-gen-name">${escapeHtml(g.name)}</div>
+        ${g.citation ? `<p class="ld-gen-quote">${escapeHtml(g.citation)}</p>` : ''}
+        ${statBars(g)}${generalFacts(g)}
+        ${abil.length ? `<div class="ld-abil">${abil.join('')}</div>` : ''}
+      </div></div>`;
+  document.getElementById('overlay-general-card').style.display = 'flex';
 }
 
 const KINGDOMS = [{ id: 'QIN', k: '秦', name: 'Qin' }, { id: 'ZHAO', k: '趙', name: 'Zhao' }, { id: 'WEI', k: '魏', name: 'Wei' }, { id: 'CHU', k: '楚', name: 'Chu' }];
@@ -643,7 +798,9 @@ function renderPlayerList(data) {
       ${flagImg(p.flag)}
       <span class="ld-pname">${escapeHtml(p.name)}${p.id === myId ? ' <em>(vous)</em>' : ''}</span>
       ${badge}
-      <span class="ld-pgen">${escapeHtml(genName)}</span>
+      ${bot && phase === 'lobby' && hostId === myId
+        ? `<button type="button" class="ld-pgen ld-pgen-btn" onclick="changeBotGeneral('${escapeHtml(p.id)}')" title="Changer le général de cette IA">${escapeHtml(genName)} <span aria-hidden="true">▾</span></button>`
+        : `<span class="ld-pgen">${escapeHtml(genName)}</span>`}
       <span class="player-status${ready ? ' ready' : ''}">${statusText}</span>
       ${bot && phase === 'lobby' && hostId === myId ? `<button class="ld-btn bot-remove" onclick="removeBot('${escapeHtml(p.id)}')" title="Retirer cette IA">Retirer</button>` : ''}
       ${swatches}
@@ -753,10 +910,10 @@ function renderArmyGeneral() {
         <span class="ld-al-name">${escapeHtml(u.name)}</span><span class="ld-al-n">× ${armyQuantities[u.id]}</span>
         <span class="ld-gold">${fmtGold(u.cost * armyQuantities[u.id])}</span></li>`).join('')}</ul>`
     : '<p class="ld-army-empty">Aucune unité recrutée. Ajoutez des troupes avec les boutons +.</p>';
-  box.innerHTML = `${g ? `<div class="ld-army-hero">
+  box.innerHTML = `${g ? `<button type="button" class="ld-army-hero" onclick="showGeneralSheet('${escapeHtml(g.id)}')" title="Voir la fiche de ${escapeHtml(g.name)}">
       ${img ? `<div class="ld-army-face"><img src="${img}" alt=""></div>` : ''}
       <div class="ld-army-hero-txt"><div class="ld-gen-kicker">Votre général · ${escapeHtml(kingdomLabel(g))}</div>
-      <div class="ld-gen-name">${escapeHtml(g.name)}</div>${statBars(g)}</div></div>` : ''}
+      <div class="ld-gen-name">${escapeHtml(g.name)}</div>${statBars(g)}<span class="ld-army-more">Voir la fiche</span></div></button>` : ''}
     <div class="ld-army-sum">
       <div class="ld-army-sum-head"><span>Votre armée</span><b>${totalUnits} unité${totalUnits > 1 ? 's' : ''}</b></div>
       ${summary}
@@ -922,6 +1079,7 @@ function onRoomUpdate(data) {
   document.getElementById('ld-room-tag').hidden = false;
   const me = data.players.find(p => p.id === myId);
   if (me) { selectedGeneral = me.generalId; selectedColor = me.color; }
+  if (me && document.getElementById('screen-army').style.display === 'block') renderArmyGeneral();
   document.getElementById('role-hint').textContent = myRole === 'spectator' ? 'Vous regardez cette partie en spectateur.' : 'Partagez le code ou le lien avec vos amis.';
   document.getElementById('generals-card').style.display = myRole === 'player' ? '' : 'none';
   renderPlayerList(data);
@@ -1005,6 +1163,7 @@ async function loadBalanceData() {
     if (tables && tables.units) merge(UNITS_DATA, Array.isArray(tables.units) ? tables.units : Object.values(tables.units));
     if (tables && tables.generals) merge(GENERALS_DATA, Array.isArray(tables.generals) ? tables.generals : Object.values(tables.generals));
     if (lastLobby) renderGenerals(lastLobby.takenGenerals || []);
+    fillSoloGenerals();
   } catch (e) { /* static hosting: hardcoded data */ }
 }
 
@@ -1020,17 +1179,26 @@ function initLobby() {
   const name = savedName();
   document.getElementById('create-name').value = name;
   document.getElementById('join-name').value = name;
+  document.body.classList.add('ld-at-home');
+  document.querySelectorAll('.ld-choice').forEach(b => b.addEventListener('click', () => setNewKind(b.dataset.kind)));
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const gp = document.getElementById('ld-gpicker');
+    if (gp && !gp.hidden) { gp.hidden = true; return; }
+    closeHomePanel();
+  });
+  document.getElementById('home-sheet').addEventListener('click', (e) => { if (e.target.id === 'home-sheet') closeHomePanel(); });
   if (joinCode) {
     document.getElementById('join-code').value = joinCode;
-    const card = document.getElementById('join-card');
-    card.querySelector('h2').textContent = params.get('spectate') ? `Regarder la partie ${joinCode}` : `Rejoindre la partie ${joinCode}`;
-    card.scrollIntoView({ block: 'center' });
+    document.getElementById('join-title').textContent = params.get('spectate') ? `Regarder la partie ${joinCode}` : `Rejoindre la partie ${joinCode}`;
+    openHomePanel('join');
     document.getElementById('join-name').focus();
     const s = KBNet.getSession();
     if (s && s.roomCode !== joinCode) KBNet.clearSession();
   }
   document.getElementById('join-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') joinRoom(!!params.get('spectate')); });
-  document.getElementById('create-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') createRoom(); });
+  document.getElementById('create-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') startNewGame(); });
+  document.getElementById('join-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') joinRoom(!!params.get('spectate')); });
   if (!joinCode) renderResume();
   let wasDown = false;
   KBNet.connect({
