@@ -1591,6 +1591,10 @@ function walkHeight(x, z) {
   return g;
 }
 
+// Height where a unit stands: the walkable surface, but never below the wading level of a river (feet in the water)
+const WADE_LEVEL = WATER_LEVEL - 0.12;
+function standHeight(x, z) { return Math.max(walkHeight(x, z), WADE_LEVEL); }
+
 // Point (x, z) pulled to within maxOff of the centre line of the nearest bridge deck (null when no deck is close):
 // keeps a formation crossing a bridge on its deck
 function deckClamp(x, z, maxOff) {
@@ -1981,7 +1985,7 @@ function setRunning(v) {
 return {
   THREE, renderer, scene, camera, controls, canvas, perf, governor, post, LEVELS,
   allHexes, hexesByType, getSegType, effH, isWaterHex,
-  hexToWorld, worldToHex, groundHeight, walkHeight, deckClamp, pickHex, pickPoint, projectToScreen,
+  WATER_LEVEL, hexToWorld, worldToHex, groundHeight, walkHeight, standHeight, deckClamp, pickHex, pickPoint, projectToScreen,
   // walkable decks (bridges, stairs, wall-walks with wall: true) and solid footprints (walls, towers, gates, tents, fences)
   decks, solids, trunks,
   bounds: { bx0, bx1, bz0, bz1, BCX, BCZ },

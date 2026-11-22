@@ -979,7 +979,7 @@ function makeRing(color, alpha, groundHeight) {
 // --- Layer ---
 export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPlayerEmblem = null, autoUpdate = true } = {}) {
   const { scene, hexToWorld } = world;
-  const groundHeight = world.walkHeight || world.groundHeight;
+  const groundHeight = world.standHeight || world.walkHeight || world.groundHeight;
   const group = new THREE.Group();
   group.name = 'units3d';
   scene.add(group);

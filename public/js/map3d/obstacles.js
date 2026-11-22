@@ -6,6 +6,8 @@ export function createObstacles(world) {
   const solids = world.solids || [];
   const decks = world.decks || [];
   const g = (x, z) => world.groundHeight(x, z);
+  // feet in the water, never under it: rivers are forded at the wading level
+  const WADE = (world.WATER_LEVEL ?? 0.35) - 0.12;
   const CELL = 1.5;
   const grid = new Map();
   const cellKey = (i, j) => i * 65536 + j;
@@ -77,7 +79,7 @@ export function createObstacles(world) {
       return Math.abs(top - L.deckY) < 0.3 ? top : gy;
     }
     const y = deckAtNonWall(x, z);
-    return y == null ? gy : Math.max(gy, y);
+    return Math.max(y == null ? gy : Math.max(gy, y), WADE);
   }
   function deckAtNonWall(x, z) {
     let y = null;

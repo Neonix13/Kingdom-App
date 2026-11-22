@@ -284,7 +284,7 @@ export async function mountGameView(bridge, { container }) {
     }
     const ap = animatedPos(u);
     const p = ap || world.hexToWorld(u.q, u.r);
-    return _v.set(p.x, world.walkHeight(p.x, p.z) + 0.7, p.z);
+    return _v.set(p.x, world.standHeight(p.x, p.z) + 0.7, p.z);
   }
 
   function frame(dt = 0.016) {
@@ -324,7 +324,7 @@ export async function mountGameView(bridge, { container }) {
           let from = anchorOf(sel).clone().setY(anchorOf(sel).y - 0.35);
           if (approach && approach.path.length > 1) {
             const p = world.hexToWorld(approach.q, approach.r);
-            from = new THREE.Vector3(p.x, world.walkHeight(p.x, p.z) + 0.35, p.z);
+            from = new THREE.Vector3(p.x, world.standHeight(p.x, p.z) + 0.35, p.z);
           }
           preview.showAttack(from, anchorOf(hu).clone().setY(anchorOf(hu).y - 0.35), (sel.range || 1) > 1);
         } else preview.showAttack(null, null);
@@ -435,7 +435,7 @@ export async function mountGameView(bridge, { container }) {
     // Viewport pixels of a hex centre (ground level)
     hexScreen(q, r) {
       const p = world.hexToWorld(q, r);
-      const sp = world.projectToScreen(new THREE.Vector3(p.x, world.walkHeight(p.x, p.z), p.z));
+      const sp = world.projectToScreen(new THREE.Vector3(p.x, world.standHeight(p.x, p.z), p.z));
       const rect = canvas.getBoundingClientRect();
       return { x: rect.left + sp.x, y: rect.top + sp.y, visible: sp.visible };
     },
