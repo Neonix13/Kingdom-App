@@ -882,3 +882,5 @@ body {
 #tuto-coach .tuto-done { color: #80e080; font-weight: bold; }
 .tuto-highlight { outline: 3px solid #ffd700 !important; outline-offset: 2px; animation: tuto-pulse 1.2s ease-in-out infinite; }
 @keyframes tuto-pulse { 0%, 100% { outline-color: #ffd700; } 50% { outline-color: rgba(255, 215, 0, 0.25); } }
+.uc-sym { font-family: "Segoe UI Symbol", "Noto Sans Symbols 2", "DejaVu Sans", sans-serif; color: #b8261c; font-size: 1.15em; margin-right: 2px; }
+.ku-ico { width: 1em; height: 1em; vertical-align: -0.14em; display: inline-block; flex-shrink: 0; }

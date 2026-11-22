@@ -2672,9 +2672,9 @@ function showUnitCard(unit) {
   let statsHtml;
   if (unit.isGeneral) {
     const row2 = [
-      { label: 'Force',      value: unit.force },
-      { label: 'Stratégie',  value: unit.strategy },
-      { label: 'Charisme',   value: unit.charisma },
+      { label: '<span class="uc-sym">⚔</span> Force',      value: unit.force },
+      { label: '<span class="uc-sym">♞</span> Stratégie',  value: unit.strategy },
+      { label: '<span class="uc-sym">♛</span> Charisme',   value: unit.charisma },
     ];
     const row3 = [
       { label: 'Puissance',    value: unit.power },

@@ -7,7 +7,6 @@ import { createDice3d } from './dice3d.js';
 import { createCameraDirector } from './cameraDirector.js';
 import { createCorpseLayer } from './corpses3d.js';
 import { createKillCam } from './killCam.js';
-import { KANJI } from '../hud/battleHud.js';
 
 const PLATE_CSS = `
 #view3d-canvas { position:absolute; inset:0; width:100%; height:100%; display:block; z-index:1; outline:none; touch-action:none; }
@@ -152,9 +151,9 @@ export async function mountGameView(bridge, { container }) {
     el._unit = u;
     const color = bridge.getPlayerColor(u.playerId);
     el.style.setProperty('--pc', color);
-    const kj = u.isGeneral ? '将' : (KANJI[u.typeId] || '兵');
+    const kj = u.isGeneral ? 'general' : u.typeId;
     const kEl = el.firstChild;
-    if (kEl.textContent !== kj) kEl.textContent = kj;
+    if (kEl.dataset.t !== kj) { kEl.dataset.t = kj; kEl.innerHTML = self.KBUnitIcon(u.typeId, u.isGeneral); }
     el.querySelector('.u3-name').textContent = u.name || '';
     const hp = Math.max(0, Math.min(1, (u.vitality ?? 1) / (u.maxVitality || 1)));
     const hpBar = el.querySelector('.hp > i');

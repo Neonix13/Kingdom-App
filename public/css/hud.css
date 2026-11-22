@@ -519,3 +519,4 @@ body.hud-d #toolbar .tuto-highlight { outline: 3px solid var(--hud-red); outline
 #combat-history .h-open { margin-left: 6px; padding: 1px 7px; border: 1.5px solid currentColor; background: transparent; color: inherit; font: 900 10px var(--hud-body, sans-serif); letter-spacing: 1px; cursor: pointer; }
 #combat-history .h-open:hover { background: #000; color: #fff; }
 @media (max-width: 1360px) { #hud-root .hud-lastcombat { bottom: 186px; } }
+.ku-ico { width: 1em; height: 1em; vertical-align: -0.14em; display: inline-block; flex-shrink: 0; }

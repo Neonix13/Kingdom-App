@@ -90,8 +90,8 @@ test('lobby : l\'hôte ajoute et retire des IA', async () => {
   const lobby = guest.last('room_update');
   assert.equal(lobby.players.length, 4);
   assert.equal(lobby.bots.length, 2);
-  const renPa = lobby.players.find(p => p.name === 'Ren Pa (IA)');
-  assert.ok(renPa, 'nom du général suivi de (IA)');
+  const renPa = lobby.players.find(p => p.generalId === 'ren_pa');
+  assert.equal(renPa.name, 'Roi Kou Retsu', 'IA nommée d\'après le roi du royaume de son général');
   assert.equal(renPa.generalId, 'ren_pa');
   assert.deepEqual(lobby.bots.map(b => b.difficulty).sort(), ['stratege', 'veteran']);
   const other = lobby.players.find(p => p.id === lobby.bots.find(b => b.difficulty === 'veteran').id);
@@ -108,7 +108,22 @@ test('lobby : l\'hôte ajoute et retire des IA', async () => {
   await host.send('set_bot_general', { playerId: renPa.id, generalId: 'gai_mou' });
   const changed = guest.last('room_update').players.find(p => p.id === renPa.id);
   assert.equal(changed.generalId, 'gai_mou');
-  assert.equal(changed.name, 'Gai Mou (IA)');
+  const weiTaken = guest.last('room_update').players.some(p => p.id !== renPa.id && p.name === 'Roi Kei Bin');
+  assert.ok(weiTaken ? /^Roi /.test(changed.name) && changed.name !== 'Roi Kei Bin' : changed.name === 'Roi Kei Bin', 'le nom suit le royaume du nouveau général (ou un roi libre)');
+
+  await guest.send('set_bot_difficulty', { playerId: renPa.id, difficulty: 'recrue' });
+  assert.equal(guest.last('error').code, 'not_host');
+  await host.send('set_bot_difficulty', { playerId: renPa.id, difficulty: 'nope' });
+  assert.equal(host.last('error').code, 'invalid_difficulty');
+  await host.send('set_bot_difficulty', { playerId: renPa.id, difficulty: 'recrue' });
+  assert.equal(guest.last('room_update').bots.find(b => b.id === renPa.id).difficulty, 'recrue');
+  await host.send('set_bot_flag', { playerId: renPa.id, flagId: 'yan' });
+  const flagged = guest.last('room_update').players.find(p => p.id === renPa.id);
+  assert.equal(flagged.flag, 'yan');
+  assert.equal(flagged.name, 'Roi Ki', 'le nom suit le drapeau');
+  await host.send('set_bot_flag', { playerId: renPa.id, flagId: 'wei' });
+  await host.send('set_player_flag', { flagId: 'wei' });
+  assert.equal(host.last('error').code, 'flag_taken');
 
   await host.send('remove_bot', { playerId: host.session.playerId });
   assert.equal(host.last('error').code, 'bot_not_found');
