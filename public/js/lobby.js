@@ -277,7 +277,14 @@ function flagImg(flagId, cls = 'ld-flag') {
   return `<img class="${cls}" src="/assets/flag/${f.file}" alt="Drapeau ${escapeHtml(f.name)}" title="${escapeHtml(f.name)}">`;
 }
 
+let flagWheelOpen = false;
+function toggleFlagWheel() {
+  flagWheelOpen = !flagWheelOpen;
+  if (lastLobby) renderPlayerList(lastLobby);
+}
+
 function pickFlag(flagId) {
+  flagWheelOpen = false;
   KBNet.send('set_player_flag', { flagId });
 }
 
@@ -807,19 +814,25 @@ function renderPlayerList(data) {
     const genImg = gen && generalImageUrl(gen);
     if (p.id === myId) li.classList.add('me');
     li.style.setProperty('--pc', color);
+    const pf = FLAGS.find(f => f.id === p.flag);
+    const cloth = `<span class="ld-banner-pole" aria-hidden="true"></span><span class="ld-banner-cloth${pf ? '' : ' empty'}">${pf ? `<img src="/assets/flag/${pf.file}" alt="">` : '<span>?</span>'}</span>`;
+    const banner = mine
+      ? `<button type="button" class="ld-pbanner" onclick="toggleFlagWheel()" aria-expanded="${flagWheelOpen}" title="${pf ? `Drapeau ${pf.name} — cliquer pour changer` : 'Choisir un drapeau'}">${cloth}</button>`
+      : `<span class="ld-pbanner" title="${pf ? `Drapeau ${pf.name}` : 'Pas encore de drapeau'}">${cloth}</span>`;
     li.innerHTML = `
       <span class="ld-pface">${genImg ? `<img src="${genImg}" alt="">` : `<span class="ld-brush" aria-hidden="true">${gen ? escapeHtml(gen.name.charAt(0)) : '?'}</span>`}</span>
       <div class="ld-pbody">
-        <div class="ld-pline">${flagImg(p.flag)}<span class="ld-pname">${escapeHtml(p.name)}${p.id === myId ? ' <em>(vous)</em>' : ''}</span>${badge}</div>
-        <div class="ld-pline">
+        <div class="ld-pline"><span class="ld-pname">${escapeHtml(p.name)}${p.id === myId ? ' <em>(vous)</em>' : ''}</span>${badge}</div>
+        <div class="ld-pbottom">
           ${bot && phase === 'lobby' && hostId === myId
             ? `<button type="button" class="ld-pgen ld-pgen-btn" onclick="changeBotGeneral('${escapeHtml(p.id)}')" title="Changer le général de cette IA">${escapeHtml(genName)} <span aria-hidden="true">▾</span></button>`
             : `<span class="ld-pgen">${escapeHtml(genName)}</span>`}
           <span class="player-status${ready ? ' ready' : ''}">${statusText}</span>
         </div>
       </div>
+      ${banner}
       ${bot && phase === 'lobby' && hostId === myId ? `<button class="bot-remove" onclick="removeBot('${escapeHtml(p.id)}')" title="Retirer cette IA" aria-label="Retirer cette IA">×</button>` : ''}
-      ${swatches ? `<div class="ld-pflags"><span class="ld-label">Votre drapeau</span>${swatches}</div>` : ''}
+      ${swatches && flagWheelOpen ? `<div class="ld-pflags">${swatches}</div>` : ''}
     `;
     list.appendChild(li);
   }

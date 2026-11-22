@@ -669,3 +669,35 @@ body.lobby-d.ld-at-home .ld-backdrop { display: none; }
 .lobby-d .ld-flag-wheel .ld-flag-btn.taken .ld-flag-img { opacity: .3; filter: grayscale(1); }
 .lobby-d .ld-flag-wheel .ld-flag-tag { position: absolute; left: 50%; bottom: -7px; transform: translateX(-50%); padding: 0 4px; background: #3a3632; color: var(--ld-soft); font: 900 8px/13px var(--ld-body); letter-spacing: 1px; text-transform: uppercase; white-space: nowrap; }
 .lobby-d .ld-flag-wheel .ld-flag-tag.ally { background: var(--ld-blue); color: #0E0D0C; }
+
+/* ---- player card v2: tall portrait, name on top, general below, clickable banner bottom-right ---- */
+.lobby-d .player-list li { grid-template-columns: 72px minmax(0, 1fr) 62px; align-items: stretch; gap: 0 12px; padding: 10px 10px 10px 12px; }
+.lobby-d .ld-pface { width: 72px; height: 96px; font-size: 32px; }
+.lobby-d .ld-pbody { justify-content: space-between; padding: 2px 0; }
+.lobby-d .ld-pline .ld-pname { font-size: 15.5px; }
+.lobby-d .ld-pbottom { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; min-width: 0; }
+.lobby-d .ld-pbottom .ld-pgen { font-family: var(--ld-mincho); font-weight: 900; font-size: 17px; color: var(--ld-text); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lobby-d .ld-pbottom .player-status { font-size: 11px; padding: 1px 8px; border-radius: 999px; background: rgba(239, 232, 216, .07); }
+.lobby-d .ld-pbottom .player-status.ready { background: rgba(143, 209, 143, .14); }
+.lobby-d .player-list .bot-remove { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; font-size: 15px; }
+.lobby-d .ld-pbanner { align-self: end; position: relative; display: block; width: 62px; height: 60px; padding: 0; border: 0; background: none; }
+.lobby-d button.ld-pbanner { cursor: pointer; }
+.lobby-d .ld-banner-pole { position: absolute; left: 10px; top: -2px; width: 3px; height: 62px; border-radius: 2px; background: linear-gradient(90deg, #a07a44, #6b4f2a); transform-origin: 0 40px; transform: skewX(-14deg); }
+.lobby-d .ld-banner-cloth { position: absolute; left: 12px; top: 0; width: 48px; height: 38px; overflow: hidden; transform-origin: 0 100%; transform: skewX(-14deg); border: 1px solid rgba(0, 0, 0, .6); box-shadow: 2px 4px 10px rgba(0, 0, 0, .55); background: #2a2622; transition: transform .15s, box-shadow .15s; }
+.lobby-d .ld-banner-cloth img { position: absolute; inset: -4px -8px; width: calc(100% + 16px); height: calc(100% + 8px); object-fit: cover; transform: skewX(14deg); }
+.lobby-d .ld-banner-cloth.empty { border: 1px dashed rgba(239, 232, 216, .5); background: rgba(239, 232, 216, .06); display: flex; align-items: center; justify-content: center; }
+.lobby-d .ld-banner-cloth.empty span { transform: skewX(14deg); font: 900 18px var(--ld-body); color: var(--ld-soft); }
+.lobby-d button.ld-pbanner:hover .ld-banner-cloth, .lobby-d button.ld-pbanner:focus-visible .ld-banner-cloth, .lobby-d button.ld-pbanner[aria-expanded="true"] .ld-banner-cloth { transform: skewX(-14deg) scale(1.08); box-shadow: 0 0 0 2px var(--ld-red), 2px 4px 12px rgba(0, 0, 0, .6); }
+.lobby-d .ld-pflags { margin-top: 10px; padding-top: 4px; }
+.lobby-d .player-list li { grid-template-areas: "face top top" "face bot ban"; grid-template-rows: auto 1fr; }
+.lobby-d .player-list li .ld-pbody { display: contents; }
+.lobby-d .player-list li .ld-pface { grid-area: face; }
+.lobby-d .player-list li .ld-pline { grid-area: top; padding: 2px 22px 0 0; }
+.lobby-d .player-list li .ld-pbottom { grid-area: bot; align-self: end; padding-bottom: 2px; }
+.lobby-d .player-list li .ld-pbanner { grid-area: ban; }
+.lobby-d .player-list li .ld-pflags { grid-column: 1 / -1; }
+.lobby-d .player-list li .ld-pline { flex-wrap: wrap; gap: 4px 8px; }
+.lobby-d .player-list li .ld-pline .ld-pname { flex-basis: 100%; }
+@media (min-width: 1280px) and (min-height: 680px) {
+  .lobby-d.ld-in-lobby #screen-lobby { grid-template-columns: minmax(300px, 340px) minmax(0, 1fr) clamp(380px, 28vw, 560px); }
+}
