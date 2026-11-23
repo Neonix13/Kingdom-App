@@ -718,6 +718,7 @@ const cornerHeights = new Map();
   // of the ground heightfield, so units, picking and groundHeight never see the relief of the face): each face is a
   // grid bulged by noise toward the lower hex, with strata ledges, a mossy lip and a dark wet foot; the displacement
   // fades to zero on its border so faces still meet the ground and each other exactly.
+  const faceCornerV = [];
   {
     const P = (i) => [positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]];
     const nFace = makeNoise2D(7171), nLedge = makeNoise2D(7272);
@@ -744,6 +745,7 @@ const cornerHeights = new Map();
         const lo = hiIsA ? nb : hex, hiH = hiIsA ? hex : nb;
         const pl = hexToWorld(lo.q, lo.r), ph = hexToWorld(hiH.q, hiH.r);
         const T0 = P(t0), T1 = P(t1), L0 = P(l0), L1 = P(l1);
+        faceCornerV.push(t0, t1, l0, l1);
         // horizontal unit vector toward the lower hex
         let ox = pl.x - ph.x, oz = pl.z - ph.z;
         const on = Math.hypot(ox, oz) || 1; ox /= on; oz /= on;
@@ -808,7 +810,7 @@ const cornerHeights = new Map();
   }
 
   // Rounder relief ("Total War" style): every ground triangle is split in four, then the heights of the free vertices are
-  // relaxed toward their neighbours, which rounds slope shoulders and feet. Pinned (never moved): hex centres (the rule
+  // moved toward a blurred height, which rounds slope shoulders and feet. Pinned (never moved): hex centres (the rule
   // height where units stand), cliff splits (two vertices at the same place), water, streams, buildings, bridges, walls,
   // gates and stairs. The heightfield below is rasterised from this mesh, so units and picking follow the new shape.
   {
@@ -819,7 +821,8 @@ const cornerHeights = new Map();
       return rampartSet.has(k) || gateHexSet.has(k) || stairHexSet.has(k) || ['building', 'bridge', 'river'].includes(h.terrain) || isWaterHex(h);
     };
     const pin = new Uint8Array(n0);
-    for (const vi of centerMap.values()) pin[vi] = 1;
+    const centerSet = new Set(centerMap.values());
+    for (const vi of centerSet) pin[vi] = 1;
     const byXZ = new Map();
     for (let i = 0; i < n0; i++) {
       const k = `${Math.round(P[i * 3] * 500)},${Math.round(P[i * 3 + 2] * 500)}`;
@@ -841,7 +844,9 @@ const cornerHeights = new Map();
       });
       if (near) pin[i] = 1;
     }
-    // midpoint subdivision (attributes: averaged; terrain blend ids taken from the first end when they differ)
+    // the rock faces (built above on these heights) keep their top and foot edges, else the ground cuts through them
+    for (const vi of faceCornerV) pin[vi] = 1;
+    // midpoint subdivision (all attributes averaged, as the original triangle interpolated them)
     const mid = new Map();
     const pinOut = Array.from(pin);
     const midpoint = (a, b) => {
@@ -851,9 +856,9 @@ const cornerHeights = new Map();
       m = positions.length / 3;
       for (let c = 0; c < 3; c++) positions.push((P[a * 3 + c] + P[b * 3 + c]) / 2);
       for (let c = 0; c < 3; c++) colors.push((colors[a * 3 + c] + colors[b * 3 + c]) / 2);
-      const same = tBlendIds[a * 3] === tBlendIds[b * 3] && tBlendIds[a * 3 + 1] === tBlendIds[b * 3 + 1] && tBlendIds[a * 3 + 2] === tBlendIds[b * 3 + 2];
-      for (let c = 0; c < 3; c++) tBlendIds.push(tBlendIds[a * 3 + c]);
-      for (let c = 0; c < 3; c++) tBlendWeights.push(same ? (tBlendWeights[a * 3 + c] + tBlendWeights[b * 3 + c]) / 2 : tBlendWeights[a * 3 + c]);
+      // same values the original triangle interpolated at this point, so the textures do not change
+      for (let c = 0; c < 3; c++) tBlendIds.push((tBlendIds[a * 3 + c] + tBlendIds[b * 3 + c]) / 2);
+      for (let c = 0; c < 3; c++) tBlendWeights.push((tBlendWeights[a * 3 + c] + tBlendWeights[b * 3 + c]) / 2);
       pinOut.push(pin[a] && pin[b] ? 1 : 0);
       mid.set(key, m);
       return m;
@@ -865,24 +870,77 @@ const cornerHeights = new Map();
       const ab = midpoint(a, b), bc = midpoint(b, c), ca = midpoint(c, a);
       indices.push(a, ab, ca, ab, b, bc, ca, bc, c, ab, bc, ca);
     }
-    // Laplacian relaxation of the heights of the free vertices
+    // Heights blurred on a regular grid (so the rounding does not depend on the size of the triangles) and applied
+    // through a smooth mask: no change at hex centres (rule height), at pinned points (cliffs, rock faces, streams,
+    // water, buildings, walls, gates, stairs) and around them, full rounding in between
     const N = positions.length / 3;
-    const adj = Array.from({ length: N }, () => []);
-    for (let t = 0; t < indices.length; t += 3) {
-      const v = [indices[t], indices[t + 1], indices[t + 2]];
-      for (let i = 0; i < 3; i++) { adj[v[i]].push(v[(i + 1) % 3]); adj[v[i]].push(v[(i + 2) % 3]); }
-    }
     const y = new Float32Array(N);
     for (let i = 0; i < N; i++) y[i] = positions[i * 3 + 1];
-    for (let it = 0; it < 4; it++) {
-      const ny = Float32Array.from(y);
-      for (let i = 0; i < N; i++) {
-        if (pinOut[i] || !adj[i].length) continue;
-        let s = 0;
-        for (const j of adj[i]) s += y[j];
-        ny[i] = y[i] + 0.55 * (s / adj[i].length - y[i]);
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+    for (let i = 0; i < n0; i++) { x0 = Math.min(x0, P[i * 3]); x1 = Math.max(x1, P[i * 3]); z0 = Math.min(z0, P[i * 3 + 2]); z1 = Math.max(z1, P[i * 3 + 2]); }
+    const S = HEX_SIZE / 4, PAD = 4;
+    x0 -= PAD * S; z0 -= PAD * S;
+    const GW = Math.ceil((x1 - x0) / S) + PAD * 2 + 1, GH = Math.ceil((z1 - z0) / S) + PAD * 2 + 1;
+    const gH = new Float32Array(GW * GH), gC = new Float32Array(GW * GH), gM = new Float32Array(GW * GH).fill(1);
+    for (let t = 0; t < tri.length; t += 3) {
+      const A = tri[t], B = tri[t + 1], C = tri[t + 2];
+      const ax = P[A * 3], az = P[A * 3 + 2], bx = P[B * 3], bz = P[B * 3 + 2], cx = P[C * 3], cz = P[C * 3 + 2];
+      const den = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz);
+      if (Math.abs(den) < 1e-9) continue;
+      const i0 = Math.max(0, Math.floor((Math.min(ax, bx, cx) - x0) / S)), i1 = Math.min(GW - 1, Math.ceil((Math.max(ax, bx, cx) - x0) / S));
+      const j0 = Math.max(0, Math.floor((Math.min(az, bz, cz) - z0) / S)), j1 = Math.min(GH - 1, Math.ceil((Math.max(az, bz, cz) - z0) / S));
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+        const px = x0 + i * S, pz = z0 + j * S;
+        const l1 = ((bz - cz) * (px - cx) + (cx - bx) * (pz - cz)) / den;
+        const l2 = ((cz - az) * (px - cx) + (ax - cx) * (pz - cz)) / den;
+        const l3 = 1 - l1 - l2;
+        if (l1 < -1e-4 || l2 < -1e-4 || l3 < -1e-4) continue;
+        const g = j * GW + i;
+        if (gC[g]) continue;
+        gH[g] = l1 * P[A * 3 + 1] + l2 * P[B * 3 + 1] + l3 * P[C * 3 + 1];
+        gC[g] = 1;
       }
-      y.set(ny);
+    }
+    const zeroDisc = (x, z, r) => {
+      const ci = (x - x0) / S, cj = (z - z0) / S, rc = r / S;
+      for (let j = Math.max(0, Math.floor(cj - rc)); j <= Math.min(GH - 1, Math.ceil(cj + rc)); j++) {
+        for (let i = Math.max(0, Math.floor(ci - rc)); i <= Math.min(GW - 1, Math.ceil(ci + rc)); i++) {
+          if ((i - ci) ** 2 + (j - cj) ** 2 <= rc * rc) gM[j * GW + i] = 0;
+        }
+      }
+    };
+    for (let i = 0; i < n0; i++) if (pin[i] && !centerSet.has(i)) zeroDisc(P[i * 3], P[i * 3 + 2], HEX_SIZE * 0.3);
+    for (const [k, h] of allHexes) if (rigidHex(k)) { const c = hexToWorld(h.q, h.r); zeroDisc(c.x, c.z, HEX_SIZE * 1.15); }
+    const blur = (src, wgt) => {
+      const R = 4, sig = 1.4, ker = [];
+      for (let k = -R; k <= R; k++) ker.push(Math.exp(-(k * k) / (2 * sig * sig)));
+      const tmpV = new Float32Array(GW * GH), tmpW = new Float32Array(GW * GH), outV = new Float32Array(GW * GH), outW = new Float32Array(GW * GH);
+      for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
+        let sv = 0, sw = 0;
+        for (let k = -R; k <= R; k++) { const ii = i + k; if (ii < 0 || ii >= GW) continue; const g = j * GW + ii, w = ker[k + R] * wgt[g]; sv += src[g] * w; sw += w; }
+        tmpV[j * GW + i] = sv; tmpW[j * GW + i] = sw;
+      }
+      for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
+        let sv = 0, sw = 0;
+        for (let k = -R; k <= R; k++) { const jj = j + k; if (jj < 0 || jj >= GH) continue; const g = jj * GW + i; sv += tmpV[g] * ker[k + R]; sw += tmpW[g] * ker[k + R]; }
+        outV[j * GW + i] = sw > 1e-6 ? sv / sw : 0; outW[j * GW + i] = sw;
+      }
+      return outV;
+    };
+    const one = new Float32Array(GW * GH).fill(1);
+    const bH = blur(gH, gC), bM = blur(gM, one);
+    const bil = (arr, x, z) => {
+      const fi = Math.min(GW - 1.001, Math.max(0, (x - x0) / S)), fj = Math.min(GH - 1.001, Math.max(0, (z - z0) / S));
+      const i = Math.floor(fi), j = Math.floor(fj), u = fi - i, v = fj - j, g = j * GW + i;
+      return (arr[g] * (1 - u) + arr[g + 1] * u) * (1 - v) + (arr[g + GW] * (1 - u) + arr[g + GW + 1] * u) * v;
+    };
+    const ss = (e0, e1, v) => { const t = Math.min(1, Math.max(0, (v - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
+    for (let i = 0; i < N; i++) {
+      if (pinOut[i]) continue;
+      const x = positions[i * 3], z = positions[i * 3 + 2];
+      const h = worldToHex(x, z), c = hexToWorld(h.q, h.r);
+      const w = ss(0.22, 0.6, Math.hypot(x - c.x, z - c.z) / HEX_SIZE) * ss(0.55, 0.95, bil(bM, x, z));
+      if (w > 0) y[i] += w * (bil(bH, x, z) - y[i]);
     }
     for (let i = 0; i < N; i++) positions[i * 3 + 1] = y[i];
   }

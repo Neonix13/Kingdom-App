@@ -2,6 +2,14 @@
 
 À FAIRE
 -------
+
+Nouveau:
+- les tuiles fleuves sont trop profondent l'écart pourrait etre plus doux et on dirait que les unité flottent on pourrait peut être voir le fond de l'eau 
+- ne pas montrer la carte 2D lors du chargement de la preview dans les menus
+- j'aimerais pouvoir placer des unité sur le mur au dessus des portes (tu vas peut être devoir laissé lee modèle 2D de coté)
+- 
+
+
 Priorité:
 
 
@@ -9,6 +17,10 @@ Priorité:
 -------
 
 FAIT (23/11/2026)
+- popping des nouveaux arbres : chaque arbre passe à sa version simplifiée à sa propre distance (fondu par arbre), plus de blocs entiers qui changent d'un coup
+- terrain moins anguleux (style Total War) : relief subdivisé et arrondi (épaulements et pieds de pente adoucis) ; centres des cases, falaises, eau, bâtiments, murs, portes et escaliers inchangés
+- noms des postures d'unité en entier (deux rangées de trois)
+- commandants en 3D plus fidèles à l'animé : silhouette propre à chaque général (Ou Ki chignon et guandao, Mou Bu casque à cornes et masse géante, Ou Sen masqué sur cheval blanc, Ren Pa grande hache, Gai Mou colosse à la masse, Ri Boku et Go Hou Mei en stratèges sans armure, etc.)
 - pas besoin de cliquer 2 fois pour valider un déplacement long : la marche se donne en un clic (le survol montre le trajet)
 - afficher les déplacements des tours suivants en gris (2D et 3D)
 - si une unité se déplace, on peut envoyer une autre unité sur la case qu'elle quitte

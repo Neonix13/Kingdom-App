@@ -35,7 +35,7 @@ const S = 0.3;
 const RIDER_Y = 0.262;
 
 const FK = { helmet: 1, bun: 2, hood: 3, straw: 4, lamellar: 5, round: 6, tower: 7, spear: 8, ji: 9, sword: 10, crossbow: 11, quiver: 12, fork: 13, hammer: 14, shovel: 15, pole: 16, daggers: 17, planks: 18, cloak: 19 };
-const RK = { helmet: 1, plume: 2, lamellar: 3, ji: 4, bow: 5, quiver: 6, cape: 7, pole: 8, guandao: 9, sword: 10, round: 11, bun: 12 };
+const RK = { helmet: 1, plume: 2, lamellar: 3, ji: 4, bow: 5, quiver: 6, cape: 7, pole: 8, guandao: 9, sword: 10, round: 11, bun: 12, mace: 13, axe: 14, mask: 15, horns: 16 };
 const HK = { barding: 1, chanfron: 2, cloth: 3 };
 const CK = { war: 1, cart: 2, pole: 3, crew: 4 };
 const bits = (...s) => s.reduce((a, b) => a | (1 << (b - 1)), 0);
@@ -245,6 +245,17 @@ function buildRider() {
   b.add(new THREE.CircleGeometry(0.2, 8), xf(0.29, 0.12, 0.08, 0, Math.PI / 2, 0), 0.95, 5, RK.round, 1);
   b.add(cyl(0.045, 0.04, 0.34, 5), xf(0.08, 0.24, -0.13, 0, 0, -0.35), COL.leather, 0, RK.quiver);
   b.add(box(0.07, 0.07, 0.045), xf(0.14, 0.41, -0.13, 0, 0, -0.35), COL.cream, 0, RK.quiver);
+  // generals' signature gear: giant mace (Mou Bu, Gai Mou), great axe (Ren Pa), face mask (Ou Sen), horned helmet
+  b.add(cyl(0.022, 0.026, 1.25, 5), xf(hx, hy + 0.3, hz), COL.wood, 4, RK.mace);
+  b.add(cyl(0.085, 0.07, 0.34, 7), xf(hx, hy + 0.98, hz), COL.metal, 4, RK.mace);
+  for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; b.add(cone(0.03, 0.09, 4), xf(hx + Math.cos(a) * 0.09, hy + 1.0, hz + Math.sin(a) * 0.09, 0, -a, -Math.PI / 2), COL.steel, 4, RK.mace); }
+  b.add(cyl(0.017, 0.019, 2.0, 4), xf(hx, hy + 0.45, hz), COL.wood, 4, RK.axe);
+  b.add(box(0.025, 0.5, 0.3), xf(hx, hy + 1.32, hz + 0.17), COL.steel, 4, RK.axe);
+  b.add(box(0.03, 0.12, 0.1), xf(hx, hy + 1.32, hz - 0.05), COL.steel, 4, RK.axe);
+  b.add(box(0.17, 0.1, 0.03), xf(0, 0.455, 0.09), COL.metal, 0, RK.mask);
+  b.add(box(0.05, 0.02, 0.032), xf(-0.04, 0.47, 0.1), 0.15, 0, RK.mask);
+  b.add(box(0.05, 0.02, 0.032), xf(0.04, 0.47, 0.1), 0.15, 0, RK.mask);
+  for (const sx of [1, -1]) b.add(cone(0.035, 0.22, 5), xf(0.12 * sx, 0.66, 0, 0, 0, -0.75 * sx), COL.cream, 0, RK.horns);
   R_PIV.anchor = [-0.25, 1.98, 0.08];
   b.add(cyl(0.018, 0.022, 2.4, 5), xf(-0.25, 0.8, 0.08), COL.wood, 0, RK.pole);
   b.add(cone(0.035, 0.1, 5), xf(-0.25, 2.05, 0.08), COL.gold, 0, RK.pole);
@@ -766,6 +777,24 @@ function infantry(full, cols, sx, sz, kitFn, bearerKit) {
 function loose(points, kitFn) {
   return (rnd) => points.map(([x, z]) => ({ ...footTpl(x + (rnd() - 0.5) * 0.06, z + (rnd() - 0.5) * 0.06, kitFn(rnd), rnd), yaw: (rnd() - 0.5) * 0.7 }));
 }
+// Each general's silhouette, after the anime: weapon, headgear, armour, build and horse (COATS index)
+const GENERAL_LOOKS = {
+  ou_ki: { kit: [RK.bun, RK.lamellar, RK.cape, RK.guandao], coat: 2, sc: 1.4 },        // tall, topknot, naginata, great cape, black horse
+  mou_bu: { kit: [RK.helmet, RK.horns, RK.lamellar, RK.cape, RK.mace], coat: 5, sc: 1.48 }, // giant, horned helmet, iron mace
+  ou_sen: { kit: [RK.helmet, RK.mask, RK.lamellar, RK.cape, RK.ji], coat: 4, sc: 1.28 }, // masked, spear, white horse
+  kan_ki: { kit: [RK.bun, RK.cape, RK.sword], coat: 2, sc: 1.22 },                       // ex-bandit: no armour, long hair, sword
+  ri_boku: { kit: [RK.bun, RK.cape, RK.sword], coat: 3, sc: 1.26 },                      // strategist in robes, sword, grey horse
+  kei_sha: { kit: [RK.plume, RK.lamellar, RK.cape, RK.sword], coat: 1, sc: 1.24 },
+  shi_ba_shou: { kit: [RK.helmet, RK.lamellar, RK.cape, RK.ji, RK.round], coat: 0, sc: 1.3 },
+  ren_pa: { kit: [RK.plume, RK.lamellar, RK.cape, RK.axe], coat: 5, sc: 1.42 },          // old lion of Zhao, great axe
+  go_kei: { kit: [RK.helmet, RK.lamellar, RK.cape, RK.sword, RK.round], coat: 6, sc: 1.24 },
+  go_hou_mei: { kit: [RK.bun, RK.cape, RK.sword], coat: 4, sc: 1.2 },                    // young strategist, robes
+  gai_mou: { kit: [RK.helmet, RK.horns, RK.lamellar, RK.mace], coat: 2, sc: 1.48 },      // colossal brute, mace
+};
+function generalTpl(gid, rnd) {
+  const look = GENERAL_LOOKS[gid] || { kit: [RK.plume, RK.lamellar, RK.cape, RK.guandao], coat: 4, sc: 1.28 };
+  return cavTpl(0, 0.16, bits(...look.kit), bits(HK.barding, HK.chanfron), look.coat, rnd, { sc: look.sc, yaw: 0 });
+}
 function cavTpl(lx, lz, kit, hkit, coat, rnd, extra = {}) {
   return { rig: 'cav', lx, lz, yaw: (rnd() - 0.5) * 0.12, kit, hkit, coats: [coat], sc: 1, ...extra };
 }
@@ -820,8 +849,8 @@ const SPECS = {
   },
   general: {
     anchorH: 1.2,
-    make: (rnd) => [
-      cavTpl(0, 0.16, bits(RK.plume, RK.lamellar, RK.cape, RK.guandao), bits(HK.barding, HK.chanfron), 4, rnd, { sc: 1.28, yaw: 0 }),
+    make: (rnd, density, f) => [
+      generalTpl(f && f.u && f.u.generalId, rnd),
       cavTpl(-0.36, -0.22, bits(RK.helmet, RK.lamellar, RK.pole), bits(HK.barding), 2, rnd, { cloth: 1, sc: 1.08 }),
       cavTpl(0.36, -0.16, bits(RK.helmet, RK.lamellar, RK.ji, RK.round), bits(HK.barding, HK.chanfron), 5, rnd, { sc: 1.08 }),
       cavTpl(0.02, -0.42, bits(RK.helmet, RK.lamellar, RK.ji), bits(HK.barding, HK.chanfron), 2, rnd, { sc: 1.08 }),
@@ -1418,7 +1447,7 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
   }
   function buildTemplates(f) {
     f.rnd = rngFrom(hashStr(String(f.id) + ':' + f.key));
-    f.tpls = SPECS[f.key].make(f.rnd, density);
+    f.tpls = SPECS[f.key].make(f.rnd, density, f);
     f.members = new Array(f.tpls.length).fill(null);
   }
   function createFormation(u) {
