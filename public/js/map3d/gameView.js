@@ -287,7 +287,31 @@ export async function mountGameView(bridge, { container }) {
     const to = a.path[step];
     const p0 = world.hexToWorld(from[0], from[1]), p1 = world.hexToWorld(to[0], to[1]);
     const k = stepF - step;
+    // stone stairs between the two hexes: walk their switchback (foot, flights, landings) instead of cutting across
+    const route = stairRoute(from, to);
+    if (route) return alongPolyline([p0, ...route, p1], k);
     return { x: p0.x + (p1.x - p0.x) * k, z: p0.z + (p1.z - p0.z) * k, heading: Math.atan2(p1.x - p0.x, p1.z - p0.z) };
+  }
+  function stairRoute(from, to) {
+    const a = `${from[0]},${from[1]}`, b = `${to[0]},${to[1]}`;
+    const d = (world.decks || []).find((x) => x.stair && ((x.stair.lo === a && x.stair.hi === b) || (x.stair.lo === b && x.stair.hi === a)));
+    if (!d) return null;
+    return d.stair.lo === a ? d.stair.route : [...d.stair.route].reverse();
+  }
+  function alongPolyline(pts, k) {
+    let total = 0;
+    const seg = [];
+    for (let i = 1; i < pts.length; i++) { const l = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z); seg.push(l); total += l; }
+    let want = Math.max(0, Math.min(1, k)) * total;
+    for (let i = 0; i < seg.length; i++) {
+      if (want <= seg[i] || i === seg.length - 1) {
+        const t = seg[i] > 1e-6 ? Math.min(1, want / seg[i]) : 1, A = pts[i], Bp = pts[i + 1];
+        return { x: A.x + (Bp.x - A.x) * t, z: A.z + (Bp.z - A.z) * t, heading: Math.atan2(Bp.x - A.x, Bp.z - A.z) };
+      }
+      want -= seg[i];
+    }
+    const L = pts[pts.length - 1];
+    return { x: L.x, z: L.z, heading: 0 };
   }
 
   function diceAt(log) {

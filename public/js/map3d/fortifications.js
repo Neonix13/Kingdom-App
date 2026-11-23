@@ -238,8 +238,8 @@ export function buildFortifications(api, map) {
     return { x, z, label };
   }
 
-  // Stone stairs on an 'escalier' edge: a straight flight square to the edge it crosses, standing in the lower hex and
-  // climbing toward the higher one, its top step flush with the face (a cliff or the wall), then a landing on top.
+  // Stone stairs on an 'escalier' edge: a switchback (two flights along the face and a landing) standing in the lower hex
+  // and climbing toward the higher one, its top landing flush with the face (a cliff or the wall).
   // Between two wall-walk hexes the walk itself climbs in steps (steppedRun), nothing more to draw.
   function stoneStairs(sg) {
     const ha = allHexes.get(hk(sg.q1, sg.r1)), hb = allHexes.get(hk(sg.q2, sg.r2));
@@ -269,26 +269,44 @@ export function buildFortifications(api, map) {
       shift = ((g.x - M.x) * t.x + (g.z - M.z) * t.z) > 0 ? -0.42 : 0.42;
     }
     const P = (along, out) => ({ x: M.x + t.x * (along + shift) + d.x * (face + out), z: M.z + t.z * (along + shift) + d.z * (face + out) });
-    const nSteps = Math.max(4, Math.ceil(dh / 0.12));
+    // Switchback: two flights running along the face in opposite directions, joined by a landing at mid height.
+    // Outer flight (away from the face) from the foot to the landing, inner flight (against the face) up to the top.
+    const fw = 0.15;                       // half width of a flight
+    const L0 = -0.5, L1 = 0.5;             // along the face: start and end of each flight
+    const oOut = 0.58, oIn = 0.22;         // distance from the face of the outer and inner flights
+    const yMid = yLo + dh / 2;
     const base = yLo - 0.3;
-    // each step a block from the foot of the flight to its own tread: the flight reads as solid masonry
-    for (let k = 0; k < nSteps; k++) {
-      const out0 = run * (1 - (k + 1) / nSteps), out1 = run * (1 - k / nSteps);
-      const c = P(0, (out0 + out1) / 2);
-      hbox(B, c.x, base, yLo + dh * (k + 1) / nSteps, c.z, d, (out1 - out0) / 2 + 0.004, half, K.pave, 2);
-    }
-    // side walls (cheeks) with a sloping coping on both sides of the flight
-    for (const side of [-1, 1]) {
-      const f0 = P(side * (half + 0.05), run), f1 = P(side * (half + 0.05), 0);
-      beam(B, V(f0.x, yLo + 0.16, f0.z), V(f1.x, yHi + 0.16, f1.z), 0.06, 0.09, K.stoneDark, 1);
-      const mid = P(side * (half + 0.05), run / 2);
-      hbox(B, mid.x, base, yLo + 0.06, mid.z, d, run / 2, 0.05, K.stoneDark, 1);
-    }
-    // landing on top, just inside the face
-    const L = P(0, -0.18);
-    hbox(B, L.x, base, yHi + 0.01, L.z, d, 0.18, half, K.stone, 1);
-    const foot = P(0, run + 0.05), topP = P(0, 0), land = P(0, -0.3);
-    addDeck([{ x: foot.x, y: yLo + 0.01, z: foot.z }, { x: topP.x, y: yHi + 0.01, z: topP.z }, { x: land.x, y: yHi + 0.01, z: land.z }], half + 0.02);
+    const flight = (out, a0, a1, y0, y1) => {
+      const n = Math.max(3, Math.ceil((y1 - y0) / 0.11));
+      const len = Math.abs(a1 - a0), dir = Math.sign(a1 - a0);
+      for (let k = 0; k < n; k++) {
+        const s0 = a0 + dir * len * k / n, s1 = a0 + dir * len * (k + 1) / n;
+        const c = P((s0 + s1) / 2, out);
+        hbox(B, c.x, base, y0 + (y1 - y0) * (k + 1) / n, c.z, t, Math.abs(s1 - s0) / 2 + 0.004, fw, K.pave, 2);
+      }
+      // outer cheek with a sloping coping
+      const side = out > (oOut + oIn) / 2 ? 1 : -1;
+      const c0 = P(a0, out + side * (fw + 0.04)), c1 = P(a1, out + side * (fw + 0.04));
+      beam(B, V(c0.x, y0 + 0.16, c0.z), V(c1.x, y1 + 0.16, c1.z), 0.05, 0.08, K.stoneDark, 1);
+    };
+    flight(oOut, L0, L1, yLo, yMid);
+    flight(oIn, L1, L0, yMid, yHi);
+    // landing at mid height across both flights, and the top landing against the face
+    const lm = P(L1 + 0.12, (oOut + oIn) / 2);
+    hbox(B, lm.x, base, yMid + 0.01, lm.z, t, 0.14, (oOut - oIn) / 2 + fw, K.stone, 1);
+    const lt = P(L0 - 0.04, oIn / 2 - 0.12);
+    hbox(B, lt.x, base, yHi + 0.01, lt.z, d, oIn / 2 + 0.16, fw + 0.06, K.stone, 1);
+    // the masonry core under the flights
+    const core = P(0, (oOut + oIn) / 2);
+    hbox(B, core.x, base, yMid - 0.02, core.z, t, (L1 - L0) / 2, (oOut - oIn) / 2, K.stoneDark, 1);
+    // walking line: foot -> outer flight -> landing -> inner flight -> top landing -> over the face
+    const route = [
+      { ...P(L0 - 0.12, oOut), y: yLo + 0.01 }, { ...P(L1, oOut), y: yMid + 0.01 }, { ...P(L1 + 0.12, (oOut + oIn) / 2), y: yMid + 0.01 },
+      { ...P(L1, oIn), y: yMid + 0.01 }, { ...P(L0, oIn), y: yHi + 0.01 }, { ...P(L0, -0.3), y: yHi + 0.01 },
+    ];
+    addDeck(route, fw + 0.02);
+    // the route units follow when they take these stairs (gameView: move animations), from the lower to the upper hex
+    if (decks && decks.length) decks[decks.length - 1].stair = { lo: hk(lo.q, lo.r), hi: hk(hi.q, hi.r), route };
   }
 
   // Adjacent porte props -> one gate complex each (a wide gate with several passages, or a single postern)

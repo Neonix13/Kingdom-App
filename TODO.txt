@@ -4,11 +4,20 @@
 -------
 Priorité:
 
+- mes unités sont parfois invisibles ou buguées : pas reproduit (6 tours en 3D, mode simultané, toutes les unités dessinées) ; noter quand ça arrive (vue 2D/3D, terrain, pendant la lecture ?)
 
 
 -------
 
 FAIT (23/11/2026)
+- pas besoin de cliquer 2 fois pour valider un déplacement long : la marche se donne en un clic (le survol montre le trajet)
+- afficher les déplacements des tours suivants en gris (2D et 3D)
+- si une unité se déplace, on peut envoyer une autre unité sur la case qu'elle quitte
+- Ctrl+clic sur une destination : choisir l'action à l'arrivée (se tourner, changer de posture, attaquer depuis cette case)
+- revoir les cartes : deux cases voisines ne diffèrent jamais de plus de 2 niveaux sans falaise, escalier ou mur (Col de Kankoku corrigé, test automatique sur toutes les cartes)
+- passages trop étroits sur les côtés du col : défilés nord et sud élargis à 3 cases (le franchissement du mur reste un escalier / une échelle)
+- escaliers trop abrupts : escaliers en lacets (deux volées et un palier)
+- déplacement des troupes dans les escaliers : les unités suivent les volées et le palier pendant l'animation
 - revoir les cartes (zones de déploiement) : zones fixes réduites à une taille égale pour tous, selon le budget (22 cases à 5 000 or)
 - revoir les cartes (objectifs) : plus d'objectif sur les portes ; objectifs déplacés pour que chaque camp atteigne en premier autant de points (1 contre 1 et 2 contre 2), contrôle node scripts/objectiveFairness.js
 - masquer quand un général ennemi utilise une capacité : ni bannière, ni notification, ni ligne de journal
