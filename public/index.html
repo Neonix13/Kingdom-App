@@ -424,11 +424,12 @@
   </script>
   <script type="module">
     if (!matchMedia('(max-width: 700px)').matches) {
+      document.getElementById('map-view').classList.add('has3d');
       import('/js/mapPreview3d.js').then((m) => {
         window.mapPreview3d = m.createMapPreview3d(document.getElementById('map-view'));
         window.mapPreview3d.setActive(document.getElementById('screen-lobby').style.display === 'block');
         if (typeof lastLobby !== 'undefined' && lastLobby && lastLobby.mapId) window.mapPreview3d.show(lastLobby.mapId);
-      }).catch((e) => console.warn('[salle] aperçu 3D indisponible', e));
+      }).catch((e) => { console.warn('[salle] aperçu 3D indisponible', e); document.getElementById('map-view').classList.remove('has3d'); });
     }
   </script>
 </body>

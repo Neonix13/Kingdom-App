@@ -23,7 +23,7 @@ export async function createWorld(opts = {}) {
 const HEX_SIZE = 1.0;
 const HEX_HEIGHT_STEP = 1.0;
 const WATER_LEVEL = 0.35;
-const RIVERBED_HEIGHT = -0.15;
+const RIVERBED_HEIGHT = 0.1;
 const STREAM_DEPTH = 0.3;
 const sqrt3 = Math.sqrt(3);
 
@@ -649,7 +649,9 @@ const cornerHeights = new Map();
       let cornerY = hs.reduce((a, v) => a + v, 0) / hs.length;
       // a corner between two adjacent levels (a walkable one-level step) sits half-way up: the slope is shared by both hexes
       const span = Math.max(...hs) - Math.min(...hs);
-      const gentle = span > 0.01 && span < 1.05 && !cornerIsCliffAt(members, group) && !group.some((g) => rampartSet.has(`${g.q},${g.r}`) || gateHexSet.has(`${g.q},${g.r}`));
+      // a river bank corner (one water hex) is a gentle slope too; between two water hexes the bed stays continuous
+      const nWater = group.filter(isWaterHex).length;
+      const gentle = span > 0.01 && nWater < 2 && (span < 1.05 || nWater === 1) && !cornerIsCliffAt(members, group) && !group.some((g) => rampartSet.has(`${g.q},${g.r}`) || gateHexSet.has(`${g.q},${g.r}`));
       if (gentle) cornerY = (Math.max(...hs) + Math.min(...hs)) / 2;
       else for (const v of hs) if (hs.filter((w) => Math.abs(w - v) < 0.01).length >= 2) { cornerY = v; break; }
       const cornerIsCliff = members.length > group.length;
@@ -1856,8 +1858,8 @@ function walkHeight(x, z) {
   return g;
 }
 
-// Height where a unit stands: the walkable surface, but never below the wading level of a river (feet in the water)
-const WADE_LEVEL = WATER_LEVEL - 0.12;
+// Height where a unit stands: the walkable surface (the riverbed when fording, legs in the water), never deeper than wading depth
+const WADE_LEVEL = WATER_LEVEL - 0.25;
 function standHeight(x, z) { return Math.max(walkHeight(x, z), WADE_LEVEL); }
 
 // Point (x, z) pulled to within maxOff of the centre line of the nearest bridge deck (null when no deck is close):

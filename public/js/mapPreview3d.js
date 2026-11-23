@@ -41,6 +41,7 @@ export function createMapPreview3d(container) {
       console.warn('[salle] aperçu 3D indisponible', e);
       canvas.remove();
       if (my === token) container.classList.remove('loading');
+      if (!cur) container.classList.remove('has3d');
       return;
     }
     if (my !== token) { destroy({ world, canvas }); return; }

@@ -6,8 +6,8 @@ export function createObstacles(world) {
   const solids = world.solids || [];
   const decks = world.decks || [];
   const g = (x, z) => world.groundHeight(x, z);
-  // feet in the water, never under it: rivers are forded at the wading level
-  const WADE = (world.WATER_LEVEL ?? 0.35) - 0.12;
+  // legs in the water: rivers are forded on the bed, never deeper than the wading level
+  const WADE = (world.WATER_LEVEL ?? 0.35) - 0.25;
   const CELL = 1.5;
   const grid = new Map();
   const cellKey = (i, j) => i * 65536 + j;

@@ -115,7 +115,7 @@ export function createWaterMaterial({ fineTex, fineBounds, coarseTex, coarseBoun
         vec3 R = reflect( -V, N );
         vec3 sky = mix( uSkyHorizon, uSkyZenith, smoothstep( 0.0, 0.6, R.y ) );
 
-        float dk = 1.0 - exp( -max( depth, 0.0 ) * 3.0 );
+        float dk = 1.0 - exp( -max( depth, 0.0 ) * 1.8 );
         vec3 body = mix( uShallow, uDeep, dk );
         float diff = max( dot( N, uSunDir ), 0.0 ) * 0.5 + 0.5;
         body *= ( 0.4 + 0.6 * diff ) * uLight;
@@ -138,7 +138,7 @@ export function createWaterMaterial({ fineTex, fineBounds, coarseTex, coarseBoun
         foam = clamp( foam, 0.0, 1.0 );
         col = mix( col, uFoam * ( 0.65 + 0.35 * diff ) * uLight, foam * 0.85 );
 
-        float alpha = mix( 0.5, 0.94, smoothstep( 0.0, 0.35, depth ) );
+        float alpha = mix( 0.3, 0.92, smoothstep( 0.1, 0.9, depth ) );
         alpha = max( alpha, foam * 0.9 );
         #ifdef RIBBON
           alpha *= 1.0 - smoothstep( 0.7, 1.0, ae );
