@@ -20,6 +20,8 @@ export const G = {
   uOcc: { value: null },
   uOccOn: { value: 0 },
   uOverlayBounds: { value: new THREE.Vector4(0, 0, 1, 1) },
+  uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+  uSunCol: { value: new THREE.Color(1, 1, 1) },
 };
 
 // Fog of war, applied after lighting to every patched material (and the water shader)

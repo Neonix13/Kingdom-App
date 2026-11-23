@@ -38,6 +38,8 @@ async function setProgress(pct, text) {
 installHeightFog(0.5, 0.05);
 
 await setProgress(5, 'Fetching terrain data...');
+// broadleaf tree modelled in Blender, loaded alongside the terrain (procedural broadleaf if it fails)
+const broadModelReady = VEG.loadTreeModel('assets/models/trees/LoireTree2.glb', { height: 1.25 });
 const mapDoc = opts.map || await fetch(`/api/maps/${encodeURIComponent(opts.mapId || 'default')}`).then(r => {
   if (!r.ok) throw new Error('Carte introuvable');
   return r.json();
@@ -1220,7 +1222,9 @@ function setTimeOfDay(hour, { env = true } = {}) {
   sunDir.copy(lightDir);
   sunLight.color.copy(sunCol).lerp(new THREE.Color(0x8fb0ff), night);
   sunLight.intensity = lerp(3.3, 1.9, golden) * (1 - night) + 0.75 * night;
-  hemiLight.intensity = lerp(0.35, 0.28, golden) * (1 - night) + 0.22 * night;
+  G.uSunDir.value.copy(sunDir);
+  G.uSunCol.value.copy(sunLight.color).multiplyScalar(sunLight.intensity * (1 - night * 0.85));
+  hemiLight.intensity = lerp(0.36, 0.34, golden) * (1 - night) + 0.22 * night;
   hemiLight.color.set(0xb8d0f0).lerp(new THREE.Color(0x3a4a70), night);
 
   const fog = DAY_FOG.clone().lerp(GOLD_FOG, golden * 0.85).lerp(NIGHT_FOG, night);
@@ -1351,13 +1355,15 @@ waterMats.push(waterMat);
 await setProgress(68, 'Growing forests...');
 
 // --- Vegetation ---
+const broadModel = await broadModelReady;
+const broadNear = [0, 1].map((v) => (broadModel ? broadModel.geo : VEG.makeBroadleafGeometry(v)));
 const vegMat = (opts, key, extra = null) => patchLit(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0, envMapIntensity: 0.5 }), opts, extra, key);
-const treeMatConifer = vegMat({ wind: true, windBend: 0.045, windFreq: 1.1, flutter: 0.004, clearOnUnits: true }, 'conifer-tex', VEG.treeTexturePatch('conifer'));
-const treeMatBroad = vegMat({ wind: true, windBend: 0.06, windFreq: 1.3, flutter: 0.008, clearOnUnits: true }, 'broad-tex', VEG.treeTexturePatch('broad'));
-const bushMat = vegMat({ wind: true, windBend: 0.5, windFreq: 1.6, clearOnUnits: true }, 'bush-tex', VEG.treeTexturePatch('bush'));
-const grassMat = vegMat({ wind: true, windBend: 9.0, windFreq: 2.1, fadeNear: 38, fadeFar: 62, noFlip: true }, 'grass');
+const treeMatConifer = vegMat({ wind: true, windBend: 0.045, windFreq: 1.1, flutter: 0.004, clearOnUnits: true }, 'conifer-tex2', VEG.treeTexturePatch('conifer'));
+const treeMatBroad = vegMat({ wind: true, windBend: 0.06, windFreq: 1.3, flutter: broadModel ? 0 : 0.008, clearOnUnits: true }, 'broad-tex2', VEG.treeTexturePatch('broad'));
+const bushMat = vegMat({ wind: true, windBend: 0.5, windFreq: 1.6, clearOnUnits: true }, 'bush-tex2', VEG.treeTexturePatch('bush'));
+const grassMat = vegMat({ wind: true, windBend: 6.0, windFreq: 1.6, fadeNear: 22, fadeFar: 40, noFlip: true }, 'grass-v2', VEG.grassPatch);
 grassMat.side = THREE.DoubleSide;
-const wheatMat = vegMat({ wind: true, windBend: 5.0, windFreq: 1.8, fadeNear: 55, fadeFar: 85, noFlip: true, clearOnUnits: true }, 'wheat');
+const wheatMat = vegMat({ wind: true, windBend: 3.0, windFreq: 1.5, fadeNear: 55, fadeFar: 85, noFlip: true, clearOnUnits: true }, 'wheat');
 wheatMat.side = THREE.DoubleSide;
 const rockMat = patchLit(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, flatShading: true, envMapIntensity: 0.3 }), {}, null, 'rock');
 
@@ -1404,7 +1410,9 @@ for (const hex of hexesByType.forest || []) {
 }
 
 // Trunk circles of the board's forest trees (Promenade collisions)
-const trunks = [...conifers[0], ...conifers[1], ...broads[0], ...broads[1]].map((t) => ({ x: t.x, z: t.z, r: 0.045 * t.s }));
+const broadTrunkR = broadModel ? broadModel.trunkRadius * 0.9 : 0.045;
+const trunks = [...conifers[0], ...conifers[1]].map((t) => ({ x: t.x, z: t.z, r: 0.045 * t.s }))
+  .concat([...broads[0], ...broads[1]].map((t) => ({ x: t.x, z: t.z, r: broadTrunkR * t.s })));
 
 // Plains: grass tufts, occasional bush; fields: wheat; rocky hexes: boulders
 for (const [key, hex] of allHexes) {
@@ -1412,12 +1420,23 @@ for (const [key, hex] of allHexes) {
   const rng = makeRng(hex.q * 92821 + hex.r * 68917 + 7);
   const wp = hexToWorld(hex.q, hex.r);
   if (vt === 'plain' || vt === 'highland' || vt === 'road') {
+    // meadow: each spot grows a small clump of short tufts (own rng, so the rest of the scatter keeps its layout)
+    const grng = makeRng(hex.q * 92821 + hex.r * 68917 + 11);
     const n = vt === 'highland' ? 12 : 22;
     for (let i = 0; i < n; i++) {
       const [x, z] = randomInHex(wp.x, wp.z, rng, 1.0);
       const y = groundHeight(x, z);
       if (y < WATER_LEVEL + 0.12 || y < hex.height - 0.1 || roadAt(x, z) > 0.12) continue;
-      grass.push({ x, y: y - 0.01, z, s: 0.8 + rng() * 0.8, sy: 0.8 + rng() * 0.6, ry: rng() * 6.28, color: vt === 'plain' ? mul(rng, 1.0, 1.0, 0.9, 0.3) : mul(rng, 1.25, 1.05, 0.7, 0.2) });
+      const s = 0.75 + rng() * 0.55, sy = 0.75 + rng() * 0.5, ry = rng() * 6.28;
+      const color = vt === 'plain' ? mul(rng, 1.0, 1.0, 0.9, 0.25) : mul(rng, 1.2, 1.05, 0.72, 0.2);
+      const k = grng() < 0.25 ? 3 + Math.floor(grng() * 3) : grng() < 0.4 ? 1 : 0;
+      for (let j = 0; j < k; j++) {
+        const a = grng() * 6.28, d = j ? 0.03 + grng() * grng() * 0.16 : 0;
+        const gx = x + Math.cos(a) * d, gz = z + Math.sin(a) * d;
+        const gy = j ? groundHeight(gx, gz) : y;
+        if (j && (gy < WATER_LEVEL + 0.12 || gy < hex.height - 0.1 || roadAt(gx, gz) > 0.12)) continue;
+        grass.push({ x: gx, y: gy - 0.008, z: gz, s: s * (0.85 + grng() * 0.3), sy, ry: ry + j * 1.7, color });
+      }
     }
     const nf = vt === 'highland' ? 1 : 3;
     const fc = FLOWER_COLORS[Math.floor(rng() * FLOWER_COLORS.length)];
@@ -1571,23 +1590,79 @@ for (const [segKey, type] of ruleSegSet) {
 
 const vegGroup = new THREE.Group();
 scene.add(vegGroup);
-[VEG.makeConiferGeometry(0), VEG.makeConiferGeometry(1)].forEach((g, i) => vegGroup.add(VEG.instanced(g, treeMatConifer, conifers[i], { castShadow: true })));
-[VEG.makeBroadleafGeometry(0), VEG.makeBroadleafGeometry(1)].forEach((g, i) => vegGroup.add(VEG.instanced(g, treeMatBroad, broads[i], { castShadow: true })));
+// vegetation in chunks: each one frustum-culled, trees and bushes simplified past treeLod.dist (per quality level);
+// the shadow map is redrawn when a chunk changes level so the shadows always match the trees shown (see the render loop)
+const lodGroups = [];
+const treeLod = { dist: 30 };
+let lodTimer = 0, lodCam = null;
+const lodPrev = new THREE.Vector3();
+const vegChunks = (items, levels, opts) => {
+  const g = VEG.chunkedInstances(items, levels, opts);
+  lodGroups.push(g);
+  g.userData.update(camera.position);
+  return g;
+};
+const lodLevels = (geo, lodGeo, mat) => [
+  { geo, mat, castShadow: true, get maxDist() { return treeLod.dist; } },
+  { geo: lodGeo, mat, castShadow: true, maxDist: Infinity },
+];
+[0, 1].forEach((v) => {
+  vegGroup.add(vegChunks(conifers[v], lodLevels(VEG.makeConiferGeometry(v), VEG.makeConiferGeometry(v, 1), treeMatConifer)));
+  vegGroup.add(vegChunks(broads[v], lodLevels(broadNear[v], VEG.makeBroadleafGeometry(v, 1), treeMatBroad)));
+});
 const farTrees = new THREE.Group();
-farTrees.add(VEG.instanced(VEG.makeConiferGeometry(0, 1), treeMatConifer, farConifers, { castShadow: true }));
-farTrees.add(VEG.instanced(VEG.makeBroadleafGeometry(0, 1), treeMatBroad, farBroads, { castShadow: true }));
+farTrees.add(vegChunks(farConifers, [{ geo: VEG.makeConiferGeometry(0, 1), mat: treeMatConifer, castShadow: true, maxDist: Infinity }], { size: 30 }));
+farTrees.add(vegChunks(farBroads, [{ geo: VEG.makeBroadleafGeometry(0, 1), mat: treeMatBroad, castShadow: true, maxDist: Infinity }], { size: 30 }));
 vegGroup.add(farTrees);
-vegGroup.add(VEG.instanced(VEG.makeBushGeometry(), bushMat, bushes, { castShadow: true }));
+vegGroup.add(vegChunks(bushes, lodLevels(VEG.makeBushGeometry(), VEG.makeBushGeometry(1), bushMat)));
 vegGroup.add(VEG.instanced(VEG.makeRockGeometry(3), rockMat, rocks, { castShadow: true }));
 vegGroup.add(VEG.instanced(VEG.makeRockGeometry(8, 'slab'), rockMat, slabs, { castShadow: true }));
-for (const g of grass) g.s *= 0.6;
 for (const w of wheat) w.s *= 0.8;
-for (const f of flowers) f.s *= 0.75;
-const grassMesh = VEG.instanced(VEG.makeGrassTuftGeometry(5), grassMat, grass);
-const wheatMesh = VEG.instanced(VEG.makeWheatGeometry(9), wheatMat, wheat);
+for (const f of flowers) f.s *= 0.6;
+// denser tufts close to the camera, thinner ones further out (blades get sub-pixel there: faded out by 40)
+const grassMesh = vegChunks(grass, [
+  { geo: VEG.makeGrassTuftGeometry(5, 16, 0.1), mat: grassMat, maxDist: 16 },
+  { geo: VEG.makeGrassTuftGeometry(5), mat: grassMat, maxDist: 42 },
+]);
+const wheatMesh = vegChunks(wheat, [{ geo: VEG.makeWheatGeometry(9), mat: wheatMat, maxDist: 87 }]);
 const flowerMat = vegMat({ wind: true, windBend: 6.0, windFreq: 2.4, fadeNear: 30, fadeFar: 48 }, 'flower');
-const flowerMesh = VEG.instanced(VEG.makeFlowerGeometry(), flowerMat, flowers);
+const flowerMesh = vegChunks(flowers, [{ geo: VEG.makeFlowerGeometry(), mat: flowerMat, maxDist: 50 }]);
 vegGroup.add(grassMesh, wheatMesh, flowerMesh);
+// contact shadows: a soft dark disc multiplied onto the ground under lone trees, forest edges and bushes, tilted with
+// the slope (not inside dense woods, where the discs would pile up into a black floor)
+const contactMat = new THREE.MeshBasicMaterial({ vertexColors: true, blending: THREE.MultiplyBlending, premultipliedAlpha: true, transparent: true, depthWrite: false, fog: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+const contactItems = [];
+const treeCells = new Map();
+const allTrees = [...conifers[0], ...conifers[1], ...broads[0], ...broads[1]];
+for (const t of allTrees) {
+  const k = `${Math.floor(t.x * 2)},${Math.floor(t.z * 2)}`;
+  if (!treeCells.has(k)) treeCells.set(k, []);
+  treeCells.get(k).push(t);
+}
+const crowded = (t) => {
+  let n = 0;
+  const cx = Math.floor(t.x * 2), cz = Math.floor(t.z * 2);
+  for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+    for (const o of treeCells.get(`${cx + i},${cz + j}`) || []) if (o !== t && (o.x - t.x) ** 2 + (o.z - t.z) ** 2 < 0.2) n++;
+  }
+  return n >= 3;
+};
+const addContact = (list, r, skipCrowded) => {
+  for (const t of list) {
+    if (skipCrowded && crowded(t)) continue;
+    const e = 0.15;
+    const hx = (groundHeight(t.x + e, t.z) - groundHeight(t.x - e, t.z)) / (2 * e);
+    const hz = (groundHeight(t.x, t.z + e) - groundHeight(t.x, t.z - e)) / (2 * e);
+    const rx = Math.atan(-hz);
+    contactItems.push({ x: t.x, y: groundHeight(t.x, t.z) + 0.012, z: t.z, s: r * t.s, rx, rz: Math.atan(hx * Math.cos(rx)) });
+  }
+};
+for (const l of conifers) addContact(l, 0.38, true);
+for (const l of broads) addContact(l, 0.36, true);
+addContact(bushes, 0.26, false);
+const contactMesh = vegChunks(contactItems, [{ geo: VEG.makeContactGeometry(0.76), mat: contactMat, maxDist: 48 }], { receiveShadow: false });
+contactMesh.traverse((m) => { m.renderOrder = 1; });
+vegGroup.add(contactMesh);
 
 await setProgress(78, 'Raising villages...');
 
@@ -1744,10 +1819,18 @@ const birdPerches = [];
     else if (fieldSet.has(`${h.q},${h.r}`) && rng() < 0.08) birdPerches.push({ x: c.x, y: groundHeight(c.x, c.z), z: c.z, kind: 'field' });
   }
   for (const s of smokeSources) birdPerches.push({ x: s.x, y: s.y - 0.08, z: s.z, kind: 'roof' });
-  const treeTop = (make, v) => { const g = make(v); g.computeBoundingBox(); const y = g.boundingBox.max.y; g.dispose(); return y; };
-  [[conifers, VEG.makeConiferGeometry], [broads, VEG.makeBroadleafGeometry]].forEach(([sets, make]) => sets.forEach((list, v) => {
-    const top = treeTop(make, v);
-    for (const t of list) if (rng() < 0.04) birdPerches.push({ x: t.x, y: t.y + top * (t.s || 1) * (t.sy || 1) * 0.97, z: t.z, kind: 'tree' });
+  const treeTop = (g) => {
+    const pos = g.attributes.position, top = new THREE.Vector3(0, -Infinity, 0);
+    for (let i = 0; i < pos.count; i++) if (pos.getY(i) > top.y) top.fromBufferAttribute(pos, i);
+    return top;
+  };
+  [[conifers, (v) => VEG.makeConiferGeometry(v)], [broads, (v) => broadNear[v]]].forEach(([sets, make]) => sets.forEach((list, v) => {
+    const top = treeTop(make(v));
+    for (const t of list) {
+      if (rng() >= 0.04) continue;
+      const s = t.s || 1, c = Math.cos(t.ry || 0), sn = Math.sin(t.ry || 0);
+      birdPerches.push({ x: t.x + (top.x * c + top.z * sn) * s, y: t.y + top.y * s * (t.sy || 1) * 0.97, z: t.z + (-top.x * sn + top.z * c) * s, kind: 'tree' });
+    }
   }));
 }
 const birdSys = createBirds({ scene, G, bounds: { bx0, bx1, bz0, bz1 }, groundHeight, surfaceHeight: walkHeight, perches: birdPerches, camera: renderCam });
@@ -1766,7 +1849,7 @@ let colorPreset = 'kingdom';
 var gradeNight; // set by the time-of-day update, which can run before this line (no initializer: hoisted, never reset)
 // Cameras stay out of the scenery (walls, roofs, trees, relief): highest surface baked once from above
 const obstacleTop = bakeObstacleHeights(renderer, scene, { x0: bx0 - 15, z0: bz0 - 15, x1: bx1 + 15, z1: bz1 + 15 },
-  { hide: [sky, clouds, stars, moon, birds, grassMesh, flowerMesh, wheatMesh, ...nightFx] });
+  { hide: [sky, clouds, stars, moon, birds, grassMesh, flowerMesh, wheatMesh, contactMesh, ...nightFx] });
 const camGuard = createCameraGuard({ camera, controls, top: obstacleTop, groundHeight, renderCam,
   bounds: { x0: bx0 - 15, z0: bz0 - 15, x1: bx1 + 15, z1: bz1 + 15 } });
 camGuard.update(0);
@@ -1786,11 +1869,11 @@ function updateDof(rawDt) {
 }
 const maxDpr = Math.min(window.devicePixelRatio || 1, 2);
 const LEVELS = [
-  { name: 'Ultra', dpr: maxDpr, samples: maxDpr > 1.6 ? 2 : 4, bloom: true, post: true, grass: true, far: true, dof: true },
-  { name: 'High', dpr: Math.min(maxDpr, 1.5), samples: 4, bloom: true, post: true, grass: true, far: true, dof: true },
-  { name: 'Medium', dpr: Math.min(maxDpr, 1.25), samples: 2, bloom: false, post: true, grass: true, far: true },
-  { name: 'Low', dpr: Math.min(maxDpr, 1.0), samples: 0, bloom: false, post: true, grass: false, far: true },
-  { name: 'Minimum', dpr: 0.75, samples: 0, bloom: false, post: false, grass: false, far: false },
+  { name: 'Ultra', dpr: maxDpr, samples: maxDpr > 1.6 ? 2 : 4, bloom: true, post: true, grass: true, far: true, dof: true, lod: 30 },
+  { name: 'High', dpr: Math.min(maxDpr, 1.5), samples: 4, bloom: true, post: true, grass: true, far: true, dof: true, lod: 25 },
+  { name: 'Medium', dpr: Math.min(maxDpr, 1.25), samples: 2, bloom: false, post: true, grass: true, far: true, lod: 20 },
+  { name: 'Low', dpr: Math.min(maxDpr, 1.0), samples: 0, bloom: false, post: true, grass: false, far: true, lod: 15 },
+  { name: 'Minimum', dpr: 0.75, samples: 0, bloom: false, post: false, grass: false, far: false, lod: 11 },
 ].filter((l, i, arr) => {
   if (i === 0) return true;
   const sig = (x) => [x.dpr, x.samples, x.bloom, x.post, x.grass, x.far].join();
@@ -1810,8 +1893,10 @@ function applyQuality(l) {
   refreshDof();
   grassMesh.visible = l.grass;
   flowerMesh.visible = l.grass;
+  contactMesh.visible = l.grass;
   wheatMesh.visible = l.far;
   farTrees.visible = l.far;
+  treeLod.dist = l.lod || 30;
   smokeMat.uniforms.uPx.value = H() * l.dpr * 0.5;
   stars.material.uniforms.uPx.value = l.dpr;
   for (const fx of nightFx) if (fx.material.uniforms.uPx) fx.material.uniforms.uPx.value = H() * l.dpr * 0.5;
@@ -1999,6 +2084,15 @@ function animate() {
   const t0 = performance.now();
   // the warm grade is eased off at night so moonlight keeps its blue and the shadows stay readable
   post.display.uniforms.uStrength.value = 1 - 0.7 * (gradeNight || 0);
+  // levels re-chosen a few times a second, so a moving camera costs a shadow redraw at most that often
+  lodTimer -= rawDt;
+  if (viewCam !== lodCam || vp.distanceToSquared(lodPrev) > 16) lodTimer = 0;
+  lodCam = viewCam;
+  lodPrev.copy(vp);
+  if (lodTimer <= 0) {
+    lodTimer = 0.35;
+    for (const g of lodGroups) if (g.userData.update(vp)) renderer.shadowMap.needsUpdate = true;
+  }
   if (usePost) post.composer.render(dt);
   else renderer.render(scene, viewCam);
   perf.cpu = perf.cpu * 0.95 + (performance.now() - t0) * 0.05;

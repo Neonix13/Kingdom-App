@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { makeNoise2D, makeRng } from './noise.js';
+import { G } from './shaderPatches.js';
 
 const _c = new THREE.Color();
 
@@ -28,7 +30,10 @@ function spherizeNormals(geo, cx, cy, cz, amount = 1) {
   const v = new THREE.Vector3(), n = new THREE.Vector3();
   for (let i = 0; i < pos.count; i++) {
     v.set(pos.getX(i) - cx, pos.getY(i) - cy, pos.getZ(i) - cz).normalize();
-    n.set(nor.getX(i), nor.getY(i), nor.getZ(i)).lerp(v, amount).normalize();
+    n.set(nor.getX(i), nor.getY(i), nor.getZ(i)).lerp(v, amount);
+    // opposite directions cancel out: a zero normal becomes NaN in the shader (and bloom spreads it into black blocks)
+    if (n.lengthSq() < 0.05) n.set(nor.getX(i), nor.getY(i), nor.getZ(i));
+    n.normalize();
     nor.setXYZ(i, n.x, n.y, n.z);
   }
 }
@@ -125,12 +130,31 @@ export function treeTextures() {
   return _treeTex;
 }
 
+// Light that goes through thin foliage / grass seen against the sun (cheap translucency), added after lighting.
+// G.uSunDir / G.uSunCol are set by the time-of-day update; strength per material.
+function translucency(shader, strength, wrap) {
+  shader.uniforms.uSunDir = G.uSunDir;
+  shader.uniforms.uSunCol = G.uSunCol;
+  shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>
+uniform vec3 uSunDir;
+uniform vec3 uSunCol;
+`).replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
+{
+  vec3 _v = normalize( cameraPosition - vPWorld );
+  float _back = pow( clamp( dot( -_v, uSunDir ), 0.0, 1.0 ), 3.0 );
+  float _wrap = clamp( ( dot( normal, -( viewMatrix * vec4( uSunDir, 0.0 ) ).xyz ) + ${wrap.toFixed(2)} ) / ( 1.0 + ${wrap.toFixed(2)} ), 0.0, 1.0 );
+  reflectedLight.directDiffuse += diffuseColor.rgb * uSunCol * ( _back * 0.75 + _wrap * 0.25 ) * ${strength.toFixed(3)};
+}
+`);
+}
+
 // Shader patch (patchLit "extra"): bark on trunks, leaf / needle detail and darker clump hollows on foliage.
 // Triplanar in object space so instancing, wind and LOD keep working; fully opaque (no alpha cut-outs).
 export function treeTexturePatch(kind) {
   const tex = treeTextures();
   return (shader) => {
     if (!tex) return;
+    translucency(shader, kind === 'conifer' ? 0.1 : 0.16, 0.35);
     const foliage = kind === 'conifer' ? tex.needles : tex.leaves;
     shader.uniforms.uFoliageTex = { value: foliage };
     shader.uniforms.uBarkTex = { value: tex.bark };
@@ -191,109 +215,301 @@ vec3 _td = treeDetail();
   };
 }
 
-export function makeConiferGeometry(variant = 0, lod = 0) {
-  const parts = [];
-  const trunkCol = lin(0x4a3220);
-  const trunk = strip(new THREE.CylinderGeometry(0.03, 0.05, 0.6, lod ? 4 : 5, 1, true));
-  trunk.translate(0, 0.15, 0);
-  parts.push(part(paint(trunk, (x, y, z, c) => c.copy(trunkCol)), 0));
+// Tapered, slightly bent trunk with a root flare (indexed while shaping so the normals stay smooth)
+function trunkGeometry(h, r0, r1, sides, bx, bz, segs = 2) {
+  const g = new THREE.CylinderGeometry(r1, r0, h, sides, segs, true);
+  g.translate(0, h / 2, 0);
+  const pos = g.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const t = pos.getY(i) / h;
+    const flare = t < 0.16 ? 1 + ((0.16 - t) / 0.16) ** 2 * 0.7 : 1;
+    pos.setXYZ(i, pos.getX(i) * flare + bx * t * t, pos.getY(i), pos.getZ(i) * flare + bz * t * t);
+  }
+  g.computeVertexNormals();
+  return strip(g);
+}
 
-  let tiers = variant === 0
-    ? [[0.36, 0.55, 0.22], [0.29, 0.5, 0.5], [0.21, 0.46, 0.78], [0.12, 0.34, 1.04]]
-    : [[0.3, 0.6, 0.2], [0.24, 0.55, 0.52], [0.15, 0.5, 0.85]];
-  if (lod) tiers = [[0.34, 0.75, 0.22], [0.22, 0.7, 0.68]];
-  const top = tiers[tiers.length - 1][2] + tiers[tiers.length - 1][1];
-  const dark = lin(0x1d3f1f), light = lin(0x4b7a3a);
-  tiers.forEach(([r, h, y], ti) => {
-    const cone = strip(new THREE.ConeGeometry(r, h, lod ? 6 : 8, lod ? 1 : 2, true));
-    cone.rotateY(ti * 0.7);
-    cone.translate(0, y + h / 2, 0);
-    jitter(cone, 0.07, 17 + ti + variant * 5);
-    cone.computeVertexNormals();
-    spherizeNormals(cone, 0, y + h * 0.15, 0, 0.45);
-    paint(cone, (x, yy, z, c) => {
-      const local = (yy - y) / h;
-      const g = yy / top;
-      c.copy(dark).lerp(light, Math.min(1, 0.15 + g * 0.55 + local * 0.35));
-      c.multiplyScalar(0.75 + 0.25 * local);
+// Thin branch from a to b
+function branchGeometry(a, b, r0, r1) {
+  const dir = new THREE.Vector3().subVectors(b, a);
+  const len = dir.length();
+  const g = new THREE.CylinderGeometry(r1, r0, len, 4, 1, true);
+  g.translate(0, len / 2, 0);
+  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize()));
+  g.translate(a.x, a.y, a.z);
+  g.computeVertexNormals();
+  return strip(g);
+}
+
+const BARK = lin(0x4d3622), BARK_DARK = lin(0x2c1f14);
+function paintBark(g, top) {
+  return paint(g, (x, y, z, c) => c.copy(BARK_DARK).lerp(BARK, Math.min(1, 0.35 + (y / top) * 0.9)));
+}
+
+// Broadleaf: a crown of overlapping leaf clusters around a dome, soft "cloud" shading (normals pulled toward the
+// crown centre), darker underside and core, a bent trunk with a root flare and a few branches into the crown.
+export function makeBroadleafGeometry(variant = 0, lod = 0) {
+  const rng = makeRng(101 + variant * 37 + lod * 5);
+  const parts = [];
+  const crown = variant === 0 ? { y: 0.8, rx: 0.42, ry: 0.32, rz: 0.4 } : { y: 0.9, rx: 0.3, ry: 0.42, rz: 0.31 };
+  const bx = (rng() - 0.5) * 0.07, bz = (rng() - 0.5) * 0.07;
+  const trunkTop = crown.y - crown.ry * 0.3;
+  parts.push(part(paintBark(trunkGeometry(trunkTop, 0.058, 0.028, lod ? 4 : 6, bx, bz, lod ? 1 : 2), trunkTop), 0));
+  const cx = bx, cy = crown.y, cz = bz;
+  if (!lod) {
+    for (let i = 0; i < 3; i++) {
+      const a = i * 2.1 + rng() * 0.8, y0 = trunkTop * (0.55 + rng() * 0.2);
+      const t0 = (y0 / trunkTop) ** 2;
+      const from = new THREE.Vector3(bx * t0, y0, bz * t0);
+      const to = new THREE.Vector3(cx + Math.cos(a) * crown.rx * 0.62, cy - crown.ry * 0.15, cz + Math.sin(a) * crown.rz * 0.62);
+      parts.push(part(paintBark(branchGeometry(from, to, 0.019, 0.008), trunkTop), 0));
+    }
+  }
+  const n = lod ? 4 : 10;
+  const clusters = [{ x: cx, y: cy, z: cz, r: Math.min(crown.rx, crown.ry) * 0.86, d: 0 }];
+  for (let i = 0; i < n - 1; i++) {
+    const u = (n - 1 === 1) ? 0 : i / (n - 2);
+    const yd = 0.9 - u * 1.35;
+    const rad = Math.sqrt(Math.max(0, 1 - yd * yd));
+    const phi = i * 2.39996 + rng() * 0.5;
+    clusters.push({
+      x: cx + Math.cos(phi) * rad * crown.rx * 0.78,
+      y: cy + yd * crown.ry * 0.72,
+      z: cz + Math.sin(phi) * rad * crown.rz * 0.78,
+      r: (variant === 0 ? 0.165 : 0.145) * (0.85 + rng() * 0.4),
+      d: !lod && i < 4 ? 1 : 0,
     });
-    parts.push(part(cone, 1));
+  }
+  const dark = lin(0x1a3313), mid = lin(0x375d25), light = lin(0x678f3e);
+  const ext = Math.max(crown.rx, crown.ry);
+  clusters.forEach((cl, ci) => {
+    const s = new THREE.IcosahedronGeometry(cl.r, cl.d);
+    jitter(s, cl.d ? 0.2 : 0.14, 31 + ci + variant * 7 + lod * 3);
+    s.translate(cl.x, cl.y, cl.z);
+    s.computeVertexNormals();
+    spherizeNormals(s, cl.x, cl.y, cl.z, 1);
+    spherizeNormals(s, cx, cy - crown.ry * 0.25, cz, 0.68);
+    const g = strip(s);
+    const tint = 0.9 + rng() * 0.2;
+    const nor = g.attributes.normal;
+    paint(g, (px, py, pz, c, i) => {
+      const up = (py - (cy - crown.ry)) / (2 * crown.ry);
+      const out = Math.min(1, Math.hypot(px - cx, (py - cy) * 0.7, pz - cz) / ext);
+      const k = Math.min(1, Math.max(0, 0.02 + up * 0.62 + out * 0.4));
+      if (k < 0.5) c.copy(dark).lerp(mid, k * 2); else c.copy(mid).lerp(light, (k - 0.5) * 2);
+      if (nor.getY(i) < -0.25) c.multiplyScalar(0.78);
+      // each lump darker underneath, so the clusters read apart from each other
+      const ly = (py - cl.y) / cl.r;
+      c.multiplyScalar(tint * (0.7 + 0.3 * Math.min(1, Math.max(0, (ly + 0.7) / 1.3))));
+    });
+    parts.push(part(g, 1));
   });
   const geo = mergeGeometries(parts);
   geo.computeBoundingSphere();
   return geo;
 }
 
-export function makeBroadleafGeometry(variant = 0, lod = 0) {
-  const parts = [];
-  const trunkCol = lin(0x5b4128);
-  const trunk = strip(new THREE.CylinderGeometry(0.035, 0.06, 0.7, lod ? 4 : 5, 1, true));
-  trunk.translate(0, 0.2, 0);
-  parts.push(part(paint(trunk, (x, y, z, c) => c.copy(trunkCol)), 0));
+// Tree modelled in Blender (glTF): node transforms baked, trunk / foliage told apart by material colour (green = foliage),
+// trunk base moved to the origin, scaled to \`height\`, recoloured with the game's shading ramp from the model's colours.
+// Resolves to { geo, trunkRadius } (geometry ready for the patched tree material), or null if anything goes wrong.
+export function loadTreeModel(url, { height = 1.25, timeout = 10000 } = {}) {
+  const load = new Promise((resolve) => {
+    new GLTFLoader().load(url, (gltf) => {
+      try { resolve(treeFromGltf(gltf.scene, height)); } catch (e) { console.warn('tree model', url, e); resolve(null); }
+    }, undefined, (e) => { console.warn('tree model', url, e); resolve(null); });
+  });
+  return Promise.race([load, new Promise((r) => setTimeout(() => r(null), timeout))]);
+}
 
-  let blobs = variant === 0
-    ? [[0, 0.78, 0, 0.34], [0.2, 0.66, 0.08, 0.25], [-0.18, 0.68, -0.08, 0.26], [0.04, 0.98, -0.06, 0.24]]
-    : [[0, 0.7, 0, 0.3], [0.16, 0.88, 0.05, 0.22], [-0.15, 0.62, 0.1, 0.22]];
-  if (lod) blobs = [[0, 0.75, 0, 0.36], [0.12, 0.95, -0.04, 0.24]];
-  const cc = new THREE.Vector3(0, 0.78, 0);
-  const dark = lin(0x22401a), light = lin(0x6a9244);
-  blobs.forEach(([x, y, z, r], bi) => {
-    const s = strip(new THREE.IcosahedronGeometry(r, lod ? 0 : 1));
-    jitter(s, lod ? 0.08 : 0.16, 31 + bi + variant * 7);
+function treeFromGltf(root, height) {
+  root.updateMatrixWorld(true);
+  const parts = { trunk: [], leaf: [] };
+  root.traverse((o) => {
+    if (!o.isMesh || !o.geometry.attributes.position) return;
+    const src = o.geometry;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', src.attributes.position.clone());
+    if (src.attributes.normal) g.setAttribute('normal', src.attributes.normal.clone());
+    else g.computeVertexNormals();
+    g.setIndex(src.index ? Array.from(src.index.array) : [...Array(src.attributes.position.count).keys()]);
+    g.applyMatrix4(o.matrixWorld);
+    if (o.matrixWorld.determinant() < 0) {
+      const ix = g.index.array;
+      for (let i = 0; i < ix.length; i += 3) [ix[i + 1], ix[i + 2]] = [ix[i + 2], ix[i + 1]];
+    }
+    const col = (Array.isArray(o.material) ? o.material[0] : o.material).color.clone();
+    parts[col.g > col.r * 1.2 ? 'leaf' : 'trunk'].push({ g, col });
+  });
+  if (!parts.trunk.length || !parts.leaf.length) throw new Error('expected a trunk mesh and a green foliage mesh');
+  let y0 = Infinity, y1 = -Infinity;
+  for (const { g } of [...parts.trunk, ...parts.leaf]) {
+    g.computeBoundingBox();
+    y0 = Math.min(y0, g.boundingBox.min.y); y1 = Math.max(y1, g.boundingBox.max.y);
+  }
+  const H = y1 - y0;
+  // trunk axis: centre of the trunk between 6 % and 20 % of the height (above the root flare, below the branches)
+  let bx0 = Infinity, bx1 = -Infinity, bz0 = Infinity, bz1 = -Infinity;
+  for (const { g } of parts.trunk) {
+    const pos = g.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const y = pos.getY(i) - y0;
+      if (y < H * 0.06 || y > H * 0.2) continue;
+      bx0 = Math.min(bx0, pos.getX(i)); bx1 = Math.max(bx1, pos.getX(i)); bz0 = Math.min(bz0, pos.getZ(i)); bz1 = Math.max(bz1, pos.getZ(i));
+    }
+  }
+  if (!Number.isFinite(bx0)) throw new Error('no trunk found near the ground');
+  const k = height / H;
+  const m = new THREE.Matrix4().makeScale(k, k, k).multiply(new THREE.Matrix4().makeTranslation(-(bx0 + bx1) / 2, -y0, -(bz0 + bz1) / 2));
+  for (const { g } of [...parts.trunk, ...parts.leaf]) g.applyMatrix4(m);
+  const leafBox = new THREE.Box3();
+  for (const { g } of parts.leaf) { g.computeBoundingBox(); leafBox.union(g.boundingBox); }
+  const lc = leafBox.getCenter(new THREE.Vector3()), ls = leafBox.getSize(new THREE.Vector3());
+  const ext = Math.max(ls.x, ls.z) / 2;
+  const out = [];
+  for (const { g, col } of parts.trunk) {
+    paint(g, (x, y, z, c) => c.copy(col).multiplyScalar(0.45 + 0.4 * Math.min(1, y / (height * 0.4))));
+    out.push(part(g, 0));
+  }
+  for (const { g, col } of parts.leaf) {
+    const nor = g.attributes.normal;
+    paint(g, (x, y, z, c, i) => {
+      const up = (y - leafBox.min.y) / ls.y;
+      const o = Math.min(1, Math.hypot(x - lc.x, (y - lc.y) * 0.7, z - lc.z) / ext);
+      const t = Math.min(1, Math.max(0, 0.02 + up * 0.62 + o * 0.4));
+      c.copy(col).multiplyScalar(0.7 * (t < 0.5 ? 0.42 + t * 0.76 : 0.8 + (t - 0.5) * 0.7));
+      if (nor.getY(i) < -0.25) c.multiplyScalar(0.8);
+    });
+    out.push(part(g, 1));
+  }
+  const geo = mergeGeometries(out);
+  geo.computeBoundingSphere();
+  return { geo, trunkRadius: (Math.max(bx1 - bx0, bz1 - bz0) / 2) * k };
+}
+
+// Conifer: stacked star-shaped tiers that droop at the tips and taper toward the top, each with a shallow
+// underside so the tree stays opaque from low angles; tips lighter, core and undersides darker.
+export function makeConiferGeometry(variant = 0, lod = 0) {
+  const rng = makeRng(203 + variant * 41 + lod * 7);
+  const parts = [];
+  const spec = variant === 0
+    ? { n: lod ? 3 : 6, y0: 0.16, top: 1.2, r: 0.42, h: 0.36, droop: 0.07, trunk: 0.5 }
+    : { n: lod ? 3 : 5, y0: 0.3, top: 1.28, r: 0.34, h: 0.34, droop: 0.11, trunk: 0.62 };
+  const bx = (rng() - 0.5) * 0.04, bz = (rng() - 0.5) * 0.04;
+  parts.push(part(paintBark(trunkGeometry(spec.trunk, 0.048, 0.02, lod ? 4 : 5, bx, bz, lod ? 1 : 2), spec.trunk), 0));
+  const K = lod ? 5 : 7;
+  const dark = lin(0x16301a), mid = lin(0x2a4f2a), light = lin(0x5e8a46);
+  for (let k = 0; k < spec.n; k++) {
+    const u = spec.n === 1 ? 0 : k / (spec.n - 1);
+    const r = spec.r * (1 - u * 0.8) * (0.92 + rng() * 0.16);
+    const h = spec.h * (1 - u * 0.4);
+    const yb = spec.y0 + u * (spec.top - h - spec.y0);
+    const apex = yb + h;
+    const ox = bx * Math.min(1, yb / spec.trunk) ** 2, oz = bz * Math.min(1, yb / spec.trunk) ** 2;
+    const rot = rng() * Math.PI;
+    const full = !lod && k < 3; // lower tiers: curved profile; upper tiers: plain stars (all closed underneath: shadows, low views)
+    const verts = [[ox, apex, oz]];
+    const ring = [], midRing = [];
+    for (let j = 0; j < 2 * K; j++) {
+      const a = rot + (j * Math.PI) / K + (rng() - 0.5) * 0.12;
+      const tip = j % 2 === 0;
+      const rr = r * (tip ? 0.95 + rng() * 0.15 : 0.6 + rng() * 0.1);
+      const dy = tip ? spec.droop * (0.8 + rng() * 0.5) * (1 - u * 0.4) : spec.droop * 0.25;
+      ring.push([ox + Math.cos(a) * rr, yb - dy, oz + Math.sin(a) * rr]);
+      if (full) {
+        const mr = rr * 0.52;
+        const lineY = apex - 0.52 * (apex - (yb - dy));
+        midRing.push([ox + Math.cos(a) * mr, lineY + h * 0.1, oz + Math.sin(a) * mr]);
+      }
+    }
+    const idx = [];
+    const M = 2 * K;
+    const midBase = 1, outBase = full ? 1 + M : 1;
+    if (full) verts.push(...midRing);
+    verts.push(...ring);
+    const under = verts.length;
+    verts.push([ox, yb + h * 0.12, oz]);
+    for (let j = 0; j < M; j++) {
+      const j2 = (j + 1) % M;
+      if (!full) idx.push(0, outBase + j2, outBase + j);
+      else {
+        idx.push(0, midBase + j2, midBase + j);
+        idx.push(midBase + j, midBase + j2, outBase + j2, midBase + j, outBase + j2, outBase + j);
+      }
+      idx.push(under, outBase + j, outBase + j2);
+    }
+    const g0 = new THREE.BufferGeometry();
+    g0.setAttribute('position', new THREE.Float32BufferAttribute(verts.flat(), 3));
+    g0.setIndex(idx);
+    g0.computeVertexNormals();
+    spherizeNormals(g0, ox, yb - h * 0.2, oz, 0.35);
+    const g = strip(g0);
+    const tint = 0.92 + rng() * 0.16;
+    paint(g, (px, py, pz, c) => {
+      const rf = Math.min(1, Math.hypot(px - ox, pz - oz) / Math.max(r, 1e-3));
+      const underside = py < yb + h * 0.13 && rf < 0.92;
+      const t = Math.min(1, 0.1 + rf * 0.55 + u * 0.35 + (py - yb) / h * 0.15);
+      if (t < 0.5) c.copy(dark).lerp(mid, t * 2); else c.copy(mid).lerp(light, (t - 0.5) * 2);
+      if (underside) c.copy(dark).multiplyScalar(0.7);
+      c.multiplyScalar(tint);
+    });
+    parts.push(part(g, 1));
+  }
+  const geo = mergeGeometries(parts);
+  geo.computeBoundingSphere();
+  return geo;
+}
+
+export function makeBushGeometry(lod = 0) {
+  const rng = makeRng(77);
+  const parts = [];
+  const dark = lin(0x233f17), light = lin(0x6e9a44);
+  const lumps = [[0, 0.1, 0, 0.17, 1], [0.13, 0.07, 0.05, 0.12, 0], [-0.11, 0.07, -0.06, 0.12, 0], [0.02, 0.06, -0.14, 0.1, 0]];
+  (lod ? [[0, 0.09, -0.02, 0.2, 0]] : lumps).forEach(([x, y, z, r, d], i) => {
+    const s = new THREE.IcosahedronGeometry(r, d);
+    jitter(s, 0.2, 77 + i);
+    s.scale(1, 0.75, 1);
     s.translate(x, y, z);
     s.computeVertexNormals();
-    spherizeNormals(s, cc.x, cc.y - 0.1, cc.z, 0.75);
-    paint(s, (px, py, pz, c) => {
-      const up = (py - (y - r)) / (2 * r);
-      const out = Math.min(1, Math.hypot(px, pz) / 0.45);
-      c.copy(dark).lerp(light, Math.min(1, 0.1 + up * 0.6 + out * 0.25 + (py - 0.4) * 0.3));
-    });
-    parts.push(part(s, 1));
+    spherizeNormals(s, x, y, z, 1);
+    spherizeNormals(s, 0, -0.04, 0, 0.5);
+    const g = strip(s);
+    const tint = 0.92 + rng() * 0.16;
+    paint(g, (px, py, pz, c) => c.copy(dark).lerp(light, Math.min(1, Math.max(0, (py + 0.02) / 0.26))).multiplyScalar(tint));
+    parts.push(part(g, 1));
   });
   const geo = mergeGeometries(parts);
   geo.computeBoundingSphere();
   return geo;
 }
 
-export function makeBushGeometry() {
-  const s = strip(new THREE.IcosahedronGeometry(0.2, 1));
-  jitter(s, 0.2, 77);
-  s.scale(1, 0.7, 1);
-  s.translate(0, 0.08, 0);
-  s.computeVertexNormals();
-  spherizeNormals(s, 0, -0.05, 0, 0.7);
-  const dark = lin(0x264519), light = lin(0x62903e);
-  paint(s, (x, y, z, c) => c.copy(dark).lerp(light, Math.min(1, Math.max(0, (y + 0.06) / 0.3))));
-  return part(s, 1);
-}
-
-export function makeGrassTuftGeometry(seed = 5) {
+// Short meadow tuft: a small clump of thin, tapering blades curving outward (heights in world units before scaling)
+export function makeGrassTuftGeometry(seed = 5, blades = 7, spread = 0.05) {
   const rng = makeRng(seed);
   const pos = [], nor = [], col = [];
-  const base = lin(0x45662a), tip = lin(0xa9c766);
-  const blades = 5;
+  const base = lin(0x34501f), tip = lin(0x9bbd57), dry = lin(0xbdb46a);
   for (let b = 0; b < blades; b++) {
     const a = rng() * Math.PI * 2;
-    const r = rng() * 0.07;
+    const r = 0.012 + Math.sqrt(rng()) * spread;
     const bx = Math.cos(a) * r, bz = Math.sin(a) * r;
-    const h = 0.1 + rng() * 0.12;
-    const w = 0.012 + rng() * 0.01;
-    const lean = 0.03 + rng() * 0.06;
-    const la = rng() * Math.PI * 2;
+    const h = (0.036 + rng() * 0.036) * (rng() < 0.08 ? 1.4 : 1);
+    const w = 0.0045 + rng() * 0.0035;
+    const la = a + (rng() - 0.5) * 1.2;
+    const lean = h * (0.25 + rng() * 0.45);
     const ox = Math.cos(la) * lean, oz = Math.sin(la) * lean;
-    const px = -Math.sin(a + 1.2) * w, pz = Math.cos(a + 1.2) * w;
-    const mid = [bx + ox * 0.35, h * 0.55, bz + oz * 0.35];
+    const fa = a + Math.PI / 2 + (rng() - 0.5) * 0.8;
+    const px = Math.cos(fa) * w, pz = Math.sin(fa) * w;
+    const mid = [bx + ox * 0.3, h * 0.55, bz + oz * 0.3];
     const v = [
       [bx - px, 0, bz - pz], [bx + px, 0, bz + pz],
-      [mid[0] - px * 0.7, mid[1], mid[2] - pz * 0.7], [mid[0] + px * 0.7, mid[1], mid[2] + pz * 0.7],
+      [mid[0] - px * 0.6, mid[1], mid[2] - pz * 0.6], [mid[0] + px * 0.6, mid[1], mid[2] + pz * 0.6],
       [bx + ox, h, bz + oz],
     ];
-    const tris = [[0, 1, 3], [0, 3, 2], [2, 3, 4]];
-    for (const t of tris) {
+    const tipCol = (rng() < 0.12 ? dry : tip).clone().multiplyScalar(0.85 + rng() * 0.25);
+    for (const t of [[0, 1, 3], [0, 3, 2], [2, 3, 4]]) {
       for (const i of t) {
         pos.push(...v[i]);
-        nor.push(ox * 2, 1, oz * 2);
-        _c.copy(base).lerp(tip, Math.min(1, v[i][1] / 0.2));
+        nor.push(ox * 1.5, 1, oz * 1.5);
+        _c.copy(base).lerp(tipCol, Math.min(1, v[i][1] / h));
         col.push(_c.r, _c.g, _c.b);
       }
     }
@@ -308,6 +524,19 @@ export function makeGrassTuftGeometry(seed = 5) {
   return g;
 }
 
+// Grass: thin blades glow a little against the sun, and big soft patches of drier / lusher colour break any repetition
+export function grassPatch(shader) {
+  translucency(shader, 0.28, 0.5);
+  shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+{
+  float _pa = texture2D( uNoise, vPWorld.xz * 0.021 ).r;
+  float _pb = texture2D( uNoise, vPWorld.xz * 0.083 + 0.37 ).g;
+  float _dry = smoothstep( 0.5, 0.78, _pa * 0.75 + _pb * 0.35 );
+  diffuseColor.rgb *= mix( vec3( 0.92, 1.0, 0.9 ), vec3( 1.16, 1.06, 0.72 ), _dry ) * ( 0.9 + _pb * 0.2 );
+}
+`);
+}
+
 export function makeWheatGeometry(seed = 9) {
   const rng = makeRng(seed);
   const pos = [], nor = [], col = [];
@@ -315,7 +544,7 @@ export function makeWheatGeometry(seed = 9) {
   const stalks = 7;
   for (let s = 0; s < stalks; s++) {
     const bx = (rng() - 0.5) * 0.16, bz = (rng() - 0.5) * 0.16;
-    const h = 0.22 + rng() * 0.08;
+    const h = 0.17 + rng() * 0.06;
     const ox = (rng() - 0.5) * 0.06, oz = (rng() - 0.5) * 0.06;
     const a = rng() * Math.PI;
     const w = 0.006, hw = 0.016;
@@ -391,6 +620,29 @@ export function makeRockGeometry(seed = 3, kind = 'boulder') {
   return g;
 }
 
+// Soft dark disc for contact shadows under trees and bushes (multiplied onto the ground: 1 at the rim)
+export function makeContactGeometry(center = 0.7) {
+  const pos = [0, 0, 0], col = [center, center, center], idx = [];
+  const seg = 12;
+  for (const [r, v] of [[0.45, center + (1 - center) * 0.45], [1, 1]]) {
+    for (let j = 0; j < seg; j++) {
+      const a = (j / seg) * Math.PI * 2;
+      pos.push(Math.cos(a) * r, 0, Math.sin(a) * r);
+      col.push(v, v, v);
+    }
+  }
+  for (let j = 0; j < seg; j++) {
+    const j2 = (j + 1) % seg;
+    idx.push(0, 1 + j2, 1 + j, 1 + j, 1 + j2, 1 + seg + j2, 1 + j, 1 + seg + j2, 1 + seg + j);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setIndex(idx);
+  g.computeBoundingSphere();
+  return g;
+}
+
 export function instanced(geo, mat, items, { castShadow = false, receiveShadow = true } = {}) {
   const mesh = new THREE.InstancedMesh(geo, mat, Math.max(1, items.length));
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
@@ -412,6 +664,54 @@ export function instanced(geo, mat, items, { castShadow = false, receiveShadow =
   mesh.receiveShadow = receiveShadow;
   mesh.frustumCulled = false;
   return mesh;
+}
+
+// Instances split into square chunks, each frustum-culled on its own, with a level of detail per chunk chosen by its
+// distance to the camera. levels: [{ geo, mat, maxDist, castShadow? }] near to far; a chunk beyond every maxDist is hidden.
+// Call group.userData.update(cameraPosition) every frame (cheap: one distance per chunk); it returns true when a
+// shadow-casting chunk changed level, i.e. when the shadow map must be redrawn to match what is shown.
+export function chunkedInstances(items, levels, { size = 10, receiveShadow = true, pad = 0.6 } = {}) {
+  const group = new THREE.Group();
+  const cells = new Map();
+  for (const it of items) {
+    const k = `${Math.floor(it.x / size)},${Math.floor(it.z / size)}`;
+    let list = cells.get(k);
+    if (!list) cells.set(k, (list = []));
+    list.push(it);
+  }
+  const casts = levels.some((lv) => lv.castShadow);
+  const chunks = [];
+  for (const list of cells.values()) {
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity, y = 0;
+    for (const it of list) { x0 = Math.min(x0, it.x); x1 = Math.max(x1, it.x); z0 = Math.min(z0, it.z); z1 = Math.max(z1, it.z); y += it.y; }
+    const meshes = levels.map((lv) => {
+      const m = instanced(lv.geo, lv.mat, list, { castShadow: !!lv.castShadow, receiveShadow });
+      m.computeBoundingSphere();
+      m.boundingSphere.radius += pad;
+      m.frustumCulled = true;
+      m.visible = false;
+      group.add(m);
+      return m;
+    });
+    chunks.push({ x0, x1, z0, z1, y: y / list.length, meshes, lvl: -2 });
+  }
+  const levelAt = (d) => { for (let i = 0; i < levels.length; i++) if (d <= levels[i].maxDist) return i; return -1; };
+  group.userData.update = (cam) => {
+    let changed = false;
+    for (const c of chunks) {
+      const dx = Math.max(c.x0 - cam.x, 0, cam.x - c.x1), dz = Math.max(c.z0 - cam.z, 0, cam.z - c.z1);
+      const d = Math.hypot(dx, cam.y - c.y, dz);
+      let li = levelAt(d);
+      // small hysteresis so a chunk on a boundary does not flicker between levels
+      if (c.lvl >= -1 && li !== c.lvl && (levelAt(d - 1.5) === c.lvl || levelAt(d + 1.5) === c.lvl)) li = c.lvl;
+      if (li === c.lvl) continue;
+      c.meshes.forEach((m, i) => { m.visible = i === li; });
+      c.lvl = li;
+      changed = true;
+    }
+    return changed && casts;
+  };
+  return group;
 }
 
 export function makeFlowerGeometry(seed = 21) {
