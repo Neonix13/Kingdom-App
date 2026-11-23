@@ -4,7 +4,6 @@
 -------
 Priorité:
 
-- mes unités sont parfois invisibles ou buguées : pas reproduit (6 tours en 3D, mode simultané, toutes les unités dessinées) ; noter quand ça arrive (vue 2D/3D, terrain, pendant la lecture ?)
 
 
 -------
