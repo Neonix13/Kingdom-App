@@ -4,11 +4,7 @@
 -------
 
 Nouveau:
-- les tuiles fleuves sont trop profondent l'écart pourrait etre plus doux et on dirait que les unité flottent on pourrait peut être voir le fond de l'eau 
-- ne pas montrer la carte 2D lors du chargement de la preview dans les menus
 - j'aimerais pouvoir placer des unité sur le mur au dessus des portes (tu vas peut être devoir laissé lee modèle 2D de coté)
-- bug : je dois rettirer ma souris pour recliquer dans le menu d'armée
-- je ne veux pas de menu à droite du récap d'unité en bas à droite dans la bataille je peux déjà annuler et les ordre et tenir mes troupes
 
 
 Priorité:
@@ -16,6 +12,12 @@ Priorité:
 
 
 -------
+
+FAIT (24/11/2026)
+- rivières moins profondes : lit relevé, berges en pente douce (herbe), eau peu profonde transparente (on voit le fond), les unités traversent à gué les jambes dans l'eau au lieu de flotter
+- salle : plus de carte 2D pendant le chargement de l'aperçu 3D (message de chargement à la place ; la 2D ne sert plus que si la 3D est indisponible)
+- menu d'armée : le double-clic marche à chaque fois sans bouger la souris
+- bataille : plus de panneau d'ordre à droite de la fiche d'unité (annuler un ordre depuis la liste des ordres, capacité du général via le médaillon)
 
 FAIT (23/11/2026)
 - popping des nouveaux arbres : chaque arbre passe à sa version simplifiée à sa propre distance (fondu par arbre), plus de blocs entiers qui changent d'un coup
