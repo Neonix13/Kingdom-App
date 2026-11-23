@@ -2595,7 +2595,10 @@ function setDeployReadyButtons(text, disabled) {
   }
 }
 
+// an enemy general's ability is never announced (no banner, notification or journal line): its effects show in play
+const hiddenAbility = (log) => !!(log && log.abilityUsed && log.playerId && log.playerId !== myId);
 function addCombatLog(log) {
+  if (hiddenAbility(log)) return;
   const container = document.getElementById('combat-log');
   const entry = document.createElement('div');
   entry.className = 'combat-log-entry' + (log.targetKilled ? ' kill' : log.hit ? ' hit' : ' miss');
@@ -3158,6 +3161,7 @@ function showAbilityBanner(log) {
 
 // ---- COMBAT RESULT ----
 function showCombatResult(log) {
+  if (hiddenAbility(log)) return;
   const el = document.getElementById('combat-result-box');
   if (!el) return;
   if (log.abilityUsed) {
