@@ -38,7 +38,7 @@ async function setProgress(pct, text) {
 installHeightFog(0.5, 0.05);
 
 await setProgress(5, 'Fetching terrain data...');
-// broadleaf tree modelled in Blender, loaded alongside the terrain (procedural broadleaf if it fails)
+// broadleaf tree modelled in Blender, loaded alongside the terrain and sprinkled among the procedural broadleaves
 const broadModelReady = VEG.loadTreeModel('assets/models/trees/LoireTree2.glb', { height: 1.25 });
 const mapDoc = opts.map || await fetch(`/api/maps/${encodeURIComponent(opts.mapId || 'default')}`).then(r => {
   if (!r.ok) throw new Error('Carte introuvable');
@@ -1363,10 +1363,19 @@ await setProgress(68, 'Growing forests...');
 
 // --- Vegetation ---
 const broadModel = await broadModelReady;
-const broadNear = [0, 1].map((v) => (broadModel ? broadModel.geo : VEG.makeBroadleafGeometry(v)));
+// broads[2]: about one broadleaf in ten (picked by position, so the procedural layout stays the same) is the Blender tree
+const broadNear = [VEG.makeBroadleafGeometry(0), VEG.makeBroadleafGeometry(1), broadModel && broadModel.geo];
+const broadFar = [VEG.makeBroadleafGeometry(0, 1), VEG.makeBroadleafGeometry(1, 1), broadModel && broadModel.lod];
+const MODEL_SHARE = 0.1;
+const broadList = (v, x, z) => {
+  const h = Math.sin(x * 127.1 + z * 311.7) * 43758.5453;
+  return broads[broadModel && h - Math.floor(h) < MODEL_SHARE ? 2 : v];
+};
 const vegMat = (opts, key, extra = null) => patchLit(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0, envMapIntensity: 0.5 }), opts, extra, key);
 const treeMatConifer = vegMat({ wind: true, windBend: 0.045, windFreq: 1.1, flutter: 0.004, clearOnUnits: true }, 'conifer-tex2', VEG.treeTexturePatch('conifer'));
-const treeMatBroad = vegMat({ wind: true, windBend: 0.06, windFreq: 1.3, flutter: broadModel ? 0 : 0.008, clearOnUnits: true }, 'broad-tex2', VEG.treeTexturePatch('broad'));
+const treeMatBroad = vegMat({ wind: true, windBend: 0.06, windFreq: 1.3, flutter: 0.008, clearOnUnits: true }, 'broad-tex2', VEG.treeTexturePatch('broad'));
+// flat-shaded model: no leaf flutter (its faces would come apart), the whole crown still sways
+const treeMatModel = vegMat({ wind: true, windBend: 0.06, windFreq: 1.3, flutter: 0, clearOnUnits: true }, 'broad-model', VEG.treeTexturePatch('broad'));
 const bushMat = vegMat({ wind: true, windBend: 0.5, windFreq: 1.6, clearOnUnits: true }, 'bush-tex2', VEG.treeTexturePatch('bush'));
 const grassMat = vegMat({ wind: true, windBend: 6.0, windFreq: 1.6, fadeNear: 22, fadeFar: 40, noFlip: true }, 'grass-v2', VEG.grassPatch);
 grassMat.side = THREE.DoubleSide;
@@ -1374,7 +1383,7 @@ const wheatMat = vegMat({ wind: true, windBend: 3.0, windFreq: 1.5, fadeNear: 55
 wheatMat.side = THREE.DoubleSide;
 const rockMat = patchLit(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, flatShading: true, envMapIntensity: 0.3 }), {}, null, 'rock');
 
-const conifers = [[], []], broads = [[], []], farConifers = [], farBroads = [];
+const conifers = [[], []], broads = [[], [], []], farConifers = [], farBroads = [];
 const bushes = [], grass = [], wheat = [], rocks = [], slabs = [], flowers = [];
 const FLOWER_COLORS = [[1, 1, 1], [1, 0.82, 0.18], [0.72, 0.5, 1], [1, 0.3, 0.2], [1, 0.95, 0.75]];
 const mul = (rng, r, g, b, amt = 0.25) => { const k = 1 + (rng() - 0.5) * amt; return new THREE.Color(r * k * (1 + (rng() - 0.5) * amt * 0.4), g * k, b * k * (1 + (rng() - 0.5) * amt * 0.6)); };
@@ -1407,7 +1416,7 @@ for (const hex of hexesByType.forest || []) {
       conifers[rng() < 0.6 ? 0 : 1].push({ x, y, z, s, sy: 0.9 + rng() * 0.35, ry, color: mul(rng, 0.92, 1.0, 0.9, 0.35) });
     } else {
       const autumn = rng() < 0.08;
-      broads[rng() < 0.5 ? 0 : 1].push({ x, y, z, s: s * 0.95, sy: 0.9 + rng() * 0.25, ry, color: autumn ? mul(rng, 1.5, 0.95, 0.4, 0.3) : mul(rng, 0.95, 1.0, 0.82, 0.35) });
+      broadList(rng() < 0.5 ? 0 : 1, x, z).push({ x, y, z, s: s * 0.95, sy: 0.9 + rng() * 0.25, ry, color: autumn ? mul(rng, 1.5, 0.95, 0.4, 0.3) : mul(rng, 0.95, 1.0, 0.82, 0.35) });
     }
   }
   for (let b = 0; b < 4; b++) {
@@ -1417,9 +1426,8 @@ for (const hex of hexesByType.forest || []) {
 }
 
 // Trunk circles of the board's forest trees (Promenade collisions)
-const broadTrunkR = broadModel ? broadModel.trunkRadius * 0.9 : 0.045;
-const trunks = [...conifers[0], ...conifers[1]].map((t) => ({ x: t.x, z: t.z, r: 0.045 * t.s }))
-  .concat([...broads[0], ...broads[1]].map((t) => ({ x: t.x, z: t.z, r: broadTrunkR * t.s })));
+const trunks = [...conifers[0], ...conifers[1], ...broads[0], ...broads[1]].map((t) => ({ x: t.x, z: t.z, r: 0.045 * t.s }))
+  .concat(broads[2].map((t) => ({ x: t.x, z: t.z, r: broadModel.trunkRadius * 0.9 * t.s })));
 
 // Plains: grass tufts, occasional bush; fields: wheat; rocky hexes: boulders
 for (const [key, hex] of allHexes) {
@@ -1563,7 +1571,7 @@ for (const [segKey, type] of ruleSegSet) {
           (near ? conifers[rng() < 0.5 ? 0 : 1] : farConifers).push(it);
         } else {
           const it = { x: jx, y: y - 0.08, z: jz, s, sy: 0.9 + rng() * 0.3, ry, color: mul(rng, 1.0, 0.98, 0.8, 0.35) };
-          (near ? broads[rng() < 0.5 ? 0 : 1] : farBroads).push(it);
+          (near ? broadList(rng() < 0.5 ? 0 : 1, jx, jz) : farBroads).push(it);
         }
       } else if (slope > 0.7 && rng() < 0.08) {
         rocks.push({ x: jx, y: y - 0.1, z: jz, s: 0.4 + rng() * 0.9, sy: 0.6 + rng() * 0.5, ry: rng() * 6.28, color: mul(rng, 1.0, 0.97, 0.92, 0.3) });
@@ -1615,8 +1623,9 @@ const lodLevels = (geo, lodGeo, mat) => [
 ];
 [0, 1].forEach((v) => {
   vegGroup.add(vegChunks(conifers[v], lodLevels(VEG.makeConiferGeometry(v), VEG.makeConiferGeometry(v, 1), treeMatConifer)));
-  vegGroup.add(vegChunks(broads[v], lodLevels(broadNear[v], VEG.makeBroadleafGeometry(v, 1), treeMatBroad)));
+  vegGroup.add(vegChunks(broads[v], lodLevels(broadNear[v], broadFar[v], treeMatBroad)));
 });
+if (broadModel) vegGroup.add(vegChunks(broads[2], lodLevels(broadNear[2], broadFar[2], treeMatModel)));
 const farTrees = new THREE.Group();
 farTrees.add(vegChunks(farConifers, [{ geo: VEG.makeConiferGeometry(0, 1), mat: treeMatConifer, castShadow: true, maxDist: Infinity }], { size: 30 }));
 farTrees.add(vegChunks(farBroads, [{ geo: VEG.makeBroadleafGeometry(0, 1), mat: treeMatBroad, castShadow: true, maxDist: Infinity }], { size: 30 }));
@@ -1640,7 +1649,7 @@ vegGroup.add(grassMesh, wheatMesh, flowerMesh);
 const contactMat = new THREE.MeshBasicMaterial({ vertexColors: true, blending: THREE.MultiplyBlending, premultipliedAlpha: true, transparent: true, depthWrite: false, fog: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
 const contactItems = [];
 const treeCells = new Map();
-const allTrees = [...conifers[0], ...conifers[1], ...broads[0], ...broads[1]];
+const allTrees = [...conifers[0], ...conifers[1], ...broads[0], ...broads[1], ...broads[2]];
 for (const t of allTrees) {
   const k = `${Math.floor(t.x * 2)},${Math.floor(t.z * 2)}`;
   if (!treeCells.has(k)) treeCells.set(k, []);
@@ -1832,6 +1841,7 @@ const birdPerches = [];
     return top;
   };
   [[conifers, (v) => VEG.makeConiferGeometry(v)], [broads, (v) => broadNear[v]]].forEach(([sets, make]) => sets.forEach((list, v) => {
+    if (!list.length) return;
     const top = treeTop(make(v));
     for (const t of list) {
       if (rng() >= 0.04) continue;

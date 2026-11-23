@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { SimplifyModifier } from 'three/addons/modifiers/SimplifyModifier.js';
 import { makeNoise2D, makeRng } from './noise.js';
 import { G } from './shaderPatches.js';
 
@@ -310,8 +311,8 @@ export function makeBroadleafGeometry(variant = 0, lod = 0) {
 }
 
 // Tree modelled in Blender (glTF): node transforms baked, trunk / foliage told apart by material colour (green = foliage),
-// trunk base moved to the origin, scaled to \`height\`, recoloured with the game's shading ramp from the model's colours.
-// Resolves to { geo, trunkRadius } (geometry ready for the patched tree material), or null if anything goes wrong.
+// trunk base moved to the origin, scaled to \`height\`, repainted with the procedural trees' bark and leaf ramps.
+// Resolves to { geo, lod, trunkRadius } (lod: the same tree with far fewer polygons, for distant trees), or null.
 export function loadTreeModel(url, { height = 1.25, timeout = 10000 } = {}) {
   const load = new Promise((resolve) => {
     new GLTFLoader().load(url, (gltf) => {
@@ -365,25 +366,66 @@ function treeFromGltf(root, height) {
   for (const { g } of parts.leaf) { g.computeBoundingBox(); leafBox.union(g.boundingBox); }
   const lc = leafBox.getCenter(new THREE.Vector3()), ls = leafBox.getSize(new THREE.Vector3());
   const ext = Math.max(ls.x, ls.z) / 2;
-  const out = [];
-  for (const { g, col } of parts.trunk) {
-    paint(g, (x, y, z, c) => c.copy(col).multiplyScalar(0.45 + 0.4 * Math.min(1, y / (height * 0.4))));
-    out.push(part(g, 0));
-  }
-  for (const { g, col } of parts.leaf) {
+  const dark = lin(0x1a3313), mid = lin(0x375d25), light = lin(0x678f3e);
+  const paintLeaf = (g) => {
     const nor = g.attributes.normal;
-    paint(g, (x, y, z, c, i) => {
+    return paint(g, (x, y, z, c, i) => {
       const up = (y - leafBox.min.y) / ls.y;
       const o = Math.min(1, Math.hypot(x - lc.x, (y - lc.y) * 0.7, z - lc.z) / ext);
       const t = Math.min(1, Math.max(0, 0.02 + up * 0.62 + o * 0.4));
-      c.copy(col).multiplyScalar(0.7 * (t < 0.5 ? 0.42 + t * 0.76 : 0.8 + (t - 0.5) * 0.7));
-      if (nor.getY(i) < -0.25) c.multiplyScalar(0.8);
+      if (t < 0.5) c.copy(dark).lerp(mid, t * 2); else c.copy(mid).lerp(light, (t - 0.5) * 2);
+      if (nor.getY(i) < -0.25) c.multiplyScalar(0.78);
     });
-    out.push(part(g, 1));
+  };
+  const build = (pick) => {
+    const out = [];
+    for (const { g } of parts.trunk) out.push(part(paintBark(pick(g, 0.12), height * 0.45), 0));
+    for (const { g } of parts.leaf) out.push(part(paintLeaf(pick === simplified ? clumps(g) : g), 1));
+    const geo = mergeGeometries(out);
+    geo.computeBoundingSphere();
+    return geo;
+  };
+  return { geo: build((g) => g), lod: build(simplified), trunkRadius: (Math.max(bx1 - bx0, bz1 - bz0) / 2) * k };
+}
+
+// Foliage far away: each leaf clump (connected piece of the mesh) becomes one low-poly ellipsoid of the same extent
+function clumps(g) {
+  const w = mergeVertices(Object.assign(new THREE.BufferGeometry(), { index: g.index }).setAttribute('position', g.attributes.position.clone()));
+  const pos = w.attributes.position, ix = w.index.array;
+  const root = [...Array(pos.count).keys()];
+  const find = (a) => { while (root[a] !== a) a = root[a] = root[root[a]]; return a; };
+  for (let i = 0; i < ix.length; i += 3) for (const j of [1, 2]) root[find(ix[i + j])] = find(ix[i]);
+  const boxes = new Map();
+  const v = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    const r = find(i);
+    if (!boxes.has(r)) boxes.set(r, new THREE.Box3());
+    boxes.get(r).expandByPoint(v.fromBufferAttribute(pos, i));
   }
-  const geo = mergeGeometries(out);
-  geo.computeBoundingSphere();
-  return { geo, trunkRadius: (Math.max(bx1 - bx0, bz1 - bz0) / 2) * k };
+  const out = [];
+  for (const b of boxes.values()) {
+    const c = b.getCenter(new THREE.Vector3()), sz = b.getSize(new THREE.Vector3()).multiplyScalar(0.55);
+    if (sz.x * sz.y * sz.z < 1e-9) continue;
+    const e = new THREE.IcosahedronGeometry(1, 0).toNonIndexed();
+    e.scale(sz.x, sz.y, sz.z).translate(c.x, c.y, c.z);
+    e.deleteAttribute('uv');
+    e.computeVertexNormals();
+    out.push(e);
+  }
+  return mergeGeometries(out);
+}
+
+// Same surface with about \`keep\` of its vertices (edge collapses on the welded mesh), flat-shaded like the original
+function simplified(g, keep) {
+  let s = new THREE.BufferGeometry();
+  s.setAttribute('position', g.attributes.position.clone());
+  if (g.index) s.setIndex(g.index.clone());
+  s = mergeVertices(s);
+  s = new SimplifyModifier().modify(s, Math.floor(s.attributes.position.count * (1 - keep)));
+  if (s.index) s = s.toNonIndexed();
+  s.deleteAttribute('normal');
+  s.computeVertexNormals();
+  return s;
 }
 
 // Conifer: stacked star-shaped tiers that droop at the tips and taper toward the top, each with a shallow
