@@ -36,7 +36,7 @@ class GameRoom {
     this.players = [];
     this.spectators = [];
     this.phase = 'lobby'; // lobby | army_building | deployment | battle | ended
-    this.budget = 2500;
+    this.budget = 5000;
     this.mapId = options.mapId || 'default';
     this.mode = options.mode || 'sequential';
     this.hexMap = {};
