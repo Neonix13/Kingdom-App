@@ -174,14 +174,12 @@
     showUnitDetail(selectedUnit || unit || null);
     renderStancePanel(null);
     updateActionButtons();
-    renderPanel();
     render();
   }
 
   function refresh() {
     const sel = selectedUnit && (myUnit(selectedUnit.id) || selectedUnit);
     if (sel) computeTiles(sel);
-    renderPanel();
     updateActionButtons();
     render();
   }
@@ -357,15 +355,7 @@
       #sim-commit { padding:8px 20px; font-weight:bold; background:#1a3a08; border:2px solid #4a8020; color:#a0e080; border-radius:7px; cursor:pointer; }
       #sim-commit.cancel { background:#3a2408; border-color:#7a5820; color:#e0c080; }
       #sim-commit:disabled { opacity:0.5; cursor:default; }
-      #sim-panel { padding:6px 8px; border-top:1px solid #3a2408; font-size:0.8em; color:#c8a060; display:none; }
-      #sim-panel h4 { margin:0 0 4px; color:#ffd700; font-size:0.95em; }
-      #sim-panel .sim-row { display:flex; flex-wrap:wrap; gap:4px; margin:4px 0; }
-      #sim-panel .sim-desc { color:#e0c080; margin-bottom:4px; }
-      #sim-panel button, .sim-facing-btn { background:#1a0f04; border:1px solid #3a2408; color:#a89060; cursor:pointer; padding:3px 7px; font-size:0.95em; border-radius:3px; }
-      #sim-panel button:hover, .sim-facing-btn:hover { border-color:#7a5820; color:#e0c080; }
-      #sim-panel button.active, .sim-facing-btn.active { border-color:#c8960c; background:#3a2408; color:#ffd700; }
       .sim-facing-btn { width:30px; height:30px; font-size:16px; }
-      #sim-panel .sim-label { color:#7a5820; font-size:0.85em; margin-top:6px; }
     `;
     document.head.appendChild(css);
     const bar = document.createElement('div');
@@ -373,10 +363,6 @@
     bar.innerHTML = '<span id="sim-phase"></span><span class="sim-cp" id="sim-cp"></span><span class="sim-timer" id="sim-timer"></span><span id="sim-status"></span><button id="sim-commit"></button>';
     document.body.appendChild(bar);
     document.getElementById('sim-commit').onclick = onCommitClick;
-    const panel = document.createElement('div');
-    panel.id = 'sim-panel';
-    const anchor = document.getElementById('action-panel');
-    anchor.parentNode.insertBefore(panel, anchor);
   }
 
   function onCommitClick() {
@@ -422,92 +408,18 @@
     btn.disabled = false;
   }
 
-  function renderPanel() {
-    ensureDom();
-    const panel = document.getElementById('sim-panel');
-    const unit = selectedUnit && myUnit(selectedUnit.id);
-    if (!canPlan() || !unit) { panel.style.display = 'none'; return; }
-    panel.style.display = 'block';
-    const o = current(unit);
-    const melee = (unit.range || 1) <= 1;
-    let html = `<h4>Ordre : ${escapeHtml(unit.name)}</h4><div class="sim-desc">${escapeHtml(describe(o, unit))}</div>`;
-    html += `<div class="sim-label">Vitesse disponible : ${fmtSpeed(budgetFor(unit))} / ${fmtSpeed(unit.speedRemaining)} · clic sur une case verte = déplacement, sur un ennemi = ${melee ? 'attaque (approche puis frappe)' : 'tir (dès qu\'il est à portée)'}</div>`;
-    html += '<div class="sim-row">';
-    html += `<button data-a="hold">Tenir</button>`;
-    if (melee) html += `<button data-a="charge" class="${st.tool === 'charge' ? 'active' : ''}" title="Choisissez ensuite la cible : bonus si ≥ ${S.charge.minHexes} cases parcourues">Charger…</button>`;
-    if (unit.isGeneral) html += `<button data-a="motivate" class="${o && o.type === 'motivate' ? 'active' : ''}">Motiver</button>`;
-    if (unit.isGeneral && unit.activeAbility) {
-      const cd = unit.abilityCooldown > 0;
-      html += `<button data-a="ability" class="${o && o.ability ? 'active' : ''}" ${cd ? 'disabled' : ''} title="${escapeHtml(unit.activeAbility.description || '')}">${escapeHtml(unit.activeAbility.name)}${cd ? ` (${unit.abilityCooldown})` : ''}</button>`;
-    }
-    html += `<button data-a="clear">Annuler l'ordre</button></div>`;
-    const uab = !unit.isGeneral && KBRules.ability(unit, window.gameBridge && window.gameBridge.unitTypes);
-    if (uab && ['sabotage', 'build', 'ambush'].includes(uab.type)) {
-      const cur = o && o.unitAbility;
-      const DIR_NAMES = ['E', 'NE', 'NO', 'O', 'SO', 'SE'];
-      const opts = [];
-      if (uab.type === 'ambush') opts.push({ kind: 'vanish', label: 'Disparaître pour la journée' });
-      else KBRules.DIRS.forEach(([dq, dr], i) => {
-        const nq = unit.q + dq, nr = unit.r + dr, nk = `${nq},${nr}`;
-        if (!(nk in mapHeight)) return;
-        const seg = segmentData[segmentEdgeKey(unit.q, unit.r, nq, nr)] || null, ter = terrainData[nk] || 'plain';
-        if (uab.type === 'sabotage') { if (KBRules.sabotageOption(seg, ter)) opts.push({ kind: 'sabotage', q: nq, r: nr, label: `Saboter (${DIR_NAMES[i]})` }); }
-        else for (const b of KBRules.buildOptions(seg, ter)) opts.push({ kind: 'build', build: b.id, q: nq, r: nr, label: `${KBRules.RULES.abilities.build_kinds[b.id].label} (${DIR_NAMES[i]})` });
-      });
-      html += `<div class="sim-label">Capacité (coût ${uab.cost} vitesse, au début de la résolution)</div><div class="sim-row">`;
-      if (!opts.length) html += '<span class="sim-desc">Rien à faire à côté de cette unité.</span>';
-      opts.forEach((op, i) => {
-        const on = cur && cur.kind === op.kind && cur.q === op.q && cur.r === op.r && cur.build === op.build;
-        html += `<button data-ua="${i}" class="${on ? 'active' : ''}">${escapeHtml(op.label)}</button>`;
-      });
-      html += '</div>';
-      st.uaOpts = opts;
-    }
-    const steps = KBSimStanceSteps(unit);
-    if (steps) html += `<div class="sim-label">Changer de posture (${escapeHtml(stanceNames[o.stance] || o.stance)})</div><div class="sim-row"><select data-stance-at class="sim-stance-at">${steps.choices.map(c => `<option value="${c.n}"${c.n === steps.value ? ' selected' : ''}>${escapeHtml(c.label)}</option>`).join('')}</select></div>`;
-    html += `<div class="sim-label">Posture : sous la fiche de l'unité · orientation finale (coût ${S.facingCost}) : clic droit glissé depuis l'unité${o && o.facing != null ? ' (choisie)' : ''}</div>`;
-    if (unit.isGeneral && unit.activeAbility && unit.activeAbility.target === 'enemy_army' && st.tool === 'ability') {
-      html += '<div class="sim-label">Armée ciblée</div><div class="sim-row">';
-      for (const p of gameState.players) if (p.id !== myId && !p.isEliminated) html += `<button data-ability-target="${escapeHtml(p.id)}" style="color:${p.color}">${escapeHtml(p.name)}</button>`;
-      html += '</div>';
-    }
-    panel.innerHTML = html;
-    panel.querySelectorAll('button[data-a]').forEach(b => { b.onclick = () => panelAction(unit, b.dataset.a); });
-    panel.querySelectorAll('button[data-stance]').forEach(b => {
-      const s = b.dataset.stance;
-      b.onclick = () => { hideStanceTooltip(); patchOrder(unit, { stance: s === unit.stance ? undefined : s }); };
-      b.addEventListener('mouseenter', e => showStanceTooltip(e, s));
-      b.addEventListener('mousemove', positionStanceTooltip);
-      b.addEventListener('mouseleave', hideStanceTooltip);
-    });
-    const sa = panel.querySelector('[data-stance-at]');
-    if (sa) sa.onchange = () => patchOrder(unit, { stanceAt: Number(sa.value) > 0 ? Number(sa.value) : undefined });
-    panel.querySelectorAll('button[data-facing]').forEach(b => {
-      const f = Number(b.dataset.facing);
-      b.onclick = () => patchOrder(unit, { facing: o && o.facing === f ? undefined : f });
-    });
-    panel.querySelectorAll('button[data-ua]').forEach(b => {
-      const op = st.uaOpts[Number(b.dataset.ua)];
-      b.onclick = () => {
-        const cur = o && o.unitAbility;
-        const same = cur && cur.kind === op.kind && cur.q === op.q && cur.r === op.r && cur.build === op.build;
-        patchOrder(unit, { unitAbility: same ? undefined : { kind: op.kind, q: op.q, r: op.r, build: op.build } });
-      };
-    });
-    panel.querySelectorAll('button[data-ability-target]').forEach(b => {
-      b.onclick = () => { st.tool = null; patchOrder(unit, { ability: { targetId: b.dataset.abilityTarget } }); };
-    });
-  }
-
   function panelAction(unit, a) {
     const o = current(unit);
     if (a === 'hold') patchOrder(unit, { type: 'hold' });
     else if (a === 'clear') setOrder(unit.id, null);
-    else if (a === 'charge') { st.tool = st.tool === 'charge' ? null : 'charge'; notify(st.tool ? 'Charge : cliquez sur l\'unité ennemie visée.' : 'Charge annulée.', 'info'); renderPanel(); }
     else if (a === 'motivate') patchOrder(unit, { type: o && o.type === 'motivate' ? 'hold' : 'motivate' });
     else if (a === 'ability') {
       if (o && o.ability) patchOrder(unit, { ability: undefined });
-      else if (unit.activeAbility.target === 'enemy_army') { st.tool = 'ability'; renderPanel(); }
+      else if (unit.activeAbility.target === 'enemy_army') {
+        const enemies = gameState.players.filter(p => p.id !== myId && !p.isEliminated);
+        if (enemies.length === 1) patchOrder(unit, { ability: { targetId: enemies[0].id } });
+        else if (window.pickAbilityTarget) window.pickAbilityTarget(unit.activeAbility.name, enemies, (id) => patchOrder(unit, { ability: { targetId: id } }));
+      }
       else patchOrder(unit, { ability: {} });
     }
   }
@@ -662,7 +574,6 @@
       if (!u) showUnitDetail(null);
     }
     renderBar();
-    renderPanel();
     render();
     const replaying = st.playback || (data.planning && data.planning.playbackEndsAt && data.planning.playbackEndsAt > Date.now() && data.planning.turn > 1);
     if (data.phase === 'battle' && st.popupTurn !== data.turn && !replaying && !isSpectator && p && !p.isEliminated) {
@@ -676,7 +587,7 @@
     st.cp = data.commandPoints || st.cp;
     st.committed = !!data.committed;
     if (selectedUnit) computeTiles(myUnit(selectedUnit.id));
-    renderBar(); renderPanel(); render();
+    renderBar(); render();
   }
 
   function onCommitStatus(data) {
@@ -691,7 +602,7 @@
       }
       document.getElementById('top-current-player').textContent = isSpectator ? 'Planification des généraux' : st.committed ? 'Ordres prêts — en attente des autres' : '✍ Donnez vos ordres';
     }
-    renderBar(); renderPanel(); render();
+    renderBar(); render();
   }
 
   // ---------- playback ----------
@@ -724,7 +635,7 @@
     st.tool = null;
     st.playback = { data, restore, deferred: [], index: 0, timer: null, killTimers: [] };
     document.getElementById('top-current-player').textContent = `Résolution du tour ${data.turn}`;
-    renderBar(); renderPanel();
+    renderBar();
     // every hex where something happens during the resolution (moves from/to, combats weigh more), for the camera
     const hexes = [];
     for (const tk of data.ticks) for (const e of tk.events) {
@@ -959,5 +870,13 @@
       patchOrder(u, { stanceAt: n > 0 ? n : undefined });
     },
     stanceSteps: (unit) => KBSimStanceSteps(unit),
+    // 'clear' (cancel the order), 'hold', 'motivate', 'ability' on the selected unit
+    orderAction(a) {
+      const u = selectedUnit && myUnit(selectedUnit.id);
+      if (!u || !canPlan()) return false;
+      if (a === 'ability' && (!u.isGeneral || !u.activeAbility || u.abilityCooldown > 0)) return false;
+      panelAction(u, a);
+      return true;
+    },
   };
 })();

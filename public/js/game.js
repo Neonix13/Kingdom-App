@@ -2356,6 +2356,22 @@ function pickUnitAbilityOption(hex, opts) {
   document.getElementById('overlay-ability-target').style.display = 'flex';
 }
 
+function pickAbilityTarget(title, enemies, onPick) {
+  const box = document.getElementById('ability-targets');
+  document.getElementById('ability-target-title').textContent = title;
+  box.innerHTML = '';
+  for (const p of enemies) {
+    const b = document.createElement('button');
+    b.className = 'btn';
+    b.style.cssText = `border:2px solid ${p.color};background:#1a0f04;color:#e0c080;padding:8px 14px`;
+    b.textContent = p.name;
+    b.onclick = () => { closeAbilityTarget(); onPick(p.id); };
+    box.appendChild(b);
+  }
+  document.getElementById('overlay-ability-target').style.display = 'flex';
+}
+window.pickAbilityTarget = pickAbilityTarget;
+
 function useAbility() {
   const uab = unitActionOf(selectedUnit);
   if (uab) { useUnitAbility(selectedUnit, uab); return; }

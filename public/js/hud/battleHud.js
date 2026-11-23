@@ -78,7 +78,6 @@ export function mountBattleHud(bridge, view) {
     <div class="hud-mode"></div>
     <div class="hud-route" hidden></div>
     <div class="hud-actions"></div>
-    <div class="hud-simslot"></div>
     <div class="hud-seal-shadow" hidden aria-hidden="true"></div>
     <button class="hud-seal" hidden></button>`;
   document.body.appendChild(root);
@@ -86,7 +85,7 @@ export function mountBattleHud(bridge, view) {
   const el = {
     turn: q('.hud-turn'), sub: q('.hud-sub'), callout: q('.hud-callout'), presence: q('.hud-presence'), scores: q('.hud-scores'), timer: q('.hud-timer'),
     route: q('.hud-route'), roster: q('.hud-roster'), orders: q('.hud-orders'), feed: q('.hud-feed'), card: q('.hud-card'), mode: q('.hud-mode'), actions: q('.hud-actions'),
-    simslot: q('.hud-simslot'), seal: q('.hud-seal'), abil: q('.hud-abil'), journal: q('[data-hud=journal]'), tools: q('[data-hud=menu]'), menuBtn: q('[data-hud=menu]'), menu: q('.hud-menu'),
+    seal: q('.hud-seal'), abil: q('.hud-abil'), journal: q('[data-hud=journal]'), tools: q('[data-hud=menu]'), menuBtn: q('[data-hud=menu]'), menu: q('.hud-menu'),
   };
 
   let active = false;
@@ -124,8 +123,6 @@ export function mountBattleHud(bridge, view) {
   const watchSim = () => {
     const n = $('sim-bar');
     if (n && !n.dataset.hudWatched) { n.dataset.hudWatched = '1'; mo.observe(n, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['style', 'class', 'disabled'] }); }
-    const p = $('sim-panel');
-    if (p && p.parentNode !== el.simslot && active) el.simslot.appendChild(p);
   };
 
   // ---- top-right buttons ----
@@ -343,8 +340,7 @@ export function mountBattleHud(bridge, view) {
     if (!g || el.abil.classList.contains('cd')) return;
     if (!(bridge.selectedUnit && bridge.selectedUnit.id === g.id)) bridge.click({ q: g.q, r: g.r });
     setTimeout(() => {
-      const simBtn = document.querySelector('#sim-panel [data-a="ability"]');
-      if (simBtn && !simBtn.disabled) { simBtn.click(); return; }
+      if (window.KBSim && window.KBSim.active() && window.KBSim.orderAction('ability')) return;
       const b = $('btn-ability');
       if (b && !b.disabled) b.click();
     }, 80);
@@ -614,8 +610,7 @@ export function mountBattleHud(bridge, view) {
     if (!u) return;
     if (window.selectUnit) window.selectUnit(u);
     if (clear) {
-      const b = document.querySelector('#sim-panel button[data-a=clear]');
-      if (b) b.click();
+      if (window.KBSim) window.KBSim.orderAction('clear');
     } else if (u.q != null && view.hexOnScreen && !view.hexOnScreen(u.q, u.r, 0.2)) view.focusHex(u.q, u.r);
   });
 
@@ -706,9 +701,6 @@ export function mountBattleHud(bridge, view) {
     document.body.classList.toggle('hud-2d', on && !view.active);
     if (!on) {
       document.body.classList.remove('hud-drawer', 'hud-tools', 'hud-coach');
-      const p = $('sim-panel');
-      const anchor = $('action-panel');
-      if (p && anchor && p.parentNode !== anchor.parentNode) anchor.parentNode.insertBefore(p, anchor);
     } else {
       watchSim();
       render();

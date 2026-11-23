@@ -1158,6 +1158,16 @@ function renderArmySheet() {
   box.onclick = (e) => { const q = e.target.closest('[data-q]'); if (q && !q.disabled) changeQty(u.id, Number(q.dataset.q)); };
 }
 
+// double click detected by hand: the tiles are rebuilt after each change, which resets the browser's own click count
+let lastTileClick = null;
+function tileClick(where, id, onDouble) {
+  const now = performance.now();
+  const l = lastTileClick;
+  if (l && l.where === where && l.id === id && now - l.t < 400) { lastTileClick = null; onDouble(); return; }
+  lastTileClick = { where, id, t: now };
+  selectArmyUnit(id);
+}
+
 function selectArmyUnit(id) {
   armySheetId = id;
   document.querySelectorAll('.ld-utile').forEach(t => t.classList.toggle('sel', t.dataset.unit === id));
@@ -1182,8 +1192,7 @@ function renderArmyGeneral() {
       ${chosen.length ? `<div class="ld-a3-grid ld-a3-mine">${chosen.flatMap(u => Array.from({ length: armyQuantities[u.id] }, () => unitTileHtml(u, { count: 1, army: true }))).join('')}</div>`
         : '<p class="ld-army-empty">Aucune unité recrutée. Choisissez une unité au centre puis ajoutez-la avec +.</p>'}
     </div>`;
-  box.onclick = (e) => { const t = e.target.closest('.ld-utile'); if (t) selectArmyUnit(t.dataset.unit); };
-  box.ondblclick = (e) => { const t = e.target.closest('.ld-a3-mine .ld-utile'); if (t) changeQty(t.dataset.unit, -1); };
+  box.onclick = (e) => { const t = e.target.closest('.ld-utile'); if (t) tileClick('army', t.dataset.unit, () => changeQty(t.dataset.unit, -1)); };
 }
 
 function renderArmyBuilder() {
@@ -1196,8 +1205,7 @@ function renderArmyBuilder() {
       <header><span class="ld-cat-ico">${groupIcon(g.id, 16)}</span><h3>${g.name}</h3><span class="ld-cat-n" id="cat-n-${g.id}"></span></header>
       <div class="ld-a3-grid ld-a3-shop">${units.map(u => unitTileHtml(u)).join('')}</div>
     </section>`).join('')}</div>`;
-  shop.onclick = (e) => { const t = e.target.closest('.ld-utile'); if (t) selectArmyUnit(t.dataset.unit); };
-  shop.ondblclick = (e) => { const t = e.target.closest('.ld-utile'); if (t) changeQty(t.dataset.unit, 1); };
+  shop.onclick = (e) => { const t = e.target.closest('.ld-utile'); if (t) tileClick('shop', t.dataset.unit, () => changeQty(t.dataset.unit, 1)); };
   renderArmyGeneral();
   renderArmySheet();
   updateBudgetDisplay();

@@ -188,16 +188,6 @@ body.hud-d #hud-root { display: block; }
 .hud-orders .who { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px; border-top: 3px solid #000; }
 .hud-orders .who span { font-size: 11px; font-weight: 900; border: 2px solid #000; padding: 1px 6px; }
 .hud-orders .who span.ok { background: #000; color: #fff; }
-.hud-simslot { position: absolute; left: 670px; bottom: 22px; width: 340px; max-height: 300px; overflow-y: auto; }
-.hud-simslot:empty, .hud-simslot[hidden] { display: none; }
-body.hud-d #hud-root #sim-panel { border: 4px solid #000; box-shadow: 0 0 0 3px #fff, 0 0 0 6px #000; background: #fff; color: #000; font: 700 12px var(--hud-body); padding: 8px 10px; margin: 6px; }
-body.hud-d #hud-root #sim-panel h4 { font: 400 15px var(--hud-display); color: #000; margin: 0 0 4px; }
-body.hud-d #hud-root #sim-panel .sim-desc { color: #000; font-weight: 900; }
-body.hud-d #hud-root #sim-panel .sim-label { color: #444; font-weight: 700; margin-top: 6px; font-size: 11px; }
-body.hud-d #hud-root #sim-panel button { background: #fff; color: #000; border: 2px solid #000; border-radius: 0; font: 900 11px var(--hud-body); padding: 3px 7px; transform: skewX(-8deg); }
-body.hud-d #hud-root #sim-panel button:hover { box-shadow: 2px 2px 0 var(--hud-red); }
-body.hud-d #hud-root #sim-panel button.active { background: var(--hud-red); color: #fff; }
-body.hud-d #hud-root #sim-panel .sim-facing-btn { width: 28px; height: 26px; font-size: 14px; }
 
 body.hud-d #v3-settings, body.hud-d #snd-popup { position: fixed; left: auto; right: 292px; top: 84px; z-index: 395; background: #fff; color: #000; border: 4px solid #000; border-radius: 0; box-shadow: 0 0 0 3px #fff, 0 0 0 6px #000; font-family: var(--hud-body); }
 body.hud-d #v3-settings h4 { color: #000; font: 400 14px var(--hud-display); }
@@ -225,7 +215,7 @@ body.hud-d.hud-drawer .chat-msg.mine .chat-author { color: var(--hud-red); }
 body.hud-d.hud-drawer .chat-msg.other .chat-author { color: var(--hud-blue); }
 body.hud-d.hud-drawer #chat-input { background: #fff !important; color: #000 !important; border: 2px solid #000 !important; border-radius: 0 !important; }
 body.hud-d.hud-drawer #chat-input-area { border-color: #000 !important; }
-body.hud-d.hud-drawer #unit-panel, body.hud-d.hud-drawer #selected-unit-detail, body.hud-d.hud-drawer #action-panel, body.hud-d.hud-drawer #stance-panel, body.hud-d.hud-drawer #global-action-bar, body.hud-d.hud-drawer #combat-log, body.hud-d.hud-drawer #sim-panel { display: none !important; }
+body.hud-d.hud-drawer #unit-panel, body.hud-d.hud-drawer #selected-unit-detail, body.hud-d.hud-drawer #action-panel, body.hud-d.hud-drawer #stance-panel, body.hud-d.hud-drawer #global-action-bar, body.hud-d.hud-drawer #combat-log { display: none !important; }
 
 /* ---- overlays, popups, tooltips restyled ---- */
 body.hud-d .overlay { background: rgba(0,0,0,.55); }
@@ -291,7 +281,7 @@ body.hud-d.hud-coach .hud-feed { display: none; }
 @media (max-width: 1360px) {
   .hud-card { width: 560px; }
   .hud-card .pic { width: 140px; }
-  .hud-actions, .hud-mode, .hud-simslot { left: 606px; }
+  .hud-actions, .hud-mode { left: 606px; }
   .hud-seal, .hud-seal-shadow { width: 136px; height: 136px; right: 24px; bottom: 24px; }
   .hud-seal .kj { font-size: 50px; }
   .hud-feed { bottom: 230px; width: 270px; }
@@ -457,7 +447,6 @@ body.hud-gameover-on #hud-splash { display: none !important; }
 #v3-tip .st-chip, #hud-tip2d .st-chip { width: 16px; height: 16px; font-size: 11px; border-width: 1.5px; }
 #hud-splash .sp-st { display: flex; align-items: center; gap: 5px; margin-top: 3px; font: 700 11px var(--hud-body); color: #fff; }
 #hud-splash .sp-st .st-chip { border-color: #fff; }
-#sim-panel .st-chip { width: 16px; height: 16px; font-size: 11px; border-width: 1.5px; margin-right: 2px; }
 
 /* On-unit controls: facing arrows around the selected unit, stance chips above it */
 #hud-root .hud-ring { position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; z-index: 3; }

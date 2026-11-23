@@ -7,7 +7,8 @@ Nouveau:
 - les tuiles fleuves sont trop profondent l'écart pourrait etre plus doux et on dirait que les unité flottent on pourrait peut être voir le fond de l'eau 
 - ne pas montrer la carte 2D lors du chargement de la preview dans les menus
 - j'aimerais pouvoir placer des unité sur le mur au dessus des portes (tu vas peut être devoir laissé lee modèle 2D de coté)
-- 
+- bug : je dois rettirer ma souris pour recliquer dans le menu d'armée
+- je ne veux pas de menu à droite du récap d'unité en bas à droite dans la bataille je peux déjà annuler et les ordre et tenir mes troupes
 
 
 Priorité:
