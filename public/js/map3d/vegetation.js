@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { makeNoise2D, makeRng } from './noise.js';
 import { G } from './shaderPatches.js';
 
@@ -306,6 +307,83 @@ export function makeBroadleafGeometry(variant = 0, lod = 0) {
   const geo = mergeGeometries(parts);
   geo.computeBoundingSphere();
   return geo;
+}
+
+// Tree modelled in Blender (glTF): node transforms baked, trunk / foliage told apart by material colour (green = foliage),
+// trunk base moved to the origin, scaled to \`height\`, recoloured with the game's shading ramp from the model's colours.
+// Resolves to { geo, trunkRadius } (geometry ready for the patched tree material), or null if anything goes wrong.
+export function loadTreeModel(url, { height = 1.25, timeout = 10000 } = {}) {
+  const load = new Promise((resolve) => {
+    new GLTFLoader().load(url, (gltf) => {
+      try { resolve(treeFromGltf(gltf.scene, height)); } catch (e) { console.warn('tree model', url, e); resolve(null); }
+    }, undefined, (e) => { console.warn('tree model', url, e); resolve(null); });
+  });
+  return Promise.race([load, new Promise((r) => setTimeout(() => r(null), timeout))]);
+}
+
+function treeFromGltf(root, height) {
+  root.updateMatrixWorld(true);
+  const parts = { trunk: [], leaf: [] };
+  root.traverse((o) => {
+    if (!o.isMesh || !o.geometry.attributes.position) return;
+    const src = o.geometry;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', src.attributes.position.clone());
+    if (src.attributes.normal) g.setAttribute('normal', src.attributes.normal.clone());
+    else g.computeVertexNormals();
+    g.setIndex(src.index ? Array.from(src.index.array) : [...Array(src.attributes.position.count).keys()]);
+    g.applyMatrix4(o.matrixWorld);
+    if (o.matrixWorld.determinant() < 0) {
+      const ix = g.index.array;
+      for (let i = 0; i < ix.length; i += 3) [ix[i + 1], ix[i + 2]] = [ix[i + 2], ix[i + 1]];
+    }
+    const col = (Array.isArray(o.material) ? o.material[0] : o.material).color.clone();
+    parts[col.g > col.r * 1.2 ? 'leaf' : 'trunk'].push({ g, col });
+  });
+  if (!parts.trunk.length || !parts.leaf.length) throw new Error('expected a trunk mesh and a green foliage mesh');
+  let y0 = Infinity, y1 = -Infinity;
+  for (const { g } of [...parts.trunk, ...parts.leaf]) {
+    g.computeBoundingBox();
+    y0 = Math.min(y0, g.boundingBox.min.y); y1 = Math.max(y1, g.boundingBox.max.y);
+  }
+  const H = y1 - y0;
+  // trunk axis: centre of the trunk between 6 % and 20 % of the height (above the root flare, below the branches)
+  let bx0 = Infinity, bx1 = -Infinity, bz0 = Infinity, bz1 = -Infinity;
+  for (const { g } of parts.trunk) {
+    const pos = g.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const y = pos.getY(i) - y0;
+      if (y < H * 0.06 || y > H * 0.2) continue;
+      bx0 = Math.min(bx0, pos.getX(i)); bx1 = Math.max(bx1, pos.getX(i)); bz0 = Math.min(bz0, pos.getZ(i)); bz1 = Math.max(bz1, pos.getZ(i));
+    }
+  }
+  if (!Number.isFinite(bx0)) throw new Error('no trunk found near the ground');
+  const k = height / H;
+  const m = new THREE.Matrix4().makeScale(k, k, k).multiply(new THREE.Matrix4().makeTranslation(-(bx0 + bx1) / 2, -y0, -(bz0 + bz1) / 2));
+  for (const { g } of [...parts.trunk, ...parts.leaf]) g.applyMatrix4(m);
+  const leafBox = new THREE.Box3();
+  for (const { g } of parts.leaf) { g.computeBoundingBox(); leafBox.union(g.boundingBox); }
+  const lc = leafBox.getCenter(new THREE.Vector3()), ls = leafBox.getSize(new THREE.Vector3());
+  const ext = Math.max(ls.x, ls.z) / 2;
+  const out = [];
+  for (const { g, col } of parts.trunk) {
+    paint(g, (x, y, z, c) => c.copy(col).multiplyScalar(0.45 + 0.4 * Math.min(1, y / (height * 0.4))));
+    out.push(part(g, 0));
+  }
+  for (const { g, col } of parts.leaf) {
+    const nor = g.attributes.normal;
+    paint(g, (x, y, z, c, i) => {
+      const up = (y - leafBox.min.y) / ls.y;
+      const o = Math.min(1, Math.hypot(x - lc.x, (y - lc.y) * 0.7, z - lc.z) / ext);
+      const t = Math.min(1, Math.max(0, 0.02 + up * 0.62 + o * 0.4));
+      c.copy(col).multiplyScalar(0.7 * (t < 0.5 ? 0.42 + t * 0.76 : 0.8 + (t - 0.5) * 0.7));
+      if (nor.getY(i) < -0.25) c.multiplyScalar(0.8);
+    });
+    out.push(part(g, 1));
+  }
+  const geo = mergeGeometries(out);
+  geo.computeBoundingSphere();
+  return { geo, trunkRadius: (Math.max(bx1 - bx0, bz1 - bz0) / 2) * k };
 }
 
 // Conifer: stacked star-shaped tiers that droop at the tips and taper toward the top, each with a shallow

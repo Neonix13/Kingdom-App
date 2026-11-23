@@ -38,6 +38,8 @@ async function setProgress(pct, text) {
 installHeightFog(0.5, 0.05);
 
 await setProgress(5, 'Fetching terrain data...');
+// broadleaf tree modelled in Blender, loaded alongside the terrain (procedural broadleaf if it fails)
+const broadModelReady = VEG.loadTreeModel('assets/models/trees/LoireTree2.glb', { height: 1.25 });
 const mapDoc = opts.map || await fetch(`/api/maps/${encodeURIComponent(opts.mapId || 'default')}`).then(r => {
   if (!r.ok) throw new Error('Carte introuvable');
   return r.json();
@@ -1324,9 +1326,11 @@ waterMats.push(waterMat);
 await setProgress(68, 'Growing forests...');
 
 // --- Vegetation ---
+const broadModel = await broadModelReady;
+const broadNear = [0, 1].map((v) => (broadModel ? broadModel.geo : VEG.makeBroadleafGeometry(v)));
 const vegMat = (opts, key, extra = null) => patchLit(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0, envMapIntensity: 0.5 }), opts, extra, key);
 const treeMatConifer = vegMat({ wind: true, windBend: 0.045, windFreq: 1.1, flutter: 0.004, clearOnUnits: true }, 'conifer-tex2', VEG.treeTexturePatch('conifer'));
-const treeMatBroad = vegMat({ wind: true, windBend: 0.06, windFreq: 1.3, flutter: 0.008, clearOnUnits: true }, 'broad-tex2', VEG.treeTexturePatch('broad'));
+const treeMatBroad = vegMat({ wind: true, windBend: 0.06, windFreq: 1.3, flutter: broadModel ? 0 : 0.008, clearOnUnits: true }, 'broad-tex2', VEG.treeTexturePatch('broad'));
 const bushMat = vegMat({ wind: true, windBend: 0.5, windFreq: 1.6, clearOnUnits: true }, 'bush-tex2', VEG.treeTexturePatch('bush'));
 const grassMat = vegMat({ wind: true, windBend: 6.0, windFreq: 1.6, fadeNear: 22, fadeFar: 40, noFlip: true }, 'grass-v2', VEG.grassPatch);
 grassMat.side = THREE.DoubleSide;
@@ -1377,7 +1381,9 @@ for (const hex of hexesByType.forest || []) {
 }
 
 // Trunk circles of the board's forest trees (Promenade collisions)
-const trunks = [...conifers[0], ...conifers[1], ...broads[0], ...broads[1]].map((t) => ({ x: t.x, z: t.z, r: 0.045 * t.s }));
+const broadTrunkR = broadModel ? broadModel.trunkRadius * 0.9 : 0.045;
+const trunks = [...conifers[0], ...conifers[1]].map((t) => ({ x: t.x, z: t.z, r: 0.045 * t.s }))
+  .concat([...broads[0], ...broads[1]].map((t) => ({ x: t.x, z: t.z, r: broadTrunkR * t.s })));
 
 // Plains: grass tufts, occasional bush; fields: wheat; rocky hexes: boulders
 for (const [key, hex] of allHexes) {
@@ -1573,7 +1579,7 @@ const lodLevels = (geo, lodGeo, mat) => [
 ];
 [0, 1].forEach((v) => {
   vegGroup.add(vegChunks(conifers[v], lodLevels(VEG.makeConiferGeometry(v), VEG.makeConiferGeometry(v, 1), treeMatConifer)));
-  vegGroup.add(vegChunks(broads[v], lodLevels(VEG.makeBroadleafGeometry(v), VEG.makeBroadleafGeometry(v, 1), treeMatBroad)));
+  vegGroup.add(vegChunks(broads[v], lodLevels(broadNear[v], VEG.makeBroadleafGeometry(v, 1), treeMatBroad)));
 });
 const farTrees = new THREE.Group();
 farTrees.add(vegChunks(farConifers, [{ geo: VEG.makeConiferGeometry(0, 1), mat: treeMatConifer, castShadow: true, maxDist: Infinity }], { size: 30 }));
@@ -1784,10 +1790,18 @@ const birdPerches = [];
     else if (fieldSet.has(`${h.q},${h.r}`) && rng() < 0.08) birdPerches.push({ x: c.x, y: groundHeight(c.x, c.z), z: c.z, kind: 'field' });
   }
   for (const s of smokeSources) birdPerches.push({ x: s.x, y: s.y - 0.08, z: s.z, kind: 'roof' });
-  const treeTop = (make, v) => { const g = make(v); g.computeBoundingBox(); const y = g.boundingBox.max.y; g.dispose(); return y; };
-  [[conifers, VEG.makeConiferGeometry], [broads, VEG.makeBroadleafGeometry]].forEach(([sets, make]) => sets.forEach((list, v) => {
-    const top = treeTop(make, v);
-    for (const t of list) if (rng() < 0.04) birdPerches.push({ x: t.x, y: t.y + top * (t.s || 1) * (t.sy || 1) * 0.97, z: t.z, kind: 'tree' });
+  const treeTop = (g) => {
+    const pos = g.attributes.position, top = new THREE.Vector3(0, -Infinity, 0);
+    for (let i = 0; i < pos.count; i++) if (pos.getY(i) > top.y) top.fromBufferAttribute(pos, i);
+    return top;
+  };
+  [[conifers, (v) => VEG.makeConiferGeometry(v)], [broads, (v) => broadNear[v]]].forEach(([sets, make]) => sets.forEach((list, v) => {
+    const top = treeTop(make(v));
+    for (const t of list) {
+      if (rng() >= 0.04) continue;
+      const s = t.s || 1, c = Math.cos(t.ry || 0), sn = Math.sin(t.ry || 0);
+      birdPerches.push({ x: t.x + (top.x * c + top.z * sn) * s, y: t.y + top.y * s * (t.sy || 1) * 0.97, z: t.z + (-top.x * sn + top.z * c) * s, kind: 'tree' });
+    }
   }));
 }
 const birdSys = createBirds({ scene, G, bounds: { bx0, bx1, bz0, bz1 }, groundHeight, surfaceHeight: walkHeight, perches: birdPerches, camera: renderCam });
