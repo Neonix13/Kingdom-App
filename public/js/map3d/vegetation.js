@@ -212,8 +212,8 @@ vec3 _td = treeDetail();
 }
 
 // Tapered, slightly bent trunk with a root flare (indexed while shaping so the normals stay smooth)
-function trunkGeometry(h, r0, r1, sides, bx, bz) {
-  const g = new THREE.CylinderGeometry(r1, r0, h, sides, 2, true);
+function trunkGeometry(h, r0, r1, sides, bx, bz, segs = 2) {
+  const g = new THREE.CylinderGeometry(r1, r0, h, sides, segs, true);
   g.translate(0, h / 2, 0);
   const pos = g.attributes.position;
   for (let i = 0; i < pos.count; i++) {
@@ -250,7 +250,7 @@ export function makeBroadleafGeometry(variant = 0, lod = 0) {
   const crown = variant === 0 ? { y: 0.8, rx: 0.42, ry: 0.32, rz: 0.4 } : { y: 0.9, rx: 0.3, ry: 0.42, rz: 0.31 };
   const bx = (rng() - 0.5) * 0.07, bz = (rng() - 0.5) * 0.07;
   const trunkTop = crown.y - crown.ry * 0.3;
-  parts.push(part(paintBark(trunkGeometry(trunkTop, 0.058, 0.028, lod ? 4 : 6, bx, bz), trunkTop), 0));
+  parts.push(part(paintBark(trunkGeometry(trunkTop, 0.058, 0.028, lod ? 4 : 6, bx, bz, lod ? 1 : 2), trunkTop), 0));
   const cx = bx, cy = crown.y, cz = bz;
   if (!lod) {
     for (let i = 0; i < 3; i++) {
@@ -261,7 +261,7 @@ export function makeBroadleafGeometry(variant = 0, lod = 0) {
       parts.push(part(paintBark(branchGeometry(from, to, 0.019, 0.008), trunkTop), 0));
     }
   }
-  const n = lod ? 5 : 10;
+  const n = lod ? 4 : 10;
   const clusters = [{ x: cx, y: cy, z: cz, r: Math.min(crown.rx, crown.ry) * 0.86, d: 0 }];
   for (let i = 0; i < n - 1; i++) {
     const u = (n - 1 === 1) ? 0 : i / (n - 2);
@@ -314,8 +314,8 @@ export function makeConiferGeometry(variant = 0, lod = 0) {
     ? { n: lod ? 3 : 6, y0: 0.16, top: 1.2, r: 0.42, h: 0.36, droop: 0.07, trunk: 0.5 }
     : { n: lod ? 3 : 5, y0: 0.3, top: 1.28, r: 0.34, h: 0.34, droop: 0.11, trunk: 0.62 };
   const bx = (rng() - 0.5) * 0.04, bz = (rng() - 0.5) * 0.04;
-  parts.push(part(paintBark(trunkGeometry(spec.trunk, 0.048, 0.02, lod ? 4 : 5, bx, bz), spec.trunk), 0));
-  const K = lod ? 6 : 7;
+  parts.push(part(paintBark(trunkGeometry(spec.trunk, 0.048, 0.02, lod ? 4 : 5, bx, bz, lod ? 1 : 2), spec.trunk), 0));
+  const K = lod ? 5 : 7;
   const dark = lin(0x16301a), mid = lin(0x2a4f2a), light = lin(0x5e8a46);
   for (let k = 0; k < spec.n; k++) {
     const u = spec.n === 1 ? 0 : k / (spec.n - 1);

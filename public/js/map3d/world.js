@@ -1593,11 +1593,28 @@ const wheatMesh = vegChunks(wheat, [{ geo: VEG.makeWheatGeometry(9), mat: wheatM
 const flowerMat = vegMat({ wind: true, windBend: 6.0, windFreq: 2.4, fadeNear: 30, fadeFar: 48 }, 'flower');
 const flowerMesh = vegChunks(flowers, [{ geo: VEG.makeFlowerGeometry(), mat: flowerMat, maxDist: 50 }]);
 vegGroup.add(grassMesh, wheatMesh, flowerMesh);
-// contact shadows: a soft dark disc multiplied onto the ground under every tree and bush, tilted with the slope
+// contact shadows: a soft dark disc multiplied onto the ground under lone trees, forest edges and bushes, tilted with
+// the slope (not inside dense woods, where the discs would pile up into a black floor)
 const contactMat = new THREE.MeshBasicMaterial({ vertexColors: true, blending: THREE.MultiplyBlending, premultipliedAlpha: true, transparent: true, depthWrite: false, fog: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
 const contactItems = [];
-const addContact = (list, r) => {
+const treeCells = new Map();
+const allTrees = [...conifers[0], ...conifers[1], ...broads[0], ...broads[1]];
+for (const t of allTrees) {
+  const k = `${Math.floor(t.x * 2)},${Math.floor(t.z * 2)}`;
+  if (!treeCells.has(k)) treeCells.set(k, []);
+  treeCells.get(k).push(t);
+}
+const crowded = (t) => {
+  let n = 0;
+  const cx = Math.floor(t.x * 2), cz = Math.floor(t.z * 2);
+  for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+    for (const o of treeCells.get(`${cx + i},${cz + j}`) || []) if (o !== t && (o.x - t.x) ** 2 + (o.z - t.z) ** 2 < 0.2) n++;
+  }
+  return n >= 3;
+};
+const addContact = (list, r, skipCrowded) => {
   for (const t of list) {
+    if (skipCrowded && crowded(t)) continue;
     const e = 0.15;
     const hx = (groundHeight(t.x + e, t.z) - groundHeight(t.x - e, t.z)) / (2 * e);
     const hz = (groundHeight(t.x, t.z + e) - groundHeight(t.x, t.z - e)) / (2 * e);
@@ -1605,10 +1622,10 @@ const addContact = (list, r) => {
     contactItems.push({ x: t.x, y: groundHeight(t.x, t.z) + 0.012, z: t.z, s: r * t.s, rx, rz: Math.atan(hx * Math.cos(rx)) });
   }
 };
-for (const l of conifers) addContact(l, 0.38);
-for (const l of broads) addContact(l, 0.36);
-addContact(bushes, 0.26);
-const contactMesh = vegChunks(contactItems, [{ geo: VEG.makeContactGeometry(0.72), mat: contactMat, maxDist: 48 }], { receiveShadow: false });
+for (const l of conifers) addContact(l, 0.38, true);
+for (const l of broads) addContact(l, 0.36, true);
+addContact(bushes, 0.26, false);
+const contactMesh = vegChunks(contactItems, [{ geo: VEG.makeContactGeometry(0.76), mat: contactMat, maxDist: 48 }], { receiveShadow: false });
 contactMesh.traverse((m) => { m.renderOrder = 1; });
 vegGroup.add(contactMesh);
 
@@ -1833,6 +1850,7 @@ function applyQuality(l) {
   refreshDof();
   grassMesh.visible = l.grass;
   flowerMesh.visible = l.grass;
+  contactMesh.visible = l.grass;
   wheatMesh.visible = l.far;
   farTrees.visible = l.far;
   treeLod.dist = l.lod || 30;
