@@ -1125,11 +1125,13 @@ const sky = new Sky();
 sky.scale.setScalar(1000);
 sky.material.uniforms.uHorizonColor = { value: FOG_COLOR.clone() };
 sky.material.uniforms.uHorizonMix = { value: 1.0 };
+sky.material.uniforms.uDarkSky = { value: 0 };
 sky.material.fragmentShader = sky.material.fragmentShader
-  .replace('void main() {', 'uniform vec3 uHorizonColor;\nuniform float uHorizonMix;\nvoid main() {')
+  .replace('void main() {', 'uniform vec3 uHorizonColor;\nuniform float uHorizonMix;\nuniform float uDarkSky;\nvoid main() {')
   .replace('gl_FragColor = vec4( retColor, 1.0 );', `
     float hz = 1.0 - smoothstep( -0.03, 0.22, direction.y );
     retColor = mix( retColor, uHorizonColor, hz * hz * uHorizonMix );
+    retColor = mix( retColor, min( retColor, vec3( 1.0 ) ) * 0.045 + vec3( 0.003, 0.004, 0.007 ), uDarkSky );
     gl_FragColor = vec4( retColor, 1.0 );`);
 scene.add(sky);
 const clouds = createCloudLayer();
@@ -1254,13 +1256,40 @@ function setTimeOfDay(hour, { env = true } = {}) {
   cu.uLit.value.copy(sunLight.color).multiplyScalar(lerp(1.75, 1.35, golden) * (1 - night) + 0.08 * night).add(new THREE.Color(0.15, 0.17, 0.2));
   cu.uShade.value.set(0x8c99ab).lerp(new THREE.Color(0xa07d72), golden * 0.6).multiplyScalar(1 - night * 0.85);
   cu.uHorizon.value.copy(fog);
+  timeState.fog = fog;
+  for (const m of waterMats) m.userData.sky = [m.uniforms.uSkyHorizon.value.clone(), m.uniforms.uSkyZenith.value.clone()];
+  applyFogLook();
 
   fitShadow();
   if (env) {
     if (envRT) envRT.dispose();
+    skyU.uDarkSky.value = 0;
     envRT = pmrem.fromScene(envScene, 0.02, 0.1, 200);
+    skyU.uDarkSky.value = fogLook.dark;
     scene.environment = envRT.texture;
   }
+}
+
+// Fog-of-war look: 'dark' turns the sky almost black while the fog of war is on, 'light' keeps the normal sky
+const fogLook = { style: 'dark', dark: 0 };
+function applyFogLook() {
+  if (!timeState.fog) return;
+  const k = 1 - 0.9 * fogLook.dark;
+  skyU.uDarkSky.value = fogLook.dark;
+  scene.fog.color.copy(timeState.fog).multiplyScalar(k);
+  scene.background.copy(scene.fog.color);
+  clouds.material.uniforms.uOpacity.value = 1 - fogLook.dark;
+  for (const m of waterMats) {
+    if (!m.userData.sky) continue;
+    m.uniforms.uSkyHorizon.value.copy(m.userData.sky[0]).multiplyScalar(k);
+    m.uniforms.uSkyZenith.value.copy(m.userData.sky[1]).multiplyScalar(k);
+  }
+}
+function updateFogLook(dt) {
+  const target = G.uFogOn.value > 0.5 && fogLook.style === 'dark' ? 1 : 0;
+  if (fogLook.dark === target) return;
+  fogLook.dark = target > fogLook.dark ? Math.min(target, fogLook.dark + dt * 1.2) : Math.max(target, fogLook.dark - dt * 1.2);
+  applyFogLook();
 }
 
 await setProgress(62, 'Filling rivers...');
@@ -1949,6 +1978,7 @@ function animate() {
   simTime += dt;
   const t = simTime;
   if (pendingHour !== null) { setTimeOfDay(pendingHour, { env: false }); pendingHour = null; }
+  updateFogLook(Math.min(rawDt, 0.1));
   G.uTime.value = t;
   G.uWindStrength.value = 0.75 + 0.35 * Math.sin(t * 0.13) + 0.2 * Math.sin(t * 0.41);
   smokeMat.uniforms.uTime.value = t;
@@ -1991,6 +2021,7 @@ return {
   bounds: { bx0, bx1, bz0, bz1, BCX, BCZ },
   applyView, DEFAULT_VIEW, flyTo, focusHex, resize, start, setRunning,
   setTimeOfDay, previewTimeOfDay, commitTimeOfDay, get hour() { return timeState.hour; }, timeState,
+  setFogStyle(style) { fogLook.style = style === 'light' ? 'light' : 'dark'; G.uFogLight.value = fogLook.style === 'light' ? 1 : 0; },
   setTimeScale(k) { timeScale = Math.max(0.01, Math.min(4, k)); }, get timeScale() { return timeScale; },
   // camera used for rendering / picking / projections: the orbit camera (through the rig), a slow-motion shot
   // camera or the orthographic map camera (mapMode.js); null or `camera` = the orbit camera

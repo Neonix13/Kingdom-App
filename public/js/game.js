@@ -825,11 +825,13 @@ function render() {
 
   if (gameState && gameState.phase === 'battle') {
     const fogDist = fogDistances(gameState.visibleHexes);
+    const fogLight = (window.kbFogStyle || JSON.parse(localStorage.getItem('kb_view3d_settings') || '{}').fogStyle) === 'light';
     for (const { q, r, key } of mapHexes) {
       const { x, y } = hexToPixel(q, r);
       const isVisible = visibleSet.has(key);
       const isHovered = hoveredHex && hoveredHex.q === q && hoveredHex.r === r;
-      let fill = isVisible ? 'rgba(0,0,0,0)' : `rgba(4,3,3,${(0.55 + 0.42 * (1 - Math.exp(-((fogDist.get(key) || FOG_DIST_MAX) - 1) / 12))).toFixed(3)})`;
+      const fogFar = 1 - Math.exp(-((fogDist.get(key) || FOG_DIST_MAX) - 1) / 12);
+      let fill = isVisible ? 'rgba(0,0,0,0)' : `rgba(4,3,3,${(fogLight ? 0.42 + 0.14 * fogFar : 0.55 + 0.42 * fogFar).toFixed(3)})`;
       let stroke = isVisible ? `rgba(${gridColorRGB},${gridOpacity})` : 'rgba(0,0,0,0)';
       if (isVisible && movableTiles.has(key)) fill = 'rgba(255,255,255,0.22)';
       if (abilityTiles.has(key)) fill = 'rgba(47,95,168,0.45)';

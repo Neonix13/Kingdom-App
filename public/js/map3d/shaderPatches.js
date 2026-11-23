@@ -11,6 +11,7 @@ export const G = {
   uWindDir: { value: new THREE.Vector2(0.82, 0.57) },
   uWindStrength: { value: 1.0 },
   uFogOn: { value: 0 },
+  uFogLight: { value: 0 },
   uVisA: { value: null },
   uVisB: { value: null },
   uVisMix: { value: 1 },
@@ -25,6 +26,7 @@ export const G = {
 export const WAR_FOG_PARS = /* glsl */`
 #define KB_WARFOG 1
 uniform float uFogOn;
+uniform float uFogLight;
 // set by applyWarFog, read by fog_fragment: the atmospheric fog is darkened over hidden ground too
 float kbWarHidden = 0.0;
 float kbWarKeep = 1.0;
@@ -41,13 +43,20 @@ vec3 applyWarFog( vec3 c, vec3 wp, float t, sampler2D noiseTex ) {
   if ( hidden < 0.002 ) return c;
   float near = vv.g;
   kbWarHidden = hidden;
-  kbWarKeep = 0.3 * near;
   float l = dot( c, vec3( 0.3, 0.59, 0.11 ) );
-  // soft start: just past the edge the ground keeps half its light and some colour, then fades exponentially to black
-  vec3 fogged = mix( vec3( l ), c, 0.15 + 0.25 * near ) * ( 0.5 * near ) + vec3( 0.008, 0.012, 0.022 ) * near;
   float mist = texture2D( noiseTex, wp.xz * 0.045 + t * vec2( 0.012, 0.007 ) ).g * 0.6
              + texture2D( noiseTex, wp.xz * 0.11 - t * vec2( 0.009, 0.014 ) ).b * 0.4;
-  fogged += vec3( 0.06, 0.068, 0.085 ) * smoothstep( 0.35, 0.85, mist ) * near;
+  float wisp = smoothstep( 0.35, 0.85, mist );
+  vec3 fogged;
+  if ( uFogLight > 0.5 ) {
+    // light: hidden ground keeps about a third of its light and some colour, a little darker far away, never black
+    kbWarKeep = 0.8 + 0.2 * near;
+    fogged = mix( vec3( l ), c, 0.3 + 0.2 * near ) * ( 0.32 + 0.16 * near ) + vec3( 0.012, 0.016, 0.024 ) + vec3( 0.05, 0.056, 0.07 ) * wisp;
+  } else {
+    // dark, soft start: just past the edge the ground keeps half its light and some colour, then fades exponentially to black
+    kbWarKeep = 0.3 * near;
+    fogged = mix( vec3( l ), c, 0.15 + 0.25 * near ) * ( 0.5 * near ) + ( vec3( 0.008, 0.012, 0.022 ) + vec3( 0.06, 0.068, 0.085 ) * wisp ) * near;
+  }
   return mix( c, fogged, hidden );
 }
 `;
@@ -117,7 +126,7 @@ export function patchLit(material, opts = {}, extra = null, cacheKey = '') {
     shader.uniforms.uCloudHeight = G.uCloudHeight;
     shader.uniforms.uWindDir = G.uWindDir;
     shader.uniforms.uWindStrength = G.uWindStrength;
-    for (const k of ['uFogOn', 'uVisA', 'uVisB', 'uVisMix', 'uVisBounds', 'uOcc', 'uOccOn']) shader.uniforms[k] = G[k];
+    for (const k of ['uFogOn', 'uFogLight', 'uVisA', 'uVisB', 'uVisMix', 'uVisBounds', 'uOcc', 'uOccOn']) shader.uniforms[k] = G[k];
 
     let defs = '';
     if (o.wind) defs += `#define PATCH_WIND\n#define WIND_BEND ${o.windBend.toFixed(4)}\n#define WIND_FREQ ${o.windFreq.toFixed(3)}\n#define WIND_FLUTTER ${o.flutter.toFixed(4)}\n${o.flutter > 0 ? '#define PATCH_FLUTTER\n' : ''}`;

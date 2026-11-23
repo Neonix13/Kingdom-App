@@ -32,7 +32,7 @@ export function createWaterMaterial({ fineTex, fineBounds, coarseTex, coarseBoun
   uniforms.uSunColor.value.copy(sunColor);
   uniforms.uTime = G.uTime;
   uniforms.uNoise = G.uNoise;
-  for (const k of ['uFogOn', 'uVisA', 'uVisB', 'uVisMix', 'uVisBounds']) uniforms[k] = G[k];
+  for (const k of ['uFogOn', 'uFogLight', 'uVisA', 'uVisB', 'uVisMix', 'uVisBounds']) uniforms[k] = G[k];
 
   return new THREE.ShaderMaterial({
     uniforms,
