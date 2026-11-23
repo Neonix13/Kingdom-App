@@ -35,15 +35,16 @@ uniform vec4 uVisBounds;
 vec3 applyWarFog( vec3 c, vec3 wp, float t, sampler2D noiseTex ) {
   if ( uFogOn < 0.5 ) return c;
   vec2 vuv = ( wp.xz - uVisBounds.xy ) / uVisBounds.zw;
-  // r: visible, g: closeness to the visible area (1 at its edge, 0 at ~16 hexes and beyond: full black)
+  // r: visible, g: closeness to the visible area (1 at its edge, fading exponentially to black with distance)
   vec2 vv = mix( texture2D( uVisA, vuv ).rg, texture2D( uVisB, vuv ).rg, uVisMix );
   float hidden = 1.0 - vv.r;
   if ( hidden < 0.002 ) return c;
-  float near = smoothstep( 0.0, 1.0, vv.g );
+  float near = vv.g;
   kbWarHidden = hidden;
   kbWarKeep = 0.3 * near;
   float l = dot( c, vec3( 0.3, 0.59, 0.11 ) );
-  vec3 fogged = mix( vec3( l ), c, 0.15 ) * 0.27 * near + vec3( 0.008, 0.012, 0.022 ) * near;
+  // soft start: just past the edge the ground keeps half its light and some colour, then fades exponentially to black
+  vec3 fogged = mix( vec3( l ), c, 0.15 + 0.25 * near ) * ( 0.5 * near ) + vec3( 0.008, 0.012, 0.022 ) * near;
   float mist = texture2D( noiseTex, wp.xz * 0.045 + t * vec2( 0.012, 0.007 ) ).g * 0.6
              + texture2D( noiseTex, wp.xz * 0.11 - t * vec2( 0.009, 0.014 ) ).b * 0.4;
   fogged += vec3( 0.06, 0.068, 0.085 ) * smoothstep( 0.35, 0.85, mist ) * near;

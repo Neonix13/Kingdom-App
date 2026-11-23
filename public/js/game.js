@@ -829,7 +829,7 @@ function render() {
       const { x, y } = hexToPixel(q, r);
       const isVisible = visibleSet.has(key);
       const isHovered = hoveredHex && hoveredHex.q === q && hoveredHex.r === r;
-      let fill = isVisible ? 'rgba(0,0,0,0)' : `rgba(4,3,3,${(0.8 + 0.2 * Math.min(1, ((fogDist.get(key) || FOG_DIST_MAX) - 1) / (FOG_DIST_MAX - 1))).toFixed(3)})`;
+      let fill = isVisible ? 'rgba(0,0,0,0)' : `rgba(4,3,3,${(0.55 + 0.42 * (1 - Math.exp(-((fogDist.get(key) || FOG_DIST_MAX) - 1) / 12))).toFixed(3)})`;
       let stroke = isVisible ? `rgba(${gridColorRGB},${gridOpacity})` : 'rgba(0,0,0,0)';
       if (isVisible && movableTiles.has(key)) fill = 'rgba(255,255,255,0.22)';
       if (abilityTiles.has(key)) fill = 'rgba(47,95,168,0.45)';
@@ -2501,6 +2501,23 @@ let replayChunks = null;
 let replayAction = null;
 let replayWindow = null;
 
+// The end screen waits until the last actions have been seen: resolution playback, unit moves, slow-motion shot, combat card
+function showRecapWhenSettled(data) {
+  const t0 = Date.now();
+  let calmSince = null;
+  const check = () => {
+    const busy = (window.KBSim && KBSim.playbackInfo && KBSim.playbackInfo())
+      || Object.keys(unitAnimations).length > 0
+      || (window.view3d && window.view3d.active && window.view3d.cinematicBusy)
+      || document.body.classList.contains('hud-splash-on');
+    if (busy) calmSince = null;
+    else if (calmSince == null) calmSince = Date.now();
+    if ((calmSince != null && Date.now() - calmSince >= 1500) || Date.now() - t0 > 60000) showRecap(data);
+    else setTimeout(check, 200);
+  };
+  setTimeout(check, 300);
+}
+
 function showRecap(data) {
   const recap = data.recap;
   document.getElementById('gameover-msg').textContent = data.winnerName ? `${data.winnerName} remporte la bataille !` : 'Match nul !';
@@ -3515,7 +3532,7 @@ function wsDispatch(event, data) {
       break;
     }
     case 'game_over':
-      showRecap(data);
+      showRecapWhenSettled(data);
       break;
     case 'replay_chunk':
       onReplayChunk(data);

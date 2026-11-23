@@ -17,9 +17,9 @@ export function createKillCam(world, { enabled = () => true, blocked = () => fal
   document.head.appendChild(style);
   const bars = ['top', 'bot'].map((c) => { const d = document.createElement('div'); d.className = 'kc-bar ' + c; document.body.appendChild(d); return d; });
 
-  const DUR = 2.3;        // real seconds
-  const SLOW = 0.25;      // ×4
-  const COOLDOWN = 6000;  // ms between two shots
+  const DUR = 5.5;        // real seconds
+  const SLOW = 0.08;      // ×12.5
+  const COOLDOWN = 9000;  // ms between two shots
   let shot = null, last = -Infinity, pending = null;
   const look = new T.Vector3(), tmp = new T.Vector3();
 
@@ -101,6 +101,7 @@ export function createKillCam(world, { enabled = () => true, blocked = () => fal
 
   return {
     get active() { return !!shot; },
+    get busy() { return !!shot || !!pending; },
     // victim / attacker: world positions; delay: real seconds before the cut (lets the blows land in slow motion)
     trigger(victim, from, { delay = 0 } = {}) {
       const now = performance.now();

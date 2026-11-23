@@ -708,6 +708,8 @@
   function nextTick() {
     const pb = st.playback;
     if (!pb) return;
+    // a slow-motion shot is running: the timeline waits for it
+    if (window.view3d && window.view3d.active && window.view3d.cinematicBusy) { pb.timer = setTimeout(nextTick, 150); return; }
     if (pb.index >= pb.data.ticks.length) { pb.timer = setTimeout(() => finishPlayback(false), 400); return; }
     const tk = pb.data.ticks[pb.index++];
     emitLocal('playback_tick', { turn: pb.data.turn, t: tk.t, index: pb.index - 1 });

@@ -52,6 +52,7 @@ export function createBoardLayers(world) {
 
   // Hidden hexes grouped by distance (1..FOG_STEPS) to the nearest visible hex
   const FOG_STEPS = 100;
+  const FOG_FADE_HEXES = 12; // exponential fade: brightness ×1/e every 12 hexes away from what you see
   function fogRings(visibleKeys) {
     const seen = new Set(visibleKeys);
     const rings = [[]];
@@ -90,17 +91,18 @@ export function createBoardLayers(world) {
     ctx.filter = `blur(${(0.6 * VIS_PPU).toFixed(1)}px)`;
     for (let d = FOG_STEPS; d >= 1; d--) {
       if (!rings[d] || !rings[d].length) continue;
-      ctx.fillStyle = `rgb(0,${Math.round(255 * (1 - (d - 1) / FOG_STEPS))},0)`;
+      ctx.fillStyle = `rgb(0,${Math.round(255 * Math.exp(-(d - 1) / FOG_FADE_HEXES))},0)`;
       ctx.beginPath();
       for (const [q, r] of rings[d]) hexPath(ctx, visP, q, r, 1.08);
       ctx.fill();
     }
-    ctx.filter = `blur(${(0.28 * VIS_PPU).toFixed(1)}px)`;
+    // soft edge: the visible area is drawn slightly shrunk and widely blurred, so the fog starts a little inside it
+    ctx.filter = `blur(${(0.55 * VIS_PPU).toFixed(1)}px)`;
     ctx.fillStyle = '#fff';
     ctx.beginPath();
     for (const k of arr) {
       const [q, r] = k.split(',').map(Number);
-      hexPath(ctx, visP, q, r, 1.04);
+      hexPath(ctx, visP, q, r, 0.94);
     }
     ctx.fill();
     ctx.filter = 'none';
