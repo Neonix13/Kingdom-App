@@ -712,7 +712,9 @@ export function instanced(geo, mat, items, { castShadow = false, receiveShadow =
 // distance to the camera. levels: [{ geo, mat, maxDist, castShadow? }] near to far; a chunk beyond every maxDist is hidden.
 // Call group.userData.update(cameraPosition) every frame (cheap: one distance per chunk); it returns true when a
 // shadow-casting chunk changed level, i.e. when the shadow map must be redrawn to match what is shown.
-export function chunkedInstances(items, levels, { size = 10, receiveShadow = true, pad = 0.6 } = {}) {
+// fade (two levels): across fade on each side of the switch distance, both levels are drawn and each tree is blended
+// from one to the other by a screen-space dither (shaderPatches: PATCH_LODFADE), instead of a whole chunk popping
+export function chunkedInstances(items, levels, { size = 10, receiveShadow = true, pad = 0.6, fade = 0 } = {}) {
   const group = new THREE.Group();
   const cells = new Map();
   for (const it of items) {
@@ -743,6 +745,20 @@ export function chunkedInstances(items, levels, { size = 10, receiveShadow = tru
     for (const c of chunks) {
       const dx = Math.max(c.x0 - cam.x, 0, cam.x - c.x1), dz = Math.max(c.z0 - cam.z, 0, cam.z - c.z1);
       const d = Math.hypot(dx, cam.y - c.y, dz);
+      if (fade && levels.length === 2) {
+        // farthest point of the chunk: the chunk spans [d, dFar]; each level is drawn where some of its trees need it
+        const fx = Math.max(Math.abs(c.x0 - cam.x), Math.abs(c.x1 - cam.x)), fz = Math.max(Math.abs(c.z0 - cam.z), Math.abs(c.z1 - cam.z));
+        const dFar = Math.hypot(fx, cam.y - c.y, fz) + pad;
+        const sw = levels[0].maxDist;
+        G.uLodFade.value.set(sw, fade, 0);
+        const near = d <= sw + fade, far = dFar >= sw - fade;
+        const sig = (near ? 1 : 0) + (far ? 2 : 0);
+        if (sig === c.lvl) continue;
+        c.meshes[0].visible = near; c.meshes[1].visible = far;
+        c.lvl = sig;
+        changed = true;
+        continue;
+      }
       let li = levelAt(d);
       // small hysteresis so a chunk on a boundary does not flicker between levels
       if (c.lvl >= -1 && li !== c.lvl && (levelAt(d - 1.5) === c.lvl || levelAt(d + 1.5) === c.lvl)) li = c.lvl;

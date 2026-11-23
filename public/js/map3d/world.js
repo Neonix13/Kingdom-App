@@ -1377,6 +1377,11 @@ const treeMatBroad = vegMat({ wind: true, windBend: 0.06, windFreq: 1.3, flutter
 // flat-shaded model: no leaf flutter (its faces would come apart), the whole crown still sways
 const treeMatModel = vegMat({ wind: true, windBend: 0.06, windFreq: 1.3, flutter: 0, clearOnUnits: true }, 'broad-model', VEG.treeTexturePatch('broad'));
 const bushMat = vegMat({ wind: true, windBend: 0.5, windFreq: 1.6, clearOnUnits: true }, 'bush-tex2', VEG.treeTexturePatch('bush'));
+// the same tree materials in a detailed / simplified pair, blended across the level-of-detail band (no popping)
+const fadePair = (opts, key, extra) => ({ near: vegMat({ ...opts, lodSide: 1 }, key + '-n', extra), far: vegMat({ ...opts, lodSide: -1 }, key + '-f', extra) });
+const coniferPair = fadePair({ wind: true, windBend: 0.045, windFreq: 1.1, flutter: 0.004, clearOnUnits: true }, 'conifer-tex2', VEG.treeTexturePatch('conifer'));
+const broadPair = fadePair({ wind: true, windBend: 0.06, windFreq: 1.3, flutter: 0.008, clearOnUnits: true }, 'broad-tex2', VEG.treeTexturePatch('broad'));
+const modelPair = fadePair({ wind: true, windBend: 0.06, windFreq: 1.3, flutter: 0, clearOnUnits: true }, 'broad-model', VEG.treeTexturePatch('broad'));
 const grassMat = vegMat({ wind: true, windBend: 6.0, windFreq: 1.6, fadeNear: 22, fadeFar: 40, noFlip: true }, 'grass-v2', VEG.grassPatch);
 grassMat.side = THREE.DoubleSide;
 const wheatMat = vegMat({ wind: true, windBend: 3.0, windFreq: 1.5, fadeNear: 55, fadeFar: 85, noFlip: true, clearOnUnits: true }, 'wheat');
@@ -1617,15 +1622,17 @@ const vegChunks = (items, levels, opts) => {
   g.userData.update(camera.position);
   return g;
 };
+// trees blend into their simplified version across a band of distance (no chunk popping)
+const TREE_FADE = { fade: 6 };
 const lodLevels = (geo, lodGeo, mat) => [
-  { geo, mat, castShadow: true, get maxDist() { return treeLod.dist; } },
-  { geo: lodGeo, mat, castShadow: true, maxDist: Infinity },
+  { geo, mat: mat.near || mat, castShadow: true, get maxDist() { return treeLod.dist; } },
+  { geo: lodGeo, mat: mat.far || mat, castShadow: true, maxDist: Infinity },
 ];
 [0, 1].forEach((v) => {
-  vegGroup.add(vegChunks(conifers[v], lodLevels(VEG.makeConiferGeometry(v), VEG.makeConiferGeometry(v, 1), treeMatConifer)));
-  vegGroup.add(vegChunks(broads[v], lodLevels(broadNear[v], broadFar[v], treeMatBroad)));
+  vegGroup.add(vegChunks(conifers[v], lodLevels(VEG.makeConiferGeometry(v), VEG.makeConiferGeometry(v, 1), coniferPair), TREE_FADE));
+  vegGroup.add(vegChunks(broads[v], lodLevels(broadNear[v], broadFar[v], broadPair), TREE_FADE));
 });
-if (broadModel) vegGroup.add(vegChunks(broads[2], lodLevels(broadNear[2], broadFar[2], treeMatModel)));
+if (broadModel) vegGroup.add(vegChunks(broads[2], lodLevels(broadNear[2], broadFar[2], modelPair), TREE_FADE));
 const farTrees = new THREE.Group();
 farTrees.add(vegChunks(farConifers, [{ geo: VEG.makeConiferGeometry(0, 1), mat: treeMatConifer, castShadow: true, maxDist: Infinity }], { size: 30 }));
 farTrees.add(vegChunks(farBroads, [{ geo: VEG.makeBroadleafGeometry(0, 1), mat: treeMatBroad, castShadow: true, maxDist: Infinity }], { size: 30 }));

@@ -22,6 +22,8 @@ export const G = {
   uOverlayBounds: { value: new THREE.Vector4(0, 0, 1, 1) },
   uSunDir: { value: new THREE.Vector3(0, 1, 0) },
   uSunCol: { value: new THREE.Color(1, 1, 1) },
+  // tree level-of-detail cross-fade: x = switch distance, y = half width of the band, z = which level is drawn (1 near, -1 far, 0 none)
+  uLodFade: { value: new THREE.Vector3(30, 4, 0) },
 };
 
 // Fog of war, applied after lighting to every patched material (and the water shader)
@@ -115,6 +117,7 @@ export function patchLit(material, opts = {}, extra = null, cacheKey = '') {
     fadeNear: 0,
     fadeFar: 0,
     noFlip: false,
+    lodSide: 0,
     clearOnUnits: false,
     ...opts,
   };
@@ -128,6 +131,7 @@ export function patchLit(material, opts = {}, extra = null, cacheKey = '') {
     shader.uniforms.uCloudHeight = G.uCloudHeight;
     shader.uniforms.uWindDir = G.uWindDir;
     shader.uniforms.uWindStrength = G.uWindStrength;
+    shader.uniforms.uLodFade = G.uLodFade;
     for (const k of ['uFogOn', 'uFogLight', 'uVisA', 'uVisB', 'uVisMix', 'uVisBounds', 'uOcc', 'uOccOn']) shader.uniforms[k] = G[k];
 
     let defs = '';
@@ -136,6 +140,8 @@ export function patchLit(material, opts = {}, extra = null, cacheKey = '') {
     if (o.cloud) defs += '#define PATCH_CLOUD\n';
     if (o.noFlip) defs += '#define PATCH_NOFLIP\n';
     if (o.clearOnUnits) defs += '#define PATCH_OCC\n';
+    // lodSide: 1 = detailed level, -1 = simplified level of a tree, blended across the switch band (uLodFade)
+    if (o.lodSide) defs += `#define PATCH_LODFADE\n#define LOD_SIDE ${o.lodSide > 0 ? '1.0' : '-1.0'}\n`;
 
     shader.vertexShader = shader.vertexShader.replace('#include <common>', `${defs}
 #include <common>
@@ -147,6 +153,10 @@ uniform sampler2D uOcc;
 uniform float uOccOn;
 uniform vec4 uVisBounds;
 varying vec3 vPWorld;
+#ifdef PATCH_LODFADE
+uniform vec3 uLodFade;
+varying float vLodK;
+#endif
 `);
 
     shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
@@ -177,6 +187,12 @@ varying vec3 vPWorld;
       transformed *= 1.0 - 0.82 * _occ;
     }
   #endif
+  #ifdef PATCH_LODFADE
+    // each tree switches level at its own distance inside the band (stable per instance): no chunk popping, no dither
+    float _lk = clamp( ( distance( cameraPosition, _ipw ) - ( uLodFade.x - uLodFade.y ) ) / max( 2.0 * uLodFade.y, 1e-3 ), 0.0, 1.0 );
+    float _lr = fract( sin( dot( _ipw.xz, vec2( 12.9898, 78.233 ) ) ) * 43758.5453 );
+    vLodK = step( _lr, _lk );
+  #endif
   #ifdef PATCH_FADE
     float _cd = distance( cameraPosition, _ipw );
     transformed *= 1.0 - smoothstep( FADE_NEAR, FADE_FAR, _cd );
@@ -195,6 +211,11 @@ varying vec3 vPWorld;
 }
 `);
 
+    shader.fragmentShader = shader.fragmentShader.replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+#ifdef PATCH_LODFADE
+if ( LOD_SIDE > 0.0 ? vLodK > 0.5 : vLodK < 0.5 ) discard;
+#endif
+`);
     shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `${defs}
 #include <common>
 uniform float uTime;
@@ -205,6 +226,10 @@ uniform vec2 uCloudSpeed;
 uniform vec2 uCloudShift;
 uniform float uCloudHeight;
 varying vec3 vPWorld;
+#ifdef PATCH_LODFADE
+uniform vec3 uLodFade;
+varying float vLodK;
+#endif
 ${WAR_FOG_PARS}
 float cloudDensity( vec2 xz ) {
   vec2 p = xz * uCloudScale;
