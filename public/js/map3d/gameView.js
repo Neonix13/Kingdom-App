@@ -438,6 +438,7 @@ export async function mountGameView(bridge, { container }) {
 
   view = {
     get cinematicBusy() { return killCam.busy; },
+    get units3d() { return units3d; },
     active: false,
     world,
     markDirty() { dirty = true; },

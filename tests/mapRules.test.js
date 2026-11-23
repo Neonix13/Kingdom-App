@@ -63,3 +63,26 @@ test('serveur : sur le Col de Kankoku, un fantassin ne monte sur le mur que par 
   assert.ok(onto > 0);
   assert.strictEqual(room.segmentData[keyE(steps[onto - 1], steps[onto])], 'escalier');
 });
+
+test('cartes : deux cases voisines ne diffèrent jamais de plus de 2 niveaux sans falaise, escalier ou mur entre elles', () => {
+  const maps = require('../game/maps');
+  const rules = require('../game/rules');
+  const D = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
+  for (const { id } of maps.listMaps()) {
+    const m = maps.getMap(id);
+    const H = m.height || {};
+    const seg = m.segments || {};
+    const walls = new Set([...((m.decor && m.decor.ramparts) || []), ...((m.decor && m.decor.props) || []).filter((p) => p.type === 'porte').map((p) => `${p.q},${p.r}`)]);
+    const bad = [];
+    for (const k of Object.keys(H)) {
+      const [q, r] = k.split(',').map(Number);
+      for (const [a, b] of D) {
+        const nk = `${q + a},${r + b}`;
+        if (!(nk in H) || nk < k || Math.abs(H[k] - H[nk]) <= 2) continue;
+        if (seg[rules.edgeKey(q, r, q + a, r + b)] || walls.has(k) || walls.has(nk)) continue;
+        bad.push(`${k}|${nk}`);
+      }
+    }
+    assert.deepStrictEqual(bad, [], `${id} : écarts de plus de 2 niveaux sans falaise`);
+  }
+});

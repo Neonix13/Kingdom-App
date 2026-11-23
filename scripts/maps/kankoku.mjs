@@ -3,7 +3,8 @@
 // levels above the floor, sheer faces on both sides, stone stairs up from the courtyard) and the double gate (barriers).
 // East: the plain where the coalition camps, crossed by a river (one bridge). North of the gorge: a plateau overlooking
 // the walls. Flanks: two narrow defiles through the massifs (north: stone stairs; south: the old trail and its ladder),
-// long and slow, overlooked by Qin lookouts — infantry only.
+// long and slow, overlooked by Qin lookouts — infantry only. They are three hexes wide (a column can pass and turn),
+// walled by rock faces; no two neighbouring hexes differ by more than two levels unless a cliff or a wall stands between.
 // A continuous cliff line runs along the wall through both massifs: gates, stairs and the ladder are the only crossings.
 // The defiles are tracks of flat landings joined by one-level steps (decor.paths draws them as dirt tracks); any drop of
 // two levels or more is a cliff for the rules (automatic cliffs, mapProps.effectiveSegments).
@@ -267,6 +268,34 @@ function wallIn(path, from, to, skip = new Set()) {
     }
   }
 }
+// Widens a defile to three hexes: every free neighbour of the track (away from the wall line, where the crossing stays a
+// single stairs / ladder edge) joins it at the level of the track hex it touches (the lowest one). Returns the added hexes.
+function widen(path, from = 0, to = path.length - 1, skip = new Set()) {
+  const inPath = new Set(path.map((h) => key(h.q, h.r)));
+  const added = new Map();
+  for (let i = Math.max(0, from); i <= Math.min(path.length - 1, to); i++) {
+    const p = path[i];
+    if (p.c === GATE_C || p.c === GATE_C + 1) continue;
+    for (const n of neighbors(p)) {
+      const nk = key(n.q, n.r);
+      if (inPath.has(nk) || skip.has(nk) || passageHexes.has(nk) || n.lookout) continue;
+      if (n.c === GATE_C || n.c === GATE_C + 1) continue;
+      if (n.valley || rampartSet.has(nk) || gateSet.has(nk) || n.plateau || ['river', 'road', 'bridge'].includes(n.terrain)) continue;
+      const h = added.has(nk) ? Math.min(added.get(nk).h, p.h) : p.h;
+      added.set(nk, { n, h });
+    }
+  }
+  const out = [];
+  for (const [nk, { n, h }] of added) {
+    n.h = h;
+    n.passage = true;
+    if (!n.valley) n.terrain = 'plain';
+    fixed.add(nk);
+    passageHexes.add(nk);
+    out.push(n);
+  }
+  return out;
+}
 function lookoutOver(path, i) {
   const p = path[i];
   const inPath = new Set(path.map((h) => key(h.q, h.r)));
@@ -300,7 +329,9 @@ if (nci < 0) throw new Error('le défilé nord ne traverse pas la ligne du mur')
   setSeg(a, b, 'escalier');
   cliffEdges.add(edgeKey(key(a.q, a.r), key(b.q, b.r)));
   const lk = lookoutOver(northPath, Math.min(n - 2, nci + 2));
-  wallIn(northPath, 1, n - 2, new Set(lk ? [key(lk.q, lk.r)] : []));
+  const skipN = new Set(lk ? [key(lk.q, lk.r)] : []);
+  const wideN = widen(northPath, 1, n - 2, skipN);
+  wallIn([northPath[0], ...wideN, ...northPath.slice(1)], 1, n - 2 + wideN.length, skipN);
 }
 // south: the old mountain trail becomes a defile around its ladder, with a lookout above it
 {
@@ -308,7 +339,10 @@ if (nci < 0) throw new Error('le défilé nord ne traverse pas la ligne du mur')
   for (const h of trail) passageHexes.add(key(h.q, h.r));
   const west = trail[li].c < trail[li - 1].c ? 1 : -1;
   const lk = lookoutOver(trail, Math.max(1, Math.min(trail.length - 2, li + 2 * west)));
-  wallIn(trail, li - 7, li + 6, new Set(lk ? [key(lk.q, lk.r)] : []));
+  const skipS = new Set(lk ? [key(lk.q, lk.r)] : []);
+  const wideS = widen(trail, li - 7, li + 6, skipS);
+  const seg = trail.slice(Math.max(0, li - 8), Math.min(trail.length, li + 8));
+  wallIn([seg[0], ...wideS, ...seg.slice(1)], 1, seg.length - 2 + wideS.length, skipS);
 }
 
 // --- river: from the north edge through a cleft, across the plain (one bridge on the road), out by the south edge ---
@@ -346,7 +380,7 @@ for (let it = 0; it < 30; it++) {
 for (const h of hexes.values()) for (const n of neighbors(h)) {
   if (h.h - n.h >= 2) {
     const ek = edgeKey(key(h.q, h.r), key(n.q, n.r));
-    if (!segments[ek] && !softEdges.has(ek)) { segments[ek] = 'cliff'; }
+    if (!segments[ek] && (!softEdges.has(ek) || h.h - n.h > 2)) { segments[ek] = 'cliff'; }
   }
 }
 
