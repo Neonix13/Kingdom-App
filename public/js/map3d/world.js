@@ -807,6 +807,86 @@ const cornerHeights = new Map();
     }
   }
 
+  // Rounder relief ("Total War" style): every ground triangle is split in four, then the heights of the free vertices are
+  // relaxed toward their neighbours, which rounds slope shoulders and feet. Pinned (never moved): hex centres (the rule
+  // height where units stand), cliff splits (two vertices at the same place), water, streams, buildings, bridges, walls,
+  // gates and stairs. The heightfield below is rasterised from this mesh, so units and picking follow the new shape.
+  {
+    const P = positions, n0 = P.length / 3;
+    const rigidHex = (k) => {
+      const h = allHexes.get(k);
+      if (!h) return false;
+      return rampartSet.has(k) || gateHexSet.has(k) || stairHexSet.has(k) || ['building', 'bridge', 'river'].includes(h.terrain) || isWaterHex(h);
+    };
+    const pin = new Uint8Array(n0);
+    for (const vi of centerMap.values()) pin[vi] = 1;
+    const byXZ = new Map();
+    for (let i = 0; i < n0; i++) {
+      const k = `${Math.round(P[i * 3] * 500)},${Math.round(P[i * 3 + 2] * 500)}`;
+      const o = byXZ.get(k);
+      if (o === undefined) byXZ.set(k, i);
+      else if (Math.abs(P[o * 3 + 1] - P[i * 3 + 1]) > 0.01) { pin[o] = 1; pin[i] = 1; }
+      else { pin[o] |= pin[i]; }
+    }
+    for (let i = 0; i < n0; i++) {
+      if (pin[i]) continue;
+      const x = P[i * 3], z = P[i * 3 + 2];
+      if (streamCornerKeys.has(getCornerKey(x, z))) { pin[i] = 1; continue; }
+      const h = worldToHex(x, z);
+      const near = [[0, 0], ...HEX_DIRS].some(([dq, dr]) => {
+        const k = `${h.q + dq},${h.r + dr}`;
+        if (!rigidHex(k)) return false;
+        const c = hexToWorld(h.q + dq, h.r + dr);
+        return Math.hypot(c.x - x, c.z - z) <= HEX_SIZE * 1.02;
+      });
+      if (near) pin[i] = 1;
+    }
+    // midpoint subdivision (attributes: averaged; terrain blend ids taken from the first end when they differ)
+    const mid = new Map();
+    const pinOut = Array.from(pin);
+    const midpoint = (a, b) => {
+      const key = a < b ? `${a}_${b}` : `${b}_${a}`;
+      let m = mid.get(key);
+      if (m !== undefined) return m;
+      m = positions.length / 3;
+      for (let c = 0; c < 3; c++) positions.push((P[a * 3 + c] + P[b * 3 + c]) / 2);
+      for (let c = 0; c < 3; c++) colors.push((colors[a * 3 + c] + colors[b * 3 + c]) / 2);
+      const same = tBlendIds[a * 3] === tBlendIds[b * 3] && tBlendIds[a * 3 + 1] === tBlendIds[b * 3 + 1] && tBlendIds[a * 3 + 2] === tBlendIds[b * 3 + 2];
+      for (let c = 0; c < 3; c++) tBlendIds.push(tBlendIds[a * 3 + c]);
+      for (let c = 0; c < 3; c++) tBlendWeights.push(same ? (tBlendWeights[a * 3 + c] + tBlendWeights[b * 3 + c]) / 2 : tBlendWeights[a * 3 + c]);
+      pinOut.push(pin[a] && pin[b] ? 1 : 0);
+      mid.set(key, m);
+      return m;
+    };
+    const tri = indices.slice();
+    indices.length = 0;
+    for (let t = 0; t < tri.length; t += 3) {
+      const a = tri[t], b = tri[t + 1], c = tri[t + 2];
+      const ab = midpoint(a, b), bc = midpoint(b, c), ca = midpoint(c, a);
+      indices.push(a, ab, ca, ab, b, bc, ca, bc, c, ab, bc, ca);
+    }
+    // Laplacian relaxation of the heights of the free vertices
+    const N = positions.length / 3;
+    const adj = Array.from({ length: N }, () => []);
+    for (let t = 0; t < indices.length; t += 3) {
+      const v = [indices[t], indices[t + 1], indices[t + 2]];
+      for (let i = 0; i < 3; i++) { adj[v[i]].push(v[(i + 1) % 3]); adj[v[i]].push(v[(i + 2) % 3]); }
+    }
+    const y = new Float32Array(N);
+    for (let i = 0; i < N; i++) y[i] = positions[i * 3 + 1];
+    for (let it = 0; it < 4; it++) {
+      const ny = Float32Array.from(y);
+      for (let i = 0; i < N; i++) {
+        if (pinOut[i] || !adj[i].length) continue;
+        let s = 0;
+        for (const j of adj[i]) s += y[j];
+        ny[i] = y[i] + 0.55 * (s / adj[i].length - y[i]);
+      }
+      y.set(ny);
+    }
+    for (let i = 0; i < N; i++) positions[i * 3 + 1] = y[i];
+  }
+
   boardGeo = new THREE.BufferGeometry();
   boardGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   boardGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
