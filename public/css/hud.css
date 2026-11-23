@@ -612,3 +612,10 @@ body.hud-d #toolbar .tuto-highlight { outline: 3px solid var(--hud-red); outline
 .arrival-menu .st-chip { width: 16px; height: 16px; }
 .arrival-menu .am-none { color: #6a625a; font-style: italic; font-size: 12px; }
 .arrival-menu .am-foot { margin-top: 10px; }
+/* stance names in full: two rows of three */
+.hud-card .stances { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.hud-card .stances .hud-para { height: 26px; }
+.hud-card .stances .st-btn > span { overflow: visible; text-overflow: clip; font-size: 11px; }
+.hud-card .stances { gap: 3px; margin-top: 4px; }
+.hud-card .stances .hud-para { height: 22px; }
+.hud-card .stances .st-btn .st-chip { width: 15px; height: 15px; }
