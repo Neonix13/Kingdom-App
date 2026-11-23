@@ -325,7 +325,7 @@ export function makeConiferGeometry(variant = 0, lod = 0) {
     const apex = yb + h;
     const ox = bx * Math.min(1, yb / spec.trunk) ** 2, oz = bz * Math.min(1, yb / spec.trunk) ** 2;
     const rot = rng() * Math.PI;
-    const full = !lod && k < 3; // lower tiers: curved profile and a closed underside; upper tiers: plain stars
+    const full = !lod && k < 3; // lower tiers: curved profile; upper tiers: plain stars (all closed underneath: shadows, low views)
     const verts = [[ox, apex, oz]];
     const ring = [], midRing = [];
     for (let j = 0; j < 2 * K; j++) {
@@ -354,7 +354,7 @@ export function makeConiferGeometry(variant = 0, lod = 0) {
         idx.push(0, midBase + j2, midBase + j);
         idx.push(midBase + j, midBase + j2, outBase + j2, midBase + j, outBase + j2, outBase + j);
       }
-      if (!lod && k < 3) idx.push(under, outBase + j, outBase + j2);
+      idx.push(under, outBase + j, outBase + j2);
     }
     const g0 = new THREE.BufferGeometry();
     g0.setAttribute('position', new THREE.Float32BufferAttribute(verts.flat(), 3));
@@ -402,14 +402,13 @@ export function makeBushGeometry(lod = 0) {
 }
 
 // Short meadow tuft: a small clump of thin, tapering blades curving outward (heights in world units before scaling)
-export function makeGrassTuftGeometry(seed = 5) {
+export function makeGrassTuftGeometry(seed = 5, blades = 7, spread = 0.05) {
   const rng = makeRng(seed);
   const pos = [], nor = [], col = [];
   const base = lin(0x34501f), tip = lin(0x9bbd57), dry = lin(0xbdb46a);
-  const blades = 7;
   for (let b = 0; b < blades; b++) {
     const a = rng() * Math.PI * 2;
-    const r = 0.012 + rng() * 0.05;
+    const r = 0.012 + Math.sqrt(rng()) * spread;
     const bx = Math.cos(a) * r, bz = Math.sin(a) * r;
     const h = (0.036 + rng() * 0.036) * (rng() < 0.08 ? 1.4 : 1);
     const w = 0.0045 + rng() * 0.0035;

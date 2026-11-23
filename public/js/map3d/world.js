@@ -1328,7 +1328,7 @@ const vegMat = (opts, key, extra = null) => patchLit(new THREE.MeshStandardMater
 const treeMatConifer = vegMat({ wind: true, windBend: 0.045, windFreq: 1.1, flutter: 0.004, clearOnUnits: true }, 'conifer-tex2', VEG.treeTexturePatch('conifer'));
 const treeMatBroad = vegMat({ wind: true, windBend: 0.06, windFreq: 1.3, flutter: 0.008, clearOnUnits: true }, 'broad-tex2', VEG.treeTexturePatch('broad'));
 const bushMat = vegMat({ wind: true, windBend: 0.5, windFreq: 1.6, clearOnUnits: true }, 'bush-tex2', VEG.treeTexturePatch('bush'));
-const grassMat = vegMat({ wind: true, windBend: 6.0, windFreq: 1.6, fadeNear: 34, fadeFar: 58, noFlip: true }, 'grass-v2', VEG.grassPatch);
+const grassMat = vegMat({ wind: true, windBend: 6.0, windFreq: 1.6, fadeNear: 22, fadeFar: 40, noFlip: true }, 'grass-v2', VEG.grassPatch);
 grassMat.side = THREE.DoubleSide;
 const wheatMat = vegMat({ wind: true, windBend: 3.0, windFreq: 1.5, fadeNear: 55, fadeFar: 85, noFlip: true, clearOnUnits: true }, 'wheat');
 wheatMat.side = THREE.DoubleSide;
@@ -1559,7 +1559,8 @@ scene.add(vegGroup);
 // the shadow map is redrawn when a chunk changes level so the shadows always match the trees shown (see the render loop)
 const lodGroups = [];
 const treeLod = { dist: 30 };
-let lodTimer = 0;
+let lodTimer = 0, lodCam = null;
+const lodPrev = new THREE.Vector3();
 const vegChunks = (items, levels, opts) => {
   const g = VEG.chunkedInstances(items, levels, opts);
   lodGroups.push(g);
@@ -1583,7 +1584,11 @@ vegGroup.add(VEG.instanced(VEG.makeRockGeometry(3), rockMat, rocks, { castShadow
 vegGroup.add(VEG.instanced(VEG.makeRockGeometry(8, 'slab'), rockMat, slabs, { castShadow: true }));
 for (const w of wheat) w.s *= 0.8;
 for (const f of flowers) f.s *= 0.6;
-const grassMesh = vegChunks(grass, [{ geo: VEG.makeGrassTuftGeometry(5), mat: grassMat, maxDist: 60 }]);
+// denser tufts close to the camera, thinner ones further out (blades get sub-pixel there: faded out by 40)
+const grassMesh = vegChunks(grass, [
+  { geo: VEG.makeGrassTuftGeometry(5, 16, 0.1), mat: grassMat, maxDist: 16 },
+  { geo: VEG.makeGrassTuftGeometry(5), mat: grassMat, maxDist: 42 },
+]);
 const wheatMesh = vegChunks(wheat, [{ geo: VEG.makeWheatGeometry(9), mat: wheatMat, maxDist: 87 }]);
 const flowerMat = vegMat({ wind: true, windBend: 6.0, windFreq: 2.4, fadeNear: 30, fadeFar: 48 }, 'flower');
 const flowerMesh = vegChunks(flowers, [{ geo: VEG.makeFlowerGeometry(), mat: flowerMat, maxDist: 50 }]);
@@ -2019,6 +2024,9 @@ function animate() {
   post.display.uniforms.uStrength.value = 1 - 0.7 * (gradeNight || 0);
   // levels re-chosen a few times a second, so a moving camera costs a shadow redraw at most that often
   lodTimer -= rawDt;
+  if (viewCam !== lodCam || vp.distanceToSquared(lodPrev) > 16) lodTimer = 0;
+  lodCam = viewCam;
+  lodPrev.copy(vp);
   if (lodTimer <= 0) {
     lodTimer = 0.35;
     for (const g of lodGroups) if (g.userData.update(vp)) renderer.shadowMap.needsUpdate = true;
