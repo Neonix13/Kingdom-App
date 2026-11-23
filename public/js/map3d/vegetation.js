@@ -273,7 +273,7 @@ export function makeBroadleafGeometry(variant = 0, lod = 0) {
       y: cy + yd * crown.ry * 0.72,
       z: cz + Math.sin(phi) * rad * crown.rz * 0.78,
       r: (variant === 0 ? 0.165 : 0.145) * (0.85 + rng() * 0.4),
-      d: !lod && i < 6 ? 1 : 0,
+      d: !lod && i < 4 ? 1 : 0,
     });
   }
   const dark = lin(0x1a3313), mid = lin(0x375d25), light = lin(0x678f3e);
@@ -588,8 +588,8 @@ export function instanced(geo, mat, items, { castShadow = false, receiveShadow =
 
 // Instances split into square chunks, each frustum-culled on its own, with a level of detail per chunk chosen by its
 // distance to the camera. levels: [{ geo, mat, maxDist, castShadow? }] near to far; a chunk beyond every maxDist is hidden.
-// Call group.userData.update(cameraPosition) every frame (cheap: one distance per chunk); update(pos, true) shows the
-// first level everywhere when it casts shadows (for the frame the shadow map is redrawn).
+// Call group.userData.update(cameraPosition) every frame (cheap: one distance per chunk); it returns true when a
+// shadow-casting chunk changed level, i.e. when the shadow map must be redrawn to match what is shown.
 export function chunkedInstances(items, levels, { size = 10, receiveShadow = true, pad = 0.6 } = {}) {
   const group = new THREE.Group();
   const cells = new Map();
@@ -599,12 +599,12 @@ export function chunkedInstances(items, levels, { size = 10, receiveShadow = tru
     if (!list) cells.set(k, (list = []));
     list.push(it);
   }
+  const casts = levels.some((lv) => lv.castShadow);
   const chunks = [];
   for (const list of cells.values()) {
     let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity, y = 0;
     for (const it of list) { x0 = Math.min(x0, it.x); x1 = Math.max(x1, it.x); z0 = Math.min(z0, it.z); z1 = Math.max(z1, it.z); y += it.y; }
     const meshes = levels.map((lv) => {
-      if (!lv.geo) return null;
       const m = instanced(lv.geo, lv.mat, list, { castShadow: !!lv.castShadow, receiveShadow });
       m.computeBoundingSphere();
       m.boundingSphere.radius += pad;
@@ -613,27 +613,24 @@ export function chunkedInstances(items, levels, { size = 10, receiveShadow = tru
       group.add(m);
       return m;
     });
-    chunks.push({ x0, x1, z0, z1, y: y / list.length, meshes, cur: -2 });
+    chunks.push({ x0, x1, z0, z1, y: y / list.length, meshes, lvl: -2 });
   }
-  const forceable = !!levels[0].castShadow;
   const levelAt = (d) => { for (let i = 0; i < levels.length; i++) if (d <= levels[i].maxDist) return i; return -1; };
-  group.userData.update = (cam, force = false) => {
-    const all = force && forceable;
+  group.userData.update = (cam) => {
+    let changed = false;
     for (const c of chunks) {
-      let li = 0;
-      if (!all) {
-        const dx = Math.max(c.x0 - cam.x, 0, cam.x - c.x1), dz = Math.max(c.z0 - cam.z, 0, cam.z - c.z1);
-        const d = Math.hypot(dx, cam.y - c.y, dz);
-        li = levelAt(d);
-        // small hysteresis so a chunk on a boundary does not flicker between levels
-        if (c.cur >= -1 && li !== c.cur && (levelAt(d - 1.5) === c.cur || levelAt(d + 1.5) === c.cur)) li = c.cur;
-      }
-      if (li === c.cur) continue;
-      c.meshes.forEach((m, i) => { if (m) m.visible = i === li; });
-      c.cur = all ? -3 : li;
+      const dx = Math.max(c.x0 - cam.x, 0, cam.x - c.x1), dz = Math.max(c.z0 - cam.z, 0, cam.z - c.z1);
+      const d = Math.hypot(dx, cam.y - c.y, dz);
+      let li = levelAt(d);
+      // small hysteresis so a chunk on a boundary does not flicker between levels
+      if (c.lvl >= -1 && li !== c.lvl && (levelAt(d - 1.5) === c.lvl || levelAt(d + 1.5) === c.lvl)) li = c.lvl;
+      if (li === c.lvl) continue;
+      c.meshes.forEach((m, i) => { m.visible = i === li; });
+      c.lvl = li;
+      changed = true;
     }
+    return changed && casts;
   };
-  group.userData.chunks = chunks.length;
   return group;
 }
 

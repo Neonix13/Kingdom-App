@@ -1385,17 +1385,22 @@ for (const [key, hex] of allHexes) {
   const rng = makeRng(hex.q * 92821 + hex.r * 68917 + 7);
   const wp = hexToWorld(hex.q, hex.r);
   if (vt === 'plain' || vt === 'highland' || vt === 'road') {
-    // meadow: clumps of short tufts rather than an even sprinkle
-    const nClumps = vt === 'highland' ? 4 : 6;
-    for (let c = 0; c < nClumps; c++) {
-      const [cx, cz] = randomInHex(wp.x, wp.z, rng, 0.98);
-      const k = 3 + Math.floor(rng() * 4);
-      for (let i = 0; i < k; i++) {
-        const a = rng() * 6.28, d = rng() * rng() * 0.2;
-        const x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d;
-        const y = groundHeight(x, z);
-        if (y < WATER_LEVEL + 0.12 || y < hex.height - 0.1 || roadAt(x, z) > 0.12) continue;
-        grass.push({ x, y: y - 0.008, z, s: 0.75 + rng() * 0.55, sy: 0.75 + rng() * 0.5, ry: rng() * 6.28, color: vt === 'plain' ? mul(rng, 1.0, 1.0, 0.9, 0.25) : mul(rng, 1.2, 1.05, 0.72, 0.2) });
+    // meadow: each spot grows a small clump of short tufts (own rng, so the rest of the scatter keeps its layout)
+    const grng = makeRng(hex.q * 92821 + hex.r * 68917 + 11);
+    const n = vt === 'highland' ? 12 : 22;
+    for (let i = 0; i < n; i++) {
+      const [x, z] = randomInHex(wp.x, wp.z, rng, 1.0);
+      const y = groundHeight(x, z);
+      if (y < WATER_LEVEL + 0.12 || y < hex.height - 0.1 || roadAt(x, z) > 0.12) continue;
+      const s = 0.75 + rng() * 0.55, sy = 0.75 + rng() * 0.5, ry = rng() * 6.28;
+      const color = vt === 'plain' ? mul(rng, 1.0, 1.0, 0.9, 0.25) : mul(rng, 1.2, 1.05, 0.72, 0.2);
+      const k = grng() < 0.25 ? 3 + Math.floor(grng() * 3) : grng() < 0.4 ? 1 : 0;
+      for (let j = 0; j < k; j++) {
+        const a = grng() * 6.28, d = j ? 0.03 + grng() * grng() * 0.16 : 0;
+        const gx = x + Math.cos(a) * d, gz = z + Math.sin(a) * d;
+        const gy = j ? groundHeight(gx, gz) : y;
+        if (j && (gy < WATER_LEVEL + 0.12 || gy < hex.height - 0.1 || roadAt(gx, gz) > 0.12)) continue;
+        grass.push({ x: gx, y: gy - 0.008, z: gz, s: s * (0.85 + grng() * 0.3), sy, ry: ry + j * 1.7, color });
       }
     }
     const nf = vt === 'highland' ? 1 : 3;
@@ -1551,9 +1556,10 @@ for (const [segKey, type] of ruleSegSet) {
 const vegGroup = new THREE.Group();
 scene.add(vegGroup);
 // vegetation in chunks: each one frustum-culled, trees and bushes simplified past treeLod.dist (per quality level);
-// the shadow map, redrawn only when the light moves, always gets the detailed trees (see the render loop)
+// the shadow map is redrawn when a chunk changes level so the shadows always match the trees shown (see the render loop)
 const lodGroups = [];
-const treeLod = { dist: 34 };
+const treeLod = { dist: 30 };
+let lodTimer = 0;
 const vegChunks = (items, levels, opts) => {
   const g = VEG.chunkedInstances(items, levels, opts);
   lodGroups.push(g);
@@ -1562,7 +1568,7 @@ const vegChunks = (items, levels, opts) => {
 };
 const lodLevels = (geo, lodGeo, mat) => [
   { geo, mat, castShadow: true, get maxDist() { return treeLod.dist; } },
-  { geo: lodGeo, mat, maxDist: Infinity },
+  { geo: lodGeo, mat, castShadow: true, maxDist: Infinity },
 ];
 [0, 1].forEach((v) => {
   vegGroup.add(vegChunks(conifers[v], lodLevels(VEG.makeConiferGeometry(v), VEG.makeConiferGeometry(v, 1), treeMatConifer)));
@@ -1798,11 +1804,11 @@ function updateDof(rawDt) {
 }
 const maxDpr = Math.min(window.devicePixelRatio || 1, 2);
 const LEVELS = [
-  { name: 'Ultra', dpr: maxDpr, samples: maxDpr > 1.6 ? 2 : 4, bloom: true, post: true, grass: true, far: true, dof: true, lod: 34 },
-  { name: 'High', dpr: Math.min(maxDpr, 1.5), samples: 4, bloom: true, post: true, grass: true, far: true, dof: true, lod: 28 },
-  { name: 'Medium', dpr: Math.min(maxDpr, 1.25), samples: 2, bloom: false, post: true, grass: true, far: true, lod: 22 },
-  { name: 'Low', dpr: Math.min(maxDpr, 1.0), samples: 0, bloom: false, post: true, grass: false, far: true, lod: 17 },
-  { name: 'Minimum', dpr: 0.75, samples: 0, bloom: false, post: false, grass: false, far: false, lod: 12 },
+  { name: 'Ultra', dpr: maxDpr, samples: maxDpr > 1.6 ? 2 : 4, bloom: true, post: true, grass: true, far: true, dof: true, lod: 30 },
+  { name: 'High', dpr: Math.min(maxDpr, 1.5), samples: 4, bloom: true, post: true, grass: true, far: true, dof: true, lod: 25 },
+  { name: 'Medium', dpr: Math.min(maxDpr, 1.25), samples: 2, bloom: false, post: true, grass: true, far: true, lod: 20 },
+  { name: 'Low', dpr: Math.min(maxDpr, 1.0), samples: 0, bloom: false, post: true, grass: false, far: true, lod: 15 },
+  { name: 'Minimum', dpr: 0.75, samples: 0, bloom: false, post: false, grass: false, far: false, lod: 11 },
 ].filter((l, i, arr) => {
   if (i === 0) return true;
   const sig = (x) => [x.dpr, x.samples, x.bloom, x.post, x.grass, x.far].join();
@@ -1824,7 +1830,7 @@ function applyQuality(l) {
   flowerMesh.visible = l.grass;
   wheatMesh.visible = l.far;
   farTrees.visible = l.far;
-  treeLod.dist = l.lod || 34;
+  treeLod.dist = l.lod || 30;
   smokeMat.uniforms.uPx.value = H() * l.dpr * 0.5;
   stars.material.uniforms.uPx.value = l.dpr;
   for (const fx of nightFx) if (fx.material.uniforms.uPx) fx.material.uniforms.uPx.value = H() * l.dpr * 0.5;
@@ -2011,8 +2017,12 @@ function animate() {
   const t0 = performance.now();
   // the warm grade is eased off at night so moonlight keeps its blue and the shadows stay readable
   post.display.uniforms.uStrength.value = 1 - 0.7 * (gradeNight || 0);
-  const shadowFrame = renderer.shadowMap.needsUpdate;
-  for (const g of lodGroups) g.userData.update(vp, shadowFrame);
+  // levels re-chosen a few times a second, so a moving camera costs a shadow redraw at most that often
+  lodTimer -= rawDt;
+  if (lodTimer <= 0) {
+    lodTimer = 0.35;
+    for (const g of lodGroups) if (g.userData.update(vp)) renderer.shadowMap.needsUpdate = true;
+  }
   if (usePost) post.composer.render(dt);
   else renderer.render(scene, viewCam);
   perf.cpu = perf.cpu * 0.95 + (performance.now() - t0) * 0.05;
