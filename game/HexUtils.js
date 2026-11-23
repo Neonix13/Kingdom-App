@@ -93,7 +93,9 @@ function findPath(hexMap, unitMap, q1, r1, q2, r2, maxSpeed, playerId, unit, seg
 // Le modificateur terrain est faible → légère préférence plaines/routes
 const DEPLOY_INTER_ZONE_EXCLUSION = 8;
 
-function fixedZones(numPlayers, zones, td) {
+// maxTiles: the zone keeps only that many tiles, the ones closest to its centre (same size for every player, scaled on
+// the budget like the random zones)
+function fixedZones(numPlayers, zones, td, maxTiles = Infinity) {
   if (!Array.isArray(zones) || zones.length < numPlayers) return null;
   const picked = zones.slice(0, numPlayers).map((z, i) => {
     const tiles = (z.tiles || [])
@@ -107,7 +109,10 @@ function fixedZones(numPlayers, zones, td) {
       const d = hexDistance(t.q, t.r, Math.round(cq), Math.round(cr));
       if (d < best) { best = d; center = t; }
     }
-    return { q: center.q, r: center.r, tiles, mapZone: i };
+    const kept = tiles.length > maxTiles
+      ? tiles.slice().sort((a, b) => hexDistance(a.q, a.r, center.q, center.r) - hexDistance(b.q, b.r, center.q, center.r) || a.q - b.q || a.r - b.r).slice(0, maxTiles)
+      : tiles;
+    return { q: center.q, r: center.r, tiles: kept, mapZone: i };
   });
   return picked.every(Boolean) ? picked : null;
 }
@@ -116,10 +121,10 @@ function fixedZones(numPlayers, zones, td) {
 function getStartingZones(numPlayers, mapRadius, budget, map = maps.getMap('default')) {
   const td = getTerrainData(map);
   const sd = getSegmentData(map);
-  const fixed = fixedZones(numPlayers, map.zones, td);
-  if (fixed) return fixed;
-  // Every player gets exactly maxTiles tiles (equal zones)
+  // Every player gets exactly maxTiles tiles (equal zones), scaled on the budget
   const maxTiles = Math.floor(4 * (budget || 2500) / 1000 + 2);
+  const fixed = fixedZones(numPlayers, map.zones, td, maxTiles);
+  if (fixed) return fixed;
   return _randomZones(numPlayers, maxTiles, td, sd);
 }
 

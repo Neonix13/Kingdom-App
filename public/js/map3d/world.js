@@ -563,6 +563,8 @@ const cornerHeights = new Map();
   }
   const surfH = (h) => { const v = sunk.get(`${h.q},${h.r}`); return v === undefined ? effH(h) : v; };
 
+  const cornerIsCliffAt = (members, group) => members.length > group.length;
+
   // Step 1: per-edge transition widths
   const hexInfo = new Map();
   for (const [key, hex] of allHexes) {
@@ -579,8 +581,9 @@ const cornerHeights = new Map();
         edgeTransitions[geoEdge] = 0.55;
       } else if (Math.abs(hexH - surfH(neighbor)) > 0.01) {
         needsRing = true;
-        // cliffs are drawn as vertical rock faces on the edge itself (no band); a one-level step is a gentle slope
-        edgeTransitions[geoEdge] = isVerticalEdge(hex.q, hex.r, nq, nr) ? 0 : 0.7;
+        // cliffs are drawn as vertical rock faces on the edge itself (no band); a one-level step is a gentle grassy slope
+        // spread over both hexes (wide band, corners half-way up), so it never reads as a rock face
+        edgeTransitions[geoEdge] = isVerticalEdge(hex.q, hex.r, nq, nr) ? 0 : 0.85;
       }
     }
     const wp = hexToWorld(hex.q, hex.r);
@@ -644,7 +647,11 @@ const cornerHeights = new Map();
       // height: the level shared by most of the group (two same-level hexes keep a flat common edge), else the mean
       const hs = group.map(surfH);
       let cornerY = hs.reduce((a, v) => a + v, 0) / hs.length;
-      for (const v of hs) if (hs.filter((w) => Math.abs(w - v) < 0.01).length >= 2) { cornerY = v; break; }
+      // a corner between two adjacent levels (a walkable one-level step) sits half-way up: the slope is shared by both hexes
+      const span = Math.max(...hs) - Math.min(...hs);
+      const gentle = span > 0.01 && span < 1.05 && !cornerIsCliffAt(members, group) && !group.some((g) => rampartSet.has(`${g.q},${g.r}`) || gateHexSet.has(`${g.q},${g.r}`));
+      if (gentle) cornerY = (Math.max(...hs) + Math.min(...hs)) / 2;
+      else for (const v of hs) if (hs.filter((w) => Math.abs(w - v) < 0.01).length >= 2) { cornerY = v; break; }
       const cornerIsCliff = members.length > group.length;
       const isStream = streamCornerKeys.has(cornerKey);
       {

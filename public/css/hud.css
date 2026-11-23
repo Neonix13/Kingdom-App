@@ -544,3 +544,59 @@ body.hud-d #toolbar .tuto-highlight { outline: 3px solid var(--hud-red); outline
 .hud-card .st-at { display: flex; align-items: center; gap: 8px; margin-top: 6px; font: 700 10.5px "Zen Kaku Gothic New", "Segoe UI", sans-serif; letter-spacing: 1px; text-transform: uppercase; color: #3a3632; }
 .hud-card .st-at select { flex: 1; min-width: 0; height: 26px; padding: 0 6px; border: 2px solid #111; background: #fff; font: 700 12px "Zen Kaku Gothic New", "Segoe UI", sans-serif; text-transform: none; letter-spacing: 0; cursor: pointer; }
 .sim-stance-at { flex: 1; min-height: 30px; padding: 2px 8px; font-weight: 700; }
+
+/* ---- top-right: view group, menu dropdown, exit apart ---- */
+.hud-topright .hud-group { display: flex; gap: 10px; padding: 6px; background: rgba(0, 0, 0, .55); border: 2px solid #000; box-shadow: 0 0 0 2px #fff; }
+.hud-topright .hud-group .hud-ibtn { box-shadow: none; border-width: 3px; width: 40px; height: 40px; }
+.hud-menuwrap { position: relative; }
+.hud-menu { position: absolute; right: -6px; top: calc(100% + 14px); z-index: 20; min-width: 230px; display: flex; flex-direction: column; background: #fff; border: 4px solid #000; box-shadow: 0 0 0 3px #fff, 0 0 0 6px #000, 0 14px 30px rgba(0, 0, 0, .5); }
+.hud-menu[hidden] { display: none; }
+.hud-menu button { position: relative; display: flex; align-items: center; gap: 12px; padding: 11px 14px; border: 0; border-bottom: 2px solid #000; background: #fff; color: #000; font: 700 14px var(--hud-body, "Zen Kaku Gothic New", sans-serif); text-align: left; cursor: pointer; }
+.hud-menu button:last-child { border-bottom: 0; }
+.hud-menu button:hover, .hud-menu button.on { background: #000; color: #fff; }
+.hud-menu button kbd { margin-left: auto; padding: 0 6px; border: 2px solid currentColor; font: 700 11px var(--hud-display); }
+.hud-menu button .hud-dot { position: static; margin-left: 6px; }
+.hud-menu button.unread .hud-dot { display: block; }
+.hud-topright .hud-exit { margin-left: 14px; background: var(--hud-red); color: #fff; }
+.hud-topright .hud-exit:hover, .hud-topright .hud-exit.armed { background: #000; color: #fff; }
+
+/* ---- my general's ability, bottom-left above the unit card ---- */
+.hud-abil { position: absolute; left: 22px; bottom: 236px; z-index: 6; display: flex; align-items: center; gap: 12px; min-width: 300px; max-width: 380px; padding: 8px 14px 8px 8px; background: #fff; border: 4px solid #000; box-shadow: 0 0 0 3px #fff, 0 0 0 6px #000, 6px 8px 0 6px rgba(0, 0, 0, .35); cursor: pointer; text-align: left; color: #000; }
+.hud-abil[hidden] { display: none; }
+.hud-abil .ha-face { position: relative; width: 54px; height: 54px; flex-shrink: 0; border-radius: 50%; overflow: visible; background: #EFE8D8; border: 3px solid #000; }
+.hud-abil .ha-face img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: 55% 18%; filter: grayscale(1) contrast(1.25); mix-blend-mode: multiply; }
+.hud-abil .ha-bolt { position: absolute; right: -6px; bottom: -6px; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--hud-red); color: #fff; border: 2px solid #fff; font: 400 13px/1 "Segoe UI Symbol", sans-serif; font-style: normal; }
+.hud-abil .ha-txt { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.hud-abil .ha-kicker { font: 700 9.5px var(--hud-body, sans-serif); letter-spacing: 2px; text-transform: uppercase; color: #6a625a; }
+.hud-abil .ha-txt b { font: 400 17px/1.1 var(--hud-display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hud-abil .ha-txt small { font: 700 11px var(--hud-body, sans-serif); color: #3a5a8a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hud-abil .ha-state { flex-shrink: 0; padding: 3px 8px; border: 3px solid #000; font: 400 12px var(--hud-display); }
+.hud-abil.ready .ha-state { background: var(--hud-red); color: #fff; }
+.hud-abil.ready { animation: hud-abil-pulse 2.2s ease-in-out infinite; }
+.hud-abil.ready:hover { background: #000; color: #fff; }
+.hud-abil.ready:hover .ha-kicker { color: #ccc; }
+.hud-abil.queued .ha-state { background: #2a4a2a; color: #fff; }
+.hud-abil.cd { cursor: default; }
+.hud-abil.cd .ha-face img { opacity: .55; }
+@keyframes hud-abil-pulse { 0%, 100% { box-shadow: 0 0 0 3px #fff, 0 0 0 6px #000, 6px 8px 0 6px rgba(0, 0, 0, .35); } 50% { box-shadow: 0 0 0 3px #fff, 0 0 0 6px var(--hud-red), 6px 8px 0 6px rgba(0, 0, 0, .35); } }
+
+/* ---- stance / terrain bonus tooltips ---- */
+#stance-tooltip, #terrain-tooltip { padding: 0 !important; border: 4px solid #000 !important; background: #fff !important; box-shadow: 0 0 0 3px #fff, 0 0 0 6px #000, 8px 10px 0 4px rgba(0, 0, 0, .35) !important; border-radius: 0 !important; max-width: 340px; }
+.tt2 { padding: 12px 14px 12px; color: #000; font: 500 13px "Zen Kaku Gothic New", "Segoe UI", sans-serif; min-width: 230px; }
+.tt2-head { display: flex; align-items: center; gap: 10px; padding-bottom: 8px; border-bottom: 3px solid #000; }
+.tt2-head b { display: block; font: 400 20px/1.05 var(--hud-display, "Dela Gothic One", sans-serif); }
+.tt2-kicker { display: block; font: 700 10px "Zen Kaku Gothic New", sans-serif; letter-spacing: 2px; text-transform: uppercase; color: #6a625a; }
+.tt2-mark { width: 30px; height: 30px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 3px solid #000; color: #fff; }
+.tt2-mark svg { width: 18px; height: 18px; }
+.tt2-mark.terrain { background: #8a9a5a; }
+.tt2-mark.t-forest { background: #2f4a2a; } .tt2-mark.t-river { background: #3d6f9a; } .tt2-mark.t-road { background: #b39b6b; } .tt2-mark.t-bridge { background: #966f46; } .tt2-mark.t-building { background: #963a2e; } .tt2-mark.t-field { background: #c8a84a; }
+.tt2-ctx { margin: 8px 0 6px; font: 700 10.5px "Zen Kaku Gothic New", sans-serif; letter-spacing: 1px; text-transform: uppercase; color: #6a625a; }
+.tt2-row { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 6px; align-items: start; margin-top: 6px; }
+.tt2-row > div { display: flex; flex-wrap: wrap; gap: 4px; }
+.tt2-lab { font: 700 10px "Zen Kaku Gothic New", sans-serif; letter-spacing: 1px; text-transform: uppercase; padding-top: 4px; }
+.tt2-lab.up { color: #1f7a33; } .tt2-lab.down { color: #b8261c; }
+.tt2-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border: 2px solid currentColor; font-size: 12px; white-space: nowrap; }
+.tt2-chip b { font: 400 13px var(--hud-display, "Dela Gothic One", sans-serif); }
+.tt2-chip.up { color: #1f7a33; background: #eaf6ec; } .tt2-chip.down { color: #b8261c; background: #fbecea; }
+.tt2-none { color: #6a625a; font-style: italic; }
+.tt2-note { margin-top: 9px; padding-top: 7px; border-top: 2px dashed #bbb; font-size: 12px; line-height: 1.4; }

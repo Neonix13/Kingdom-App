@@ -2597,7 +2597,10 @@ function setDeployReadyButtons(text, disabled) {
   }
 }
 
+// an enemy general's ability is never announced (no banner, notification or journal line): its effects show in play
+const hiddenAbility = (log) => !!(log && log.abilityUsed && log.playerId && log.playerId !== myId);
 function addCombatLog(log) {
+  if (hiddenAbility(log)) return;
   const container = document.getElementById('combat-log');
   const entry = document.createElement('div');
   entry.className = 'combat-log-entry' + (log.targetKilled ? ' kill' : log.hit ? ' hit' : ' miss');
@@ -2983,24 +2986,31 @@ function ttGrid(rows, showTir = true) {
   return html;
 }
 
+// Bonus tooltips (stance, terrain): title with its marker, bonuses and penalties as green / red chips for the kind of
+// combat of the selected unit (melee or shooting), then movement, armour, morale and a rule line
+function bonusTip({ title, kicker, marker, data, extras = [], notes = [] }) {
+  const ranged = selectedUnit?.range > 1;
+  const sfx = ranged ? '_tir' : '_cac';
+  const STATS = [['attack', 'Attaque'], ['defense', 'Défense'], ['puissance', 'Puissance'], ['intimidation', 'Intimidation'], ['esquive', 'Esquive'], ['precision', 'Précision'], ['courage', 'Courage']];
+  const fx = STATS.map(([k, label]) => ({ label, v: data[k + sfx] || 0 })).filter((x) => x.v);
+  for (const [label, v] of extras) if (v) fx.push({ label, v });
+  const chip = (x) => `<span class="tt2-chip ${x.v > 0 ? 'up' : 'down'}"><b>${x.v > 0 ? '+' : ''}${x.v}</b> ${x.label}</span>`;
+  const up = fx.filter((x) => x.v > 0), down = fx.filter((x) => x.v < 0);
+  let html = `<div class="tt2"><div class="tt2-head">${marker || ''}<div><span class="tt2-kicker">${kicker}</span><b>${escapeHtml(title)}</b></div></div>`;
+  html += `<div class="tt2-ctx">Effets ${ranged ? 'au tir' : 'au corps à corps'}${selectedUnit ? ` · ${escapeHtml(selectedUnit.name)}` : ''}</div>`;
+  if (!fx.length) html += '<div class="tt2-none">Aucun modificateur</div>';
+  if (up.length) html += `<div class="tt2-row"><span class="tt2-lab up">Bonus</span><div>${up.map(chip).join('')}</div></div>`;
+  if (down.length) html += `<div class="tt2-row"><span class="tt2-lab down">Malus</span><div>${down.map(chip).join('')}</div></div>`;
+  for (const n of notes) if (n) html += `<div class="tt2-note">${n}</div>`;
+  return html + '</div>';
+}
+
 function buildTerrainTooltip(terrainType) {
   const t = TERRAINS_DATA[terrainType];
   if (!t) return '';
-  const val = (v) => v === 0 ? 0 : v;
-  const cell1 = (v) => { if (!v) return ''; const cls = v > 0 ? 'tt-pos' : 'tt-neg'; return `<span class="${cls}">${v > 0?'+':''}${v}</span>`; };
-  let html = `<div class="tt-title">${t.name}</div>`;
-  const showTirT = selectedUnit?.range > 1;
-  html += ttGrid([
-    ['Attaque',      t.attack_cac,      t.attack_tir],
-    ['Défense',      t.defense_cac,     t.defense_tir],
-    ['Puissance',    t.puissance_cac,   t.puissance_tir],
-    ['Intimidation', t.intimidation_cac,t.intimidation_tir],
-    ['Esquive',      t.esquive_cac,     t.esquive_tir],
-    ['Précision',    t.precision_cac,   t.precision_tir],
-  ], showTirT);
-  if (t.vitesse !== 0) html += `<div class="tt-extra">${cell1(t.vitesse)} Vitesse</div>`;
-  if (t.armure  !== 0) html += `<div class="tt-extra">${cell1(t.armure)} Armure</div>`;
-  return html;
+  return bonusTip({ title: t.name, kicker: 'Terrain', marker: `<i class="tt2-mark terrain t-${escapeHtml(terrainType)}"></i>`, data: t,
+    extras: [['Vitesse', t.vitesse], ['Armure', t.armure]],
+    notes: [KBRules.RULES.concealment && KBRules.RULES.concealment.terrains.includes(terrainType) ? 'Couvert : les unités qui s\'y trouvent sont cachées tant qu\'on ne les approche pas.' : ''] });
 }
 
 function buildSegmentTooltip(segType) {
@@ -3064,23 +3074,14 @@ function hideTerrainTooltip() {
 }
 
 function buildStanceTooltip(stanceId) {
-  const s = STANCES_DATA[stanceId];
-  if (!s) return '';
-  const isRanged = selectedUnit?.range > 1;
-  const cell1 = (v) => { if (!v) return ''; const cls = v > 0 ? 'tt-pos' : 'tt-neg'; return `<span class="${cls}">${v > 0?'+':''}${v}</span>`; };
-  let html = `<div class="tt-title">${stanceNames[stanceId] || stanceId}</div>`;
-  html += ttGrid([
-    ['Attaque',      s.attack_cac,       s.attack_tir],
-    ['Défense',      s.defense_cac,      s.defense_tir],
-    ['Puissance',    s.puissance_cac,    s.puissance_tir],
-    ['Intimidation', s.intimidation_cac, s.intimidation_tir],
-    ['Esquive',      s.esquive_cac,      s.esquive_tir],
-    ['Précision',    s.precision_cac,    s.precision_tir],
-  ], isRanged);
-  if (s.vitesse    !== 0) html += `<div class="tt-extra">${cell1(s.vitesse)} Vitesse</div>`;
-  if (s.armure     !== 0) html += `<div class="tt-extra">${cell1(s.armure)} Armure</div>`;
-  if (s.moral_tour !== 0) html += `<div class="tt-extra">${cell1(s.moral_tour)} Moral/tour</div>`;
-  return html;
+  const st = STANCES_DATA[stanceId];
+  if (!st) return '';
+  const sty = window.stanceStyle ? window.stanceStyle(stanceId) : null;
+  const marker = sty ? `<i class="tt2-mark" style="background:${sty.c}">${sty.svg || ''}</i>` : '';
+  const react = window.stanceReactionText ? window.stanceReactionText(stanceId) : '';
+  return bonusTip({ title: stanceNames[stanceId] || stanceId, kicker: 'Posture', marker, data: st,
+    extras: [['Vitesse', st.vitesse], ['Armure', st.armure], ['Moral / tour', st.moral_tour]],
+    notes: [react ? `Si attaquée : <b>${escapeHtml(react)}</b>` : ''] });
 }
 
 function showStanceTooltip(e, stanceId) {
@@ -3160,6 +3161,7 @@ function showAbilityBanner(log) {
 
 // ---- COMBAT RESULT ----
 function showCombatResult(log) {
+  if (hiddenAbility(log)) return;
   const el = document.getElementById('combat-result-box');
   if (!el) return;
   if (log.abilityUsed) {

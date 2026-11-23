@@ -55,17 +55,25 @@ export function mountBattleHud(bridge, view) {
     <div class="hud-topright">
       <div class="hud-scores"></div>
       <div class="hud-timer"></div>
-      <button class="hud-ibtn" data-hud="2d" title="Vue 2D" aria-label="Vue 2D">2D</button>
-      <button class="hud-ibtn" data-hud="map" title="Vue carte, de haut (M)" aria-label="Vue carte">${ICONS.map}</button>
-      <button class="hud-ibtn" data-hud="rules" title="Règles" aria-label="Règles">${ICONS.rules}</button>
-      <button class="hud-ibtn" data-hud="journal" title="Journal : historique et chat (J)" aria-label="Journal">${ICONS.journal}<span class="hud-dot"></span></button>
-      <button class="hud-ibtn" data-hud="tools" title="Outils et réglages" aria-label="Outils">${ICONS.tools}</button>
+      <div class="hud-group" role="group" aria-label="Vue">
+        <button class="hud-ibtn" data-hud="2d" title="Vue 2D" aria-label="Vue 2D">2D</button>
+        <button class="hud-ibtn" data-hud="map" title="Vue carte, de haut (M)" aria-label="Vue carte">${ICONS.map}</button>
+      </div>
+      <div class="hud-menuwrap">
+        <button class="hud-ibtn" data-hud="menu" title="Menu : règles, journal, outils" aria-label="Menu" aria-haspopup="true" aria-expanded="false">${ICONS.tools}<span class="hud-dot"></span></button>
+        <div class="hud-menu" role="menu" hidden>
+          <button role="menuitem" data-hud="rules">${ICONS.rules}<span>Règles</span></button>
+          <button role="menuitem" data-hud="journal">${ICONS.journal}<span>Journal et chat</span><kbd>J</kbd><span class="hud-dot"></span></button>
+          <button role="menuitem" data-hud="tools">${ICONS.tools}<span>Outils et réglages</span></button>
+        </div>
+      </div>
       <button class="hud-ibtn hud-exit" data-hud="exit" title="Quitter la partie (retour au menu)" aria-label="Quitter la partie">${ICONS.exit}</button>
     </div>
     <div class="hud-roster"></div>
     <div class="hud-orders hud-panel" hidden></div>
     <div class="hud-feed"></div>
     <button class="hud-lastcombat" title="Rouvrir la fiche du dernier combat (journal : toutes les fiches)">撃 DERNIER COMBAT</button>
+    <button class="hud-abil" hidden></button>
     <div class="hud-card hud-panel hud-hatch" hidden></div>
     <div class="hud-mode"></div>
     <div class="hud-route" hidden></div>
@@ -78,7 +86,7 @@ export function mountBattleHud(bridge, view) {
   const el = {
     turn: q('.hud-turn'), sub: q('.hud-sub'), callout: q('.hud-callout'), presence: q('.hud-presence'), scores: q('.hud-scores'), timer: q('.hud-timer'),
     route: q('.hud-route'), roster: q('.hud-roster'), orders: q('.hud-orders'), feed: q('.hud-feed'), card: q('.hud-card'), mode: q('.hud-mode'), actions: q('.hud-actions'),
-    simslot: q('.hud-simslot'), seal: q('.hud-seal'), journal: q('[data-hud=journal]'), tools: q('[data-hud=tools]'),
+    simslot: q('.hud-simslot'), seal: q('.hud-seal'), abil: q('.hud-abil'), journal: q('[data-hud=journal]'), tools: q('[data-hud=menu]'), menuBtn: q('[data-hud=menu]'), menu: q('.hud-menu'),
   };
 
   let active = false;
@@ -125,6 +133,8 @@ export function mountBattleHud(bridge, view) {
     const b = e.target.closest('[data-hud]');
     if (!b) return;
     const a = b.dataset.hud;
+    if (a === 'menu') { setMenu(el.menu.hidden); return; }
+    if (b.closest('.hud-menu')) setMenu(false);
     if (a === '2d') window.toggleView3d && window.toggleView3d();
     else if (a === 'rules') window.toggleRules && window.toggleRules();
     else if (a === 'journal') toggleDrawer();
@@ -139,6 +149,12 @@ export function mountBattleHud(bridge, view) {
       b._disarm = setTimeout(() => { b.classList.remove('armed'); b.title = 'Quitter la partie (retour au menu)'; }, 3500);
     }
   });
+  function setMenu(on) {
+    el.menu.hidden = !on;
+    el.menuBtn.classList.toggle('on', on);
+    el.menuBtn.setAttribute('aria-expanded', String(on));
+  }
+  document.addEventListener('pointerdown', (e) => { if (!el.menu.hidden && !e.target.closest('.hud-menuwrap')) setMenu(false); });
   function toggleDrawer(force) {
     const on = force != null ? force : !document.body.classList.contains('hud-drawer');
     document.body.classList.toggle('hud-drawer', on);
@@ -162,12 +178,14 @@ export function mountBattleHud(bridge, view) {
     renderScores(st);
     renderRoster(st, ds, deploying, sim);
     renderCard(st, deploying, sim);
+    renderAbility(st, deploying, sim);
     renderActions(sim);
     renderRoute(deploying);
     renderSeal(st, deploying, sim);
     renderFeed();
     renderOrders(st, sim);
     el.journal.classList.toggle('unread', !!$('tab-chat')?.classList.contains('unread'));
+    el.menuBtn.classList.toggle('unread', !!$('tab-chat')?.classList.contains('unread'));
     el.journal.classList.toggle('on', document.body.classList.contains('hud-drawer'));
     el.tools.classList.toggle('on', document.body.classList.contains('hud-tools'));
     const vb = root.querySelector('[data-hud="2d"]');
@@ -291,6 +309,46 @@ export function mountBattleHud(bridge, view) {
     for (const s of stats) if (s.v == null || Number.isNaN(s.v)) { s.v = '—'; s.d = 0; }
     return { stats, terrainName: (TERRAINS[tt] || {}).name || tt };
   }
+
+  // ---- my general's active ability, bottom-left: portrait, name, recharge or ready; click = use it (select the general and
+  // press its ability action); the passive is recalled below, effects in the tooltip ----
+  function myGeneral(st) { return (st?.units || []).find((u) => u.isGeneral && (u.isMine || u.playerId === bridge.myId) && u.q != null); }
+  function renderAbility(st, deploying, sim) {
+    const g = !deploying && st?.phase === 'battle' ? myGeneral(st) : null;
+    const ab = g && g.activeAbility;
+    if (!ab) { el.abil.hidden = true; return; }
+    el.abil.hidden = false;
+    const cd = g.abilityCooldown || 0;
+    const order = sim && bridge.simOrderOf ? bridge.simOrderOf(g) : null;
+    const queued = !!(order && order.ability);
+    const used = !sim && g.hasUsedAbility;
+    const canPlay = sim ? !!(bridge.planning && bridge.planning.canPlan) : st.currentPlayerId === bridge.myId;
+    const ready = !cd && !used;
+    const state = queued ? 'ORDONNÉE' : cd ? `⟳ ${cd}` : used ? 'UTILISÉE' : 'PRÊTE';
+    const src = portrait(g);
+    const sig = [ab.name, state, canPlay, src].join('|');
+    el.abil.classList.toggle('ready', ready && canPlay && !queued);
+    el.abil.classList.toggle('queued', queued);
+    el.abil.classList.toggle('cd', !ready);
+    el.abil.title = `${ab.name} — ${ab.description || ''}${ab.cooldown ? ` (recharge ${ab.cooldown} tours)` : ''}${g.passiveAbility ? `\nPassif · ${g.passiveAbility.name} — ${g.passiveAbility.description || ''}` : ''}${ready && canPlay ? '\nCliquer pour utiliser la capacité' : ''}`;
+    if (el.abil.dataset.sig === sig) return;
+    el.abil.dataset.sig = sig;
+    el.abil.innerHTML = `<span class="ha-face">${src ? `<img src="${esc(src)}" alt="">` : ''}<i class="ha-bolt" aria-hidden="true">⚡\uFE0E</i></span>
+      <span class="ha-txt"><span class="ha-kicker">Capacité du général</span><b>${esc(ab.name)}</b>${g.passiveAbility ? `<small>⛨ ${esc(g.passiveAbility.name)}</small>` : ''}</span>
+      <span class="ha-state">${state}</span>`;
+  }
+  el.abil.addEventListener('click', () => {
+    const st = bridge.state;
+    const g = myGeneral(st);
+    if (!g || el.abil.classList.contains('cd')) return;
+    if (!(bridge.selectedUnit && bridge.selectedUnit.id === g.id)) bridge.click({ q: g.q, r: g.r });
+    setTimeout(() => {
+      const simBtn = document.querySelector('#sim-panel [data-a="ability"]');
+      if (simBtn && !simBtn.disabled) { simBtn.click(); return; }
+      const b = $('btn-ability');
+      if (b && !b.disabled) b.click();
+    }, 80);
+  });
 
   function currentUnit(st, deploying) {
     if (deploying) return bridge.selectedUnit || null;

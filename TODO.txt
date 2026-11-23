@@ -4,17 +4,17 @@
 -------
 Priorité:
 
-- bug de cam en passant au dessus du mur
-- pouvoir changer de stance en cour de chemin
-- les unités sont sous l'eau dans les fleuves
-- mettre la selection de stances sous la fiche l'unité
-- retirer les flèche orientation dans la fichee unité
-- revoir la manière d'orienté une unité
-- revoir les touches de selction/deselection
-- mettre en avant les bonus de généraux
 
 
 -------
 
-
+FAIT (23/11/2026)
+- revoir les cartes (zones de déploiement) : zones fixes réduites à une taille égale pour tous, selon le budget (22 cases à 5 000 or)
+- revoir les cartes (objectifs) : plus d'objectif sur les portes ; objectifs déplacés pour que chaque camp atteigne en premier autant de points (1 contre 1 et 2 contre 2), contrôle node scripts/objectiveFairness.js
+- masquer quand un général ennemi utilise une capacité : ni bannière, ni notification, ni ligne de journal
+- afficher la capacité de général dans un coin de l'écran : médaillon en bas à gauche (PRÊTE / recharge / ordonnée, passif, effet au survol), un clic l'utilise
+- réorganiser les menus en haut à droite : vue (2D/3D, carte) groupée, menu ☰ (règles, journal, outils), quitter à part en rouge
+- lisser les pentes : pentes d'un niveau en herbe, partagées entre les deux cases ; falaises et murs restent des faces verticales
+- améliorer les boîtes contextuelles des bonus de posture et de terrain : bonus / malus en pastilles, effets du corps à corps ou du tir selon l'unité, règle de réaction
+- vision dans les forêts : les arbres s'effacent sur les cases de forêt en vue (comme sous une unité)
 

@@ -61,3 +61,9 @@ Cliquer un élément centre la vue dessus ; certains groupes ont un bouton de co
 - **Brouillon** : rendu 3D de l'état actuel, sans enregistrer ;
 - **Version enregistrée** : `map3d.html?map=<id>`.
 **↻ Actualiser** après des modifications ; fermer le panneau libère la 3D.
+
+## Équité des objectifs et des zones
+
+- Les zones fixes d'une carte sont réduites, à la partie, aux `4 × budget / 1000 + 2` cases les plus proches de leur centre (22 cases à 5 000 or) : toutes les armées ont la même place.
+- Aucun objectif sur une porte, un rempart ou une zone de déploiement, ni à moins de 6 de coût de marche d'une zone. Chaque camp doit atteindre en premier (écart de coût > 2) autant de points que l'autre, en 1 contre 1 (zones 1 et 2) comme en 2 contre 2 (zones 1 + 4 contre 2 + 3).
+- Contrôle : `node scripts/objectiveFairness.js` ; rééquilibrage après une régénération de carte : `node scripts/maps/balanceObjectives.js --write`.

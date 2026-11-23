@@ -56,7 +56,7 @@ test('submitArmy : validation avant toute création d\'unité', () => {
   assert.ok(room.submitArmy('p', [{ typeId: 'soldats', count: 1.5 }]).error);
   assert.ok(room.submitArmy('p', [{ typeId: 'toString', count: 1 }]).error);
   assert.ok(room.submitArmy('p', null).error);
-  assert.ok(room.submitArmy('p', [{ typeId: 'char', count: 3 }]).error, 'budget dépassé');
+  assert.ok(room.submitArmy('p', [{ typeId: 'char', count: 5 }]).error, 'budget dépassé');
   assert.equal(room.getPlayer('p').units.length, 0);
   assert.ok(room.submitArmy('p', [{ typeId: 'soldats', count: 2 }]).ok);
   assert.equal(room.getPlayer('p').units.length, 3);

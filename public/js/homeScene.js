@@ -36,7 +36,7 @@ export async function mountHomeScene({ canvas, container, reducedMotion = false,
 
   // Gate (map objective "porte") and the plain in front of it (east, toward the coalition camp)
   const map = world.map || {};
-  const gateObj = (map.objectives || []).find((o) => o.id === 'porte') || { q: 24, r: 8 };
+  const gateObj = (map.decor?.props || []).find((p) => p.type === 'porte' && p.q === 24 && p.r === 8) || (map.decor?.props || []).find((p) => p.type === 'porte') || { q: 24, r: 8 };
   const gate = hexToWorld(gateObj.q, gateObj.r + 0.5);
   const gateY = groundHeight(gate.x, gate.z);
 
