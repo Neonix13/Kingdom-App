@@ -29,7 +29,10 @@ function spherizeNormals(geo, cx, cy, cz, amount = 1) {
   const v = new THREE.Vector3(), n = new THREE.Vector3();
   for (let i = 0; i < pos.count; i++) {
     v.set(pos.getX(i) - cx, pos.getY(i) - cy, pos.getZ(i) - cz).normalize();
-    n.set(nor.getX(i), nor.getY(i), nor.getZ(i)).lerp(v, amount).normalize();
+    n.set(nor.getX(i), nor.getY(i), nor.getZ(i)).lerp(v, amount);
+    // opposite directions cancel out: a zero normal becomes NaN in the shader (and bloom spreads it into black blocks)
+    if (n.lengthSq() < 0.05) n.set(nor.getX(i), nor.getY(i), nor.getZ(i));
+    n.normalize();
     nor.setXYZ(i, n.x, n.y, n.z);
   }
 }
