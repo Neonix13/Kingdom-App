@@ -92,6 +92,8 @@
     if (R.march) return;
     for (const k of R.reach.dist.keys()) movableTiles.add(k);
     movableTiles.delete(`${unit.q},${unit.r}`);
+    // hexes held by my other units are not destinations, except those they leave this turn
+    for (const o of gameState.units) if (o.isMine && o.id !== unit.id && o.q != null) { const oo = st.orders[o.id]; if (!(oo && oo.path && oo.path.length)) movableTiles.delete(`${o.q},${o.r}`); }
     for (const [q, r] of routeWaypoints(unit)) movableTiles.delete(`${q},${r}`);
     for (const e of gameState.units) if (!e.isMine && !e.isAlly) attackableTiles.add(`${e.q},${e.r}`);
     if (unit.range > 1) computeRangeTiles(unit);
@@ -211,34 +213,33 @@
         computeTiles(sel);
         return;
       }
-      if (unitAt && unitAt.isMine) {
+      // one of my units that leaves this hex this turn (move order): the selected unit may be sent there
+      const leaving = (u) => { const o = u && st.orders[u.id]; return !!(o && o.path && o.path.length && (o.type === 'move' || o.type === 'attack' || o.type === 'charge')); };
+      if (unitAt && unitAt.isMine && !(unitAt.id !== sel.id && leaving(unitAt) && movableTiles.has(key))) {
         if (unitAt.id === sel.id) { select(null); return; }
         select(unitAt);
         return;
       }
       if (movableTiles.has(key)) {
         const path = pathTo(sel, hex.q, hex.r);
+        // Ctrl+click: the move, plus a choice of what to do on arrival (face / stance / attack from there)
+        if (path && opts.ctrlKey) { arrivalMenu(sel, path.path.slice(1), opts.clientX, opts.clientY); return; }
         if (path) { st.wps[sel.id] = routeWaypoints(sel).map(w => w.slice()); patchOrder(sel, { type: 'move', path: path.path.slice(1) }); }
         resetRoute();
         computeTiles(sel);
         return;
       }
-      // beyond this turn's reach: a march over several turns (first click shows it, the second one gives the order)
+      // beyond this turn's reach: a march over several turns, ordered in one click (hovering shows it)
       const mp = !unitAt && marchPlan(sel, hex.q, hex.r);
       if (mp) {
         if (mp.path.length - 1 > 200) { notify('Destination trop lointaine pour une seule marche.', 'info'); return; }
-        if (st.pendingMarch === `${sel.id}|${key}`) {
-          st.pendingMarch = null;
+        {
           st.wps[sel.id] = routeWaypoints(sel).map(w => w.slice());
           patchOrder(sel, { type: 'move', path: mp.path.slice(1), march: true, targetId: undefined });
           resetRoute();
           computeTiles(sel);
           return;
         }
-        st.pendingMarch = `${sel.id}|${key}`;
-        notify(`${marchLabel(mp)} : cliquez à nouveau sur la case pour donner l'ordre.`, 'info');
-        render();
-        return;
       }
       select(null);
       return;
@@ -301,6 +302,45 @@
     }
     document.body.appendChild(popup);
     setTimeout(() => document.addEventListener('click', () => popup.remove(), { once: true }), 0);
+  }
+
+
+  // ---------- Ctrl+click on a destination: move there, then face / change stance / attack on arrival ----------
+  function arrivalMenu(unit, path, x, y) {
+    document.getElementById('arrival-menu')?.remove();
+    const end = path[path.length - 1];
+    const enemies = (gameState.units || []).filter(e => !e.isMine && !e.isAlly && e.q != null);
+    const near = enemies.filter(e => KBRules.hexDistance ? KBRules.hexDistance(end[0], end[1], e.q, e.r) <= Math.max(1, unit.range || 1) : Math.abs(e.q - end[0]) + Math.abs(e.r - end[1]) <= 2);
+    const el = document.createElement('div');
+    el.id = 'arrival-menu';
+    el.className = 'arrival-menu';
+    const stances = unit.isGeneral ? [] : stanceList;
+    el.innerHTML = `<div class="am-title">À l'arrivée</div>
+      <div class="am-sec">Se tourner</div><div class="am-row am-dirs">${FACING_BTNS.map(b => `<button data-face="${b.idx}">${b.label}</button>`).join('')}</div>
+      ${stances.length ? `<div class="am-sec">Changer de posture (−${S.stanceCost} vitesse)</div><div class="am-row">${stances.map(s => { const sty = stanceStyle(s); return `<button data-stance="${s}"><i class="st-chip" style="background:${sty.c}">${sty.svg || ''}</i>${escapeHtml(stanceNames[s] || s)}</button>`; }).join('')}</div>` : ''}
+      <div class="am-sec">Attaquer depuis cette case</div><div class="am-row">${near.length ? near.map(e => `<button data-attack="${escapeHtml(e.id)}">${escapeHtml(e.name)}</button>`).join('') : '<span class="am-none">Aucun ennemi visible à portée de cette case</span>'}</div>
+      <div class="am-row am-foot"><button data-just="1">Seulement se déplacer</button></div>`;
+    document.body.appendChild(el);
+    const r = el.getBoundingClientRect();
+    el.style.left = `${Math.max(8, Math.min(innerWidth - r.width - 8, (x || innerWidth / 2) + 12))}px`;
+    el.style.top = `${Math.max(8, Math.min(innerHeight - r.height - 8, (y || innerHeight / 2) - 20))}px`;
+    const done = (patch) => {
+      el.remove();
+      st.wps[unit.id] = routeWaypoints(unit).map(w => w.slice());
+      patchOrder(unit, { type: 'move', path, targetId: undefined, ...patch });
+      resetRoute();
+      computeTiles(unit);
+      render();
+    };
+    el.addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      if (b.dataset.face != null) done({ facing: Number(b.dataset.face) });
+      else if (b.dataset.stance) done({ stance: b.dataset.stance === unit.stance ? undefined : b.dataset.stance, stanceAt: path.length });
+      else if (b.dataset.attack) done({ type: 'attack', targetId: b.dataset.attack });
+      else done({});
+    });
+    setTimeout(() => document.addEventListener('pointerdown', function off(e) { if (!el.contains(e.target)) { el.remove(); document.removeEventListener('pointerdown', off); } }), 0);
   }
 
   // ---------- side panel (orders of the selected unit) and bottom bar (commit, timer, status) ----------

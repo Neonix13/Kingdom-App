@@ -137,7 +137,7 @@ export async function mountGameView(bridge, { container }) {
     down = null;
     if (moved > 6 || !quick) return;
     const hex = world.pickHex(e.clientX, e.clientY);
-    if (b === 0) { bridge.click(hex, { shiftKey: e.shiftKey }); lastMove = e; hovered = null; }
+    if (b === 0) { bridge.click(hex, { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey || e.metaKey, clientX: e.clientX, clientY: e.clientY }); lastMove = e; hovered = null; }
     else if (b === 2) bridge.contextMenu(hex, e.clientX, e.clientY);
   });
   canvas.addEventListener('dblclick', (e) => {
@@ -259,7 +259,8 @@ export async function mountGameView(bridge, { container }) {
     else ordersLayer.clear();
     const marches = (bridge.state?.units || []).filter((u) => u.isMine && u.march && u.march.route && u.march.route.length && u.q != null)
       .map((u) => ({ type: 'move', path: [[u.q, u.r], ...u.march.route] }));
-    if (marches.length) marchLayer.show(marches, bridge.getPlayerColor(bridge.myId)); else marchLayer.clear();
+    // the turns after this one are drawn grey (only this turn's part takes the player colour)
+    if (marches.length) marchLayer.show(marches, '#9a9a9a'); else marchLayer.clear();
     // trees step aside on hexes holding a unit and on every forest hex in sight, so that a visible forest stays readable
     const seenForest = Array.from(st && st.phase === 'battle' && st.visibleHexes ? st.visibleHexes : []).filter((k) => world.allHexes.get(k)?.terrain === 'forest');
     world.layers.setOccupied(new Set([...shownUnits.map((u) => hexKey(u.q, u.r)), ...seenForest, ...editsLayer.clearedHexes(bridge.mapEdits, baseMap().ter)]));

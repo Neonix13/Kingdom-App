@@ -33,7 +33,7 @@ export function createPathPreview(world) {
 
   // March over several turns: the next turns' part is drawn with fainter chevrons, a numbered disc ends each turn
   const FAR_MAX = 200;
-  const farMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5, depthWrite: false, fog: false, toneMapped: false, side: THREE.DoubleSide });
+  const farMat = new THREE.MeshBasicMaterial({ color: 0x9a9a9a, transparent: true, opacity: 0.6, depthWrite: false, fog: false, toneMapped: false, side: THREE.DoubleSide });
   const farChev = new THREE.InstancedMesh(chevGeo, farMat, FAR_MAX);
   farChev.count = 0;
   farChev.frustumCulled = false;

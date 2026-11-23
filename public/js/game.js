@@ -1298,7 +1298,7 @@ canvas.addEventListener('mousedown', (e) => {
     return;
   }
   const hex = getHexUnderMouse(e);
-  handleHexClick(hex, { shiftKey: e.shiftKey });
+  handleHexClick(hex, { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey || e.metaKey, clientX: e.clientX, clientY: e.clientY });
 });
 
 canvas.addEventListener('mousemove', (e) => {
@@ -1532,12 +1532,12 @@ function handleHexClick(hex, opts = {}) {
       return;
     }
 
-    // Case hors d'atteinte ce tour : marche sur plusieurs tours (1er clic = aperçu, 2e clic = confirmation)
+    // Case hors d'atteinte ce tour : marche sur plusieurs tours, donnée en un clic (le survol montre le trajet)
     if (selectedUnit.isMine && gameState?.currentPlayerId === myId && !selectedUnit.isFleeing && !gameState.units.some(u => u.q === hex.q && u.r === hex.r)) {
       const plan = marchPlan(selectedUnit, hex.q, hex.r, selectedUnit.speedRemaining || 0, KBRules.hasFullSpeed(selectedUnit));
       if (plan) {
         if (plan.path.length - 1 > 200) { notify('Destination trop lointaine pour une seule marche.', 'info'); return; }
-        if (pendingMarch && pendingMarch.unitId === selectedUnit.id && pendingMarch.key === key) {
+        {
           wsSend('move_unit', { roomCode, unitId: selectedUnit.id, targetQ: hex.q, targetR: hex.r, march: true, path: plan.path.slice(1) });
           pendingMarch = null;
           resetRoute();
@@ -1547,10 +1547,6 @@ function handleHexClick(hex, opts = {}) {
           render();
           return;
         }
-        pendingMarch = { unitId: selectedUnit.id, key };
-        notify(`${marchLabel(plan)} : cliquez à nouveau sur la case pour donner l'ordre.`, 'info');
-        render();
-        return;
       }
     }
 
@@ -1742,10 +1738,11 @@ function drawMarchPath(ctx, path, turnEnds, { color = '#fff', alpha = 1, label =
     ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.setLineDash([8, 6]); seg(0, first); ctx.stroke();
   }
   if (first < pts.length - 1) {
-    ctx.globalAlpha = alpha * 0.6;
+    // the following turns: grey
+    ctx.globalAlpha = alpha * 0.75;
     ctx.setLineDash([]);
     ctx.strokeStyle = '#000'; ctx.lineWidth = 4; seg(first, pts.length - 1); ctx.stroke();
-    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.setLineDash([3, 7]); seg(first, pts.length - 1); ctx.stroke();
+    ctx.strokeStyle = '#9a9a9a'; ctx.lineWidth = 2; ctx.setLineDash([3, 7]); seg(first, pts.length - 1); ctx.stroke();
     ctx.globalAlpha = alpha;
   }
   ctx.setLineDash([]);
@@ -1783,7 +1780,7 @@ function drawMarches(ctx) {
     }
     const sel = selectedUnit && selectedUnit.id === u.id;
     const ends = marchTurns(u, path, costs, 0, false).slice(1);
-    drawMarchPath(ctx, path, [0, ...ends], { color: getPlayerColor(u.playerId || myId), alpha: sel ? 0.95 : 0.55, numbers: sel, label: sel ? `Marche · ${ends.length} tour${ends.length > 1 ? 's' : ''}` : null });
+    drawMarchPath(ctx, path, [0, ...ends], { color: '#9a9a9a', alpha: sel ? 0.95 : 0.55, numbers: sel, label: sel ? `Marche · ${ends.length} tour${ends.length > 1 ? 's' : ''}` : null });
   }
 }
 
@@ -1795,7 +1792,7 @@ function drawRoutePreview(ctx) {
   const mp = hk && !movableTiles.has(hk) ? marchPlanFor(unit, hoveredHex.q, hoveredHex.r) : null;
   if (mp) {
     const confirm = pendingMarch && pendingMarch.unitId === unit.id && pendingMarch.key === hk;
-    drawMarchPath(ctx, mp.path, mp.turnEnds, { label: `${marchLabel(mp)}${confirm ? ' · cliquez pour confirmer' : ''}` });
+    drawMarchPath(ctx, mp.path, mp.turnEnds, { label: marchLabel(mp) });
     return;
   }
   const info = sim ? KBSim.routeInfo() : routeInfo();
