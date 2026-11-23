@@ -261,7 +261,7 @@ export async function mountGameView(bridge, { container }) {
       .map((u) => ({ type: 'move', path: [[u.q, u.r], ...u.march.route] }));
     if (marches.length) marchLayer.show(marches, bridge.getPlayerColor(bridge.myId)); else marchLayer.clear();
     // trees step aside on hexes holding a unit and on every forest hex in sight, so that a visible forest stays readable
-    const seenForest = (st && st.phase === 'battle' && st.visibleHexes ? st.visibleHexes : []).filter((k) => world.allHexes.get(k)?.terrain === 'forest');
+    const seenForest = Array.from(st && st.phase === 'battle' && st.visibleHexes ? st.visibleHexes : []).filter((k) => world.allHexes.get(k)?.terrain === 'forest');
     world.layers.setOccupied(new Set([...shownUnits.map((u) => hexKey(u.q, u.r)), ...seenForest, ...editsLayer.clearedHexes(bridge.mapEdits, baseMap().ter)]));
     if (units3d) {
       units3d.sync(shownUnits);
