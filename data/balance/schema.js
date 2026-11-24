@@ -100,7 +100,8 @@ const SPEC = {
     fields: [
       str('id', 'Identifiant', 1, 40, { pattern: ID_PATTERN, readOnly: true }),
       str('name', 'Nom', 1, 60),
-      ...COMBAT_MODIFIERS,
+      // no speed modifier: terrain is paid step by step (movement cost on entering the hex), not on the turn speed
+      ...COMBAT_MODIFIERS.filter(m => m.key !== 'vitesse'),
     ],
   },
   segments: {

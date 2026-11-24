@@ -2,7 +2,6 @@
   "plain": {
     "id": "plain",
     "name": "Plaines",
-    "vitesse": 0,
     "attack_cac": 0,
     "attack_tir": 0,
     "defense_cac": 0,
@@ -25,7 +24,6 @@
   "forest": {
     "id": "forest",
     "name": "Forêts",
-    "vitesse": -1,
     "attack_cac": 0,
     "attack_tir": -1,
     "defense_cac": 2,
@@ -48,7 +46,6 @@
   "river": {
     "id": "river",
     "name": "Fleuves",
-    "vitesse": -1,
     "attack_cac": -3,
     "attack_tir": -2,
     "defense_cac": -3,
@@ -71,7 +68,6 @@
   "road": {
     "id": "road",
     "name": "Routes",
-    "vitesse": 1,
     "attack_cac": 1,
     "attack_tir": 1,
     "defense_cac": 0,
@@ -94,7 +90,6 @@
   "building": {
     "id": "building",
     "name": "Bâtiments",
-    "vitesse": -1,
     "attack_cac": -1,
     "attack_tir": -3,
     "defense_cac": 2,
@@ -117,7 +112,6 @@
   "bridge": {
     "id": "bridge",
     "name": "Ponts",
-    "vitesse": 0,
     "attack_cac": 0,
     "attack_tir": 1,
     "defense_cac": 1,

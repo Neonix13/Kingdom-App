@@ -238,7 +238,7 @@ test('duel : général contre général au corps à corps, issue décisive, char
 });
 
 test('objectifs : capture en fin de tour, points par manche, victoire au seuil', () => {
-  const room = battle({ settings: { victoryPoints: 4 } });
+  const room = battle({ settings: { victoryMode: 'capture', victoryPoints: 4 } });
   assert.deepEqual(room.objectives.map(o => [o.id, o.points, o.owner]), [['6,5', 2, null]]);
   const s = troop(room, 'p0');
   put(room, s, 6, 5);
@@ -317,7 +317,7 @@ test('protocole : réglages de l\'hôte (lobby uniquement), exposés dans room_u
   await b.send('set_settings', { settings: { maxTurns: 10 } });
   assert.equal(b.last('error').code, 'not_host');
   await a.send('set_settings', { settings: { turnsPerHalfDay: 8, maxTurns: 30, victoryPoints: 15, turnTimer: 90, spectatorVision: 'delayed' } });
-  assert.deepEqual(b.last('room_update').settings, { turnsPerHalfDay: 8, maxTurns: 30, victoryPoints: 15, turnTimer: 90, spectatorVision: 'delayed', planningTimer: 90, commandPoints: 0, teamMode: false, attackerBonus: 0 });
+  assert.deepEqual(b.last('room_update').settings, { turnsPerHalfDay: 8, victoryMode: 'annihilation', maxTurns: 30, victoryPoints: 15, turnTimer: 90, spectatorVision: 'delayed', planningTimer: 90, commandPoints: 0, teamMode: false, attackerBonus: 0 });
   await a.send('set_settings', { settings: { turnsPerHalfDay: 50 } });
   assert.equal(a.last('error').code, 'rejected');
 });

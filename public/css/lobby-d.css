@@ -677,16 +677,27 @@ body.lobby-d.ld-at-home .ld-backdrop { display: none; }
 .lobby-d .ld-pbottom { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; min-width: 0; }
 .lobby-d .ld-pbottom .ld-pgen { font-family: var(--ld-mincho); font-weight: 900; font-size: 17px; color: var(--ld-text); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lobby-d .ld-pbottom .player-status { font-size: 11px; padding: 1px 8px; border-radius: 999px; background: rgba(239, 232, 216, .07); }
-/* siege maps: attacker / defender side of each player */
-.lobby-d .ld-pside { display: inline-flex; border: 1px solid var(--ld-line); }
-.lobby-d .ld-pside button { padding: 2px 9px; border: 0; background: transparent; color: var(--ld-soft); font: 700 11px var(--ld-body, sans-serif); cursor: pointer; }
-.lobby-d .ld-pside button + button { border-left: 1px solid var(--ld-line); }
-.lobby-d .ld-pside button:hover { color: var(--ld-text); }
-.lobby-d .ld-pside button.on.side-attacker { background: var(--ld-red); color: #fff; }
-.lobby-d .ld-pside button.on.side-defender { background: #2f5e8a; color: #fff; }
-.lobby-d .ld-pside-tag { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: rgba(239, 232, 216, .07); color: var(--ld-soft); }
-.lobby-d .ld-pside-tag.side-attacker { background: var(--ld-red); color: #fff; }
-.lobby-d .ld-pside-tag.side-defender { background: #2f5e8a; color: #fff; }
+/* siege maps: the "Camps" panel under the players */
+.lobby-d .ld-sides { margin-top: 14px; }
+.lobby-d .ld-sides[hidden] { display: none; }
+.lobby-d .ld-sides-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.lobby-d .ld-side-col { border: 1px solid var(--ld-line); padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.lobby-d .ld-side-col.side-attacker { border-top: 3px solid var(--ld-red); }
+.lobby-d .ld-side-col.side-defender { border-top: 3px solid #2f5e8a; }
+.lobby-d .ld-side-col.mine { background: rgba(239, 232, 216, .05); }
+.lobby-d .ld-side-head { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.lobby-d .ld-side-head b { font-size: 13px; }
+.lobby-d .ld-side-head span { font-size: 11px; color: var(--ld-soft); }
+.lobby-d .ld-side-bonus { font-size: 11px; color: #e8c060; font-weight: 700; }
+.lobby-d .ld-side-col ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.lobby-d .ld-side-col li { display: flex; align-items: center; gap: 6px; font-size: 12.5px; min-width: 0; }
+.lobby-d .ld-side-col li i { width: 9px; height: 9px; border-radius: 50%; background: var(--pc); flex: none; }
+.lobby-d .ld-side-col li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lobby-d .ld-side-col li.empty { color: var(--ld-soft); font-style: italic; }
+.lobby-d .ld-side-move { border: 1px solid var(--ld-line); background: transparent; color: var(--ld-soft); cursor: pointer; padding: 0 6px; font-size: 12px; }
+.lobby-d .ld-side-move:hover { color: var(--ld-text); }
+.lobby-d .ld-side-join { margin-top: auto; min-height: 30px; padding: 4px 10px; font-size: 12px; }
+.lobby-d .ld-side-none { grid-column: 1 / -1; margin: 0; font-size: 11.5px; color: var(--ld-soft); }
 .lobby-d .ld-pbottom .player-status.ready { background: rgba(143, 209, 143, .14); }
 .lobby-d .player-list .bot-remove { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; font-size: 15px; }
 .lobby-d .ld-pbanner { align-self: end; position: relative; display: block; width: 62px; height: 60px; padding: 0; border: 0; background: none; }

@@ -227,8 +227,9 @@ export function mountBattleHud(bridge, view) {
 
   function renderScores(st) {
     const objs = st?.objectives || [];
-    const vp = st?.settings?.victoryPoints || 0;
-    if (!st || (!objs.length && !vp)) { el.scores.innerHTML = ''; return; }
+    const capture = st?.settings?.victoryMode === 'capture';
+    const vp = capture ? st?.settings?.victoryPoints || 0 : 0;
+    if (!st || !capture || (!objs.length && !vp)) { el.scores.innerHTML = ''; return; }
     const ps = (st.players || []).filter((p) => !p.isEliminated || (st.scores?.[p.id] || 0) > 0);
     const gain = {};
     for (const o of objs) if (o.owner) gain[o.owner] = (gain[o.owner] || 0) + (o.points || 0);

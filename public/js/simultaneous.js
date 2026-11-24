@@ -652,7 +652,7 @@
     const p = me();
     document.getElementById('top-current-player').textContent = data.phase !== 'battle' ? '' : isSpectator ? 'Planification des généraux' : p && p.isEliminated ? 'Éliminé' : st.committed ? 'Ordres prêts — en attente des autres' : '✍ Donnez vos ordres';
     document.getElementById('sidebar-title').textContent = isSpectator ? 'Spectateur' : `Tour ${data.turn} · ordres secrets`;
-    document.getElementById('top-turn').textContent = `Tour ${data.turn}${data.settings?.maxTurns ? '/' + data.settings.maxTurns : ''} · Simultané`;
+    document.getElementById('top-turn').textContent = `Tour ${data.turn}${data.settings?.maxTurns && data.settings.victoryMode !== 'capture' ? '/' + data.settings.maxTurns : ''} · Simultané`;
     document.getElementById('turn-order-panel').style.display = 'none';
     if (selectedUnit) {
       const u = myUnit(selectedUnit.id);
@@ -820,7 +820,7 @@
     const tgt = log.targetId ? anyUnit(log.targetId) : null;
     if (tgt) {
       if (log.targetVitalityLeft != null) tgt.vitality = log.targetVitalityLeft;
-      if (log.targetMoraleLeft != null) { tgt.morale = log.targetMoraleLeft; if (tgt.morale <= 0 && !tgt.isGeneral) tgt.isFleeing = true; }
+      if (log.targetMoraleLeft != null) { tgt.morale = log.targetMoraleLeft; if (tgt.morale < 0 && !tgt.isGeneral) tgt.isFleeing = true; }
     }
     if (att && log.attackerVitalityLeft != null) att.vitality = log.attackerVitalityLeft;
     if (animate) {

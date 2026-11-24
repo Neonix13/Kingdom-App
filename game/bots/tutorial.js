@@ -5,7 +5,7 @@ const { hexKey } = require('../HexUtils');
 const TUTORIAL = {
   mapId: 'default',
   budget: 100000,
-  settings: { turnsPerHalfDay: 5, victoryPoints: 6, maxTurns: 0, turnTimer: 0 },
+  settings: { turnsPerHalfDay: 5, victoryMode: 'capture', victoryPoints: 6, maxTurns: 0, turnTimer: 0 },
   human: {
     generalId: 'ou_ki',
     general: { q: 20, r: 9 },

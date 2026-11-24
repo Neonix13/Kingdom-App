@@ -278,7 +278,7 @@ function assignObjectives(world, profile) {
   const { room, playerId } = world;
   const out = new Map();
   if (!room.objectives || !room.objectives.length) return out;
-  const want = profile.objectives + (profile.objectives && room.settings.victoryPoints > 0 ? 1 : 0);
+  const want = profile.objectives + (profile.objectives && room.isCapture() ? 1 : 0);
   if (!want) return out;
   const free = world.mine.filter(u => !u.isGeneral && !u.isFleeing && !isRanged(u));
   const objs = room.objectives.filter(o => o.owner !== playerId)

@@ -477,7 +477,46 @@ function setMode(mode) {
   KBNet.send('set_mode', { mode });
 }
 
-const SETTING_KEYS = ['turnsPerHalfDay', 'maxTurns', 'victoryPoints', 'turnTimer', 'spectatorVision', 'planningTimer', 'commandPoints', 'attackerBonus'];
+const SETTING_KEYS = ['turnsPerHalfDay', 'victoryMode', 'maxTurns', 'victoryPoints', 'turnTimer', 'spectatorVision', 'planningTimer', 'commandPoints', 'attackerBonus'];
+const VMODE_HINTS = {
+  annihilation: 'Tuer le général ennemi. Pas d\'objectifs ni de score ; avec une limite de tours, l\'armée la plus forte gagne.',
+  capture: 'Tenir les objectifs de la carte pour marquer des points ; tuer le général ennemi fait aussi gagner.',
+};
+
+// Siege maps (Col de Kankoku): the "Camps" panel under the players — one column per side with its members; each player
+// joins a side, the host moves the bots (bots left without a side join the emptiest one at the start)
+function renderSides(data) {
+  const box = document.getElementById('ld-sides');
+  if (!box) return;
+  const sides = data.sides;
+  box.hidden = !sides || data.phase !== 'lobby';
+  if (box.hidden) return;
+  const host = data.hostId === myId;
+  const zonesOf = (id) => (data.sideZones && data.sideZones[id]) || 2;
+  const me = data.players.find(p => p.id === myId);
+  const bonus = data.settings && data.settings.attackerBonus;
+  const col = (s) => {
+    const members = data.players.filter(p => p.side === s.id);
+    const full = members.length >= zonesOf(s.id);
+    const item = (p) => {
+      const isBot = (data.bots || []).some(b => b.id === p.id);
+      const other = sides.find(x => x.id !== s.id);
+      const move = isBot && host ? `<button type="button" class="ld-side-move" title="Passer dans le camp « ${escapeHtml(other.name)} »" onclick="pickSide('${escapeHtml(p.id)}', '${other.id}')">⇄</button>` : '';
+      return `<li style="--pc:${escapeHtml(p.color || '#4a90d9')}"><i></i><span>${escapeHtml(p.name)}${p.id === myId ? ' <em>(vous)</em>' : ''}</span>${move}</li>`;
+    };
+    const mineHere = me && me.side === s.id;
+    const join = me && !mineHere && !full ? `<button type="button" class="ld-btn ld-side-join" onclick="pickSide('${escapeHtml(myId)}', '${s.id}')">Rejoindre</button>` : mineHere ? `<button type="button" class="ld-btn ld-btn-ghost ld-side-join" onclick="pickSide('${escapeHtml(myId)}', '${s.id}')">Quitter</button>` : '';
+    return `<div class="ld-side-col side-${s.id}${mineHere ? ' mine' : ''}">
+      <div class="ld-side-head"><b>${escapeHtml(s.name)}</b><span>${members.length}/${zonesOf(s.id)}</span></div>
+      ${s.id === 'attacker' && bonus ? `<div class="ld-side-bonus">+${bonus} or pour recruter</div>` : ''}
+      <ul>${members.map(item).join('') || '<li class="empty">personne</li>'}</ul>
+      ${join}
+    </div>`;
+  };
+  const unsided = data.players.filter(p => !p.side);
+  box.querySelector('.ld-sides-grid').innerHTML = sides.map(col).join('')
+    + (unsided.length ? `<p class="ld-side-none">Sans camp : ${unsided.map(p => escapeHtml(p.name)).join(', ')}${unsided.some(p => (data.bots || []).some(b => b.id === p.id)) ? ' (les IA rejoignent le camp le moins rempli)' : ''}</p>` : '');
+}
 
 // Siege maps: a player picks its side (a click on the current side leaves it); the host picks for the bots
 function pickSide(playerId, side) {
@@ -490,7 +529,7 @@ function pickSide(playerId, side) {
 function setSetting(el) {
   const key = el.dataset.setting;
   let value = el.value;
-  if (key !== 'spectatorVision') {
+  if (key !== 'spectatorVision' && key !== 'victoryMode') {
     value = parseInt(value, 10);
     const lim = window.KBRules && KBRules.RULES.settings[key];
     if (!Number.isInteger(value) || (lim && (value < lim.min || value > lim.max))) {
@@ -515,6 +554,12 @@ function renderGameSettings(data, host) {
     if (document.activeElement !== el && settings[key] !== undefined) el.value = settings[key];
     el.disabled = !host;
   }
+  const vmode = settings.victoryMode || 'annihilation';
+  document.querySelectorAll('.vmode-capture').forEach(el => { el.style.display = vmode === 'capture' ? '' : 'none'; });
+  document.querySelectorAll('.vmode-annihilation').forEach(el => { el.style.display = vmode === 'annihilation' ? '' : 'none'; });
+  document.querySelectorAll('#vmode-seg button').forEach(b => { b.setAttribute('aria-checked', String(b.dataset.value === vmode)); b.disabled = !host; });
+  const vh = document.getElementById('vmode-hint');
+  if (vh) vh.textContent = VMODE_HINTS[vmode] || '';
   const sidesRow = document.getElementById('row-attackerBonus');
   if (sidesRow) sidesRow.style.display = data.sides ? '' : 'none';
   const sim = data.mode === 'simultaneous';
@@ -565,6 +610,13 @@ function initSettingsControls() {
     }
     const mode = e.target.closest('#mode-seg button');
     if (mode && !mode.disabled) { setMode(mode.dataset.mode); return; }
+    const vm = e.target.closest('#vmode-seg button');
+    if (vm && !vm.disabled) {
+      const sel = document.getElementById('set-victoryMode');
+      sel.value = vm.dataset.value;
+      setSetting(sel);
+      return;
+    }
     const spec = e.target.closest('#spec-seg button');
     if (spec && !spec.disabled) {
       const sel = document.getElementById('set-spectatorVision');
@@ -1005,12 +1057,6 @@ function renderPlayerList(data) {
       ? `<button type="button" class="ld-pbanner" onclick="togglePlayerMenu('${pid}', 'flag')" aria-expanded="${menu === 'flag'}" title="${pf ? `Drapeau ${pf.name} — cliquer pour changer` : 'Choisir un drapeau'}">${cloth}</button>`
       : `<span class="ld-pbanner" title="${pf ? `Drapeau ${pf.name}` : 'Pas encore de drapeau'}">${cloth}</span>`;
     const faceInner = genImg ? `<img src="${genImg}" alt="">` : `<span class="ld-brush" aria-hidden="true">${gen ? escapeHtml(gen.name.charAt(0)) : '?'}</span>`;
-    // siege maps (Col de Kankoku): attacker / defender, picked by each player (bots: the host, or automatic)
-    const sideName = (id) => { const s = (data.sides || []).find(x => x.id === id); return s ? s.name : ''; };
-    const SIDE_SHORT = { attacker: 'Attaquant', defender: 'Défenseur' };
-    const sideCtl = !data.sides ? '' : (mine || botEdit)
-      ? `<span class="ld-pside" role="group" aria-label="Camp">${data.sides.map(s => `<button type="button" class="${p.side === s.id ? 'on' : ''} side-${s.id}" title="${escapeHtml(s.name)}${s.id === 'attacker' && data.settings && data.settings.attackerBonus ? ` — +${data.settings.attackerBonus} % d'or` : ''}" onclick="pickSide('${pid}', '${s.id}')">${SIDE_SHORT[s.id] || escapeHtml(s.name)}</button>`).join('')}</span>`
-      : `<span class="ld-pside-tag side-${escapeHtml(p.side || 'none')}" title="${escapeHtml(sideName(p.side))}">${p.side ? (SIDE_SHORT[p.side] || escapeHtml(sideName(p.side))) : (bot ? 'camp auto' : 'sans camp')}</span>`;
     const nameInner = `<span class="ld-pname">${escapeHtml(p.name)}${p.id === myId ? ' <em>(vous)</em>' : ''}</span>${levelSelect ? '' : badge}`;
     li.innerHTML = `
       ${botEdit ? `<button type="button" class="ld-pface" onclick="changeBotGeneral('${pid}')" title="Changer le général de cette IA">${faceInner}</button>` : `<span class="ld-pface">${faceInner}</span>`}
@@ -1022,7 +1068,6 @@ function renderPlayerList(data) {
             : `<span class="ld-pgen">${escapeHtml(genName)}</span>`}
           ${levelSelect || `<span class="player-status${ready ? ' ready' : ''}">${statusText}</span>`}
         </div>
-        ${sideCtl ? `<div class="ld-pbottom">${sideCtl}</div>` : ''}
       </div>
       ${banner}
       ${p.id === hostId ? '<span class="ld-host-mark ld-brush" title="Hôte de la partie" aria-label="Hôte">主</span>' : ''}
@@ -1032,6 +1077,7 @@ function renderPlayerList(data) {
     list.appendChild(li);
   }
   placeFlagPop();
+  renderSides(data);
   document.getElementById('player-count').textContent = players.length;
   renderBotControls(data);
   const specs = data.spectators || [];

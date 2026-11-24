@@ -268,7 +268,7 @@ function objectiveGoals(world, profile, out) {
   const { room, playerId } = world;
   const objs = room.objectives || [];
   if (!objs.length || !profile.objectives) return;
-  const vp = room.settings.victoryPoints > 0;
+  const vp = room.isCapture();
   const maxT = room.settings.maxTurns > 0 ? room.settings.maxTurns : room.turn + 20;
   const left = Math.max(1, maxT - room.turn + 1);
   // with victory points: one more unit per three objectives, never more than half the army
@@ -354,7 +354,7 @@ function assignments(world, profile) {
   const out = new Map();
   const pos = posture(world, profile);
   // when points decide the game the objectives come first, the walls get what is left
-  const vp = world.room.settings.victoryPoints > 0;
+  const vp = world.room.isCapture();
   if (vp) objectiveGoals(world, profile, out);
   // measured (arena): with victory points in the sequential mode, sitting on the walls loses the race for points
   if (pos.kind === 'defend' && !(vp && world.room.mode !== 'simultaneous')) defendPosts(world, profile, pos, out);

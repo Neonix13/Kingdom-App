@@ -161,7 +161,7 @@
             </section>
             <section>
               <h3>Le combat</h3>
-              <p>Une unité lance d'autant plus de dés qu'elle a de vitalité ; chaque réussite inflige des dégâts réduits par l'armure de la cible et fait perdre du moral. Une unité sans moral s'enfuit. Le défenseur peut contre-attaquer, encaisser ou ne rien faire. Deux généraux au contact se battent en duel.</p>
+              <p>Une unité lance d'autant plus de dés qu'elle a de vitalité ; chaque réussite inflige des dégâts réduits par l'armure de la cible et fait perdre du moral. Une unité dont le moral passe sous zéro s'enfuit. Le défenseur peut contre-attaquer, encaisser ou ne rien faire. Deux généraux au contact se battent en duel.</p>
             </section>
             <section>
               <h3>Le terrain</h3>
@@ -199,6 +199,10 @@
             <ul class="player-list" id="player-list"></ul>
             <div class="bot-controls" id="bot-controls" style="display:none"></div>
             <div class="spectator-list" id="spectator-list"></div>
+          </div>
+          <div class="ld-panel ld-dark ld-sides" id="ld-sides" hidden>
+            <h2>Camps</h2>
+            <div class="ld-sides-grid"></div>
           </div>
 
         </aside>
@@ -243,8 +247,8 @@
             <label for="set-attackerBonus">Bonus d'or des attaquants<small>Siège : or en plus pour le camp attaquant</small></label>
             <div class="ld-stepper">
               <button type="button" class="ld-step" data-step="-1" data-for="set-attackerBonus" aria-label="Diminuer">−</button>
-              <input type="number" id="set-attackerBonus" data-setting="attackerBonus" value="0" min="0" max="300" step="5" onchange="setSetting(this)">
-              <button type="button" class="ld-step" data-step="1" data-for="set-attackerBonus" aria-label="Augmenter">+</button><span class="ld-suffix">%</span>
+              <input type="number" id="set-attackerBonus" data-setting="attackerBonus" value="0" min="0" max="100000" step="500" onchange="setSetting(this)">
+              <button type="button" class="ld-step" data-step="1" data-for="set-attackerBonus" aria-label="Augmenter">+</button><span class="ld-suffix">or</span>
             </div>
           </div>
         </fieldset>
@@ -293,12 +297,32 @@
 
         <fieldset class="ld-set-group">
           <legend><span class="ld-brush" aria-hidden="true">勝</span>Victoire</legend>
-          <div class="ld-set-row">
-            <label for="set-victoryPoints">Points de victoire<small>0 = désactivé ; gagnés par objectif tenu</small></label>
+          <div class="ld-set-row ld-set-col">
+            <span class="ld-set-label" id="vmode-label">Mode de victoire</span>
+            <div class="ld-seg" id="vmode-seg" role="radiogroup" aria-labelledby="vmode-label">
+              <button type="button" role="radio" data-value="annihilation">Annihilation</button>
+              <button type="button" role="radio" data-value="capture">Capture</button>
+            </div>
+            <select id="set-victoryMode" data-setting="victoryMode" onchange="setSetting(this)" hidden>
+              <option value="annihilation">Annihilation</option>
+              <option value="capture">Capture</option>
+            </select>
+            <p class="ld-set-hint" id="vmode-hint"></p>
+          </div>
+          <div class="ld-set-row vmode-capture">
+            <label for="set-victoryPoints">Points de victoire<small>Gagnés à chaque tour par objectif tenu ; le premier qui les atteint gagne</small></label>
             <div class="ld-stepper">
               <button type="button" class="ld-step" data-step="-1" data-for="set-victoryPoints" aria-label="Diminuer">−</button>
-              <input type="number" id="set-victoryPoints" data-setting="victoryPoints" value="0" min="0" max="1000" step="5" onchange="setSetting(this)">
+              <input type="number" id="set-victoryPoints" data-setting="victoryPoints" value="20" min="1" max="1000" step="5" onchange="setSetting(this)">
               <button type="button" class="ld-step" data-step="1" data-for="set-victoryPoints" aria-label="Augmenter">+</button>
+            </div>
+          </div>
+          <div class="ld-set-row vmode-annihilation">
+            <label for="set-maxTurns">Tours maximum<small>0 = illimité ; à la limite, l'armée la plus forte gagne</small></label>
+            <div class="ld-stepper">
+              <button type="button" class="ld-step" data-step="-1" data-for="set-maxTurns" aria-label="Diminuer">−</button>
+              <input type="number" id="set-maxTurns" data-setting="maxTurns" value="0" min="0" max="200" step="1" onchange="setSetting(this)">
+              <button type="button" class="ld-step" data-step="1" data-for="set-maxTurns" aria-label="Augmenter">+</button>
             </div>
           </div>
         </fieldset>

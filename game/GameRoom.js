@@ -297,7 +297,7 @@ class GameRoom {
   budgetOf(p) {
     const bonus = this.settings && this.settings.attackerBonus || 0;
     if (!p || !bonus || !this.mapSides() || p.side !== 'attacker') return this.budget;
-    return Math.round(this.budget * (1 + bonus / 100));
+    return this.budget + bonus;
   }
   // Every player has a side, each side has at least one player and no more than its zones (null when fine)
   sidesProblem() {
@@ -342,6 +342,7 @@ class GameRoom {
       spectators: this.publicSpectators(),
       takenGenerals: this.players.filter(p => p.generalId).map(p => p.generalId),
       sides: this.mapSides(),
+      sideZones: this.mapSides() ? Object.fromEntries(this.mapSides().map(s => [s.id, (this.map.zones || []).filter(z => z.side === s.id).length])) : null,
       options: this.options,
     };
   }
@@ -614,7 +615,7 @@ class GameRoom {
       mapId: this.mapId,
       mode: this.mode,
       budget: this.budget,
-      showObjectives: this.settings.victoryPoints > 0,
+      showObjectives: this.isCapture(),
       isReady: !!player.isReady,
       startingZone: player.startingZone,
       blockedTiles: this._deployBlocked(player.startingZone),
@@ -743,7 +744,7 @@ class GameRoom {
         u.hasAttacked = false;
       }
     }
-    this.objectives = (this.settings.victoryPoints > 0 ? this.map.objectives || [] : [])
+    this.objectives = (this.isCapture() ? this.map.objectives || [] : [])
       .filter(o => o && Number.isInteger(o.q) && Number.isInteger(o.r) && this.hexMap[hexKey(o.q, o.r)])
       .map(o => ({ id: o.id || hexKey(o.q, o.r), q: o.q, r: o.r, name: o.name || 'Objectif', type: o.type || 'flag', points: Number.isFinite(o.points) ? o.points : RULES.objectives.defaultPoints, owner: null }));
     this.scores = Object.fromEntries(this.players.map(p => [p.id, 0]));
@@ -1461,7 +1462,7 @@ class GameRoom {
     const mr = (stance.moral_tour || 0) + (terrain.moral_tour || 0) + (rest.moral_tour || 0);
     const vr = (stance.vitalite_tour || 0) + (terrain.vitalite_tour || 0) + (rest.vitalite_tour || 0);
     if (ar !== 0) unit.armor = Math.max(0, Math.min(unit.maxArmor || unit.armor, unit.armor + ar));
-    if (mr !== 0 && !unit.isGeneral) unit.morale = Math.max(0, Math.min(unit.maxMorale, unit.morale + mr));
+    if (mr !== 0 && !unit.isGeneral) unit.morale = Math.min(unit.maxMorale, unit.morale + mr); // morale may be negative
     if (vr !== 0) unit.vitality = Math.max(0, Math.min(unit.maxVitality, unit.vitality + vr));
     const ab = this.ability(unit);
     if (ab && ab.type === 'moral_near_general' && !unit.isFleeing) {
@@ -1586,13 +1587,14 @@ class GameRoom {
     const moralGain = critSuccess ? null : success ? Math.max(1, charisma - d20) * 10 : 0;
     for (const t of targets) {
       if (critFail) {
-        t.morale = Math.max(0, t.morale - 20);
+        t.morale -= 20;
+        if (t.morale < 0 && !t.isFleeing) { t.stance = 'marche'; t.isFleeing = true; }
       } else if (critSuccess) {
         t.morale = t.maxMorale;
         t.isFleeing = false;
       } else if (success) {
         t.morale = Math.min(t.maxMorale, t.morale + moralGain);
-        if (t.isFleeing && t.morale > 0) t.isFleeing = false;
+        if (t.isFleeing && t.morale >= 0) t.isFleeing = false;
       }
     }
 
@@ -1741,7 +1743,7 @@ class GameRoom {
         acc.dmg.push(res.dmgReceived); acc.morale.push(res.moralDmg);
         acc.counter.push(res.counterDmgReceived); acc.counterMorale.push(res.counterMoralDmg);
         if (res.dmgReceived >= target.vitality) kills++;
-        else if (!target.isGeneral && res.moralDmg >= target.morale) routs++;
+        else if (!target.isGeneral && target.morale - res.moralDmg < 0) routs++;
       }
     } finally { this._rng = prevRng; }
     const stat = (xs) => ({ min: Math.min(...xs), avg: Math.round(xs.reduce((s, x) => s + x, 0) / xs.length * 10) / 10, max: Math.max(...xs) });
@@ -1761,8 +1763,8 @@ class GameRoom {
     target.vitality = Math.max(0, target.vitality - result.dmgReceived);
     target.armor = Math.max(0, target.armor - 1);
     if (!target.isGeneral) {
-      target.morale = Math.max(0, target.morale - result.moralDmg);
-      if (target.morale <= 0 && !target.isFleeing) { target.stance = 'marche'; target.isFleeing = true; }
+      target.morale -= result.moralDmg; // morale may go negative: below zero the unit flees
+      if (target.morale < 0 && !target.isFleeing) { target.stance = 'marche'; target.isFleeing = true; }
     }
 
     // Apply to attacker (counter-attack)
@@ -1771,8 +1773,8 @@ class GameRoom {
       attacker.armor = Math.max(0, attacker.armor - 1);
     }
     if (result.counterMoralDmg > 0 && !attacker.isGeneral) {
-      attacker.morale = Math.max(0, attacker.morale - result.counterMoralDmg);
-      if (attacker.morale <= 0 && !attacker.isFleeing) { attacker.stance = 'marche'; attacker.isFleeing = true; }
+      attacker.morale -= result.counterMoralDmg;
+      if (attacker.morale < 0 && !attacker.isFleeing) { attacker.stance = 'marche'; attacker.isFleeing = true; }
     }
     const bonuses = [...(result.bonuses || [])];
     // Soldats: after their attack, an enemy under the threshold is executed (never a general)
@@ -1789,8 +1791,8 @@ class GameRoom {
         for (const [dq, dr] of [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]]) {
           const adj = this.unitMap[hexKey(target.q + dq, target.r + dr)];
           if (!adj || adj === target || adj.isGeneral || this.areAllies(attacker.playerId, adj.playerId)) continue;
-          adj.morale = Math.max(0, adj.morale - spill);
-          if (adj.morale <= 0 && !adj.isFleeing) { adj.stance = 'marche'; adj.isFleeing = true; }
+          adj.morale -= spill;
+          if (adj.morale < 0 && !adj.isFleeing) { adj.stance = 'marche'; adj.isFleeing = true; }
           hit++;
         }
       }
@@ -1889,8 +1891,8 @@ class GameRoom {
         duel.moraleShock = D.loserMoraleShock;
         for (const u of loseP.units) {
           if (u.isGeneral || u.q === null) continue;
-          u.morale = Math.max(0, u.morale - Math.round(u.maxMorale * D.loserMoraleShock));
-          if (u.morale <= 0 && !u.isFleeing) { u.stance = 'marche'; u.isFleeing = true; }
+          u.morale -= Math.round(u.maxMorale * D.loserMoraleShock);
+          if (u.morale < 0 && !u.isFleeing) { u.stance = 'marche'; u.isFleeing = true; }
         }
         loser.stunned = true;
         duel.stunned = true;
@@ -2144,7 +2146,7 @@ class GameRoom {
         for (const p of this.players) {
           if (p.id === playerId || p.isEliminated) continue;
           if (p.units.length < myCount) {
-            for (const u of p.units) if (!u.isGeneral) u.morale = Math.max(0, u.morale - 1);
+            for (const u of p.units) if (!u.isGeneral) { u.morale -= 1; if (u.morale < 0 && !u.isFleeing) { u.stance = 'marche'; u.isFleeing = true; } }
             combatLog.effects.push(`Moral de ${p.name} réduit de 1`);
           }
         }
@@ -2199,6 +2201,27 @@ class GameRoom {
   }
 
   // Highest score wins; tie -> most remaining vitality ratio; still tied -> draw
+  // Capture mode: objectives and victory points; annihilation (default): generals only, optional turn limit
+  isCapture() { return !!this.settings && this.settings.victoryMode === 'capture'; }
+
+  // Turn limit in annihilation: the strongest army wins — gold value of the units left, in proportion to their
+  // vitality (generals not counted), summed per side (siege sides, or allies in team mode); equal values = a draw
+  _endByStrength(reason) {
+    const alive = this.players.filter(p => !p.isEliminated);
+    const value = (p) => p.units.reduce((s, u) => s + (u.isGeneral || u.q === null ? 0 : ((UNITS[u.typeId] || {}).cost || 0) * Math.max(0, u.vitality) / (u.maxVitality || 1)), 0);
+    const groups = [];
+    for (const p of alive) {
+      const g = groups.find(x => this.areAllies(x.players[0].id, p.id));
+      if (g) { g.players.push(p); g.value += value(p); } else groups.push({ players: [p], value: value(p) });
+    }
+    groups.sort((a, b) => b.value - a.value);
+    const [best, next] = groups;
+    const tie = !best || (next && Math.abs(best.value - next.value) < 1e-6);
+    if (!tie && best.players.length > 1) this.winningFlag = best.players[0].flag;
+    const lead = best && best.players.slice().sort((a, b) => value(b) - value(a))[0];
+    this._endGame(tie ? null : lead.id, reason);
+  }
+
   _endByPoints(reason) {
     const alive = this.players.filter(p => !p.isEliminated);
     const strength = (p) => p.units.reduce((s, u) => s + u.vitality / (u.maxVitality || 1), 0);
@@ -2237,11 +2260,11 @@ class GameRoom {
     if (this.objectives.length) this._record('score', { scores: { ...this.scores } });
     if (before !== this.isNight()) this.emitEvent({ event: 'time_change', ...this.timeState() });
     const vp = this.settings.victoryPoints;
-    if (vp > 0) {
+    if (this.isCapture() && vp > 0) {
       const reached = this.players.filter(p => !p.isEliminated && (this.scores[p.id] || 0) >= vp);
       if (reached.length) { this._endByPoints('points'); return; }
     }
-    if (this.settings.maxTurns > 0 && this.turn > this.settings.maxTurns) { this._endByPoints('max_turns'); return; }
+    if (!this.isCapture() && this.settings.maxTurns > 0 && this.turn > this.settings.maxTurns) { this._endByStrength('max_turns'); return; }
     this._snapshotForSpectators();
   }
 

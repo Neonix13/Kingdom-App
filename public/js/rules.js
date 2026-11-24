@@ -137,14 +137,17 @@
     },
     settings: {
       turnsPerHalfDay: { min: 5, max: 20, default: 12 },
-      maxTurns: { min: 0, max: 200, default: 0 },          // 0 = unlimited
-      victoryPoints: { min: 0, max: 1000, default: 0 },    // 0 = disabled
+      // annihilation: kill the enemy general(s), with an optional turn limit (then the strongest army wins);
+      // capture: objectives on the map, the first to victoryPoints wins (or the last general standing)
+      victoryMode: { values: ['annihilation', 'capture'], default: 'annihilation' },
+      maxTurns: { min: 0, max: 200, default: 0 },          // annihilation: 0 = unlimited
+      victoryPoints: { min: 1, max: 1000, default: 20 },   // capture: points to win
       turnTimer: { min: 0, max: 600, default: 0 },         // seconds, 0 = off (else >= 15)
       spectatorVision: { values: ['full', 'delayed', 'off'], default: 'full' },
       planningTimer: { min: 0, max: 600, default: 90 },    // simultaneous mode: seconds, 0 = off (else >= 15)
       commandPoints: { min: 0, max: 50, default: 0 },      // simultaneous mode: 0 = formula below, else fixed
       teamMode: { default: false },                        // players under the same flag (nation) are allies
-      attackerBonus: { min: 0, max: 300, default: 0 },     // maps with sides (siege): extra gold for the attackers, in %
+      attackerBonus: { min: 0, max: 100000, default: 0 },  // maps with sides (siege): extra gold for the attackers
     },
     // Simultaneous mode (game/turns/simultaneous.js, game/rules/resolve.js)
     simultaneous: {
@@ -416,6 +419,7 @@
     const s = RULES.settings;
     return {
       turnsPerHalfDay: s.turnsPerHalfDay.default,
+      victoryMode: s.victoryMode.default,
       maxTurns: s.maxTurns.default,
       victoryPoints: s.victoryPoints.default,
       turnTimer: s.turnTimer.default,
@@ -451,6 +455,10 @@
     if ('spectatorVision' in patch) {
       if (s.spectatorVision.values.indexOf(patch.spectatorVision) === -1) return { settings: current, error: 'spectatorVision' };
       out.spectatorVision = patch.spectatorVision;
+    }
+    if ('victoryMode' in patch) {
+      if (s.victoryMode.values.indexOf(patch.victoryMode) === -1) return { settings: current, error: 'victoryMode' };
+      out.victoryMode = patch.victoryMode;
     }
     return { settings: out, error: null };
   }

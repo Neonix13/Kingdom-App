@@ -16,6 +16,11 @@ Question:
 -------
 
 FAIT (25/11/2026)
+- Col de Kankoku : bonus des attaquants en or (montant fixe réglé par l'hôte), plus en pourcentage
+- choix du camp déplacé dans un panneau « Camps » sous la liste des joueurs (une colonne par camp, Rejoindre / Quitter ; l'hôte déplace les IA avec ⇄)
+- mode de victoire au choix : annihilation (par défaut, pas d'objectifs ni de score, tours maximum en option : à la limite, l'armée la plus forte gagne) ou capture (objectifs, nombre de points à atteindre)
+- moral négatif possible (sans limite) ; une unité fuit quand son moral passe sous zéro
+- vitesse : plus aucun modificateur lié à la case de départ (fiche d'unité et données d'équilibrage des terrains)
 - déploiement : les unités ont la couleur de leur joueur (et non plus le bleu par défaut)
 - zones de déploiement tirées au hasard à chaque partie (en mode équipe, les alliés restent du même côté)
 - Col de Kankoku : chaque joueur choisit dans le salon son camp, attaquant (coalition) ou défenseur (forteresse Qin) ; chaque camp se déploie dans ses zones, les joueurs d'un même camp sont alliés ; bonus d'or des attaquants réglé par l'hôte (Paramètres > Armées) ; les IA prennent le camp le moins rempli (ou celui choisi par l'hôte)

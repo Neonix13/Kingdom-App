@@ -2610,11 +2610,12 @@ function renderTopInfo() {
   el.style.color = gameState.isNight ? '#9fb4ff' : '#e8c060';
   const sc = document.getElementById('top-scores');
   const objs = gameState.objectives || [];
-  const vp = gameState.settings?.victoryPoints || 0;
+  const capture = gameState.settings?.victoryMode === 'capture';
+  const vp = capture ? gameState.settings?.victoryPoints || 0 : 0;
   if (sc) {
-    sc.innerHTML = objs.length || vp ? (gameState.players || []).map(p => `<span style="color:${p.color}">${escapeHtml(p.name)} ${gameState.scores?.[p.id] || 0}</span>`).join(' · ') + (vp ? ` <span class="text-muted">/ ${vp}</span>` : '') : '';
+    sc.innerHTML = capture && (objs.length || vp) ? (gameState.players || []).map(p => `<span style="color:${p.color}">${escapeHtml(p.name)} ${gameState.scores?.[p.id] || 0}</span>`).join(' · ') + (vp ? ` <span class="text-muted">/ ${vp}</span>` : '') : '';
   }
-  const mt = gameState.settings?.maxTurns;
+  const mt = capture ? 0 : gameState.settings?.maxTurns;
   document.getElementById('top-turn').textContent = `Tour ${gameState.turn}${mt ? '/' + mt : ''} · Manche ${gameState.manche || 1}`;
 }
 
@@ -2657,7 +2658,7 @@ function toggleRules() {
     les unités du vainqueur à ${R.duel.boostRadius} cases gagnent ${Math.round(R.duel.winnerMoraleBoost * 100)} % de moral.</p>
     <h3>Objectifs et victoire</h3>
     <p>Finir son tour sur un objectif le capture ; chaque objectif tenu rapporte ses points au début de chaque tour.
-    Victoire : dernier général en vie${st.victoryPoints ? `, ou ${st.victoryPoints} points` : ''}${st.maxTurns ? `, ou meilleur score après ${st.maxTurns} tours` : ''}.</p>
+    Victoire : dernier général en vie${st.victoryMode === 'capture' ? `, ou ${st.victoryPoints} points (mode capture)` : st.maxTurns ? `, ou armée la plus forte après ${st.maxTurns} tours (mode annihilation)` : ''}.</p>
     <h3>Tour de jeu</h3>
     <p>Le tour se termine automatiquement quand plus aucune unité ne peut agir.${st.turnTimer ? ` Minuteur : ${st.turnTimer} s par tour.` : ''}</p>
     <p class="text-muted" style="font-size:0.85em">Règles complètes : docs/regles.md</p>`;
@@ -2888,7 +2889,7 @@ function showUnitCard(unit) {
     const pui  = _mod(unit.power,            'puissance_cac',    'puissance_tir',    'puissance_cac',    'puissance_tir');
     const inti = _mod(unit.intimidation ?? 0,'intimidation_cac', 'intimidation_tir', 'intimidation_cac', 'intimidation_tir');
     const arm  = _mod(unit.armor,            'armure',           null,               'armure',           null);
-    const spd  = _mod(unit.speed,            'vitesse',          null,               'vitesse',          null);
+    const spd  = _mod(unit.speed,            'vitesse',          null,               null,               null); // the hex the unit stands on does not change its speed
 
     statsHtml = [
       `<div class="uc-pdf-stat" style="grid-column:1/-1"><div class="uc-pdf-stat-label">Vitalité</div><div class="uc-pdf-stat-value">${unit.vitality}/${unit.maxVitality}</div></div>`,
@@ -3038,7 +3039,7 @@ function historyCard(log, round, idx, id, attackerColor, targetColor) {
   if (b.modNuit) tags.push('de nuit');
   if (log.targetKilled) tags.push('<span class="hc-dead">cible détruite</span>');
   if (log.attackerKilled) tags.push('<span class="hc-dead">attaquant détruit</span>');
-  if (!log.targetKilled && log.targetMoraleLeft === 0) tags.push('<span class="hc-dead">cible en fuite</span>');
+  if (!log.targetKilled && log.targetMoraleLeft != null && log.targetMoraleLeft < 0) tags.push('<span class="hc-dead">cible en fuite</span>');
   return `<div class="h-header hc" onclick="toggleHistory('${id}')"${attackerColor ? ` style="border-left:4px solid ${e(attackerColor)}"` : ''}>
     <div class="hc-top"><span class="hc-turn">T${round}</span><span class="hc-kind">${icon} ${kind}</span>${idx != null && !log.abilityUsed ? `<button class="h-open" title="Rouvrir la fiche de ce combat" onclick="event.stopPropagation(); window.hudOpenCombat && window.hudOpenCombat(${idx})">FICHE</button>` : ''}<span class="h-arrow" id="arrow-${id}">▶</span></div>
     <div class="hc-vs">${who(log.attackerName, attackerColor)}<span class="hc-arrow">→</span>${who(log.targetName, targetColor)}</div>

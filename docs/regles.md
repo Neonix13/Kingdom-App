@@ -105,6 +105,8 @@ L'outil **Côtés faibles** (vue 2D) colore les bords de chaque unité : vert (f
 
 ## 5. Combat
 
+**Moral** : il peut devenir **négatif** (sans limite) ; une unité dont le moral passe **sous zéro** prend la fuite (à zéro, elle tient encore).
+
 **Portée** : toujours 1 case en mêlée ; pour les tireurs, la portée de l'unité (archers 3, archers d'élite 4), +1 par niveau de hauteur au-dessus de la cible, −1 par niveau au-dessous (au moins 1). Un archer au contact de sa cible se bat en mêlée (la cible peut riposter). La cible doit être visible (§7) et ne pas être alliée.
 
 **Attaque à distance** : cliquer un ennemi visible hors de portée (case orange) déplace d'abord l'unité sur la case d'approche choisie — mêlée : la moins chère à atteindre (puis la plus haute) ; tireur : la plus éloignée de la cible encore à portée (puis la moins chère) — puis lance l'attaque, en une seule action vérifiée d'un bloc par le serveur. Si aucune case accessible ce tour ne permet de frapper, l'unité ne bouge pas. Une embuscade sur le chemin arrête l'unité et annule l'attaque.
@@ -124,7 +126,7 @@ Résolution « NGO » (`RULES.combat`, `GameRoom._resolveCombat`) :
    - Contre un tir : pas de défense ni de riposte, sauf la **phalange**, qui peut encaisser — mais jamais contre des archers. Une attaque qui ne peut pas être défendue est résolue aussitôt, sans demander de réponse.
 5. L'attaquant et le défenseur qui riposte se tournent l'un vers l'autre.
 
-**Motivation** (général) : D20 ≤ Charisme → les unités à Charisme/5 cases ou moins regagnent (Charisme − D20) × 10 de moral (et cessent de fuir). **1** : réussite critique, moral au maximum. **20** : échec critique, −20 moral.
+**Motivation** (général) : D20 ≤ Charisme → les unités à Charisme/5 cases ou moins regagnent (Charisme − D20) × 10 de moral (et cessent de fuir si leur moral redevient positif ou nul). **1** : réussite critique, moral au maximum. **20** : échec critique, −20 moral.
 
 ## 6. Jour et nuit
 
@@ -171,12 +173,13 @@ Quand un général attaque un général ennemi au corps à corps, c'est un **due
 
 ## 9. Objectifs et victoire
 
-- Certaines cartes ont des **objectifs** (drapeaux). On capture un objectif en ayant une unité dessus **à la fin de sa manche** ; il reste à son propriétaire jusqu'à ce qu'un autre le prenne (il redevient neutre si son propriétaire est éliminé).
+- **Mode de victoire** (réglage de la salle) : **annihilation** (par défaut : pas d'objectifs ni de score) ou **capture** (objectifs et points).
+- En mode capture, certaines cartes ont des **objectifs** (drapeaux). On capture un objectif en ayant une unité dessus **à la fin de sa manche** ; il reste à son propriétaire jusqu'à ce qu'un autre le prenne (il redevient neutre si son propriétaire est éliminé).
 - Au début de chaque tour, chaque objectif tenu rapporte ses **points** (1 par défaut, indiqué sur la carte).
 - **Conditions de victoire** :
   1. être le dernier camp dont le général est en vie (mode par équipe : il ne reste que des alliés) ;
-  2. atteindre le **seuil de points de victoire** (réglage, 0 = désactivé) ;
-  3. à la **limite de tours** (réglage, 0 = illimité) : le meilleur score l'emporte ; à égalité, l'armée la plus intacte (somme des vitalités restantes en proportion) ; sinon match nul.
+  2. mode capture : atteindre le **seuil de points de victoire** (réglage) ;
+  3. mode annihilation : à la **limite de tours** (réglage, 0 = illimité), l'**armée la plus forte** l'emporte : valeur en or des unités restantes, en proportion de leur vitalité (généraux non comptés), additionnée par camp ou par équipe ; à égalité, match nul.
 
 ## 10. Capacités des généraux
 
