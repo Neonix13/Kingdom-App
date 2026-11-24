@@ -536,7 +536,7 @@
       const u = myUnit(unitId);
       if (!u) continue;
       const t = o.targetId ? anyUnit(o.targetId) : null;
-      out.push({ unitId, type: o.type, path: o.path ? [[u.q, u.r], ...o.path] : null, target: t ? { id: t.id, q: t.q, r: t.r } : null, stance: o.stance || null, facing: o.facing != null ? o.facing : null, ability: o.ability || null, ranged: (u.range || 1) > 1 });
+      out.push({ unitId, type: o.type, path: o.path ? [[u.q, u.r], ...o.path] : null, target: t ? { id: t.id, q: t.q, r: t.r } : null, stance: o.stance || null, facing: o.facing != null ? o.facing : null, ability: o.ability || null, ranged: (u.range || 1) > 1, marchRest: o.type === 'move' && o.marchRest && o.marchRest.length ? o.marchRest : null });
     }
     return out;
   }

@@ -1767,10 +1767,23 @@ function drawMarchPath(ctx, path, turnEnds, { color = '#fff', alpha = 1, label =
 }
 
 // Standing marches of my units: the rest of their route, faint, numbered by turn for the selected unit
-function drawMarches(ctx) {
+function marchPaths() {
+  const planned = new Map();
+  if (window.KBSim && KBSim.active()) for (const o of KBSim.plannedOrders()) planned.set(String(o.unitId), o);
+  const out = [];
   for (const u of gameState?.units || []) {
-    if (!u.isMine || !u.march || !u.march.route || !u.march.route.length || u.q == null) continue;
-    const path = [[u.q, u.r], ...u.march.route];
+    if (!u.isMine || u.q == null) continue;
+    const o = planned.get(String(u.id));
+    if (o) {
+      if (o.marchRest) { const from = o.path && o.path.length ? o.path[o.path.length - 1] : [u.q, u.r]; out.push({ u, path: [from, ...o.marchRest] }); }
+    } else if (u.march && u.march.route && u.march.route.length) out.push({ u, path: [[u.q, u.r], ...u.march.route] });
+  }
+  return out;
+}
+window.marchPaths = marchPaths;
+
+function drawMarches(ctx) {
+  for (const { u, path } of marchPaths()) {
     const costs = [0];
     const mounted = KBRules.isMounted(u);
     for (let i = 1; i < path.length; i++) {
@@ -2848,6 +2861,52 @@ function addCombatHistory(log, round) {
   container.scrollTop = container.scrollHeight;
 }
 
+// Readable summary of a combat: who struck whom, how, and what each side lost (details unfold below)
+function historyCard(log, round, idx, id, attackerColor, targetColor) {
+  const e = escapeHtml;
+  const who = (name, color) => `<span class="hc-unit"${color ? ` style="--c:${e(color)}"` : ''}><i></i>${e(name || '?')}</span>`;
+  const known = (unitId) => [...(gameState?.units || []), ...(gameState?.myUnits || [])].find(u => u.id === unitId);
+  const bar = (left, lost, unitId) => {
+    const u = known(unitId);
+    const max = u?.maxVitality || (left != null ? left + (lost || 0) : 0);
+    if (!max || left == null) return '';
+    const after = Math.max(0, Math.min(100, left / max * 100)), before = Math.max(after, Math.min(100, (left + (lost || 0)) / max * 100));
+    return `<span class="hc-bar" title="${left} / ${max} vitalité"><i class="hc-left" style="width:${after}%"></i><i class="hc-lost" style="left:${after}%;width:${before - after}%"></i></span>`;
+  };
+  const kind = log.duel ? 'Duel' : log.trample ? 'Piétinement' : log.ranged ? 'Tir' : 'Corps à corps';
+  const icon = log.duel ? '⚔' : log.ranged ? '➶' : '⚔';
+  const lines = [];
+  const b = log.breakdown || {};
+  if (log.duel) {
+    const d = log.duel;
+    const won = d.winnerId === log.attackerId ? log.attackerName : d.winnerId ? log.targetName : null;
+    lines.push(`<div class="hc-line">${d.rounds.length} passe${d.rounds.length > 1 ? 's' : ''} · ${won ? `<b>${e(won)}</b> l'emporte` : 'égalité'}${d.stunned ? ' · le vaincu est sonné' : ''}</div>`);
+  } else if (b.NGOAtt != null && b.generalD20 == null) {
+    lines.push(`<div class="hc-line">${b.attReussite} coup${b.attReussite > 1 ? 's' : ''} porté${b.attReussite > 1 ? 's' : ''} sur ${b.NGOAtt} (il fallait ${b.attackEff} ou moins au d20)</div>`);
+  }
+  const loss = (vit, mor) => [vit ? `<b class="hc-vit">−${vit} vitalité</b>` : '', mor ? `<b class="hc-mor">−${mor} moral</b>` : ''].filter(Boolean).join(' · ') || '<span class="hc-none">aucune perte</span>';
+  const tVit = log.dmgReceived ?? log.dmgInflicted ?? 0;
+  const defLabel = { counter: 'riposte', absorb: 'encaisse (dégâts ÷ 2)', rien: 'ne se défend pas', none: 'ne se défend pas' }[log.defenseChoice];
+  lines.push(`<div class="hc-side"><span class="hc-lbl">${e(log.targetName || '?')}</span>${loss(tVit, log.moralDmg)}${bar(log.targetVitalityLeft, tVit, log.targetId)}</div>`);
+  if (!log.duel && defLabel && !log.ranged) lines.push(`<div class="hc-line hc-def">La cible ${defLabel}</div>`);
+  if (log.counterDmgReceived || log.counterMoralDmg || (log.duel && log.counterDmgReceived != null)) {
+    lines.push(`<div class="hc-side"><span class="hc-lbl">${e(log.attackerName || '?')}</span>${loss(log.counterDmgReceived, log.counterMoralDmg)}${bar(log.attackerVitalityLeft, log.counterDmgReceived, log.attackerId)}</div>`);
+  }
+  const tags = [];
+  if (b.angleName) tags.push(b.angleName === 'dos' ? 'de dos' : 'de flanc');
+  if (b.modHauteur > 0) tags.push('en hauteur');
+  if (b.modNuit) tags.push('de nuit');
+  if (log.targetKilled) tags.push('<span class="hc-dead">cible détruite</span>');
+  if (log.attackerKilled) tags.push('<span class="hc-dead">attaquant détruit</span>');
+  if (!log.targetKilled && log.targetMoraleLeft === 0) tags.push('<span class="hc-dead">cible en fuite</span>');
+  return `<div class="h-header hc" onclick="toggleHistory('${id}')"${attackerColor ? ` style="border-left:4px solid ${e(attackerColor)}"` : ''}>
+    <div class="hc-top"><span class="hc-turn">T${round}</span><span class="hc-kind">${icon} ${kind}</span>${idx != null && !log.abilityUsed ? `<button class="h-open" title="Rouvrir la fiche de ce combat" onclick="event.stopPropagation(); window.hudOpenCombat && window.hudOpenCombat(${idx})">FICHE</button>` : ''}<span class="h-arrow" id="arrow-${id}">▶</span></div>
+    <div class="hc-vs">${who(log.attackerName, attackerColor)}<span class="hc-arrow">→</span>${who(log.targetName, targetColor)}</div>
+    ${lines.join('')}
+    ${tags.length ? `<div class="hc-tags">${tags.join(' · ')}</div>` : ''}
+  </div>`;
+}
+
 let historyCounter = 0;
 function formatHistoryEntry({ log, round, idx = null }) {
   if (!log) return '';
@@ -2864,16 +2923,7 @@ function formatHistoryEntry({ log, round, idx = null }) {
   const attackerColor = gameState?.players?.find(p => p.id === log.attackerPlayerId)?.color;
   const targetColor = gameState?.players?.find(p => p.id === log.targetPlayerId)?.color;
 
-  const hitBadge = hit ? `<span class="h-badge h-hit">TOUCHÉ</span>` : `<span class="h-badge h-miss">RATÉ</span>`;
-  const header = `<div class="h-header" onclick="toggleHistory('${id}')"${attackerColor ? ` style="border-left:3px solid ${attackerColor}"` : ''}>
-    <span class="h-arrow" id="arrow-${id}">▶</span>
-    <span class="h-title">T${round} — <b${attackerColor ? ` style="color:${attackerColor}"` : ''}>${log.attackerName || '?'}</b> → <b${targetColor ? ` style="color:${targetColor}"` : ''}>${log.targetName || '?'}</b></span>
-    ${log.trample ? `<span class="h-badge h-trample">PIÉTINEMENT</span>` : ''}
-    ${hitBadge}
-    ${log.targetKilled ? `<span class="h-badge h-dead">DÉTRUIT</span>` : ''}
-    ${log.attackerKilled ? `<span class="h-badge h-dead">ATTAQUANT DÉTRUIT</span>` : ''}
-    ${idx != null && !log.abilityUsed ? `<button class="h-open" title="Rouvrir la fiche de ce combat" onclick="event.stopPropagation(); window.hudOpenCombat && window.hudOpenCombat(${idx})">FICHE</button>` : ''}
-  </div>`;
+  const header = historyCard(log, round, idx, id, attackerColor, targetColor);
 
   const sign = n => n >= 0 ? `+${n}` : `${n}`;
   const row = (label, val, cls = '') => (val === null || val === undefined || val === '') ? '' : `<tr class="${cls}"><td>${label}</td><td>${val}</td></tr>`;
@@ -2883,6 +2933,11 @@ function formatHistoryEntry({ log, round, idx = null }) {
   const general = b.generalD20 != null;
   const generalDef = b.generalD20Def != null;
 
+  if (log.duel) {
+    const nm = (uid) => (uid === log.attackerId ? log.attackerName : log.targetName) || '?';
+    const rows = (log.duel.rounds || []).map((r, i) => row(`Passe ${i + 1} : ${r.attackerRoll} contre ${r.defenderRoll}`, r.attacker ? `${escapeHtml(nm(r.attacker))} frappe <b>−${r.dmg}</b>` : 'égalité')).join('');
+    return `<div class="history-entry">${header}<div class="h-detail" id="${id}" style="display:none"><table class="h-table"><tbody><tr class="h-section"><td colspan="2">DUEL (D20 + FORCE)</td></tr>${rows}</tbody></table></div></div>`;
+  }
   let table = `<div class="h-detail" id="${id}" style="display:none"><table class="h-table"><tbody>
     <tr class="h-section"><td colspan="2">ATTAQUE</td></tr>`;
   if (general) {
@@ -3561,6 +3616,9 @@ function wsDispatch(event, data) {
       render();
       break;
     }
+    case 'attack_preview':
+      if (window.onAttackPreview) window.onAttackPreview(data);
+      break;
     case 'objective_captured': {
       const who = gameState?.players.find(p => p.id === data.owner);
       notify(`${who?.name || '?'} s'empare de ${data.name}.`, data.owner === myId ? 'success' : 'info');

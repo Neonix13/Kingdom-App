@@ -5,15 +5,26 @@
 
 Nouveau:
 - j'aimerais pouvoir placer des unité sur le mur au dessus des portes (tu vas peut être devoir laissé lee modèle 2D de coté)
-
+- 
 
 Priorité:
 
 
 
+Question:
+
+- unité des généraux perdants (rallié, fuite, disparition)
 -------
 
 FAIT (24/11/2026)
+- aperçu des dégâts dans l'infobulle d'attaque (2D et 3D) : moyenne et fourchette de vitalité et de moral perdus, riposte, chances de détruire ou de mettre en fuite, calculés par le serveur pour la configuration exacte (postures, angle, terrain, hauteur, nuit, case d'approche, posture prévue)
+- ordre de marche sur plusieurs tours visible tout de suite (mode simultané : la suite de la marche s'affiche en gris dès l'ordre donné)
+- points gagnés au prochain tour affichés sous chaque score (+X)
+- mode annihilation (points de victoire à 0) : plus de drapeaux d'objectif ni de scores (2D, 3D, déploiement) ; ils ne servent qu'en mode capture
+- salle : plus jamais de carte 2D dans les paramètres de partie, seulement l'aperçu 3D
+- option « Tours maximum » retirée des paramètres
+- menu en haut à droite : le panneau Outils se ferme au clic à côté, avec Échap ou avec sa croix
+- historique lisible : une carte par combat (tour, type, attaquant → cible, coups portés, pertes avec barre de vitalité, riposte, de dos / de flanc / hauteur / nuit, détruit / en fuite), détails dépliables ; duels détaillés passe par passe
 - rivières moins profondes : lit relevé, berges en pente douce (herbe), eau peu profonde transparente (on voit le fond), les unités traversent à gué les jambes dans l'eau au lieu de flotter
 - salle : plus de carte 2D pendant le chargement de l'aperçu 3D (message de chargement à la place ; la 2D ne sert plus que si la 3D est indisponible)
 - menu d'armée : le double-clic marche à chaque fois sans bouger la souris

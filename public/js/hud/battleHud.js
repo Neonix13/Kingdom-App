@@ -151,7 +151,19 @@ export function mountBattleHud(bridge, view) {
     el.menuBtn.classList.toggle('on', on);
     el.menuBtn.setAttribute('aria-expanded', String(on));
   }
-  document.addEventListener('pointerdown', (e) => { if (!el.menu.hidden && !e.target.closest('.hud-menuwrap')) setMenu(false); });
+  const closeTools = () => { if (document.body.classList.contains('hud-tools')) { document.body.classList.remove('hud-tools'); render(); } };
+  document.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('.hud-menuwrap')) return;
+    if (!el.menu.hidden) setMenu(false);
+    if (!e.target.closest('#toolbar') && !e.target.closest('#v3-settings')) closeTools();
+  }, true);
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (!el.menu.hidden) setMenu(false);
+    closeTools();
+  });
+  $('toolbar')?.querySelector('.tb-head')?.insertAdjacentHTML('beforeend', '<button type="button" class="tb-close" aria-label="Fermer" title="Fermer">×</button>');
+  $('toolbar')?.addEventListener('click', (e) => { if (e.target.closest('.tb-close')) closeTools(); });
   function toggleDrawer(force) {
     const on = force != null ? force : !document.body.classList.contains('hud-drawer');
     document.body.classList.toggle('hud-drawer', on);
@@ -217,7 +229,12 @@ export function mountBattleHud(bridge, view) {
     const vp = st?.settings?.victoryPoints || 0;
     if (!st || (!objs.length && !vp)) { el.scores.innerHTML = ''; return; }
     const ps = (st.players || []).filter((p) => !p.isEliminated || (st.scores?.[p.id] || 0) > 0);
-    el.scores.innerHTML = ps.map((p) => `<span class="hud-score" style="background:${esc(p.color)}" title="${esc(p.name)} : ${st.scores?.[p.id] || 0} point(s)">${st.scores?.[p.id] || 0}</span>`).join('')
+    const gain = {};
+    for (const o of objs) if (o.owner) gain[o.owner] = (gain[o.owner] || 0) + (o.points || 0);
+    el.scores.innerHTML = ps.map((p) => {
+      const s = st.scores?.[p.id] || 0, g = p.isEliminated ? 0 : gain[p.id] || 0;
+      return `<span class="hud-score-col"><span class="hud-score" style="background:${esc(p.color)}" title="${esc(p.name)} : ${s} point(s)${g ? `, +${g} au prochain tour` : ''}">${s}</span><span class="hud-gain${g ? '' : ' zero'}">+${g}</span></span>`;
+    }).join('')
       + (vp ? `<span class="hud-vp">/ ${vp} PTS</span>` : '');
   }
 

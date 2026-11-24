@@ -274,7 +274,7 @@ test('simultané : points de commandement, validation des ordres', () => {
 });
 
 test('simultané : fin de tour — objectifs, tour suivant, vitesse et ordres réinitialisés, recharge des capacités', () => {
-  const { room, A, B, T } = setup();
+  const { room, A, B, T } = setup({ settings: { victoryPoints: 100 } });
   const gen = units(room, 'p0').general;
   put(room, A[0], 4, 6); put(room, B[0], 12, 1);
   order(room, 'p0', { [A[0].id]: { type: 'move', path: [[5, 6], [6, 6]] }, [gen.id]: { type: 'hold', ability: {} } });

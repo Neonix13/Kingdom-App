@@ -527,6 +527,7 @@ class GameRoom {
       mapId: this.mapId,
       mode: this.mode,
       budget: this.budget,
+      showObjectives: this.settings.victoryPoints > 0,
       isReady: !!player.isReady,
       startingZone: player.startingZone,
       blockedTiles: this._deployBlocked(player.startingZone),
@@ -655,7 +656,7 @@ class GameRoom {
         u.hasAttacked = false;
       }
     }
-    this.objectives = (this.map.objectives || [])
+    this.objectives = (this.settings.victoryPoints > 0 ? this.map.objectives || [] : [])
       .filter(o => o && Number.isInteger(o.q) && Number.isInteger(o.r) && this.hexMap[hexKey(o.q, o.r)])
       .map(o => ({ id: o.id || hexKey(o.q, o.r), q: o.q, r: o.r, name: o.name || 'Objectif', type: o.type || 'flag', points: Number.isFinite(o.points) ? o.points : RULES.objectives.defaultPoints, owner: null }));
     this.scores = Object.fromEntries(this.players.map(p => [p.id, 0]));
@@ -1528,6 +1529,49 @@ class GameRoom {
     const abA = this.ability(attacker);
     if (attacker.vitality > 0 && abA && abA.type === 'speed_free') attacker.hasMoved = false;
     return { ok: true, combatLog, trample: [] };
+  }
+
+  // Damage preview for an attack in the current configuration (stances, angle, terrain, height, night, effects),
+  // from (fromQ, fromR) when the attacker walks there first, with an optional planned stance. Sampled with a fixed
+  // seed: { kind, choice, dmg, morale, counter, counterMorale, kill, rout } where each value is { min, avg, max }
+  previewAttack(playerId, attackerId, targetId, fromQ = null, fromR = null, stance = null) {
+    const attacker = this.findUnit(attackerId);
+    const target = this.findUnit(targetId);
+    if (!attacker || !target || attacker.playerId !== playerId || attacker.q === null) return { error: 'Unité introuvable.' };
+    if (this.areAllies(playerId, target.playerId) || !this.canSee(playerId, target)) return { error: 'Cible invisible.' };
+    const q = fromQ ?? attacker.q, r = fromR ?? attacker.r;
+    if (!this.hexMap[hexKey(q, r)]) return { error: 'Case invalide.' };
+    const a = { ...attacker, q, r };
+    if (typeof stance === 'string' && !attacker.isGeneral && rules.hasStance(stance)) a.stance = stance;
+    const isCac = hexDistance(q, r, target.q, target.r) <= 1;
+    if (isCac && attacker.isGeneral && target.isGeneral) return { ok: true, kind: 'duel' };
+    const sim = this.mode === 'simultaneous';
+    const S = RULES.simultaneous;
+    const wanted = !isCac ? 'absorb' : sim ? (target.isGeneral ? 'counter' : (S.stanceReaction[target.stance] || 'rien')) : 'counter';
+    const choice = this.effectiveDefense(a, target, isCac, wanted);
+    const t = { ...target };
+    if (choice === 'counter' || choice === 'absorb') t.facing = hexFacing(t.q, t.r, a.q, a.r);
+    let seed = 0x9e3779b9;
+    const prevRng = this._rng;
+    this._rng = () => { seed = (seed + 0x6d2b79f5) | 0; let x = Math.imul(seed ^ (seed >>> 15), 1 | seed); x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x; return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
+    const N = 400;
+    const acc = { dmg: [], morale: [], counter: [], counterMorale: [] };
+    let kills = 0, routs = 0;
+    try {
+      for (let i = 0; i < N; i++) {
+        const res = this._resolveCombat(a, t, isCac, choice);
+        acc.dmg.push(res.dmgReceived); acc.morale.push(res.moralDmg);
+        acc.counter.push(res.counterDmgReceived); acc.counterMorale.push(res.counterMoralDmg);
+        if (res.dmgReceived >= target.vitality) kills++;
+        else if (!target.isGeneral && res.moralDmg >= target.morale) routs++;
+      }
+    } finally { this._rng = prevRng; }
+    const stat = (xs) => ({ min: Math.min(...xs), avg: Math.round(xs.reduce((s, x) => s + x, 0) / xs.length * 10) / 10, max: Math.max(...xs) });
+    return {
+      ok: true, kind: isCac ? 'melee' : 'ranged', choice,
+      dmg: stat(acc.dmg), morale: stat(acc.morale), counter: stat(acc.counter), counterMorale: stat(acc.counterMorale),
+      kill: Math.round(kills / N * 100), rout: Math.round(routs / N * 100),
+    };
   }
 
   // Applies a computed combat result (damage, morale, rout, stats, deaths, replay); returns the combat log

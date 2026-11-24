@@ -620,10 +620,9 @@ body.lobby-d.ld-at-home .ld-backdrop { display: none; }
 .lobby-d .bot-controls .ld-bot-add:hover { background: var(--ld-red); color: #fff; }
 .lobby-d .spectator-list:empty { display: none; }
 
-/* ---- map preview: 2D drawing, replaced by a turning 3D view once loaded ---- */
+/* ---- map preview: turning 3D view only ---- */
 .lobby-d .ld-map-view { position: relative; width: 100%; aspect-ratio: 16 / 9; background: rgba(0, 0, 0, .35); border: 1px solid var(--ld-line); overflow: hidden; }
-.lobby-d .ld-map-view #map-preview { position: absolute; inset: 0; width: 100%; height: 100%; aspect-ratio: auto; border: 0; background: none; object-fit: contain; }
-.lobby-d .ld-map-view.ready #map-preview, .lobby-d .ld-map-view.has3d #map-preview { visibility: hidden; }
+.lobby-d .ld-map-view #map-preview { display: none; }
 .lobby-d .ld-map-3d-canvas { position: absolute; inset: 0; opacity: 0; transition: opacity .6s; cursor: grab; touch-action: none; }
 .lobby-d .ld-map-3d-canvas:active { cursor: grabbing; }
 .lobby-d .ld-map-3d-canvas.shown { opacity: 1; }

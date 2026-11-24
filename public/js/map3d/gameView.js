@@ -240,6 +240,7 @@ export async function mountGameView(bridge, { container }) {
     if (mc) outlines.push({ keys: bridge.motivateTiles, center: hexKey(mc.q, mc.r), color: 'rgba(80,180,255,0.95)', width: 0.12 });
     world.layers.setOverlay({ fills, outlines });
 
+    world.objectives.group.visible = st && st.phase !== 'deployment' ? (st.objectives || []).length > 0 : ds?.showObjectives !== false;
     if (st && Array.isArray(st.objectives)) {
       const owners = {};
       for (const o of st.objectives) if (o.owner) owners[o.id ?? hexKey(o.q, o.r)] = bridge.getPlayerColor(o.owner);
@@ -257,8 +258,7 @@ export async function mountGameView(bridge, { container }) {
     }
     if (bridge.simultaneous && !bridge.playback) ordersLayer.show(bridge.plannedOrders || [], bridge.getPlayerColor(bridge.myId), (id) => { const u = shownUnits.find((x) => x.id === id); return u ? anchorOf(u).clone().setY(anchorOf(u).y - 0.3) : null; });
     else ordersLayer.clear();
-    const marches = (bridge.state?.units || []).filter((u) => u.isMine && u.march && u.march.route && u.march.route.length && u.q != null)
-      .map((u) => ({ type: 'move', path: [[u.q, u.r], ...u.march.route] }));
+    const marches = window.marchPaths ?window.marchPaths().map(({ path }) => ({ type: 'move', path })) : [];
     // the turns after this one are drawn grey (only this turn's part takes the player colour)
     if (marches.length) marchLayer.show(marches, '#9a9a9a'); else marchLayer.clear();
     // trees step aside on hexes holding a unit and on every forest hex in sight, so that a visible forest stays readable

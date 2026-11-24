@@ -25,6 +25,63 @@ export function attackAngle(tgt, fromQ, fromR) {
   return mod ? { mod, name: mod >= 4 ? 'de dos' : 'de flanc' } : null;
 }
 
+// Damage preview computed by the server for this exact configuration (cached per state; filled in when it arrives)
+const previews = new Map();
+function plannedStance(att) {
+  const b = window.gameBridge;
+  if (!b || !b.simultaneous) return null;
+  const o = (b.plannedOrders || []).find((x) => String(x.unitId) === String(att.id));
+  return o && o.stance ? o.stance : null;
+}
+function previewKey(att, tgt, from, stance) {
+  const st = window.gameBridge && window.gameBridge.state;
+  return [st ? st.turn : 0, att.id, att.vitality, att.morale, stance || att.stance, from ? `${from.q},${from.r}` : `${att.q},${att.r}`,
+    tgt.id, tgt.q, tgt.r, tgt.vitality, tgt.morale, tgt.stance, tgt.facing].join('|');
+}
+const rng = (s) => (s.min === s.max ? `${s.max}` : `${s.min}–${s.max}`);
+function previewHtml(p, att, tgt) {
+  if (p === false) return '';
+  if (!p) return '<span class="dp-wait">Dégâts possibles : calcul…</span>';
+  if (p.kind === 'duel') return '<b>Dégâts possibles</b><div>Duel de généraux : D20 + Force à chaque passe.</div>';
+  const absorb = p.choice === 'absorb';
+  const lines = [`<div class="dp-row"><span>${esc(tgt.name)}</span><span class="dp-v">−${Math.round(p.dmg.avg)} vit.</span><span class="dp-r">(${rng(p.dmg)})</span></div>`];
+  if (!tgt.isGeneral) lines.push(`<div class="dp-row"><span></span><span class="dp-v">−${Math.round(p.morale.avg)} moral</span><span class="dp-r">(${rng(p.morale)})</span></div>`);
+  if (p.kind === 'melee' && (p.choice === 'counter' || absorb) && p.counter.max > 0) {
+    lines.push(`<div class="dp-row dp-counter"><span>Riposte sur ${esc(att.name)}</span><span class="dp-v">−${Math.round(p.counter.avg)} vit.</span><span class="dp-r">(${rng(p.counter)})</span></div>`);
+    if (!att.isGeneral) lines.push(`<div class="dp-row dp-counter"><span></span><span class="dp-v">−${Math.round(p.counterMorale.avg)} moral</span><span class="dp-r">(${rng(p.counterMorale)})</span></div>`);
+  }
+  const odds = [];
+  if (p.kill) odds.push(`${p.kill} % de détruire la cible`);
+  if (p.rout) odds.push(`${p.rout} % de la mettre en fuite`);
+  const sim = window.gameBridge && window.gameBridge.simultaneous;
+  const how = absorb ? (p.kind === 'ranged' ? 'si la cible encaisse' : 'la cible encaisse (dégâts ÷ 2)') : p.choice === 'counter' ? (sim ? 'la cible riposte' : 'si la cible riposte ; ÷ 2 si elle encaisse') : 'sans défense de la cible';
+  return `<b>Dégâts possibles</b> <small>moyenne (min–max), ${how}</small>${lines.join('')}${odds.length ? `<div class="dp-odds">${odds.join(' · ')}</div>` : ''}`;
+}
+function esc(s) { return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function damagePreview(att, tgt, from) {
+  const b = window.gameBridge;
+  if (!b || !window.KBNet || !att.isMine || b.state?.phase !== 'battle' || b.playback) return '';
+  const stance = plannedStance(att);
+  const key = previewKey(att, tgt, from, stance);
+  if (!previews.has(key)) {
+    previews.set(key, null);
+    if (previews.size > 300) previews.delete(previews.keys().next().value);
+    window.KBNet.send('preview_attack', { key, attackerId: att.id, targetId: tgt.id, fromQ: from ? from.q : undefined, fromR: from ? from.r : undefined, stance: stance || undefined });
+  }
+  return `<div class="dmg-preview" data-key="${esc(key)}">${previewHtml(previews.get(key), att, tgt)}</div>`;
+}
+window.onAttackPreview = (data) => {
+  if (!data || !data.key || !previews.has(data.key)) return;
+  previews.set(data.key, data.preview || false);
+  for (const el of document.querySelectorAll('.dmg-preview')) {
+    if (el.dataset.key !== data.key) continue;
+    const ids = data.key.split('|');
+    const units = window.gameBridge?.state?.units || [];
+    const att = units.find((u) => String(u.id) === ids[1]), tgt = units.find((u) => String(u.id) === ids[6]);
+    if (att && tgt) el.innerHTML = previewHtml(data.preview || false, att, tgt);
+  }
+};
+
 export function attackTipHtml(att, tgt, types, from = null) {
   const ranged = (att.range || 1) > 1;
   const row = (label, a, b) => `<span>${a ?? '–'}</span><span>${label}</span><span>${b ?? '–'}</span>`;
@@ -63,5 +120,5 @@ export function attackTipHtml(att, tgt, types, from = null) {
       ${row('Dés', dice(att), dice(tgt))}
       ${row('Puissance / Armure', att.power, tgt.armor)}
       ${row('Vitalité', att.vitality, tgt.vitality)}
-      ${row('Moral', att.morale ?? '–', tgt.morale ?? '–')}</div>${notes.map((n) => `<div class="note">${n}</div>`).join('')}`;
+      ${row('Moral', att.morale ?? '–', tgt.morale ?? '–')}</div>${damagePreview(att, tgt, from)}${notes.map((n) => `<div class="note">${n}</div>`).join('')}`;
 }

@@ -1341,6 +1341,15 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     emit(tx, 'all', { event: 'chat_message', ...msg });
   });
 
+  H.preview_attack = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    const p = requirePlayer(tx, connId);
+    requirePhase(tx, 'battle');
+    const key = v.cleanText(data.key, 160);
+    const from = data.fromQ != null && data.fromR != null ? [v.int(data.fromQ, -10000, 10000), v.int(data.fromR, -10000, 10000)] : [null, null];
+    const res = tx.room.previewAttack(p.id, v.id(data.attackerId), v.id(data.targetId), from[0], from[1], data.stance || null);
+    reply(tx, connId, { event: 'attack_preview', key, preview: res && res.ok ? res : null });
+  });
+
   H.ping = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
     const p = requirePlayer(tx, connId);
     const q = v.int(data.q, -10000, 10000);
