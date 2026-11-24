@@ -7,7 +7,7 @@ function registerSimMap() {
   const height = {};
   for (let q = 0; q < 14; q++) for (let r = 0; r < 9; r++) height[`${q},${r}`] = 0;
   const zone = (q0) => ({ tiles: Object.keys(height).filter(k => { const q = +k.split(',')[0]; return q >= q0 && q <= q0 + 1; }) });
-  return maps.registerMap({ id: 'test-sim', name: 'Test simultané', height, terrain: { '7,2': 'forest' }, segments: {}, zones: [zone(0), zone(12)], objectives: [{ q: 6, r: 6, points: 1, name: 'Gué' }] });
+  return maps.registerMap({ id: 'test-sim', name: 'Test simultané', height, terrain: { '7,2': 'forest' }, segments: {}, zones: [zone(0), zone(12)], shuffleZones: false, objectives: [{ q: 6, r: 6, points: 1, name: 'Gué' }] });
 }
 
 // Battle room in simultaneous mode; armies: { p0: [{ typeId, count }], p1: [...] }

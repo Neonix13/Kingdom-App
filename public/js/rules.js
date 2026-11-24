@@ -144,6 +144,7 @@
       planningTimer: { min: 0, max: 600, default: 90 },    // simultaneous mode: seconds, 0 = off (else >= 15)
       commandPoints: { min: 0, max: 50, default: 0 },      // simultaneous mode: 0 = formula below, else fixed
       teamMode: { default: false },                        // players under the same flag (nation) are allies
+      attackerBonus: { min: 0, max: 300, default: 0 },     // maps with sides (siege): extra gold for the attackers, in %
     },
     // Simultaneous mode (game/turns/simultaneous.js, game/rules/resolve.js)
     simultaneous: {
@@ -422,6 +423,7 @@
       planningTimer: s.planningTimer.default,
       commandPoints: s.commandPoints.default,
       teamMode: s.teamMode.default,
+      attackerBonus: s.attackerBonus.default,
     };
   }
 
@@ -440,7 +442,7 @@
     };
     const bad = intField('turnsPerHalfDay') || intField('maxTurns') || intField('victoryPoints')
       || intField('turnTimer', (v) => v === 0 || v >= 15)
-      || intField('planningTimer', (v) => v === 0 || v >= 15) || intField('commandPoints');
+      || intField('planningTimer', (v) => v === 0 || v >= 15) || intField('commandPoints') || intField('attackerBonus');
     if (bad) return { settings: current, error: bad };
     if ('teamMode' in patch) {
       if (typeof patch.teamMode !== 'boolean') return { settings: current, error: 'teamMode' };

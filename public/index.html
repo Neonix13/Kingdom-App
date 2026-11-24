@@ -239,6 +239,14 @@
               <button type="button" class="ld-step" data-step="1" data-for="budget-input" aria-label="Augmenter">+</button><span class="ld-suffix">or</span>
             </div>
           </div>
+          <div class="ld-set-row" id="row-attackerBonus" style="display:none">
+            <label for="set-attackerBonus">Bonus d'or des attaquants<small>Siège : or en plus pour le camp attaquant</small></label>
+            <div class="ld-stepper">
+              <button type="button" class="ld-step" data-step="-1" data-for="set-attackerBonus" aria-label="Diminuer">−</button>
+              <input type="number" id="set-attackerBonus" data-setting="attackerBonus" value="0" min="0" max="300" step="5" onchange="setSetting(this)">
+              <button type="button" class="ld-step" data-step="1" data-for="set-attackerBonus" aria-label="Augmenter">+</button><span class="ld-suffix">%</span>
+            </div>
+          </div>
         </fieldset>
 
         <fieldset class="ld-set-group">

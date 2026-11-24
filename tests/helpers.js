@@ -15,7 +15,7 @@ function registerTestMap() {
   return maps.registerMap({
     id: 'test-small', name: 'Test', height, terrain,
     segments: { '4,4|5,4': 'mur' },
-    zones: [zone(0), zone(2), zone(6)],
+    zones: [zone(0), zone(2), zone(6)], shuffleZones: false,
     objectives: [{ q: 5, r: 5, type: 'flag', points: 1, name: 'Colline' }],
   });
 }

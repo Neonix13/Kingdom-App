@@ -816,8 +816,9 @@ const PLAYER_COLORS = [
 ];
 
 function getPlayerColor(playerId) {
-  if (!gameState) return '#4a90d9';
-  const player = gameState.players.find(p => p.id === playerId);
+  // during the deployment there is no game state yet: the colours come with the deployment state
+  const players = (gameState && gameState.players) || (deployState && deployState.players) || [];
+  const player = players.find(p => p.id === playerId);
   return player?.color || '#4a90d9';
 }
 

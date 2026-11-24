@@ -61,7 +61,7 @@ function planStep(room) {
   if (room.phase === 'army_building') {
     for (const bot of list) {
       if (bot.isReady) continue;
-      const units = buildArmy({ budget: room.budget, profile: getProfile(bot.botDifficulty), rng: rngFor(room.roomCode, bot.id, 'army'), generalId: bot.generalId });
+      const units = buildArmy({ budget: room.budgetOf(bot), profile: getProfile(bot.botDifficulty), rng: rngFor(room.roomCode, bot.id, 'army'), generalId: bot.generalId });
       return step(bot, 'submit_army', { units }, 'setup');
     }
     return null;

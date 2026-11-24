@@ -477,7 +477,15 @@ function setMode(mode) {
   KBNet.send('set_mode', { mode });
 }
 
-const SETTING_KEYS = ['turnsPerHalfDay', 'maxTurns', 'victoryPoints', 'turnTimer', 'spectatorVision', 'planningTimer', 'commandPoints'];
+const SETTING_KEYS = ['turnsPerHalfDay', 'maxTurns', 'victoryPoints', 'turnTimer', 'spectatorVision', 'planningTimer', 'commandPoints', 'attackerBonus'];
+
+// Siege maps: a player picks its side (a click on the current side leaves it); the host picks for the bots
+function pickSide(playerId, side) {
+  const p = lastLobby && lastLobby.players.find(x => x.id === playerId);
+  const next = p && p.side === side ? null : side;
+  if (playerId === myId) KBNet.send('set_player_side', { side: next });
+  else KBNet.send('set_bot_side', { playerId, side: next });
+}
 
 function setSetting(el) {
   const key = el.dataset.setting;
@@ -507,6 +515,8 @@ function renderGameSettings(data, host) {
     if (document.activeElement !== el && settings[key] !== undefined) el.value = settings[key];
     el.disabled = !host;
   }
+  const sidesRow = document.getElementById('row-attackerBonus');
+  if (sidesRow) sidesRow.style.display = data.sides ? '' : 'none';
   const sim = data.mode === 'simultaneous';
   document.querySelectorAll('.sim-only').forEach(el => { el.style.display = sim ? '' : 'none'; });
   const tt = document.getElementById('row-turnTimer');
@@ -983,6 +993,7 @@ function renderPlayerList(data) {
     else if (bot) { ready = !!p.generalId; statusText = 'prêt'; }
     else if (!p.generalId) statusText = 'choisit un général';
     else if (!p.flag) statusText = 'choisit un drapeau';
+    else if (data.sides && !p.side) statusText = 'choisit un camp';
     else { ready = !!p.isReady; statusText = p.isReady ? 'prêt' : 'se prépare'; }
     const gen = p.generalId && GENERALS_DATA.find(g => g.id === p.generalId);
     const genImg = gen && generalImageUrl(gen);
@@ -994,6 +1005,12 @@ function renderPlayerList(data) {
       ? `<button type="button" class="ld-pbanner" onclick="togglePlayerMenu('${pid}', 'flag')" aria-expanded="${menu === 'flag'}" title="${pf ? `Drapeau ${pf.name} — cliquer pour changer` : 'Choisir un drapeau'}">${cloth}</button>`
       : `<span class="ld-pbanner" title="${pf ? `Drapeau ${pf.name}` : 'Pas encore de drapeau'}">${cloth}</span>`;
     const faceInner = genImg ? `<img src="${genImg}" alt="">` : `<span class="ld-brush" aria-hidden="true">${gen ? escapeHtml(gen.name.charAt(0)) : '?'}</span>`;
+    // siege maps (Col de Kankoku): attacker / defender, picked by each player (bots: the host, or automatic)
+    const sideName = (id) => { const s = (data.sides || []).find(x => x.id === id); return s ? s.name : ''; };
+    const SIDE_SHORT = { attacker: 'Attaquant', defender: 'Défenseur' };
+    const sideCtl = !data.sides ? '' : (mine || botEdit)
+      ? `<span class="ld-pside" role="group" aria-label="Camp">${data.sides.map(s => `<button type="button" class="${p.side === s.id ? 'on' : ''} side-${s.id}" title="${escapeHtml(s.name)}${s.id === 'attacker' && data.settings && data.settings.attackerBonus ? ` — +${data.settings.attackerBonus} % d'or` : ''}" onclick="pickSide('${pid}', '${s.id}')">${SIDE_SHORT[s.id] || escapeHtml(s.name)}</button>`).join('')}</span>`
+      : `<span class="ld-pside-tag side-${escapeHtml(p.side || 'none')}" title="${escapeHtml(sideName(p.side))}">${p.side ? (SIDE_SHORT[p.side] || escapeHtml(sideName(p.side))) : (bot ? 'camp auto' : 'sans camp')}</span>`;
     const nameInner = `<span class="ld-pname">${escapeHtml(p.name)}${p.id === myId ? ' <em>(vous)</em>' : ''}</span>${levelSelect ? '' : badge}`;
     li.innerHTML = `
       ${botEdit ? `<button type="button" class="ld-pface" onclick="changeBotGeneral('${pid}')" title="Changer le général de cette IA">${faceInner}</button>` : `<span class="ld-pface">${faceInner}</span>`}
@@ -1005,6 +1022,7 @@ function renderPlayerList(data) {
             : `<span class="ld-pgen">${escapeHtml(genName)}</span>`}
           ${levelSelect || `<span class="player-status${ready ? ' ready' : ''}">${statusText}</span>`}
         </div>
+        ${sideCtl ? `<div class="ld-pbottom">${sideCtl}</div>` : ''}
       </div>
       ${banner}
       ${p.id === hostId ? '<span class="ld-host-mark ld-brush" title="Hôte de la partie" aria-label="Hôte">主</span>' : ''}
@@ -1306,7 +1324,8 @@ function goToGame() {
 function onRoomUpdate(data) {
   lastLobby = data;
   roomCode = data.roomCode;
-  budget = data.budget;
+  const meP = (data.players || []).find(p => p.id === myId);
+  budget = meP && meP.budget ? meP.budget : data.budget; // attackers of a siege map may get more gold
   isHost = data.hostId === myId;
   document.getElementById('room-code-display').textContent = data.roomCode;
   document.getElementById('ld-room-code-mini').textContent = data.roomCode;
@@ -1348,7 +1367,7 @@ function lobbyDispatch(event, data) {
       if (lastLobby) renderSettings(lastLobby);
       break;
     case 'phase_change':
-      if (data.budget !== undefined) budget = data.budget;
+      if (data.budget !== undefined) { const meP = lastLobby && lastLobby.players.find(p => p.id === myId); budget = meP && meP.budget ? meP.budget : data.budget; }
       if (data.phase === 'lobby') { armySubmitted = false; show('screen-lobby'); }
       if (data.phase === 'army_building') enterArmyBuilding(data);
       else if (data.phase === 'deployment' || data.phase === 'battle') goToGame();

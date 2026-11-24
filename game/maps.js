@@ -10,7 +10,10 @@
 //   decor:    { fields: ["q,r", ...],    // purely visual (public/js/mapProps.js): wheat fields,
 //               ramparts: ["q,r", ...],  // wall-walk hexes drawn as fortress walls (rules come from height + cliff segments),
 //               props: [{ type, q, r, rot, label }] },  // towers, gatehouses, tents, banners, stairs, campfires
-//   zones:    [ { tiles: ["q,r", ...] } ],                 // optional fixed deployment zones (else generated)
+//   zones:    [ { tiles: ["q,r", ...], name?, side? } ],   // optional fixed deployment zones (else generated)
+//   sides:    [ { id: 'defender' | 'attacker', name } ],   // optional siege sides: each player picks one in the lobby,
+//                                                           // zones carry their side, attackers may get extra gold
+//   shuffleZones: false                                     // optional: zones given in order instead of drawn at random
 //   objectives: [ { q, r, type, points, name } ],          // optional victory points
 // }
 const fs = require('fs');
@@ -69,6 +72,8 @@ function normalizeMap(map) {
     segments: map.segments || {},
     decor: map.decor || {},
     zones: Array.isArray(map.zones) ? map.zones : [],
+    sides: Array.isArray(map.sides) ? map.sides : null,
+    shuffleZones: map.shuffleZones !== false, // false: player i always gets zone i (tests, scripted maps)
     objectives: Array.isArray(map.objectives) ? map.objectives : [],
   };
 }

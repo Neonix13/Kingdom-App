@@ -677,6 +677,16 @@ body.lobby-d.ld-at-home .ld-backdrop { display: none; }
 .lobby-d .ld-pbottom { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; min-width: 0; }
 .lobby-d .ld-pbottom .ld-pgen { font-family: var(--ld-mincho); font-weight: 900; font-size: 17px; color: var(--ld-text); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lobby-d .ld-pbottom .player-status { font-size: 11px; padding: 1px 8px; border-radius: 999px; background: rgba(239, 232, 216, .07); }
+/* siege maps: attacker / defender side of each player */
+.lobby-d .ld-pside { display: inline-flex; border: 1px solid var(--ld-line); }
+.lobby-d .ld-pside button { padding: 2px 9px; border: 0; background: transparent; color: var(--ld-soft); font: 700 11px var(--ld-body, sans-serif); cursor: pointer; }
+.lobby-d .ld-pside button + button { border-left: 1px solid var(--ld-line); }
+.lobby-d .ld-pside button:hover { color: var(--ld-text); }
+.lobby-d .ld-pside button.on.side-attacker { background: var(--ld-red); color: #fff; }
+.lobby-d .ld-pside button.on.side-defender { background: #2f5e8a; color: #fff; }
+.lobby-d .ld-pside-tag { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: rgba(239, 232, 216, .07); color: var(--ld-soft); }
+.lobby-d .ld-pside-tag.side-attacker { background: var(--ld-red); color: #fff; }
+.lobby-d .ld-pside-tag.side-defender { background: #2f5e8a; color: #fff; }
 .lobby-d .ld-pbottom .player-status.ready { background: rgba(143, 209, 143, .14); }
 .lobby-d .player-list .bot-remove { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; font-size: 15px; }
 .lobby-d .ld-pbanner { align-self: end; position: relative; display: block; width: 62px; height: 60px; padding: 0; border: 0; background: none; }

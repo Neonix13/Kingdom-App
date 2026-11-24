@@ -8,7 +8,7 @@ function registerWideMap() {
   const height = {};
   for (let q = 0; q < 30; q++) for (let r = 0; r < 9; r++) height[`${q},${r}`] = 0;
   const zone = (q0) => ({ tiles: Object.keys(height).filter(k => { const q = +k.split(',')[0]; return q >= q0 && q <= q0 + 1; }) });
-  maps.registerMap({ id: 'test-sim-wide', name: 'Test large', height, terrain: {}, segments: {}, zones: [zone(0), zone(28)], objectives: [] });
+  maps.registerMap({ id: 'test-sim-wide', name: 'Test large', height, terrain: {}, segments: {}, zones: [zone(0), zone(28)], shuffleZones: false, objectives: [] });
 }
 
 async function simBattle(h, settings = {}) {

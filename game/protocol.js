@@ -275,6 +275,20 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
   }
 
   // Players without a flag get one at the start: their general's kingdom when free (team mode: always), else any free flag
+  // Siege maps: players without a side (bots) join the side with the fewest players that still has a zone
+  function assignBotSides(room) {
+    const sides = room.mapSides();
+    if (!sides) return;
+    for (const p of room.players) {
+      if (p.side) continue;
+      const open = sides
+        .map(s => ({ id: s.id, n: room.players.filter(o => o.side === s.id).length, z: (room.map.zones || []).filter(z => z.side === s.id).length }))
+        .filter(s => s.n < s.z)
+        .sort((a, b) => a.n - b.n);
+      if (open.length) p.side = open[0].id;
+    }
+  }
+
   function assignFlags(room) {
     const team = room.options.teamMode;
     for (const p of room.players) {
@@ -642,7 +656,7 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
       reply(tx, connId, stateFor(room, found, true));
     }
     if (room.phase === 'army_building' && role === 'player') {
-      reply(tx, connId, { event: 'phase_change', phase: 'army_building', budget: room.budget, armySubmitted: !!member.isReady });
+      reply(tx, connId, { event: 'phase_change', phase: 'army_building', budget: room.budgetOf(member), armySubmitted: !!member.isReady });
     }
     if (room.chat && room.chat.length) reply(tx, connId, { event: 'chat_history', messages: room.chat });
     if (room.phase === 'battle') {
@@ -884,6 +898,16 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     emit(tx, 'all', lobbyMessage(tx.room));
   });
 
+  // set_player_side { side: 'attacker' | 'defender' | null }: siege maps (map.sides), each player picks its side
+  H.set_player_side = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    const p = requirePlayer(tx, connId);
+    requirePhase(tx, 'lobby');
+    engine(tx.room.setPlayerSide(p.id, data.side == null ? null : v.oneOf(data.side, ['attacker', 'defender'], 'invalid_side', 'Camp inconnu.')));
+    p.isReady = !!p.isBot;
+    tx.dirty = true;
+    emit(tx, 'all', lobbyMessage(tx.room));
+  });
+
   // set_option { key, value }: lobby options of the host (teamMode)
   H.set_option = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
     requireHost(tx, connId);
@@ -901,10 +925,14 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     const room = tx.room;
     if (!p.generalId) fail('general_missing', 'Choisissez un général avant de vous préparer.');
     if (!p.flag) fail('flag_missing', 'Choisissez un drapeau avant de vous préparer.');
+    if (room.mapSides() && !p.side) fail('side_missing', 'Choisissez votre camp (attaquant ou défenseur) avant de vous préparer.');
     p.isReady = !p.isReady;
     tx.dirty = true;
     const humans = room.players.filter(x => !x.isBot);
     if (humans.length && humans.every(x => x.isReady) && room.players.every(x => x.generalId)) {
+      assignBotSides(room);
+      const problem = room.sidesProblem();
+      if (problem) { p.isReady = false; fail('sides', problem); }
       assignFlags(room);
       room.startGame();
       emit(tx, 'all', { event: 'phase_change', phase: 'army_building', budget: room.budget, mapId: room.mapId });
@@ -941,6 +969,9 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     const room = tx.room;
     if (room.players.length < 1) fail('not_enough_players', 'Il faut au moins 1 joueur.');
     if (room.players.some(p => !p.generalId)) fail('generals_missing', 'Tous les joueurs doivent choisir un général.');
+    assignBotSides(room);
+    const problem = room.sidesProblem();
+    if (problem) fail('sides', problem);
     assignFlags(room);
     room.startGame();
     tx.dirty = true;
@@ -1006,6 +1037,18 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     if (!room.options.teamMode && room.players.some(o => o !== bot && o.flag === flagId)) fail('flag_taken', 'Ce drapeau est déjà pris.');
     setFlag(room, bot, flagId);
     nameBot(room, bot);
+    tx.dirty = true;
+    emit(tx, 'all', lobbyMessage(room));
+  });
+
+  // set_bot_side { playerId, side }: the host puts a bot in a siege side (null: automatic at the start)
+  H.set_bot_side = (connId, data) => withRoom(v.roomCode(data.roomCode), (tx) => {
+    requireHost(tx, connId);
+    requirePhase(tx, 'lobby');
+    const room = tx.room;
+    const bot = room.getPlayer(v.id(data.playerId));
+    if (!bot || !bot.isBot) fail('bot_not_found', 'IA introuvable.');
+    engine(room.setPlayerSide(bot.id, data.side == null ? null : v.oneOf(data.side, ['attacker', 'defender'], 'invalid_side', 'Camp inconnu.')));
     tx.dirty = true;
     emit(tx, 'all', lobbyMessage(room));
   });

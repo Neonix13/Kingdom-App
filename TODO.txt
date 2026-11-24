@@ -7,7 +7,12 @@ Nouveau:
 -
 
 Priorité:
-- 
+- les unités n'on pas la bonne couleur au déploiement
+- les zones de déploieement sont topujous les même pour l'ordre des joueurs
+- Selection deds royaume attaquant et défenseur pour le col de Kankoku + bonus pour les attaquants
+- revoit le chemin qu'empruntera une unité, je préférerais quelque chose de plus design et voir un peu glow pour l'unité sélection et pour disscret pour les unités pas selectioné
+- affiche le changement de posture à venir avec le logo de la posture dans un rondd sur la tuille mais affiche seulement quand l'unité est seelectionné,. Combine avec le tracé pour faire quelque chose de jolie
+
 
 Question:
 

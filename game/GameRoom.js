@@ -275,8 +275,42 @@ class GameRoom {
         connected: p.connected !== false,
         color: p.color || '#4a90d9',
         flag: p.flag || null,
+        side: this.mapSides() ? (p.side || null) : null,
+        budget: this.budgetOf(p),
       };
     });
+  }
+
+  // ---- siege sides (maps with map.sides, e.g. Col de Kankoku): each player picks attacker or defender ----
+  mapSides() { return this.map && Array.isArray(this.map.sides) && this.map.sides.length >= 2 ? this.map.sides : null; }
+  setPlayerSide(playerId, side) {
+    const sides = this.mapSides();
+    const p = this.getPlayer(playerId);
+    if (!sides || !p) return { error: 'Cette carte n\'a pas de camps.' };
+    if (side !== null && !sides.some(s => s.id === side)) return { error: 'Camp inconnu.' };
+    const zones = (this.map.zones || []).filter(z => z.side === side).length;
+    if (side && this.players.filter(o => o !== p && o.side === side).length >= zones) return { error: 'Ce camp est complet.' };
+    p.side = side || null;
+    return { ok: true };
+  }
+  // Gold a player recruits with: the room budget, plus the attackers' bonus on a siege map
+  budgetOf(p) {
+    const bonus = this.settings && this.settings.attackerBonus || 0;
+    if (!p || !bonus || !this.mapSides() || p.side !== 'attacker') return this.budget;
+    return Math.round(this.budget * (1 + bonus / 100));
+  }
+  // Every player has a side, each side has at least one player and no more than its zones (null when fine)
+  sidesProblem() {
+    const sides = this.mapSides();
+    if (!sides) return null;
+    if (this.players.some(p => !p.side)) return 'Chaque joueur doit choisir un camp (attaquant ou défenseur).';
+    for (const s of sides) {
+      const n = this.players.filter(p => p.side === s.id).length;
+      const zones = (this.map.zones || []).filter(z => z.side === s.id).length;
+      if (!n) return `Il faut au moins un joueur dans le camp « ${s.name} ».`;
+      if (n > zones) return `Trop de joueurs dans le camp « ${s.name} » (${zones} au plus).`;
+    }
+    return null;
   }
 
   // Team mode (lobby option): players under the same flag are allies (no attacks between them, shared victory)
@@ -284,8 +318,9 @@ class GameRoom {
 
   areAllies(aId, bId) {
     if (aId === bId) return true;
-    if (!this.options.teamMode) return false;
     const a = this.getPlayer(aId), b = this.getPlayer(bId);
+    if (this.mapSides() && a && b && a.side && b.side) return a.side === b.side;
+    if (!this.options.teamMode) return false;
     return !!(a && b && a.flag && a.flag === b.flag);
   }
 
@@ -306,6 +341,7 @@ class GameRoom {
       players: this.publicPlayers(),
       spectators: this.publicSpectators(),
       takenGenerals: this.players.filter(p => p.generalId).map(p => p.generalId),
+      sides: this.mapSides(),
       options: this.options,
     };
   }
@@ -333,8 +369,9 @@ class GameRoom {
     }
     if (totalCount > 200) return { error: 'Trop d\'unités.' };
 
-    if (totalCost > this.budget) {
-      return { error: `Budget dépassé. Max: ${this.budget}, utilisé: ${totalCost}` };
+    const budget = this.budgetOf(player);
+    if (totalCost > budget) {
+      return { error: `Budget dépassé. Max: ${budget}, utilisé: ${totalCost}` };
     }
 
     // Add the general as a special unit
@@ -436,12 +473,60 @@ class GameRoom {
   startDeployment() {
     this.phase = 'deployment';
     this._mainAreaCache = null;
-    const zones = getStartingZones(this.players.length, MAP_RADIUS, this.budget, this.map);
+    const zones = this._assignZones();
     this.players.forEach((p, i) => {
       p.startingZone = zones[i];
       p.isReady = false;
     });
     this.players.forEach(p => this._autoDeployPlayer(p));
+  }
+
+  // Deployment zone of each player (same order as this.players), drawn at random every game:
+  // siege maps: a zone of the player's side; fixed zones: the first ones, shuffled (team mode: allies on the same side);
+  // generated zones: shuffled as well
+  _assignZones() {
+    const shuffle = (a) => { if (this.map.shuffleZones === false || this.tutorial) return a; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(this._random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+    const n = this.players.length;
+    const sides = this.mapSides();
+    const all = (this.map.zones || []).length;
+    if (sides && all >= n) {
+      const zones = getStartingZones(all, MAP_RADIUS, this.budget, this.map);
+      if (zones && zones.length === all) {
+        const pools = {};
+        zones.forEach((z, i) => { const s = this.map.zones[i].side; (pools[s] || (pools[s] = [])).push(z); });
+        for (const k of Object.keys(pools)) shuffle(pools[k]);
+        const rest = shuffle(zones.slice());
+        const used = new Set();
+        return this.players.map(p => {
+          const z = (pools[p.side] || []).find(x => !used.has(x)) || rest.find(x => !used.has(x));
+          used.add(z);
+          return z;
+        });
+      }
+    }
+    const zones = getStartingZones(n, MAP_RADIUS, this.budget, this.map);
+    const idx = shuffle([...zones.keys()]);
+    if (this.options.teamMode && zones.every(z => z.mapZone != null)) {
+      // allies on the same side of the map: zone side = zone.side or the part of its name before " — "
+      const sideOf = (z) => { const d = this.map.zones[z.mapZone] || {}; return d.side || String(d.name || '').split(' — ')[0] || null; };
+      const groups = {};
+      zones.forEach((z, i) => { const s = sideOf(z); (groups[s] || (groups[s] = [])).push(i); });
+      const teams = {};
+      this.players.forEach((p, i) => { const t = p.flag || p.id; (teams[t] || (teams[t] = [])).push(i); });
+      const gList = shuffle(Object.values(groups)), tList = shuffle(Object.values(teams));
+      const fits = gList.length === tList.length && tList.every(t => gList.some(g => g.length === t.length));
+      if (fits) {
+        const out = new Array(n);
+        const left = gList.slice();
+        for (const t of tList.sort((a, b) => b.length - a.length)) {
+          const gi = left.findIndex(g => g.length === t.length);
+          const g = shuffle(left.splice(gi, 1)[0].slice());
+          t.forEach((pi, j) => { out[pi] = zones[g[j]]; });
+        }
+        return out;
+      }
+    }
+    return idx.map(i => zones[i]);
   }
 
   _autoDeployPlayer(player) {

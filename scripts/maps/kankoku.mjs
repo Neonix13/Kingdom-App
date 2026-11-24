@@ -476,10 +476,10 @@ for (let dj = -6; dj <= 6; dj++) {
 // --- deployment zones (order: Qin gate, coalition camp, coalition north, Qin rear) ---
 const zoneOf = (pred) => [...hexes.values()].filter((h) => h.valley && !['river', 'bridge'].includes(h.terrain) && pred(h)).map((h) => key(h.q, h.r));
 const zones = [
-  { name: 'Qin — forteresse', tiles: zoneOf((h) => h.c >= 17 && h.c <= 23 && Math.abs(h.z - zc(h.x)) <= 9 && !rampartSet.has(key(h.q, h.r))) },
-  { name: 'Coalition — camp', tiles: zoneOf((h) => h.c >= 56 && h.c <= 62 && Math.abs(h.z - zc(h.x)) <= 7) },
-  { name: 'Coalition — plaine nord', tiles: zoneOf((h) => h.c >= 47 && h.c <= 57 && h.z < zc(h.x) - 12 && h.z > zc(h.x) - 24) },
-  { name: 'Qin — arrière', tiles: zoneOf((h) => h.c >= 2 && h.c <= 9 && Math.abs(h.z - zc(h.x)) <= 7) },
+  { name: 'Qin — forteresse', side: 'defender', tiles: zoneOf((h) => h.c >= 17 && h.c <= 23 && Math.abs(h.z - zc(h.x)) <= 9 && !rampartSet.has(key(h.q, h.r))) },
+  { name: 'Coalition — camp', side: 'attacker', tiles: zoneOf((h) => h.c >= 56 && h.c <= 62 && Math.abs(h.z - zc(h.x)) <= 7) },
+  { name: 'Coalition — plaine nord', side: 'attacker', tiles: zoneOf((h) => h.c >= 47 && h.c <= 57 && h.z < zc(h.x) - 12 && h.z > zc(h.x) - 24) },
+  { name: 'Qin — arrière', side: 'defender', tiles: zoneOf((h) => h.c >= 2 && h.c <= 9 && Math.abs(h.z - zc(h.x)) <= 7) },
 ];
 
 // --- objectives ---
@@ -548,6 +548,7 @@ const map = {
   height, terrain, segments,
   decor: { fields, ramparts: ramparts.map((h) => key(h.q, h.r)), paths: [...new Set([...northPath, ...trail].filter((h) => h.terrain !== 'road').map((h) => key(h.q, h.r)))], props },
   zones, objectives,
+  sides: [{ id: 'defender', name: 'Défenseurs (forteresse)' }, { id: 'attacker', name: 'Attaquants (coalition)' }],
 };
 writeFileSync(OUT, JSON.stringify(map));
 {
