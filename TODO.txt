@@ -8,8 +8,7 @@ Nouveau:
 - 
 
 Priorité:
-
-
+-
 
 Question:
 
@@ -17,6 +16,12 @@ Question:
 -------
 
 FAIT (24/11/2026)
+- Maj+clic : la dernière étape est la destination (planification : l'ordre suit chaque étape posée ; mode classique : l'unité part quand on relâche Maj ; retirer une étape raccourcit l'ordre)
+- postures dans une barre en bas au centre : 6 carrés en ligne avec l'icône, la touche (1 à 6) et le nom ; retirées de la fiche d'unité
+- Ctrl+clic sur une case du trajet ordonné : changer de posture à cette étape (plusieurs changements possibles, −2 vitesse chacun ; à l'arrivée aussi l'orientation) sans annuler la suite de l'ordre ; si le trajet ne tient plus, la fin passe au tour suivant au lieu d'être annulée ; les changements situés aux tours suivants d'une marche sont reportés avec elle
+- changements de posture affichés sur les cases du trajet de l'unité sélectionnée (pastille couleur + pictogramme, 2D et 3D)
+- tracés retravaillés : courbes lissées à la couleur du joueur, liseré noir, flèche à l'arrivée ; tours suivants en pointillés gris ; l'unité sélectionnée au premier plan, plus épaisse, les autres plus fines et pâles (2D et 3D)
+- numéro de tour à la fin de chaque tour sur la marche de l'unité sélectionnée, et « Marche · N tours » (2D ; numéros aussi en 3D)
 - aperçu des dégâts dans l'infobulle d'attaque (2D et 3D) : moyenne et fourchette de vitalité et de moral perdus, riposte, chances de détruire ou de mettre en fuite, calculés par le serveur pour la configuration exacte (postures, angle, terrain, hauteur, nuit, case d'approche, posture prévue)
 - ordre de marche sur plusieurs tours visible tout de suite (mode simultané : la suite de la marche s'affiche en gris dès l'ordre donné)
 - points gagnés au prochain tour affichés sous chaque score (+X)

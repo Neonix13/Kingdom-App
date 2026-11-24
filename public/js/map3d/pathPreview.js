@@ -206,25 +206,32 @@ export function createOrdersLayer(world, { opacity = 0.85 } = {}) {
 
   function clearArcs() { for (const a of arcs) { scene.remove(a); a.geometry.dispose(); } arcs.length = 0; }
 
-  function show(orders, color, anchorOf) {
-    const sig = JSON.stringify(orders || []) + color;
+  const base = new THREE.Color(), dim = new THREE.Color(), grey = new THREE.Color(0x3a3a3a), big = new THREE.Vector3(1.4, 1, 1.4), small = new THREE.Vector3(0.8, 1, 0.8);
+  // selectedId: that unit's trail is drawn larger and in full colour, the others smaller and darker
+  function show(orders, color, anchorOf, selectedId = null) {
+    const sig = JSON.stringify(orders || []) + color + '|' + selectedId;
     if (sig === lastSig) return;
     lastSig = sig;
-    mat.color.set(color || '#ffd25a');
+    mat.color.set(0xffffff);
+    base.set(color || '#ffd25a');
+    dim.copy(base).lerp(grey, 0.55);
     clearArcs();
     let n = 0;
-    for (const o of orders || []) {
+    const list = [...(orders || [])].sort((a, b) => (String(a.unitId) === String(selectedId)) - (String(b.unitId) === String(selectedId)));
+    for (const o of list) {
+      const sel = selectedId != null && String(o.unitId) === String(selectedId);
       if (o.path && o.path.length > 1) {
         const pts = o.path.map(([hq, hr]) => { const c = hexToWorld(hq, hr); return new THREE.Vector3(c.x, 0, c.z); });
         const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal', 0.3);
         const len = curve.getLength();
-        const cnt = Math.max(2, Math.floor(len / 0.36));
+        const cnt = Math.max(2, Math.floor(len / (sel ? 0.3 : 0.4)));
         for (let i = 1; i <= cnt && n < MAX; i++) {
           const t = Math.min(0.999, i / cnt);
           const pt = curve.getPointAt(t), tan = curve.getTangentAt(t);
           q.setFromAxisAngle(up, Math.atan2(tan.x, tan.z));
-          p.set(pt.x, groundHeight(pt.x, pt.z) + 0.07, pt.z);
-          m.compose(p, q, one);
+          p.set(pt.x, groundHeight(pt.x, pt.z) + (sel ? 0.09 : 0.07), pt.z);
+          m.compose(p, q, selectedId == null ? one : sel ? big : small);
+          chev.setColorAt(n, selectedId == null || sel ? base : dim);
           chev.setMatrixAt(n++, m);
         }
       }
@@ -245,7 +252,68 @@ export function createOrdersLayer(world, { opacity = 0.85 } = {}) {
     }
     chev.count = n;
     chev.instanceMatrix.needsUpdate = true;
+    if (chev.instanceColor) chev.instanceColor.needsUpdate = true;
   }
   function clear() { show([], null); }
+  return { show, clear };
+}
+
+// Marks on the selected unit's path: numbered discs where each turn of a march ends, stance chips where it changes stance
+export function createPathMarks(world) {
+  const { scene, hexToWorld } = world;
+  const groundHeight = world.walkHeight || world.groundHeight;
+  const tex = new Map();
+  function texture(key, draw) {
+    if (tex.has(key)) return tex.get(key);
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    draw(c.getContext('2d'));
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    tex.set(key, t);
+    return t;
+  }
+  const turnTex = (n) => texture(`t${n}`, (g) => {
+    g.fillStyle = '#ffffff'; g.beginPath(); g.arc(32, 32, 29, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#000000'; g.beginPath(); g.arc(32, 32, 24, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#ffffff'; g.font = 'bold 30px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(String(n), 32, 34);
+  });
+  const stanceTex = (s) => texture(`s${s}`, (g) => {
+    const sty = window.stanceStyle ? window.stanceStyle(s) : { c: '#444' };
+    g.fillStyle = '#ffffff'; g.fillRect(2, 2, 60, 60);
+    g.fillStyle = '#000000'; g.fillRect(6, 6, 52, 52);
+    g.fillStyle = sty.c || '#444'; g.fillRect(10, 10, 44, 44);
+    if (window.drawStanceIcon) window.drawStanceIcon(g, s, 32, 32, 36);
+  });
+  const sprites = [];
+  let lastSig = '';
+  // marks: [{ q, r, kind: 'turn' | 'stance', n?, stance? }]
+  function show(marks) {
+    const sig = JSON.stringify(marks || []);
+    if (sig === lastSig) return;
+    lastSig = sig;
+    const list = marks || [];
+    while (sprites.length < list.length) {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false, depthWrite: false, fog: false, toneMapped: false }));
+      sp.renderOrder = 11;
+      scene.add(sp);
+      sprites.push(sp);
+    }
+    sprites.forEach((sp, i) => {
+      const mk = list[i];
+      sp.visible = !!mk;
+      if (!mk) return;
+      const c = hexToWorld(mk.q, mk.r);
+      const y = groundHeight(c.x, c.z);
+      sp.material.map = mk.kind === 'turn' ? turnTex(mk.n) : stanceTex(mk.stance);
+      sp.material.needsUpdate = true;
+      const k = mk.kind === 'turn' ? 0.42 : 0.38;
+      sp.scale.set(k, k, 1);
+      if (mk.kind === 'turn') sp.position.set(c.x, y + 0.45, c.z);
+      else sp.position.set(c.x + 0.28, y + 0.75, c.z - 0.2);
+    });
+  }
+  function clear() { show([]); }
   return { show, clear };
 }

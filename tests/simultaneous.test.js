@@ -359,6 +359,24 @@ test('simultané : capacités d\'unité en ordre (bâtisseurs, assassin) au déb
   assert.equal(hit[0].log.targetId, B[0].id);
 });
 
+test('simultané : plusieurs changements de posture le long du trajet, chacun après son pas', () => {
+  const { room, A, T } = setup();
+  put(room, A[0], 2, 4, { speed: 9, speedRemaining: 9, stance: 'marche' });
+  const path = [[3, 4], [4, 4], [5, 4], [6, 4]];
+  assert.match(T.setOrders(room, 'p0', { [A[0].id]: { type: 'move', path, stanceSteps: [{ at: 3, stance: 'combat' }, { at: 1, stance: 'repos' }] } }).error, /désordre/);
+  assert.match(T.setOrders(room, 'p0', { [A[0].id]: { type: 'move', path, stanceSteps: [{ at: 9, stance: 'combat' }] } }).error, /posture/);
+  order(room, 'p0', { [A[0].id]: { type: 'move', path, stanceSteps: [{ at: 1, stance: 'combat' }, { at: 3, stance: 'defense_combat' }] } });
+  assert.equal(room.sim.orders.p0[A[0].id].stanceSteps.length, 2);
+  const res = T.resolve(room, 3);
+  const ev = events(res).filter(e => e.u === A[0].id);
+  const sts = ev.filter(e => e.k === 'stance');
+  assert.deepEqual(sts.map(e => e.s), ['combat', 'defense_combat']);
+  assert.equal(ev.filter(e => e.k === 'move' && e.t <= sts[0].t).length, 1, 'combat après le 1er pas');
+  assert.equal(ev.filter(e => e.k === 'move' && e.t <= sts[1].t).length, 3, 'défense après le 3e pas');
+  assert.deepEqual(at(A[0]), [6, 4]);
+  assert.equal(A[0].stance, 'defense_combat');
+});
+
 test('simultané : posture sur une étape du trajet — payée au départ, prise après le n-ième pas', () => {
   const { room, A, T } = setup();
   put(room, A[0], 2, 4, { speed: 6, stance: 'marche' });

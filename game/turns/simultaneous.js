@@ -13,6 +13,7 @@
 //                        | { type: 'hold' } | { type: 'motivate' }     (motivate: generals)
 //                        + optional stance: stanceId (-2 speed), facing: 0-5 (-1 speed, applied at the end), ability: { targetId? } (generals)
 //                        + optional stanceAt: n (with stance and a path: the stance changes after the n-th step instead of at tick 0)
+//                        + optional stanceSteps: [{ at: n, stance }] (with a path: several changes, each after its step, -2 speed each)
 //                        + optional unitAbility: { kind: 'sabotage'|'build'|'vanish', q?, r?, build? } (espion, bâtisseurs, assassin;
 //                          ability cost in speed, applied at the start of the resolution)
 //                  -> orders_update { turn, orders, commandPoints: { max, used }, committed }   (to the sender only)
@@ -70,7 +71,7 @@ function prefillMarches(room) {
     for (const u of p.units) {
       if (!u.march || u.q === null) continue;
       if (u.isFleeing || room.marchContact(p.id, u)) { u.march = null; continue; }
-      const res = validateOrder(room, p.id, u, { type: 'move', path: u.march.route, march: true });
+      const res = validateOrder(room, p.id, u, { type: 'move', path: u.march.route, march: true, stanceSteps: u.march.stances || undefined });
       if (res.error || !res.order) { if (!(u.speedRemaining > 0)) sim.marchPaused[u.id] = true; else u.march = null; continue; }
       const mine = sim.orders[p.id] || (sim.orders[p.id] = {});
       if (Object.keys(mine).length >= max) { sim.marchPaused[u.id] = true; continue; }
@@ -91,6 +92,8 @@ function updateMarches(room, orders) {
       const end = o.path[o.path.length - 1];
       if (u.q !== end[0] || u.r !== end[1] || room.marchContact(p.id, u)) { u.march = null; continue; }
       u.march = { route: o.marchRest.map(s => s.slice()), dest: o.marchRest[o.marchRest.length - 1].slice() };
+      const later = (o.stanceSteps || []).filter(s => s.at > o.path.length).map(s => ({ at: s.at - o.path.length, stance: s.stance }));
+      if (later.length) u.march.stances = later;
     }
   }
 }
@@ -166,12 +169,25 @@ function validateOrder(room, playerId, unit, raw) {
   // march: a move whose route goes beyond this turn's budget — this turn walks the part the budget pays for,
   // the rest (order.marchRest) carries over to the next plannings (prefilled, see beginRound)
   const march = order.type === 'move' && raw.march === true;
+  // stance changes along the route: [{ at: n, stance }] (after the n-th step of the whole route; each one costs
+  // stanceCost, paid in the turn it happens)
+  let steps = null;
+  if (raw.stanceSteps != null && (order.type === 'move' || routed)) {
+    if (unit.isGeneral) return { error: 'Les généraux n\'ont pas de posture.' };
+    if (!Array.isArray(raw.stanceSteps) || raw.stanceSteps.length > 8) return { error: 'Changements de posture invalides.' };
+    steps = [];
+    for (const s of raw.stanceSteps) {
+      if (!s || !isInt(s.at) || s.at < 1 || !Array.isArray(raw.path) || s.at > raw.path.length || !hasStance(room, s.stance)) return { error: 'Changement de posture invalide.' };
+      if (steps.length && s.at <= steps[steps.length - 1].at) return { error: 'Changements de posture dans le désordre.' };
+      steps.push({ at: s.at, stance: s.stance });
+    }
+    if (!steps.length) steps = null;
+  }
   if (order.type === 'move' || routed) {
     const path = raw.path;
     if (!Array.isArray(path) || path.length < 1 || path.length > (march ? MARCH_MAX_STEPS : 60)) return { error: 'Chemin invalide.' };
     let q = unit.q, r = unit.r, cost = 0;
-    const out = [];
-    let fitted = -1;
+    const out = [], cum = [];
     for (const step of path) {
       if (!Array.isArray(step) || !isInt(step[0]) || !isInt(step[1])) return { error: 'Chemin invalide.' };
       const [nq, nr] = step;
@@ -180,19 +196,28 @@ function validateOrder(room, playerId, unit, raw) {
       if (!isFinite(c)) return { error: 'Chemin infranchissable.' };
       cost = rules.snap(cost + c);
       out.push([nq, nr]);
+      cum.push(cost);
       q = nq; r = nr;
-      const firstStep = out.length === 1 && budget > 0 && budget === unit.speedRemaining && rules.hasFullSpeed(unit);
-      if (cost <= budget + 1e-9 || firstStep) fitted = out.length;
     }
+    const fresh = (b) => b > 0 && b === unit.speedRemaining && rules.hasFullSpeed(unit);
+    const fit = (b) => { let f = -1; cum.forEach((c, i) => { if (c <= b + 1e-9 || (i === 0 && fresh(b))) f = i + 1; }); return f; };
+    const stepCost = S.stanceCost;
     if (march) {
+      // the changes paid this turn are those on the part walked this turn
+      let n = steps ? steps.length : 0, fitted = fit(Math.max(0, rules.snap(budget - n * stepCost)));
+      while (steps && n > 0 && steps.filter(s => s.at <= fitted).length < n) { n--; fitted = fit(Math.max(0, rules.snap(budget - n * stepCost))); }
+      if (steps) n = steps.filter(s => s.at <= fitted).length;
+      budget = Math.max(0, rules.snap(budget - n * stepCost));
       if (fitted < 1) return { error: 'Pas assez de vitesse pour avancer ce tour.' };
       order.path = out.slice(0, fitted);
       if (fitted < out.length) order.marchRest = out.slice(fitted);
     } else {
-      const minStep = out.length === 1 && budget > 0 && budget === unit.speedRemaining && rules.hasFullSpeed(unit);
+      if (steps) budget = Math.max(0, rules.snap(budget - steps.length * stepCost));
+      const minStep = out.length === 1 && fresh(budget);
       if (cost > budget + 1e-9 && !minStep) return { error: `Chemin trop long (coût ${cost}, vitesse ${budget}).` };
       order.path = out;
     }
+    if (steps) order.stanceSteps = steps;
   }
   if (order.type === 'attack' || order.type === 'charge') {
     const target = typeof raw.targetId === 'string' ? room.findUnit(raw.targetId) : null;

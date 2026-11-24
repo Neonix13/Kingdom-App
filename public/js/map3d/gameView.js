@@ -1,5 +1,5 @@
 import { createWorld } from './world.js';
-import { createPathPreview, createOrdersLayer } from './pathPreview.js';
+import { createPathPreview, createOrdersLayer, createPathMarks } from './pathPreview.js';
 import { createMapEditsLayer } from './mapEdits3d.js';
 import { createGameUI } from './gameUI.js';
 import { createMapMode } from './mapMode.js';
@@ -94,6 +94,7 @@ export async function mountGameView(bridge, { container }) {
   const preview = createPathPreview(world);
   const ordersLayer = createOrdersLayer(world);
   const marchLayer = createOrdersLayer(world, { opacity: 0.45 }); // standing marches of my units (rest of the route)
+  const pathMarks = createPathMarks(world); // selected unit: turn numbers of its march, stance changes on its path
   const editsLayer = createMapEditsLayer(world);
   const baseMap = () => (bridge.mapDoc ? { seg: bridge.mapDoc.segments || {}, ter: bridge.mapDoc.terrain || {} } : { seg: {}, ter: {} });
   editsLayer.update(bridge.mapEdits, baseMap().seg, baseMap().ter);
@@ -256,11 +257,17 @@ export async function mountGameView(bridge, { container }) {
       if (inside(sel) && !open.includes(sel)) open.push(sel);
       world.setBuildingCutaways(open.map((u) => ({ q: u.q, r: u.r })));
     }
-    if (bridge.simultaneous && !bridge.playback) ordersLayer.show(bridge.plannedOrders || [], bridge.getPlayerColor(bridge.myId), (id) => { const u = shownUnits.find((x) => x.id === id); return u ? anchorOf(u).clone().setY(anchorOf(u).y - 0.3) : null; });
+    if (bridge.simultaneous && !bridge.playback) ordersLayer.show(bridge.plannedOrders || [], bridge.getPlayerColor(bridge.myId), (id) => { const u = shownUnits.find((x) => x.id === id); return u ? anchorOf(u).clone().setY(anchorOf(u).y - 0.3) : null; }, sel ? sel.id : null);
     else ordersLayer.clear();
-    const marches = window.marchPaths ?window.marchPaths().map(({ path }) => ({ type: 'move', path })) : [];
+    const marches = window.marchPaths ? window.marchPaths().map(({ u, path }) => ({ unitId: u.id, type: 'move', path })) : [];
     // the turns after this one are drawn grey (only this turn's part takes the player colour)
-    if (marches.length) marchLayer.show(marches, '#9a9a9a'); else marchLayer.clear();
+    if (marches.length) marchLayer.show(marches, '#9a9a9a', null, sel ? sel.id : null); else marchLayer.clear();
+    const marks = [];
+    const sm = sel && !bridge.playback && window.selectedMarch ? window.selectedMarch() : null;
+    if (sm) sm.ends.forEach((idx, n) => { if (idx > 0 && sm.path[idx]) marks.push({ kind: 'turn', q: sm.path[idx][0], r: sm.path[idx][1], n: n + 1 }); });
+    const so = sel && bridge.simultaneous && !bridge.playback ? (bridge.plannedOrders || []).find((o) => String(o.unitId) === String(sel.id)) : null;
+    if (so && so.stanceSteps) for (const s of so.stanceSteps) marks.push({ kind: 'stance', q: s.hex[0], r: s.hex[1], stance: s.stance });
+    pathMarks.show(marks);
     // trees step aside on hexes holding a unit and on every forest hex in sight, so that a visible forest stays readable
     const seenForest = Array.from(st && st.phase === 'battle' && st.visibleHexes ? st.visibleHexes : []).filter((k) => world.allHexes.get(k)?.terrain === 'forest');
     world.layers.setOccupied(new Set([...shownUnits.map((u) => hexKey(u.q, u.r)), ...seenForest, ...editsLayer.clearedHexes(bridge.mapEdits, baseMap().ter)]));

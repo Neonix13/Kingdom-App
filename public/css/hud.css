@@ -122,6 +122,15 @@ body.hud-d #hud-root { display: block; }
 .hud-card .stat b.up { color: #1d7a2a; }
 .hud-card .stat b.down { color: var(--hud-red); }
 .hud-card .stat.inv { background: #000; color: #fff; }
+.hud-stancebar { position: absolute; left: max(calc(50% - 186px), 890px); bottom: 26px; display: flex; gap: 8px; transform: rotate(-1deg); }
+.hud-stancebar[hidden] { display: none; }
+.hud-stancebar .sb-key { position: relative; width: 56px; height: 62px; padding: 6px 2px 4px; display: flex; flex-direction: column; align-items: center; justify-content: space-between; background: #fff; color: #000; border: 3px solid #000; box-shadow: 3px 3px 0 #000; cursor: pointer; font: 900 9.5px var(--hud-body, sans-serif); letter-spacing: .2px; transition: transform .08s; }
+.hud-stancebar .sb-key:hover:not(:disabled) { transform: translateY(-3px); box-shadow: 3px 6px 0 var(--hud-red); }
+.hud-stancebar .sb-key.on { background: var(--hud-red); color: #fff; }
+.hud-stancebar .sb-key:disabled { opacity: .4; cursor: default; }
+.hud-stancebar .sb-key kbd { position: absolute; left: -7px; top: -9px; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; background: #000; color: #fff; border: 2px solid #fff; font: 400 11px var(--hud-display); }
+.hud-stancebar .sb-key .st-chip { width: 28px; height: 28px; font-size: 16px; }
+.hud-stancebar .sb-key span { white-space: nowrap; max-width: 52px; overflow: hidden; text-overflow: ellipsis; }
 .hud-card .stances { display: flex; gap: 5px; padding-left: 4px; flex-wrap: nowrap; }
 .hud-card .stances[hidden] { display: none; }
 .hud-para { transform: skewX(-12deg); border: 3px solid #000; background: #fff; color: #000; cursor: pointer; padding: 0; height: 28px; }

@@ -15,7 +15,7 @@ const ACTIONS = [
 ];
 const MIRRORS = [
   ['#unit-list', '.hud-roster'], ['#tool-coords', '[data-hud=tools]'], ['#selected-unit-detail', '.hud-card'],
-  ['#stance-panel', '.hud-card .stances'], ['#btn-end-turn-center', '.hud-seal'], ['#btn-end-turn-global', '.hud-seal'],
+  ['#stance-panel', '.hud-stancebar'], ['#btn-end-turn-center', '.hud-seal'], ['#btn-end-turn-global', '.hud-seal'],
   ['#btn-attack', '[data-act=btn-attack]'], ['#top-time', '.hud-banner .hud-sub'], ['#top-scores', '.hud-scores'],
 ];
 const SUN = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"></path></svg>';
@@ -75,6 +75,7 @@ export function mountBattleHud(bridge, view) {
     <button class="hud-lastcombat" title="Rouvrir la fiche du dernier combat (journal : toutes les fiches)">撃 DERNIER COMBAT</button>
     <button class="hud-abil" hidden></button>
     <div class="hud-card hud-panel hud-hatch" hidden></div>
+    <div class="hud-stancebar" hidden></div>
     <div class="hud-mode"></div>
     <div class="hud-route" hidden></div>
     <div class="hud-actions"></div>
@@ -84,7 +85,7 @@ export function mountBattleHud(bridge, view) {
   const q = (sel) => root.querySelector(sel);
   const el = {
     turn: q('.hud-turn'), sub: q('.hud-sub'), callout: q('.hud-callout'), presence: q('.hud-presence'), scores: q('.hud-scores'), timer: q('.hud-timer'),
-    route: q('.hud-route'), roster: q('.hud-roster'), orders: q('.hud-orders'), feed: q('.hud-feed'), card: q('.hud-card'), mode: q('.hud-mode'), actions: q('.hud-actions'),
+    route: q('.hud-route'), roster: q('.hud-roster'), orders: q('.hud-orders'), feed: q('.hud-feed'), card: q('.hud-card'), stancebar: q('.hud-stancebar'), mode: q('.hud-mode'), actions: q('.hud-actions'),
     seal: q('.hud-seal'), abil: q('.hud-abil'), journal: q('[data-hud=journal]'), tools: q('[data-hud=menu]'), menuBtn: q('[data-hud=menu]'), menu: q('.hud-menu'),
   };
 
@@ -375,8 +376,8 @@ export function mountBattleHud(bridge, view) {
   function renderCard(st, deploying, sim) {
     const u = currentUnit(st, deploying);
     const tip = $('stance-tooltip');
-    if (tip && tip.style.display === 'block' && el.card.contains(document.querySelector('.hud-card [data-stance]:hover')) && window.hideStanceTooltip) window.hideStanceTooltip();
-    if (!u) { el.card.hidden = true; el.card.innerHTML = ''; return; }
+    if (tip && tip.style.display === 'block' && el.stancebar.contains(document.querySelector('.hud-stancebar [data-stance]:hover')) && window.hideStanceTooltip) window.hideStanceTooltip();
+    if (!u) { el.card.hidden = true; el.card.innerHTML = ''; el.stancebar.hidden = true; return; }
     el.card.hidden = false;
     const src = portrait(u);
     const color = bridge.getPlayerColor ? bridge.getPlayerColor(u.playerId) : '#000';
@@ -408,8 +409,11 @@ export function mountBattleHud(bridge, view) {
       const on = curStance === s;
       const ss = sty(s);
       const off = !sim && !on && (u.speedRemaining || 0) < stCost;
-      return `<button class="hud-para st-btn${on ? ' on' : ''}" data-stance="${i}" ${off ? 'disabled' : ''} title="${esc(ss.name)} (${i + 1})${on ? ' — actuelle' : ` — −${stCost} vitesse${sim ? ', au début de la résolution' : ''}`}" aria-label="${esc(ss.name)}"><span><i class="st-chip" style="background:${esc(ss.c)}">${ss.svg || ''}</i>${esc(ss.short)}</span></button>`;
+      return `<button class="sb-key${on ? ' on' : ''}" data-stance="${i}" ${off ? 'disabled' : ''} title="${esc(ss.name)} (touche ${i + 1})${on ? ' — actuelle' : ` — −${stCost} vitesse${sim ? ', au début de la résolution' : ''}`}" aria-label="${esc(ss.name)}"><kbd>${i + 1}</kbd><i class="st-chip" style="background:${esc(ss.c)}">${ss.svg || ''}</i><span>${esc(ss.short)}</span></button>`;
     }).join('');
+    const barSig = stanceShown ? stanceBtns : '';
+    if (el.stancebar.dataset.sig !== barSig) { el.stancebar.dataset.sig = barSig; el.stancebar.innerHTML = barSig; }
+    el.stancebar.hidden = !stanceShown;
     let stanceNow = '';
     if (!u.isGeneral && u.stance) {
       const ss = sty(u.stance);
@@ -429,7 +433,6 @@ export function mountBattleHud(bridge, view) {
         ${stanceNow}
         <div class="stats">${stats.map((s) => `<div class="stat"><span>${s.label}</span><b class="${s.d > 0 ? 'up' : s.d < 0 ? 'down' : ''}" title="${s.d ? `base ${s.v - s.d}, ${s.d > 0 ? '+' : ''}${s.d} posture/terrain` : ''}">${s.v ?? '—'}</b></div>`).join('')}
           ${u.isGeneral ? `<div class="stat inv"><span>PUISSANCE</span><b>${u.power ?? '—'}</b></div>` : `<div class="stat inv"><span>MORAL</span><b>${u.morale ?? '—'}</b></div>`}</div>
-        <div class="stances" ${stanceShown ? '' : 'hidden'}>${stanceBtns}</div>
       </div>
       <div class="tools">${u.isMine && u.march && u.march.route && u.march.route.length ? '<button data-card="unmarch" title="Annuler la marche sur plusieurs tours">STOP MARCHE</button>' : ''}<button data-card="sheet" title="Fiche complète (double-clic sur l'unité)">FICHE</button></div>`;
   }
@@ -438,15 +441,15 @@ export function mountBattleHud(bridge, view) {
     const cu = bridge.selectedUnit;
     if (sel && cu && bridge.setStanceAt) bridge.setStanceAt(cu, Number(sel.value));
   });
-  el.card.addEventListener('click', (e) => {
+  el.stancebar.addEventListener('click', (e) => {
     const sb = e.target.closest('[data-stance]');
-    if (sb) {
-      if (window.hideStanceTooltip) window.hideStanceTooltip();
-      const cu = bridge.selectedUnit;
-      const sid = (G('stanceList') || [])[Number(sb.dataset.stance)];
-      if (cu && sid && !sb.disabled && bridge.setUnitStance) bridge.setUnitStance(cu, sid);
-      return;
-    }
+    if (!sb) return;
+    if (window.hideStanceTooltip) window.hideStanceTooltip();
+    const cu = bridge.selectedUnit;
+    const sid = (G('stanceList') || [])[Number(sb.dataset.stance)];
+    if (cu && sid && !sb.disabled && bridge.setUnitStance) bridge.setUnitStance(cu, sid);
+  });
+  el.card.addEventListener('click', (e) => {
     if (e.target.closest('[data-card=unmarch]')) {
       const cu = bridge.selectedUnit;
       if (cu && bridge.cancelMarch) bridge.cancelMarch(cu.id);
@@ -457,14 +460,14 @@ export function mountBattleHud(bridge, view) {
       if (u && window.showUnitCard) window.showUnitCard(u);
     }
   });
-  el.card.addEventListener('mouseover', (e) => {
+  el.stancebar.addEventListener('mouseover', (e) => {
     const sb = e.target.closest('[data-stance]');
     if (!sb || !window.showStanceTooltip) return;
     const s = (G('stanceList') || [])[Number(sb.dataset.stance)];
     if (s) window.showStanceTooltip(e, s);
   });
-  el.card.addEventListener('mousemove', (e) => { if (e.target.closest('[data-stance]') && window.positionStanceTooltip) window.positionStanceTooltip(e); });
-  el.card.addEventListener('mouseout', (e) => { if (e.target.closest('[data-stance]') && window.hideStanceTooltip) window.hideStanceTooltip(); });
+  el.stancebar.addEventListener('mousemove', (e) => { if (e.target.closest('[data-stance]') && window.positionStanceTooltip) window.positionStanceTooltip(e); });
+  el.stancebar.addEventListener('mouseout', (e) => { if (e.target.closest('[data-stance]') && window.hideStanceTooltip) window.hideStanceTooltip(); });
 
   function legacyVisible(id) {
     const b = $(id);
@@ -503,7 +506,7 @@ export function mountBattleHud(bridge, view) {
       ? `<span class="t">CHEMIN</span><span>${n} étape${n > 1 ? 's' : ''} · coût <b>${esc(fmt(info.cost))}</b> / ${esc(fmt(info.budget))}</span>
          <button data-route="tool" class="${info.tool ? 'on' : ''}" title="Chaque clic sur une case ajoute une étape (T)">ÉTAPES <span class="hud-kbd">T</span></button>
          <button data-route="undo" title="Retirer la dernière étape (Échap)">RETIRER <span class="hud-kbd">ÉCHAP</span></button>`
-      : `<span>Maj+clic sur une case : choisir le chemin étape par étape</span><button data-route="tool" title="Chaque clic sur une case ajoute une étape (T)">ÉTAPES <span class="hud-kbd">T</span></button>`;
+      : `<span>Maj+clic sur des cases : chemin étape par étape, la dernière étape est la destination</span><button data-route="tool" title="Chaque clic sur une case ajoute une étape (T)">ÉTAPES <span class="hud-kbd">T</span></button>`;
   }
   el.route.addEventListener('click', (e) => {
     const b = e.target.closest('[data-route]');
@@ -643,7 +646,7 @@ export function mountBattleHud(bridge, view) {
     const act = ACTIONS.find((a) => a.key === e.code);
     if (act) { if (el.actions.querySelector(`[data-act=${act.id}]`)) { e.preventDefault(); doAction(act.id); } return; }
     const m = /^Digit([1-9])$/.exec(e.code);
-    if (m) { const b = el.card.querySelector(`.stances:not([hidden]) [data-stance="${Number(m[1]) - 1}"]`); if (b) { e.preventDefault(); b.click(); } return; }
+    if (m) { const b = el.stancebar.hidden ? null : el.stancebar.querySelector(`[data-stance="${Number(m[1]) - 1}"]`); if (b) { e.preventDefault(); b.click(); } return; }
     if (e.code === 'Enter' || e.code === 'NumpadEnter') { if (!el.seal.hidden && sealTarget) { e.preventDefault(); el.seal.click(); } return; }
     if (e.code === 'KeyJ') { e.preventDefault(); toggleDrawer(); }
     if (e.code === 'KeyT' && bridge.routeInfo && bridge.toggleRouteTool) { e.preventDefault(); bridge.toggleRouteTool(); render(); }

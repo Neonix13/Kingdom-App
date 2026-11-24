@@ -51,6 +51,7 @@
     let b = unit.speedRemaining || 0;
     if (order && order.stance && order.stance !== unit.stance) b -= S.stanceCost;
     if (order && order.facing != null) b -= S.facingCost;
+    if (order && order.stanceSteps) b -= S.stanceCost * order.stanceSteps.filter(s => s.at <= (order.path ? order.path.length : 0)).length;
     if (order && order.unitAbility) { const ab = KBRules.ability(unit, window.gameBridge && window.gameBridge.unitTypes); if (ab) b -= ab.cost; }
     return Math.max(0, KBRules.snap(b));
   }
@@ -124,6 +125,7 @@
   }
 
   function patchOrder(unit, patch) {
+    if ('path' in patch && !('stanceSteps' in patch)) patch = { ...patch, stanceSteps: patch.path ? keptSteps(unit, patch.path) : undefined };
     const o = { type: 'hold', ...(current(unit) || {}), ...patch };
     // a march order: resend its whole route (the server splits it again with the new budget)
     if (o.marchRest && !('path' in patch) && o.type === 'move') { o.path = [...(o.path || []), ...o.marchRest]; o.march = true; }
@@ -133,14 +135,18 @@
     const routed = o.type === 'attack' || o.type === 'charge';
     if (o.stanceAt != null && (!o.stance || !o.path || o.stanceAt > o.path.length)) delete o.stanceAt;
     if (o.type !== 'move' && !routed) delete o.path;
+    if (!o.path || !o.path.length || !o.stanceSteps || !o.stanceSteps.length || unit.isGeneral) delete o.stanceSteps;
     if (o.type !== 'attack' && o.type !== 'charge') delete o.targetId;
     // a stance or facing change shrinks the budget: drop a path that no longer fits (checked step by step)
     if ((o.type === 'move' || routed) && o.path && o.path.length && !o.march) {
       if (!pathFits(unit, o.path, budgetFor(unit, o))) {
-        if (o.type === 'move') { o.type = 'hold'; notify('Chemin trop long avec ce changement : déplacement annulé.', 'info'); }
-        else if ((unit.range || 1) > 1) notify('Position de tir trop loin avec ce changement : le tireur reste sur place.', 'info');
-        else notify('Chemin trop long avec ce changement : l\'unité ira droit sur sa cible.', 'info');
-        delete o.path;
+        if (o.type === 'move') { o.march = true; notify('Chemin trop long avec ce changement : la fin du trajet se fera au tour suivant.', 'info'); }
+        else {
+          if ((unit.range || 1) > 1) notify('Position de tir trop loin avec ce changement : le tireur reste sur place.', 'info');
+          else notify('Chemin trop long avec ce changement : l\'unité ira droit sur sa cible.', 'info');
+          delete o.path;
+          delete o.stanceSteps;
+        }
       }
     }
     setOrder(unit.id, o);
@@ -158,6 +164,7 @@
       if (order.type === 'attack' && unit && unit.range > 1) parts[0] += ' (tir dès qu\'elle est à portée)';
     }
     if (order.stance) parts.push(`posture ${stanceNames[order.stance] || order.stance}${order.stanceAt ? ` à l'étape ${order.stanceAt}` : ''}`);
+    for (const s of order.stanceSteps || []) parts.push(`${stanceNames[s.stance] || s.stance} après ${s.at} case${s.at > 1 ? 's' : ''}`);
     if (order.facing != null) parts.push('orientation');
     if (order.ability) parts.push('capacité');
     if (order.unitAbility) parts.push(order.unitAbility.kind === 'vanish' ? 'disparaître' : order.unitAbility.kind === 'sabotage' ? 'sabotage' : `construire : ${(KBRules.RULES.abilities.build_kinds[order.unitAbility.build] || {}).label || ''}`);
@@ -191,8 +198,16 @@
     if (!canPlan()) { if (unitAt) showUnitDetail(unitAt); return; }
     if (selectedUnit) {
       const sel = myUnit(selectedUnit.id) || selectedUnit;
+      // Ctrl+click on a hex of the ordered path: change stance there (or face on arrival), the rest of the order stays
+      if (opts.ctrlKey && !unitAt) {
+        const o = current(sel);
+        const full = o && o.path ? [...o.path, ...(o.marchRest || [])] : [];
+        const at = full.findIndex(([q, r]) => q === hex.q && r === hex.r) + 1;
+        if (at > 0) { stepMenu(sel, at, full.length, opts.clientX, opts.clientY); return; }
+      }
       // waypoints: Maj+clic (or the Étapes tool) adds one, a click on a waypoint cuts the route back to it
-      if (!unitAt && routeClick(sel, hex, !!opts.shiftKey || route.tool, { has: (k) => movableTiles.has(k) || marchTargets(sel).has(k) }, refresh)) return;
+      // the last waypoint is the destination: the move order follows the route at once
+      if (!unitAt && routeClick(sel, hex, !!opts.shiftKey || route.tool, { has: (k) => movableTiles.has(k) || marchTargets(sel).has(k) }, () => orderAlongRoute(sel))) return;
       if (unitAt && !unitAt.isMine && !unitAt.isAlly) {
         const type = st.tool === 'charge' ? 'charge' : 'attack';
         if (type === 'charge' && sel.range > 1) { notify('Les tireurs ne chargent pas.', 'info'); return; }
@@ -244,6 +259,32 @@
     }
     if (unitAt && unitAt.isMine) select(unitAt);
     else if (unitAt) showUnitDetail(unitAt);
+  }
+
+  // Move order through the chosen waypoints, ending on the last one (a march when it lies beyond this turn)
+  function orderAlongRoute(unit) {
+    const wps = routeWaypoints(unit);
+    if (!wps.length) {
+      const o = current(unit);
+      if (o && o.type === 'move') setOrder(unit.id, null);
+      refresh();
+      return;
+    }
+    const R = simRoute(unit);
+    if (R && R.path.length > 1) {
+      st.wps[unit.id] = wps.map(w => w.slice());
+      patchOrder(unit, { type: 'move', path: R.path.slice(1), march: R.march ? true : undefined, targetId: undefined });
+    }
+    refresh();
+  }
+
+  // Stance changes along the current order that still fall on the new path (same hexes, same step index)
+  function keptSteps(unit, newPath) {
+    const o = current(unit);
+    const full = o ? [...(o.path || []), ...(o.marchRest || [])] : [];
+    const steps = o && o.stanceSteps ? o.stanceSteps : [];
+    const out = steps.filter(s => full[s.at - 1] && newPath[s.at - 1] && full[s.at - 1][0] === newPath[s.at - 1][0] && full[s.at - 1][1] === newPath[s.at - 1][1]);
+    return out.length ? out : undefined;
   }
 
   // March to a hex beyond this turn's reach (planning budget), or null
@@ -334,11 +375,63 @@
       const b = e.target.closest('button');
       if (!b) return;
       if (b.dataset.face != null) done({ facing: Number(b.dataset.face) });
-      else if (b.dataset.stance) done({ stance: b.dataset.stance === unit.stance ? undefined : b.dataset.stance, stanceAt: path.length });
+      else if (b.dataset.stance) done({ stanceSteps: withStep(keptSteps(unit, path), path.length, b.dataset.stance, unit) });
       else if (b.dataset.attack) done({ type: 'attack', targetId: b.dataset.attack });
       else done({});
     });
     setTimeout(() => document.addEventListener('pointerdown', function off(e) { if (!el.contains(e.target)) { el.remove(); document.removeEventListener('pointerdown', off); } }), 0);
+  }
+
+  // Stance held just before step `at` of the order (start stance, then the earlier changes)
+  function stanceBefore(unit, steps, at, o = current(unit)) {
+    let s = (o && o.stance) || unit.stance;
+    for (const x of steps || []) if (x.at < at) s = x.stance;
+    return s;
+  }
+  // steps with a change to `stance` at `at` (null / same stance as before = removed), sorted, redundant ones dropped
+  function withStep(steps, at, stance, unit) {
+    let out = (steps || []).filter(s => s.at !== at);
+    if (stance) out.push({ at, stance });
+    out.sort((a, b) => a.at - b.at);
+    const o = current(unit);
+    let prev = (o && o.stance) || unit.stance;
+    out = out.filter(s => { const keep = s.stance !== prev; if (keep) prev = s.stance; return keep; });
+    return out.length ? out : undefined;
+  }
+
+  // ---------- Ctrl+click on a hex of the ordered path: stance change at that step, the order goes on ----------
+  function stepMenu(unit, at, total, x, y) {
+    document.getElementById('arrival-menu')?.remove();
+    const o = current(unit);
+    if (!o) return;
+    const steps = o.stanceSteps || [];
+    const here = steps.find(s => s.at === at);
+    const before = stanceBefore(unit, steps, at, o);
+    const last = at === total;
+    const el = document.createElement('div');
+    el.id = 'arrival-menu';
+    el.className = 'arrival-menu';
+    const stances = unit.isGeneral ? [] : stanceList;
+    el.innerHTML = `<div class="am-title">${last ? 'À l\'arrivée' : `Étape ${at} sur ${total}`}</div>
+      ${stances.length ? `<div class="am-sec">Changer de posture ici (−${S.stanceCost} vitesse)</div><div class="am-row">${stances.map(s => { const sty = stanceStyle(s); const on = here ? here.stance === s : false; return `<button data-stance="${s}" ${s === before && !on ? 'disabled' : ''} class="${on ? 'on' : ''}"><i class="st-chip" style="background:${sty.c}">${sty.svg || ''}</i>${escapeHtml(stanceNames[s] || s)}</button>`; }).join('')}</div>` : '<div class="am-sec">Les généraux n\'ont pas de posture.</div>'}
+      ${last ? `<div class="am-sec">Se tourner à l'arrivée</div><div class="am-row am-dirs">${FACING_BTNS.map(b => `<button data-face="${b.idx}" class="${o.facing === b.idx ? 'on' : ''}">${b.label}</button>`).join('')}</div>` : ''}
+      <div class="am-row am-foot">${here ? '<button data-clear="1">Retirer ce changement</button>' : ''}<button data-close="1">Fermer</button></div>`;
+    document.body.appendChild(el);
+    const r = el.getBoundingClientRect();
+    el.style.left = `${Math.max(8, Math.min(innerWidth - r.width - 8, (x || innerWidth / 2) + 12))}px`;
+    el.style.top = `${Math.max(8, Math.min(innerHeight - r.height - 8, (y || innerHeight / 2) - 20))}px`;
+    const close = () => { el.remove(); document.removeEventListener('pointerdown', off); };
+    const off = (e) => { if (!el.contains(e.target)) close(); };
+    el.addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (!b || b.disabled) return;
+      if (b.dataset.stance) patchOrder(unit, { stanceSteps: withStep(steps, at, here && here.stance === b.dataset.stance ? null : b.dataset.stance, unit) });
+      else if (b.dataset.face != null) patchOrder(unit, { facing: o.facing === Number(b.dataset.face) ? undefined : Number(b.dataset.face) });
+      else if (b.dataset.clear) patchOrder(unit, { stanceSteps: withStep(steps, at, null, unit) });
+      close();
+      render();
+    });
+    setTimeout(() => document.addEventListener('pointerdown', off), 0);
   }
 
   // ---------- side panel (orders of the selected unit) and bottom bar (commit, timer, status) ----------
@@ -441,44 +534,35 @@
     ctx.save();
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    for (const order of plannedOrders()) {
+    // the selected unit's order is drawn last (on top), the others thinner and fainter
+    const all = plannedOrders();
+    const isSel = (o) => !!(selectedUnit && String(selectedUnit.id) === String(o.unitId));
+    const ordered = [...all.filter(o => !isSel(o)), ...all.filter(isSel)];
+    for (const order of ordered) {
       const u = myUnit(order.unitId);
       if (!u) continue;
       const p0 = hexToPixel(u.q, u.r);
-      const selected = selectedUnit && selectedUnit.id === u.id;
-      ctx.globalAlpha = selected ? 1 : 0.8;
-      if (order.type === 'attack' && order.path && order.target) {
+      const selected = isSel(order);
+      const trail = { color, width: selected ? 5.5 : 3.5, alpha: selected ? 1 : 0.6 };
+      ctx.globalAlpha = trail.alpha;
+      if ((order.type === 'attack' || order.type === 'charge') && order.path && order.path.length > 1 && order.target) {
         const pts = order.path.map(([q, r]) => hexToPixel(q, r));
-        ctx.strokeStyle = color; ctx.lineWidth = selected ? 4 : 3;
-        ctx.setLineDash(st.committed ? [] : [10, 7]);
-        ctx.beginPath(); pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); ctx.stroke();
+        window.drawTrail(ctx, pts, { ...trail, arrow: false });
         const pe = pts[pts.length - 1], p1 = hexToPixel(order.target.q, order.target.r);
-        ctx.strokeStyle = '#D8352A'; ctx.fillStyle = '#D8352A'; ctx.lineWidth = 3.5; ctx.setLineDash([3, 8]);
-        ctx.beginPath(); ctx.moveTo(pe.x, pe.y); ctx.lineTo(p1.x, p1.y); ctx.stroke();
-        ctx.setLineDash([]);
-        arrowHead(ctx, pe, p1, 15);
-      } else if (order.type === 'move' && order.path) {
-        const pts = [p0, ...order.path.map(([q, r]) => hexToPixel(q, r))];
-        ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = selected ? 5 : 3.5;
-        ctx.setLineDash(st.committed ? [] : [10, 7]);
-        ctx.beginPath(); pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); ctx.stroke();
-        ctx.setLineDash([]);
-        arrowHead(ctx, pts[pts.length - 2], pts[pts.length - 1], 14);
+        window.drawTrail(ctx, [pe, p1], { color: '#D8352A', width: order.type === 'charge' ? 5 : 3.5, alpha: trail.alpha, dash: (u.range || 1) > 1 ? [3, 8] : null });
+      } else if (order.type === 'move' && order.path && order.path.length > 1) {
+        window.drawTrail(ctx, order.path.map(([q, r]) => hexToPixel(q, r)), { ...trail, arrow: !order.marchRest });
       } else if ((order.type === 'attack' || order.type === 'charge') && order.target) {
         const p1 = hexToPixel(order.target.q, order.target.r);
         const ranged = (u.range || 1) > 1;
-        ctx.strokeStyle = '#D8352A';
-        ctx.fillStyle = ctx.strokeStyle;
-        ctx.lineWidth = order.type === 'charge' ? 6 : 3.5;
-        ctx.setLineDash(ranged ? [3, 8] : []);
-        ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke();
-        ctx.setLineDash([]);
-        arrowHead(ctx, p0, p1, order.type === 'charge' ? 20 : 15);
+        window.drawTrail(ctx, [p0, p1], { color: '#D8352A', width: order.type === 'charge' ? 6 : 4, alpha: trail.alpha, dash: ranged ? [3, 8] : null });
       } else if (order.type === 'motivate') {
         ctx.strokeStyle = '#000'; ctx.lineWidth = 6;
         ctx.beginPath(); ctx.arc(p0.x, p0.y, HEX_SIZE * 0.95, 0, Math.PI * 2); ctx.stroke();
         ctx.strokeStyle = '#6f9bf0'; ctx.lineWidth = 3; ctx.stroke();
       }
+      if (selected && order.stanceSteps) for (const s of order.stanceSteps) window.drawStanceStep(ctx, s.hex[0], s.hex[1], s.stance);
+      ctx.globalAlpha = trail.alpha;
       const tags = [];
       if (order.type === 'hold') tags.push('Tenir');
       if (order.stance) tags.push(stanceNames[order.stance] || order.stance);
@@ -503,26 +587,16 @@
         ctx.fillText(text, p0.x, p0.y + HEX_SIZE * 0.88);
       }
     }
-    // hover preview of a move
-    if (selectedUnit && hoveredHex && canPlan() && movableTiles.has(`${hoveredHex.q},${hoveredHex.r}`)) {
-      const sel = myUnit(selectedUnit.id);
-      const pv = sel && pathTo(sel, hoveredHex.q, hoveredHex.r);
-      if (pv) {
-        ctx.globalAlpha = 0.6;
-        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.5; ctx.setLineDash([4, 6]);
-        ctx.beginPath(); pv.path.forEach(([q, r], i) => { const p = hexToPixel(q, r); if (i) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); }); ctx.stroke();
-        ctx.setLineDash([]);
-      }
-    } else if (selectedUnit && hoveredHex && canPlan()) {
-      // hover preview of an attack: approach (melee follows the target, shooters walk to their firing position)
+    // hover preview of an attack: approach (melee follows the target, shooters walk to their firing position);
+    // the hover preview of a move is drawn by game.js (drawRoutePreview)
+    if (selectedUnit && hoveredHex && canPlan() && !movableTiles.has(`${hoveredHex.q},${hoveredHex.r}`)) {
       const sel = myUnit(selectedUnit.id);
       const tgt = (gameState.units || []).find(u => !u.isMine && !u.isAlly && u.q === hoveredHex.q && u.r === hoveredHex.r);
       const a = sel && tgt && approachTo(sel, tgt);
       if (a && a.path.length > 1) {
-        ctx.globalAlpha = 0.6;
-        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.5; ctx.setLineDash([4, 6]);
-        ctx.beginPath(); a.path.forEach(([q, r], i) => { const p = hexToPixel(q, r); if (i) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); }); ctx.stroke();
-        ctx.setLineDash([]);
+        const pts = a.path.map(([q, r]) => hexToPixel(q, r));
+        window.drawTrail(ctx, pts, { color, width: 4, alpha: 0.75, dash: [12, 7], arrow: false });
+        window.drawTrail(ctx, [pts[pts.length - 1], hexToPixel(tgt.q, tgt.r)], { color: '#D8352A', width: 3.5, alpha: 0.75, dash: (sel.range || 1) > 1 ? [3, 8] : null });
       }
     }
     ctx.restore();
@@ -536,7 +610,8 @@
       const u = myUnit(unitId);
       if (!u) continue;
       const t = o.targetId ? anyUnit(o.targetId) : null;
-      out.push({ unitId, type: o.type, path: o.path ? [[u.q, u.r], ...o.path] : null, target: t ? { id: t.id, q: t.q, r: t.r } : null, stance: o.stance || null, facing: o.facing != null ? o.facing : null, ability: o.ability || null, ranged: (u.range || 1) > 1, marchRest: o.type === 'move' && o.marchRest && o.marchRest.length ? o.marchRest : null });
+      out.push({ unitId, type: o.type, path: o.path ? [[u.q, u.r], ...o.path] : null, target: t ? { id: t.id, q: t.q, r: t.r } : null, stance: o.stance || null, facing: o.facing != null ? o.facing : null, ability: o.ability || null, ranged: (u.range || 1) > 1, marchRest: o.type === 'move' && o.marchRest && o.marchRest.length ? o.marchRest : null,
+        stanceSteps: o.stanceSteps && o.stanceSteps.length ? o.stanceSteps.map((s) => { const full = [[u.q, u.r], ...(o.path || []), ...(o.marchRest || [])]; return { ...s, hex: full[s.at] || null }; }).filter((s) => s.hex) : null });
     }
     return out;
   }
@@ -843,6 +918,7 @@
     active: () => isSim() && gameState.phase === 'battle',
     intercept, onState, click, select, contextMenu, pathTo, marchPlan, approachTo, draw, refresh, routeInfo,
     routeWaypoints: () => routeWaypoints(selectedUnit),
+    routeEdited() { const u = selectedUnit && myUnit(selectedUnit.id); if (u && canPlan()) orderAlongRoute(u); else refresh(); },
     routePath: () => { const u = selectedUnit && myUnit(selectedUnit.id); return u ? simRoute(u) : null; },
     plannedOrders, planning,
     playbackInfo() {

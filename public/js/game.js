@@ -264,6 +264,13 @@ function refreshRouteTiles() {
   updateActionButtons();
   render();
 }
+// Removes the last waypoint (planning: the move order follows, its destination is the new last waypoint)
+function undoRouteStep() {
+  const had = route.waypoints.length > 0;
+  if (had) route.waypoints.pop(); else route.tool = false;
+  if (had && window.KBSim && KBSim.active() && KBSim.routeEdited) KBSim.routeEdited();
+  else refreshRouteTiles();
+}
 // Route summary for the HUD and the previews: { waypoints, cost, left, budget, tool } or null
 function routeInfo() {
   if (window.KBSim && KBSim.active()) return KBSim.routeInfo();
@@ -277,11 +284,24 @@ document.addEventListener('keydown', (e) => {
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
   if ((e.key === 'Escape' || e.key === 'Backspace') && selectedUnit && ((route.waypoints.length && route.unitId === selectedUnit.id) || route.tool)) {
     e.preventDefault();
-    if (route.waypoints.length) route.waypoints.pop(); else route.tool = false;
-    refreshRouteTiles();
+    undoRouteStep();
     return;
   }
   if (e.key === 'Escape' && !(window.view3d && window.view3d.active) && window.gameBridge) window.gameBridge.deselect();
+});
+// Classic turn: the last waypoint is the destination — releasing Maj sends the move along the route
+document.addEventListener('keyup', (e) => {
+  if (e.key !== 'Shift' || route.tool || (window.KBSim && KBSim.active())) return;
+  const u = selectedUnit;
+  if (!u || !u.isMine || gameState?.currentPlayerId !== myId || !routeWaypoints(u).length) return;
+  const R = seqRoute(u);
+  if (!R || R.path.length < 2) return;
+  const [tq, tr] = R.path[R.path.length - 1];
+  wsSend('move_unit', { roomCode, unitId: u.id, targetQ: tq, targetR: tr, path: R.path.slice(1), ...(R.march ? { march: true } : {}) });
+  resetRoute();
+  movableTiles.clear(); attackableTiles.clear();
+  rangeTiles.clear(); rangeCenter = null; motivateTiles.clear(); motivateCenter = null;
+  render();
 });
 
 function fmtSpeed(v) {
@@ -982,8 +1002,9 @@ function render() {
   drawForestTrees(ctx);
 
   if (gameState) drawObjectives(ctx);
+  drawMarches(ctx, false);
   if (window.KBSim) KBSim.draw(ctx);
-  drawMarches(ctx);
+  drawMarches(ctx, true);
   drawRoutePreview(ctx);
   drawApproachPreview(ctx);
 
@@ -1724,28 +1745,68 @@ function marchPlanFor(unit, q, r) {
   return marchPlan(unit, q, r, unit.speedRemaining || 0, KBRules.hasFullSpeed(unit));
 }
 
+// ---- path drawing (2D): smoothed trails, black outline, arrow at the end ----
+// Smooth curve through the hex centres (quadratic segments between the midpoints)
+function traceSmooth(c2d, pts) {
+  c2d.beginPath();
+  c2d.moveTo(pts[0].x, pts[0].y);
+  if (pts.length === 2) { c2d.lineTo(pts[1].x, pts[1].y); return; }
+  for (let i = 1; i < pts.length - 1; i++) {
+    const mx = (pts[i].x + pts[i + 1].x) / 2, my = (pts[i].y + pts[i + 1].y) / 2;
+    c2d.quadraticCurveTo(pts[i].x, pts[i].y, i === pts.length - 2 ? pts[i + 1].x : mx, i === pts.length - 2 ? pts[i + 1].y : my);
+  }
+}
+// opts: { color, width, alpha, dash, arrow, outline }
+function drawTrail(c2d, pts, { color = '#fff', width = 4, alpha = 1, dash = null, arrow = true, outline = true } = {}) {
+  if (!pts || pts.length < 2) return;
+  c2d.save();
+  c2d.globalAlpha = alpha;
+  c2d.lineCap = 'round'; c2d.lineJoin = 'round';
+  const a = pts[pts.length - 2], b = pts[pts.length - 1];
+  const ang = Math.atan2(b.y - a.y, b.x - a.x);
+  const head = Math.max(10, width * 3.2);
+  // stop the line under the arrow head
+  const cut = arrow ? [...pts.slice(0, -1), { x: b.x - Math.cos(ang) * head * 0.6, y: b.y - Math.sin(ang) * head * 0.6 }] : pts;
+  if (outline) { c2d.strokeStyle = '#000'; c2d.lineWidth = width + 3.5; c2d.setLineDash(dash || []); traceSmooth(c2d, cut); c2d.stroke(); }
+  c2d.strokeStyle = color; c2d.lineWidth = width; c2d.setLineDash(dash || []); traceSmooth(c2d, cut); c2d.stroke();
+  c2d.setLineDash([]);
+  if (arrow) {
+    c2d.beginPath();
+    c2d.moveTo(b.x, b.y);
+    c2d.lineTo(b.x - head * Math.cos(ang - 0.5), b.y - head * Math.sin(ang - 0.5));
+    c2d.lineTo(b.x - head * Math.cos(ang + 0.5), b.y - head * Math.sin(ang + 0.5));
+    c2d.closePath();
+    c2d.fillStyle = color; c2d.strokeStyle = '#000'; c2d.lineWidth = 2;
+    c2d.fill(); c2d.stroke();
+  }
+  c2d.restore();
+}
+// Stance change on a hex of a path: a square chip in the stance colour with its pictogram
+function drawStanceStep(c2d, q, r, stance) {
+  const p = hexToPixel(q, r);
+  const s = HEX_SIZE * 0.46;
+  const x = p.x + HEX_SIZE * 0.36, y = p.y - HEX_SIZE * 0.5;
+  c2d.save();
+  c2d.fillStyle = (STANCE_STYLE[stance] || {}).c || '#444';
+  c2d.strokeStyle = '#fff'; c2d.lineWidth = 4;
+  c2d.strokeRect(x - s / 2, y - s / 2, s, s);
+  c2d.strokeStyle = '#000'; c2d.lineWidth = 2;
+  c2d.fillRect(x - s / 2, y - s / 2, s, s); c2d.strokeRect(x - s / 2, y - s / 2, s, s);
+  drawStanceIcon(c2d, stance, x, y, s * 0.8);
+  c2d.restore();
+}
+window.drawTrail = drawTrail;
+window.drawStanceStep = drawStanceStep;
+
 // Draws a march: this turn's part like a route, the next turns fainter, a numbered marker where each turn ends
-function drawMarchPath(ctx, path, turnEnds, { color = '#fff', alpha = 1, label = null, numbers = true } = {}) {
+function drawMarchPath(ctx, path, turnEnds, { color = '#fff', alpha = 1, label = null, numbers = true, width = 4 } = {}) {
   if (!path || path.length < 2) return;
   const pts = path.map(([q, r]) => hexToPixel(q, r));
   const first = Math.max(0, turnEnds && turnEnds.length ? turnEnds[0] : pts.length - 1);
-  const seg = (a, b) => { ctx.beginPath(); for (let i = a; i <= b; i++) (i === a ? ctx.moveTo(pts[i].x, pts[i].y) : ctx.lineTo(pts[i].x, pts[i].y)); };
   ctx.save();
+  if (first < pts.length - 1) drawTrail(ctx, pts.slice(first), { color: '#a8a8a8', width: Math.max(2.5, width - 1.5), alpha: alpha * 0.8, dash: [2, 9], arrow: true });
+  if (first > 0) drawTrail(ctx, pts.slice(0, first + 1), { color, width, alpha, arrow: first === pts.length - 1 });
   ctx.globalAlpha = alpha;
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  if (first > 0) {
-    ctx.strokeStyle = '#000'; ctx.lineWidth = 6; seg(0, first); ctx.stroke();
-    ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.setLineDash([8, 6]); seg(0, first); ctx.stroke();
-  }
-  if (first < pts.length - 1) {
-    // the following turns: grey
-    ctx.globalAlpha = alpha * 0.75;
-    ctx.setLineDash([]);
-    ctx.strokeStyle = '#000'; ctx.lineWidth = 4; seg(first, pts.length - 1); ctx.stroke();
-    ctx.strokeStyle = '#9a9a9a'; ctx.lineWidth = 2; ctx.setLineDash([3, 7]); seg(first, pts.length - 1); ctx.stroke();
-    ctx.globalAlpha = alpha;
-  }
-  ctx.setLineDash([]);
   ctx.font = `bold ${Math.round(HEX_SIZE * 0.3)}px 'Dela Gothic One', 'Zen Kaku Gothic New', sans-serif`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   if (numbers) (turnEnds || []).forEach((idx, n) => {
@@ -1775,25 +1836,39 @@ function marchPaths() {
     if (!u.isMine || u.q == null) continue;
     const o = planned.get(String(u.id));
     if (o) {
-      if (o.marchRest) { const from = o.path && o.path.length ? o.path[o.path.length - 1] : [u.q, u.r]; out.push({ u, path: [from, ...o.marchRest] }); }
+      if (o.marchRest) { const from = o.path && o.path.length ? o.path[o.path.length - 1] : [u.q, u.r]; out.push({ u, path: [from, ...o.marchRest], planned: true }); }
     } else if (u.march && u.march.route && u.march.route.length) out.push({ u, path: [[u.q, u.r], ...u.march.route] });
   }
   return out;
 }
 window.marchPaths = marchPaths;
 
-function drawMarches(ctx) {
-  for (const { u, path } of marchPaths()) {
-    const costs = [0];
-    const mounted = KBRules.isMounted(u);
-    for (let i = 1; i < path.length; i++) {
-      const a = `${path[i - 1][0]},${path[i - 1][1]}`, b = `${path[i][0]},${path[i][1]}`;
-      const c = KBRules.stepCost(movementTable(), { terrain: terrainData[a] || 'plain', height: mapHeight[a] || 0 }, { terrain: terrainData[b] || 'plain', height: mapHeight[b] || 0 }, segmentData[segmentEdgeKey(path[i - 1][0], path[i - 1][1], path[i][0], path[i][1])] || null, mounted);
-      costs.push(KBRules.snap(costs[i - 1] + (isFinite(c) ? c : 1)));
-    }
+// Turn ends along a standing / planned march path (origin included): index of the last hex of each later turn
+function marchEnds(u, path) {
+  const costs = [0];
+  const mounted = KBRules.isMounted(u);
+  for (let i = 1; i < path.length; i++) {
+    const a = `${path[i - 1][0]},${path[i - 1][1]}`, b = `${path[i][0]},${path[i][1]}`;
+    const c = KBRules.stepCost(movementTable(), { terrain: terrainData[a] || 'plain', height: mapHeight[a] || 0 }, { terrain: terrainData[b] || 'plain', height: mapHeight[b] || 0 }, segmentData[segmentEdgeKey(path[i - 1][0], path[i - 1][1], path[i][0], path[i][1])] || null, mounted);
+    costs.push(KBRules.snap(costs[i - 1] + (isFinite(c) ? c : 1)));
+  }
+  return marchTurns(u, path, costs, 0, false).slice(1);
+}
+// For the 3D view: the selected unit's march, { path, ends: [0, ...turn ends], turns } or null
+window.selectedMarch = () => {
+  const m = selectedUnit && marchPaths().find((x) => x.u.id === selectedUnit.id);
+  if (!m) return null;
+  const ends = marchEnds(m.u, m.path);
+  return { path: m.path, ends: [0, ...ends], turns: ends.length + (m.planned ? 1 : 0) };
+};
+
+function drawMarches(ctx, selectedOnly) {
+  for (const { u, path, planned } of marchPaths()) {
+    if (!!(selectedUnit && selectedUnit.id === u.id) !== selectedOnly) continue;
     const sel = selectedUnit && selectedUnit.id === u.id;
-    const ends = marchTurns(u, path, costs, 0, false).slice(1);
-    drawMarchPath(ctx, path, [0, ...ends], { color: '#9a9a9a', alpha: sel ? 0.95 : 0.55, numbers: sel, label: sel ? `Marche · ${ends.length} tour${ends.length > 1 ? 's' : ''}` : null });
+    const ends = marchEnds(u, path);
+    const turns = ends.length + (planned ? 1 : 0);
+    drawMarchPath(ctx, path, [0, ...ends], { color: '#9a9a9a', alpha: sel ? 1 : 0.5, width: sel ? 4 : 3, numbers: sel, label: sel ? `Marche · ${turns} tour${turns > 1 ? 's' : ''}` : null });
   }
 }
 
@@ -1805,7 +1880,7 @@ function drawRoutePreview(ctx) {
   const mp = hk && !movableTiles.has(hk) ? marchPlanFor(unit, hoveredHex.q, hoveredHex.r) : null;
   if (mp) {
     const confirm = pendingMarch && pendingMarch.unitId === unit.id && pendingMarch.key === hk;
-    drawMarchPath(ctx, mp.path, mp.turnEnds, { label: marchLabel(mp) });
+    drawMarchPath(ctx, mp.path, mp.turnEnds, { color: getPlayerColor(myId) || '#fff', alpha: 0.9, label: marchLabel(mp) });
     return;
   }
   const info = sim ? KBSim.routeInfo() : routeInfo();
@@ -1816,12 +1891,9 @@ function drawRoutePreview(ctx) {
   else if (wps.length) res = sim ? KBSim.routePath() : seqRoute(unit);
   if (!res || res.path.length < 2) return;
   const pts = res.path.map(([q, r]) => hexToPixel(q, r));
+  drawTrail(ctx, pts, { color: getPlayerColor(myId) || '#fff', width: 5, alpha: 0.9, dash: [12, 7] });
   ctx.save();
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  const trace = () => { ctx.beginPath(); pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); };
-  ctx.strokeStyle = '#000'; ctx.lineWidth = 6; trace(); ctx.stroke();
-  ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.setLineDash([8, 6]); trace(); ctx.stroke();
-  ctx.setLineDash([]);
   ctx.font = `bold ${Math.round(HEX_SIZE * 0.32)}px 'Zen Kaku Gothic New', sans-serif`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   (res.costs || []).forEach((c, i) => {
@@ -1851,19 +1923,10 @@ function drawApproachPreview(ctx) {
   if (!a) return;
   const pts = a.path.map(([q, r]) => hexToPixel(q, r));
   const tgt = hexToPixel(hoveredHex.q, hoveredHex.r);
-  ctx.save();
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  ctx.globalAlpha = 0.85;
-  const trace = () => { ctx.beginPath(); pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); };
-  ctx.strokeStyle = '#000'; ctx.lineWidth = 6; ctx.setLineDash([]); trace(); ctx.stroke();
-  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3; ctx.setLineDash([6, 7]); trace(); ctx.stroke();
   const pe = pts[pts.length - 1];
-  ctx.setLineDash([]);
-  ctx.strokeStyle = '#000'; ctx.lineWidth = 7;
-  ctx.beginPath(); ctx.moveTo(pe.x, pe.y); ctx.lineTo(tgt.x, tgt.y); ctx.stroke();
-  ctx.strokeStyle = '#D8352A'; ctx.lineWidth = 4; ctx.setLineDash((selectedUnit.range || 1) > 1 ? [3, 7] : []);
-  ctx.beginPath(); ctx.moveTo(pe.x, pe.y); ctx.lineTo(tgt.x, tgt.y); ctx.stroke();
-  ctx.setLineDash([]);
+  drawTrail(ctx, pts, { color: getPlayerColor(myId) || '#fff', width: 4.5, alpha: 0.85, dash: [12, 7], arrow: false });
+  drawTrail(ctx, [pe, tgt], { color: '#D8352A', width: 4, alpha: 0.9, dash: (selectedUnit.range || 1) > 1 ? [3, 7] : null });
+  ctx.save();
   ctx.fillStyle = '#D8352A'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2.5;
   ctx.beginPath(); ctx.arc(pe.x, pe.y, HEX_SIZE * 0.18, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   ctx.restore();
@@ -3811,10 +3874,7 @@ window.gameBridge = {
     if (selectedUnit) route.unitId = route.unitId || selectedUnit.id;
     if (window.KBSim && KBSim.active()) KBSim.refresh(); else render();
   },
-  undoWaypoint() {
-    if (route.waypoints.length) route.waypoints.pop(); else route.tool = false;
-    refreshRouteTiles();
-  },
+  undoWaypoint() { undoRouteStep(); },
   // Simultaneous mode (public/js/simultaneous.js): planning, my planned orders, playback of the resolution
   get simultaneous() { return !!(window.KBSim && KBSim.isSim()); },
   get planning() { return window.KBSim ? KBSim.planning() : null; },

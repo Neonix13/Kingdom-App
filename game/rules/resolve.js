@@ -203,6 +203,12 @@ function run(room, ordersByPlayer, seed) {
         if (o.stanceAt) c.pendingStance = o.stance;
         else applyStance(u, o.stance);
       }
+      // stance changes along the route: paid now, each taken after its step (or at the end of the turn if stopped before)
+      const steps = !u.isGeneral && o.stanceSteps && o.path ? o.stanceSteps.filter(s => s.at <= o.path.length) : [];
+      if (steps.length && c.budget > 0) {
+        c.budget = Math.max(0, rules.snap(c.budget - steps.length * S.stanceCost));
+        c.pendingSteps = steps.map(s => ({ ...s }));
+      }
       if (o.facing != null) c.budget = Math.max(0, rules.snap(c.budget - S.facingCost));
       if (o.unitAbility && !u.isGeneral) {
         const ua = o.unitAbility;
@@ -523,6 +529,7 @@ function run(room, ordersByPlayer, seed) {
       if (c.path.length) c.path.shift();
       room.unitMap[hexKey(u.q, u.r)] = u;
       if (c.pendingStance && c.moved >= c.o.stanceAt && !u.isFleeing) { applyStance(u, c.pendingStance); c.pendingStance = null; }
+      while (c.pendingSteps && c.pendingSteps.length && c.moved >= c.pendingSteps[0].at && !u.isFleeing) applyStance(u, c.pendingSteps.shift().stance);
       moved.set(u.id, { u, from: p.from, to: [u.q, u.r], kind: 'move' });
       if (!pathTrail.has(u.id)) pathTrail.set(u.id, [p.from]);
       pathTrail.get(u.id).push([u.q, u.r]);
@@ -634,6 +641,7 @@ function run(room, ordersByPlayer, seed) {
         for (const id of [c.owner, ALL]) send(id, { k: 'shot_lost', u: c.u.id, targetId: c.target });
       }
       if (c.pendingStance && !c.u.isFleeing) { applyStance(c.u, c.pendingStance); c.pendingStance = null; }
+      if (c.pendingSteps && c.pendingSteps.length && !c.u.isFleeing) { applyStance(c.u, c.pendingSteps[c.pendingSteps.length - 1].stance); c.pendingSteps = null; }
       if (c.o.facing != null && !c.u.isFleeing && !c.struck) {
         c.u.facing = c.o.facing;
         room._record('facing', { u: c.u.id, f: c.o.facing });
