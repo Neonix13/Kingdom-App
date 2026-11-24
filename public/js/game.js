@@ -2613,7 +2613,7 @@ function toggleRules() {
   const frac = (v) => (Math.abs(v - 1 / 3) < 1e-9 ? '1/3' : String(v));
   document.getElementById('rules-content').innerHTML = `
     <h3>Déplacement</h3>
-    <p>Coût pour quitter une case : plaine ${tc.plain}, route ${frac(tc.road)}, forêt ${tc.forest}, fleuve ${tc.river}, bâtiment ${tc.building}, pont ${frac(tc.bridge)}.
+    <p>Coût pour entrer dans une case : plaine ${tc.plain}, route ${frac(tc.road)}, forêt ${tc.forest}, fleuve ${tc.river}, bâtiment ${tc.building}, pont ${frac(tc.bridge)}.
     Montée : +${R.movement.slopeUpPerLevel} par niveau ; descente gratuite. Falaises et murs : infranchissables.
     Échelle : infanterie et généraux uniquement, coût ${R.movement.ladder.cost} (jamais la cavalerie ni les chars). Rivière et barrière : +1.
     Une unité qui n'a encore rien dépensé de sa vitesse peut toujours avancer d'une case, même trop chère.</p>
@@ -3192,8 +3192,8 @@ function buildTerrainTooltip(terrainType) {
   const t = TERRAINS_DATA[terrainType];
   if (!t) return '';
   return bonusTip({ title: t.name, kicker: 'Terrain', marker: `<i class="tt2-mark terrain t-${escapeHtml(terrainType)}"></i>`, data: t,
-    extras: [['Vitesse', t.vitesse], ['Armure', t.armure]],
-    notes: [KBRules.RULES.concealment && KBRules.RULES.concealment.terrains.includes(terrainType) ? 'Couvert : les unités qui s\'y trouvent sont cachées tant qu\'on ne les approche pas.' : ''] });
+    extras: [['Armure', t.armure]],
+    notes: [`Entrer sur cette case coûte ${fmtSpeed(KBRules.RULES.movement.terrainCost[terrainType] ?? 1)} de vitesse.`, KBRules.RULES.concealment && KBRules.RULES.concealment.terrains.includes(terrainType) ? 'Couvert : les unités qui s\'y trouvent sont cachées tant qu\'on ne les approche pas.' : ''] });
 }
 
 function buildSegmentTooltip(segType) {

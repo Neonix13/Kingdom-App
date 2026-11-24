@@ -187,10 +187,11 @@ test('combat : courage du défenseur (posture) retranché de l\'intimidation, an
   assert.equal(back.breakdown.angleName, 'dos');
 });
 
-test('vitesse de début de tour : au moins 1 (une unité lente au repos ou en forêt peut toujours changer de posture)', () => {
+test('vitesse de début de tour : au moins 1 (une unité lente au repos peut toujours changer de posture), la case de départ ne compte pas', () => {
   const room = battleRoom();
   const u = room.getPlayer('p0').units.find(x => x.typeId === 'soldats');
   u.stance = 'repos';
+  u.speed = 1;
   room._initUnitSpeedForTurn(u);
   assert.equal(u.speedRemaining, 1);
   assert.ok(room.changeStance('p0', u.id, 'combat').ok);

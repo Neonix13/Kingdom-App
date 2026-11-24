@@ -1358,9 +1358,9 @@ class GameRoom {
       return;
     }
     const stance = unit.isGeneral ? {} : this._getStanceMods(unit);
-    const terrain = this._getTerrainMods(unit.q, unit.r);
-    // at least 1: a slow unit resting or fighting in a forest must still be able to leave its stance
-    let speed = Math.max(unit.speed > 0 ? 1 : 0, unit.speed + (stance.vitesse || 0) + terrain.vitesse);
+    // at least 1: a slow unit resting must still be able to leave its stance;
+    // the hex the unit starts on does not change its speed: terrain is paid step by step, on entering each hex
+    let speed = Math.max(unit.speed > 0 ? 1 : 0, unit.speed + (stance.vitesse || 0));
     if (this.isNight() && speed > 0) speed = Math.max(1, speed - RULES.night.speedMalus);
     const ab = this.ability(unit);
     if (ab && ab.type === 'speed_free' && !this._enemyAdjacent(unit)) speed += ab.value;

@@ -14,6 +14,10 @@ Question:
 - unité des généraux perdants (rallié, fuite, disparition)
 -------
 
+FAIT (25/11/2026)
+- déplacement : le coût du terrain se paie en entrant dans la case (et non plus en la quittant) ; la case de départ ne modifie plus la vitesse du tour (plus de double pénalité forêt / fleuve / bâtiment, plus de bonus de route) ; infobulle de terrain : coût d'entrée
+- à revoir plus tard : coûts différents selon le type d'unité (cavalerie en forêt…)
+
 FAIT (24/11/2026)
 - unités sur le mur au-dessus des portes : chaque porte voisine d'un rempart a un chemin de ronde au-dessus du passage (deux niveaux sur la case) ; on y monte depuis le rempart voisin, la porte voisine ou un escalier / une échelle (infanterie, tireurs, généraux) ; l'unité du haut ne bloque pas le passage, ne tire pas sur l'unité juste en dessous, n'est atteinte au corps à corps que par un accès direct, sinon par des tirs ; Alt+clic sur une porte pour choisir l'autre niveau ; 2D : unité dessinée en haut de sa case sur des créneaux ; 3D : à la hauteur du rempart (mode classique et simultané)
 - Maj+clic : la dernière étape est la destination (planification : l'ordre suit chaque étape posée ; mode classique : l'unité part quand on relâche Maj ; retirer une étape raccourcit l'ordre)

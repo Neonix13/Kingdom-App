@@ -202,7 +202,7 @@
       if (s.mountedBlocked && mounted) return Infinity;
       if (s.fixed != null) return s.fixed;
     }
-    let c = table.terrainCost[from.terrain || 'plain'];
+    let c = table.terrainCost[to.terrain || 'plain']; // paid on entering the hex
     if (c == null) c = 1;
     if (s) c += s.extra;
     const dh = (to.height || 0) - (from.height || 0);

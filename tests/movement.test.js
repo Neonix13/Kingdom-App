@@ -116,22 +116,22 @@ test('eau : une unité qui n\'a encore rien dépensé peut toujours faire un pas
   const { me } = sides(room);
   const general = me.units.find(u => u.isGeneral);
   room.isNight = () => true;
-  general.speed = 3;
-  teleport(room, general, 8, 6);
+  general.speed = 2;
+  teleport(room, general, 8, 5);
   assert.equal(room.hexMap['8,6'].terrain, 'river');
-  assert.equal(general.speedRemaining, 1, 'vitesse 3, rivière −1, nuit −1');
-  assert.ok(rules.stepCost(room.moveTable(), room.hexMap['8,6'], room.hexMap['8,5'], null, false) > 1, 'sortir de la rivière coûte plus que la vitesse');
-  const res = room.moveUnit(me.id, general.id, 8, 5);
+  assert.equal(general.speedRemaining, 1, 'vitesse 2, nuit −1 (la case de départ ne compte pas)');
+  assert.ok(rules.stepCost(room.moveTable(), room.hexMap['8,5'], room.hexMap['8,6'], null, false) > 1, 'entrer dans la rivière coûte plus que la vitesse');
+  const res = room.moveUnit(me.id, general.id, 8, 6);
   assert.ok(res.ok, res.error);
-  assert.deepEqual([general.q, general.r], [8, 5]);
+  assert.deepEqual([general.q, general.r], [8, 6]);
   assert.equal(general.speedRemaining, 0);
-  assert.ok(room.moveUnit(me.id, general.id, 8, 4).error, 'plus de vitesse après ce pas');
+  assert.ok(room.moveUnit(me.id, general.id, 8, 7).error, 'plus de vitesse après ce pas');
 
-  teleport(room, general, 8, 6);
+  teleport(room, general, 8, 5);
   general.speedRemaining = 0.5;
-  assert.ok(room.moveUnit(me.id, general.id, 8, 5).error, 'une unité qui a déjà dépensé de la vitesse n\'a pas ce pas minimum');
-  teleport(room, general, 8, 6);
-  assert.ok(room.moveUnit(me.id, general.id, 8, 4).error, 'un seul pas, pas deux');
+  assert.ok(room.moveUnit(me.id, general.id, 8, 6).error, 'une unité qui a déjà dépensé de la vitesse n\'a pas ce pas minimum');
+  teleport(room, general, 8, 5);
+  assert.ok(room.moveUnit(me.id, general.id, 8, 7).error, 'un seul pas, pas deux');
 });
 
 test('ponts : une case de pont coûte comme une route, le chemin le moins cher passe par le pont', () => {

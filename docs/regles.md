@@ -35,11 +35,11 @@ Deux modes de tour (réglage de l'hôte) : **séquentiel** (initiative, §2, dé
 
 ## 3. Déplacement
 
-La vitesse d'une unité est recalculée au début de chacune de ses manches : vitesse de base + modificateur de posture + modificateur du terrain occupé, au moins 1 (−1 supplémentaire la nuit, minimum 1). Une unité lente au Repos ou en Combat dans une forêt peut donc toujours changer de posture.
+La vitesse d'une unité est recalculée au début de chacune de ses manches : vitesse de base + modificateur de posture, au moins 1 (−1 supplémentaire la nuit, minimum 1). La case de départ ne change pas la vitesse : le terrain se paie pas à pas. Une unité lente au Repos peut donc toujours changer de posture.
 
-Chaque pas coûte le **coût du terrain que l'on quitte** :
+Chaque pas coûte le **coût du terrain dans lequel on entre** :
 
-| Terrain quitté | Coût |
+| Terrain d'arrivée | Coût |
 |---|---|
 | Route, pont | 1/3 |
 | Plaine, bâtiment | 1 |
