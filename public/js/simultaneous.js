@@ -57,9 +57,11 @@
   }
 
   function reach(unit, budget, start = null, fresh = true) {
-    const enemies = new Set((gameState?.units || []).filter(u => !u.isMine && !u.isAlly).map(u => `${u.q},${u.r}`));
+    const enemies = new Set((gameState?.units || []).filter(u => !u.isMine && !u.isAlly).map(nodeKeyOf));
+    const gi = window.gateInfo ? window.gateInfo() : null;
     return KBRules.reachable(movementTable(), {
-      start: start || { q: unit.q, r: unit.r }, maxCost: budget, mounted: KBRules.isMounted(unit),
+      start: start || { q: unit.q, r: unit.r, level: unit.level }, maxCost: budget, mounted: KBRules.isMounted(unit),
+      tops: gi && gi.tops, links: gi && gi.links,
       minStep: fresh && budget === unit.speedRemaining && KBRules.hasFullSpeed(unit),
       hexAt: (k) => (k in mapHeight ? { terrain: terrainData[k] || 'plain', height: mapHeight[k] || 0 } : null),
       blocked: (k) => enemies.has(k),
@@ -92,10 +94,10 @@
     if (!R) return;
     if (R.march) return;
     for (const k of R.reach.dist.keys()) movableTiles.add(k);
-    movableTiles.delete(`${unit.q},${unit.r}`);
+    movableTiles.delete(nodeKeyOf(unit));
     // hexes held by my other units are not destinations, except those they leave this turn
-    for (const o of gameState.units) if (o.isMine && o.id !== unit.id && o.q != null) { const oo = st.orders[o.id]; if (!(oo && oo.path && oo.path.length)) movableTiles.delete(`${o.q},${o.r}`); }
-    for (const [q, r] of routeWaypoints(unit)) movableTiles.delete(`${q},${r}`);
+    for (const o of gameState.units) if (o.isMine && o.id !== unit.id && o.q != null) { const oo = st.orders[o.id]; if (!(oo && oo.path && oo.path.length)) movableTiles.delete(nodeKeyOf(o)); }
+    for (const w of routeWaypoints(unit)) movableTiles.delete(KBRules.stepKey(w));
     for (const e of gameState.units) if (!e.isMine && !e.isAlly) attackableTiles.add(`${e.q},${e.r}`);
     if (unit.range > 1) computeRangeTiles(unit);
     if (unit.isGeneral) computeMotivateTiles(unit);
@@ -207,8 +209,13 @@
       }
       // waypoints: Maj+clic (or the Étapes tool) adds one, a click on a waypoint cuts the route back to it
       // the last waypoint is the destination: the move order follows the route at once
-      if (!unitAt && routeClick(sel, hex, !!opts.shiftKey || route.tool, { has: (k) => movableTiles.has(k) || marchTargets(sel).has(k) }, () => orderAlongRoute(sel))) return;
-      if (unitAt && !unitAt.isMine && !unitAt.isAlly) {
+      // a gate hex has two levels: the passage and the wall walk above it (hexNode picks the one meant)
+      const node = hexNode(sel, hex, hex.alt);
+      const atNode = unitAtNode(node);
+      const foeHere = (atNode && !atNode.isMine && !atNode.isAlly) ? atNode : (gameState.units || []).find(u => u.q === hex.q && u.r === hex.r && !u.isMine && !u.isAlly);
+      if (!atNode && routeClick(sel, hex, !!opts.shiftKey || route.tool, { has: (k) => movableTiles.has(k) || marchTargets(sel).has(k) }, () => orderAlongRoute(sel))) return;
+      if (foeHere) {
+        const unitAt = foeHere;
         const type = st.tool === 'charge' ? 'charge' : 'attack';
         if (type === 'charge' && sel.range > 1) { notify('Les tireurs ne chargent pas.', 'info'); return; }
         const patch = { type, targetId: unitAt.id, path: undefined };
@@ -228,13 +235,14 @@
       }
       // one of my units that leaves this hex this turn (move order): the selected unit may be sent there
       const leaving = (u) => { const o = u && st.orders[u.id]; return !!(o && o.path && o.path.length && (o.type === 'move' || o.type === 'attack' || o.type === 'charge')); };
-      if (unitAt && unitAt.isMine && !(unitAt.id !== sel.id && leaving(unitAt) && movableTiles.has(key))) {
-        if (unitAt.id === sel.id) { select(null); return; }
-        select(unitAt);
+      const mineHere = atNode && atNode.isMine ? atNode : (!movableTiles.has(node) ? unitAt : null);
+      if (mineHere && mineHere.isMine && !(mineHere.id !== sel.id && leaving(mineHere) && movableTiles.has(node))) {
+        if (mineHere.id === sel.id) { select(null); return; }
+        select(mineHere);
         return;
       }
-      if (movableTiles.has(key)) {
-        const path = pathTo(sel, hex.q, hex.r);
+      if (movableTiles.has(node)) {
+        const path = pathTo(sel, node);
         // Ctrl+click: the move, plus a choice of what to do on arrival (face / stance / attack from there)
         if (path && opts.ctrlKey) { arrivalMenu(sel, path.path.slice(1), opts.clientX, opts.clientY); return; }
         if (path) { st.wps[sel.id] = routeWaypoints(sel).map(w => w.slice()); patchOrder(sel, { type: 'move', path: path.path.slice(1) }); }
@@ -243,7 +251,7 @@
         return;
       }
       // beyond this turn's reach: a march over several turns, ordered in one click (hovering shows it)
-      const mp = !unitAt && marchPlan(sel, hex.q, hex.r);
+      const mp = !atNode && marchPlan(sel, node);
       if (mp) {
         if (mp.path.length - 1 > 200) { notify('Destination trop lointaine pour une seule marche.', 'info'); return; }
         {
@@ -290,17 +298,18 @@
   // March to a hex beyond this turn's reach (planning budget), or null
   function marchPlan(unit, tq, tr) {
     if (!unit || unit.q == null || !canPlan() || unit.isFleeing) return null;
-    const k = `${tq},${tr}`;
-    if (movableTiles.has(k) || (gameState.units || []).some(u => u.q === tq && u.r === tr)) return null;
+    const k = typeof tq === 'string' ? tq : hexNode(unit, { q: tq, r: tr });
+    if (movableTiles.has(k) || unitAtNode(k)) return null;
     const b = budgetFor(unit);
-    return window.marchPlan ? window.marchPlan(unit, tq, tr, b, b === unit.speedRemaining && KBRules.hasFullSpeed(unit)) : null;
+    return window.marchPlan ? window.marchPlan(unit, k, null, b, b === unit.speedRemaining && KBRules.hasFullSpeed(unit)) : null;
   }
 
   // Path to (tq, tr) through the waypoints: { path (origin included), costs, cost } or null
   function pathTo(unit, tq, tr) {
     if (!unit || unit.q == null || !canPlan()) return null;
-    if (!movableTiles.has(`${tq},${tr}`)) return null;
-    return extendRoute(simRoute(unit), tq, tr);
+    const k = typeof tq === 'string' ? tq : hexNode(unit, { q: tq, r: tr });
+    if (!movableTiles.has(k)) return null;
+    return extendRoute(simRoute(unit), k);
   }
 
   // Hex from which the unit can strike target this turn, after the waypoints (path with the origin included), or null
@@ -309,10 +318,12 @@
     const R = simRoute(unit);
     if (!R || R.march) return null;
     const E = R.end;
-    if (hexDistance(E.q, E.r, target.q, target.r) <= KBRules.attackRange(unit.range, mapHeight[`${E.q},${E.r}`] || 0, mapHeight[`${target.q},${target.r}`] || 0)) {
-      return routeWaypoints(unit).length ? { q: E.q, r: E.r, path: R.path } : null;
+    const gi = window.gateInfo ? window.gateInfo() : null;
+    const heightAt = (k) => mapHeight[k] || 0;
+    if (KBRules.combatKind({ ...unit, q: E.q, r: E.r, level: E.level }, target, gi, heightAt)) {
+      return routeWaypoints(unit).length ? { q: E.q, r: E.r, level: E.level, path: R.path } : null;
     }
-    const res = KBRules.bestAttackHex(R.reach, { start: E, target, range: unit.range || 1, heightAt: (k) => mapHeight[k] || 0 });
+    const res = KBRules.bestAttackHex(R.reach, { start: E, target, range: unit.range || 1, heightAt, gates: gi });
     return res ? { ...res, path: [...R.path, ...res.path] } : null;
   }
 
@@ -761,6 +772,7 @@
             moved = true;
           }
           u.q = e.to[0]; u.r = e.to[1];
+          if (e.to[2]) u.level = 1; else delete u.level;
           if (e.f != null) u.facing = e.f;
           break;
         }

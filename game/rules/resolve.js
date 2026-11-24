@@ -72,17 +72,11 @@ function reactionOf(u, c) {
   return S.stanceReaction[u.stance] || 'rien';
 }
 
-function effectiveRange(room, a, t) {
-  const hA = room.heightData[hexKey(a.q, a.r)] || 0;
-  const hT = room.heightData[hexKey(t.q, t.r)] || 0;
-  return rules.attackRange(a.range, hA, hT);
-}
-
-function stepCost(room, u, q1, r1, q2, r2) {
-  const from = room.hexMap[hexKey(q1, r1)], to = room.hexMap[hexKey(q2, r2)];
-  if (!from || !to) return Infinity;
-  return rules.stepCost(room.moveTable(), from, to, room.segmentData[segmentEdgeKey(q1, r1, q2, r2)] || null, rules.isMounted(u));
-}
+// a can strike t from where it stands (range, heights, wall walks above the gates: GameRoom.combatKind)
+function inRange(room, a, t) { return !!room.combatKind(a, t); }
+function inMelee(room, a, t) { return room.combatKind(a, t) === 'melee'; }
+// position of a unit as a path step: [q, r], or [q, r, 1] on the wall walk above a gate
+function posOf(u) { return u.level ? [u.q, u.r, 1] : [u.q, u.r]; }
 
 function resolveTurn(room, ordersByPlayer, seed) {
   room._rng = mulberry32(seed);
@@ -149,7 +143,7 @@ function run(room, ordersByPlayer, seed) {
     ctl.set(u.id, {
       u, o, owner: p.id,
       budget: u.speedRemaining || 0, speed0: u.speedRemaining || 0,
-      path: (o.type === 'move' || o.type === 'attack' || o.type === 'charge') && Array.isArray(o.path) ? o.path.map(([q, r]) => [q, r]) : [],
+      path: (o.type === 'move' || o.type === 'attack' || o.type === 'charge') && Array.isArray(o.path) ? o.path.map(st => st.slice()) : [],
       target: (o.type === 'attack' || o.type === 'charge') ? o.targetId : null,
       lastSeen: null,
       ranged: o.type === 'attack' && (u.range || 1) > 1,
@@ -260,7 +254,7 @@ function run(room, ordersByPlayer, seed) {
       if (room.areAllies(p.id, c.owner)) continue;
       for (const e of p.units) {
         if (e.q === null) continue;
-        if (seen[c.owner].has(e.id) && hexDistance(c.u.q, c.u.r, e.q, e.r) <= effectiveRange(room, c.u, e)) out.add(e.id);
+        if (seen[c.owner].has(e.id) && inRange(room, c.u, e)) out.add(e.id);
       }
     }
     return out;
@@ -302,7 +296,7 @@ function run(room, ordersByPlayer, seed) {
     for (const s of strikes) { frozen(s.a); frozen(s.t); }
     const planned = strikes.map(s => {
       if (s.duel) return s;
-      const isCac = s.trample || hexDistance(s.a.q, s.a.r, s.t.q, s.t.r) <= 1 || s.kind === 'encounter';
+      const isCac = s.trample || inMelee(room, s.a, s.t) || s.kind === 'encounter';
       const wanted = s.trample ? 'rien' : s.kind === 'encounter' ? 'counter' : reactionOf(s.t, ctl.get(s.t.id));
       const choice = room.effectiveDefense(s.a, s.t, isCac, wanted);
       const kind = isCac && (s.kind === 'ranged' || s.kind === 'reaction') ? 'melee' : s.kind;
@@ -346,7 +340,7 @@ function run(room, ordersByPlayer, seed) {
   function blockedFor(c) {
     const own = c.owner;
     return (k) => {
-      const occ = room.unitMap[k];
+      const occ = room.occupantAt(k);
       return !!occ && occ !== c.u && (occ.playerId === own || seen[own].has(occ.id));
     };
   }
@@ -355,16 +349,16 @@ function run(room, ordersByPlayer, seed) {
   function approachStep(c, tq, tr) {
     const u = c.u;
     const { dist, prev } = rules.reachable(room.moveTable(), {
-      start: { q: u.q, r: u.r }, maxCost: c.budget, minStep: c.moved === 0 && c.budget === c.speed0, mounted: rules.isMounted(u),
+      start: { q: u.q, r: u.r, level: u.level }, maxCost: c.budget, minStep: c.moved === 0 && c.budget === c.speed0, mounted: rules.isMounted(u),
       hexAt: (k) => room.hexMap[k] || null, blocked: blockedFor(c),
-      segAt: (a, b, cc, d) => room.segmentData[segmentEdgeKey(a, b, cc, d)] || null,
+      segAt: (a, b, cc, d) => room.segmentData[segmentEdgeKey(a, b, cc, d)] || null, ...room.reachOpts(),
     });
-    const startKey = hexKey(u.q, u.r);
+    const startKey = room.nodeOf(u);
     const d0 = hexDistance(u.q, u.r, tq, tr);
     let best = null;
     for (const [k, cost] of dist) {
       if (k === startKey) continue;
-      const [q, r] = k.split(',').map(Number);
+      const [q, r] = rules.stepOf(k);
       const d = hexDistance(q, r, tq, tr);
       if (d === 0 || d >= d0) continue;
       const better = !best || d < best.d || (d === best.d && (cost < best.cost || (cost === best.cost && k < best.k)));
@@ -389,15 +383,15 @@ function run(room, ordersByPlayer, seed) {
       if (c.fired || !c.path.length) return null;
       const t = targetUnit(c);
       if (!t) { c.done = true; return null; }
-      if (seen[c.owner].has(t.id) && hexDistance(u.q, u.r, t.q, t.r) <= effectiveRange(room, u, t)) return null;
+      if (seen[c.owner].has(t.id) && inRange(room, u, t)) return null;
       return c.path[0];
     }
     if (c.o.type === 'move') return c.path.length ? c.path[0] : null;
     if (c.o.type === 'attack' || c.o.type === 'charge') {
       const t = targetUnit(c);
       if (!t) { c.done = true; return null; }
-      if (seen[c.owner].has(t.id)) c.lastSeen = [t.q, t.r];
-      if (c.lastSeen && hexDistance(u.q, u.r, c.lastSeen[0], c.lastSeen[1]) <= 1) return null;
+      if (seen[c.owner].has(t.id)) { c.lastSeen = [t.q, t.r]; if (inMelee(room, u, t)) return null; }
+      else if (c.lastSeen && hexDistance(u.q, u.r, c.lastSeen[0], c.lastSeen[1]) <= 1) return null;
       // route chosen by the player: followed first (contact with the target stops it), then the unit closes in
       if (c.path.length) return c.path[0];
       if (!c.lastSeen) return null;
@@ -406,10 +400,15 @@ function run(room, ordersByPlayer, seed) {
     return null;
   }
 
-  function adjacentEnemies(c, q, r) {
+  // enemies in melee contact with node pos ([q, r] or [q, r, 1]): ground neighbours, or a direct access to a wall walk
+  function adjacentEnemies(c, pos) {
     const out = [];
-    for (const [dq, dr] of DIRS) {
-      const occ = room.unitMap[hexKey(q + dq, r + dr)];
+    const k = rules.stepKey(pos);
+    const near = pos[2] ? [] : DIRS.map(([dq, dr]) => hexKey(pos[0] + dq, pos[1] + dr));
+    const links = room.gates && room.gates.links[k];
+    if (links) near.push(...links);
+    for (const nk of near) {
+      const occ = room.occupantAt(nk);
       if (occ && !room.areAllies(occ.playerId, c.owner) && alive(room, occ)) out.push(occ);
     }
     return out;
@@ -428,12 +427,12 @@ function run(room, ordersByPlayer, seed) {
       if (c.ranged) {
         const tgt = targetUnit(c);
         if (!tgt) continue;
-        if (seen[c.owner].has(tgt.id) && hexDistance(c.u.q, c.u.r, tgt.q, tgt.r) <= effectiveRange(room, c.u, tgt)) {
+        if (seen[c.owner].has(tgt.id) && inRange(room, c.u, tgt)) {
           shots.push({ a: c.u, t: tgt, c, kind: 'ranged' });
           c.fired = true;
         }
       } else if (c.reactor && c.reactQueue.length) {
-        const cands = c.reactQueue.map(id => room.findUnit(id)).filter(e => e && alive(room, e) && seen[c.owner].has(e.id) && hexDistance(c.u.q, c.u.r, e.q, e.r) <= effectiveRange(room, c.u, e));
+        const cands = c.reactQueue.map(id => room.findUnit(id)).filter(e => e && alive(room, e) && seen[c.owner].has(e.id) && inRange(room, c.u, e));
         c.reactQueue = [];
         if (!cands.length) continue;
         cands.sort((x, y) => hexDistance(c.u.q, c.u.r, x.q, x.r) - hexDistance(c.u.q, c.u.r, y.q, y.r) || rankOf(x.id) - rankOf(y.id));
@@ -454,14 +453,14 @@ function run(room, ordersByPlayer, seed) {
     for (const c of ctls()) {
       const step = wantedStep(c);
       if (!step) continue;
-      const cost = stepCost(room, c.u, c.u.q, c.u.r, step[0], step[1]);
+      const cost = room.stepCostNodes(c.u, room.nodeOf(c.u), rules.stepKey(step));
       const minStep = c.moved === 0 && c.budget > 0 && c.budget === c.speed0; // nothing spent yet: one step is always allowed
       if (!isFinite(cost) || (cost > c.budget + 1e-9 && !minStep)) {
         // a melee attacker whose route no longer fits drops it and closes in directly on the next tick
         if (!c.ranged && c.target && c.path.length && c.path[0] === step) { c.path = []; continue; }
         c.done = true; if (c.o.type === 'move') c.path = []; continue;
       }
-      props.set(c.u.id, { c, from: [c.u.q, c.u.r], to: step, key: hexKey(step[0], step[1]), cost, ok: true });
+      props.set(c.u.id, { c, from: posOf(c.u), to: step, key: rules.stepKey(step), cost, ok: true });
     }
     const encounters = [];
     const bumps = [];
@@ -493,11 +492,11 @@ function run(room, ordersByPlayer, seed) {
       }
       if (changed) continue;
       // swaps
-      const at = new Map(live.map(p => [hexKey(p.from[0], p.from[1]), p]));
+      const at = new Map(live.map(p => [rules.stepKey(p.from), p]));
       for (const p of live) {
         const other = at.get(p.key);
         if (!other || other === p || !other.ok) continue;
-        if (other.key === hexKey(p.from[0], p.from[1]) && !room.areAllies(other.c.owner, p.c.owner)) {
+        if (other.key === rules.stepKey(p.from) && !room.areAllies(other.c.owner, p.c.owner)) {
           p.ok = false; other.ok = false; changed = true;
           addEncounter(p, other);
         }
@@ -505,7 +504,7 @@ function run(room, ordersByPlayer, seed) {
       if (changed) continue;
       // hex occupied by a unit that stays
       for (const p of live) {
-        const occ = room.unitMap[p.key];
+        const occ = room.occupantAt(p.key);
         if (!occ || occ === p.c.u) continue;
         const leaving = props.get(occ.id);
         if (leaving && leaving.ok) continue;
@@ -516,23 +515,23 @@ function run(room, ordersByPlayer, seed) {
       }
     }
     const moves = [...props.values()].filter(p => p.ok);
-    for (const p of moves) delete room.unitMap[hexKey(p.from[0], p.from[1])];
+    for (const p of moves) room._vacate(p.c.u);
     const moved = new Map();
     for (const p of moves) {
       const { c } = p;
       const u = c.u;
-      u.q = p.to[0]; u.r = p.to[1];
-      u.facing = hexFacing(p.from[0], p.from[1], u.q, u.r);
+      room._setPos(u, p.to[0], p.to[1], p.to[2] ? 1 : 0);
+      if (p.from[0] !== u.q || p.from[1] !== u.r) u.facing = hexFacing(p.from[0], p.from[1], u.q, u.r);
       u.hasMoved = true;
       c.budget = Math.max(0, rules.snap(c.budget - p.cost));
       c.moved++;
       if (c.path.length) c.path.shift();
-      room.unitMap[hexKey(u.q, u.r)] = u;
+      room._occupy(u);
       if (c.pendingStance && c.moved >= c.o.stanceAt && !u.isFleeing) { applyStance(u, c.pendingStance); c.pendingStance = null; }
       while (c.pendingSteps && c.pendingSteps.length && c.moved >= c.pendingSteps[0].at && !u.isFleeing) applyStance(u, c.pendingSteps.shift().stance);
-      moved.set(u.id, { u, from: p.from, to: [u.q, u.r], kind: 'move' });
+      moved.set(u.id, { u, from: p.from, to: posOf(u), kind: 'move' });
       if (!pathTrail.has(u.id)) pathTrail.set(u.id, [p.from]);
-      pathTrail.get(u.id).push([u.q, u.r]);
+      pathTrail.get(u.id).push(posOf(u));
     }
     const ambush = (c, by) => {
       c.done = true; c.path = []; c.budget = 0;
@@ -551,8 +550,8 @@ function run(room, ordersByPlayer, seed) {
     for (const p of moves) {
       const { c } = p;
       const u = c.u;
-      const before = new Set(adjacentEnemies(c, p.from[0], p.from[1]).map(e => e.id));
-      const fresh = adjacentEnemies(c, u.q, u.r).filter(e => !before.has(e.id) && seen[c.owner].has(e.id));
+      const before = new Set(adjacentEnemies(c, p.from).map(e => e.id));
+      const fresh = adjacentEnemies(c, posOf(u)).filter(e => !before.has(e.id) && seen[c.owner].has(e.id));
       if (!fresh.length) continue;
       const hidden = fresh.find(e => !prevSeen[c.owner].has(e.id) && room._inCover(e.q, e.r));
       if (hidden) { ambush(c, hidden); continue; }
@@ -561,7 +560,7 @@ function run(room, ordersByPlayer, seed) {
         continue;
       }
       const tgt = targetUnit(c);
-      if (tgt && hexDistance(u.q, u.r, tgt.q, tgt.r) <= 1) continue;
+      if (tgt && inMelee(room, u, tgt)) continue;
       fresh.sort((x, y) => rankOf(x.id) - rankOf(y.id));
       c.target = fresh[0].id;
       c.lastSeen = [fresh[0].q, fresh[0].r];
@@ -598,7 +597,7 @@ function run(room, ordersByPlayer, seed) {
       if (c.struck || c.ranged || striking.has(c.u.id) || c.u.isFleeing) continue;
       if (c.o.type !== 'attack' && c.o.type !== 'charge') continue;
       const tgt = targetUnit(c);
-      if (!tgt || hexDistance(c.u.q, c.u.r, tgt.q, tgt.r) > 1 || !seen[c.owner].has(tgt.id)) continue;
+      if (!tgt || !inMelee(room, c.u, tgt) || !seen[c.owner].has(tgt.id)) continue;
       pending.push({ c, tgt });
     }
     for (const { c, tgt } of pending) {

@@ -51,8 +51,11 @@ function oneOf(v, allowed, code = 'invalid_value', message = 'Valeur invalide.')
 function path(v, max = 60) {
   if (!Array.isArray(v) || v.length < 1 || v.length > max) fail('invalid_path', 'Chemin invalide.');
   return v.map((step) => {
-    if (!Array.isArray(step) || step.length !== 2) fail('invalid_path', 'Chemin invalide.');
-    return [int(step[0], -10000, 10000, 'invalid_path', 'Chemin invalide.'), int(step[1], -10000, 10000, 'invalid_path', 'Chemin invalide.')];
+    // [q, r] on the ground, [q, r, 1] on the wall walk above a gate
+    if (!Array.isArray(step) || (step.length !== 2 && step.length !== 3)) fail('invalid_path', 'Chemin invalide.');
+    const s = [int(step[0], -10000, 10000, 'invalid_path', 'Chemin invalide.'), int(step[1], -10000, 10000, 'invalid_path', 'Chemin invalide.')];
+    if (step.length === 3) { if (step[2] === 1) s.push(1); else if (step[2] !== 0) fail('invalid_path', 'Chemin invalide.'); }
+    return s;
   });
 }
 

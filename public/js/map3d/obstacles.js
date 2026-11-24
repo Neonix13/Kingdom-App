@@ -71,6 +71,7 @@ export function createObstacles(world) {
   }
   // height where a soldier of a formation at level L stands: wall-walks and their platforms only count for units up on the wall
   function standHeight(x, z, L) {
+    if (L && L.forced) return L.deckY; // wall walk above a gate (game rule level): at the rampart height
     const gy = g(x, z);
     if (L && L.onWall) {
       const d = deckAt(x, z, 0);
@@ -105,6 +106,7 @@ export function createObstacles(world) {
 
   // Can a soldier of a formation at level L stand at (x, z)? (cx, cz) is the formation centre, used to spot cliff faces.
   function free(x, z, L, cx, cz) {
+    if (L.forced) return Math.hypot(x - cx, z - cz) < 0.75;
     if (L.onWall) {
       const d = deckAt(x, z, 0.2, true);
       if (d) return Math.abs(d.y - L.deckY) < 0.6;

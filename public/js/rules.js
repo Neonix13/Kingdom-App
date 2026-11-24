@@ -217,27 +217,42 @@
   //   minStep: the unit has not spent any speed this turn, so one step to a neighbour is always allowed
   //            (if passable), even when it costs more than maxCost: nobody stays stuck in a river or below a slope
   // Returns { dist: Map(key -> cost), prev: Map(key -> previous key) } (start included with cost 0).
+  //   tops: { "q,r": height } wall walks above the gates (node "q,r^"), links: { node: [node...] } their connections
+  //   (mapProps.gateTops); mounted units never go up there; start.level = 1 starts on a wall walk
   function reachable(table, opts) {
-    const startKey = hexKey(opts.start.q, opts.start.r);
+    const tops = opts.tops || null, links = opts.links || null;
+    const startKey = hexKey(opts.start.q, opts.start.r) + (opts.start.level ? '^' : '');
     const maxCost = snap(opts.maxCost);
     const dist = new Map([[startKey, 0]]);
     const prev = new Map();
-    const queue = [{ q: opts.start.q, r: opts.start.r, cost: 0 }];
+    const queue = [{ k: startKey, cost: 0 }];
+    const at = (key) => {
+      if (key.charAt(key.length - 1) !== '^') return opts.hexAt(key);
+      const b = key.slice(0, -1);
+      return tops && b in tops && opts.hexAt(b) ? { terrain: 'plain', height: tops[b] } : null;
+    };
     while (queue.length) {
       let bi = 0;
       for (let i = 1; i < queue.length; i++) if (queue[i].cost < queue[bi].cost) bi = i;
       const cur = queue.splice(bi, 1)[0];
-      const k = hexKey(cur.q, cur.r);
+      const k = cur.k;
       if (cur.cost > dist.get(k)) continue;
       if (cur.cost >= maxCost) continue;
-      const here = opts.hexAt(k);
+      const here = at(k);
       if (!here) continue;
-      for (const [dq, dr] of DIRS) {
-        const nq = cur.q + dq, nr = cur.r + dr, nk = hexKey(nq, nr);
-        const there = opts.hexAt(nk);
+      const top = k.charAt(k.length - 1) === '^';
+      const [cq, cr] = (top ? k.slice(0, -1) : k).split(',').map(Number);
+      const next = [];
+      if (!top) for (const [dq, dr] of DIRS) next.push({ nk: hexKey(cq + dq, cr + dr), nq: cq + dq, nr: cr + dr, link: false });
+      if (links && links[k] && !opts.mounted) for (const nk of links[k]) { const [nq, nr] = nk.replace('^', '').split(',').map(Number); next.push({ nk, nq, nr, link: true }); }
+      for (const { nk, nq, nr, link } of next) {
+        const there = at(nk);
         if (!there) continue;
         if (opts.blocked && opts.blocked(nk) && !(opts.transit && opts.transit(nk))) continue;
-        const c = stepCost(table, here, there, opts.segAt(cur.q, cur.r, nq, nr), !!opts.mounted);
+        // a wall-walk link ignores the sheer wall of the edge, but pays its stairs / ladder
+        let seg = opts.segAt(cq, cr, nq, nr);
+        if (link && seg !== 'escalier' && seg !== 'echelle') seg = null;
+        const c = stepCost(table, here, there, seg, !!opts.mounted);
         if (!isFinite(c)) continue;
         let nc = snap(cur.cost + c);
         if (nc > maxCost) {
@@ -247,7 +262,7 @@
         if (!dist.has(nk) || nc < dist.get(nk)) {
           dist.set(nk, nc);
           prev.set(nk, k);
-          queue.push({ q: nq, r: nr, cost: nc });
+          queue.push({ k: nk, cost: nc });
         }
       }
     }
@@ -303,19 +318,38 @@
   //   opts: { start: {q, r}, target: {q, r}, range, heightAt(key) -> level, canStand(key) -> bool (optional) }
   // Melee: cheapest hex, then the highest. Shooters: farthest from the target, then cheapest, then the highest.
   // Returns { key, q, r, cost, path: [[q, r], ...] (start excluded, [] when no move is needed) } or null.
+  // How a can strike t ({ q, r, level?, range }): 'melee', 'ranged' or null. Never straight down or up through a gate;
+  // melee with a unit on the wall walk above a gate needs a direct access (gates.links), a shooter next to it without
+  // one fires. gates = mapProps.gateTops(...) or null, heightAt(key) = ground height
+  function combatKind(a, t, gates, heightAt) {
+    const d = hexDistance(a.q, a.r, t.q, t.r);
+    if (d === 0) return null;
+    const ranged = (a.range || 1) > 1;
+    const node = (u) => hexKey(u.q, u.r) + (u.level ? '^' : '');
+    const h = (u) => (u.level && gates && gates.tops[hexKey(u.q, u.r)] != null ? gates.tops[hexKey(u.q, u.r)] : (heightAt(hexKey(u.q, u.r)) || 0));
+    if (d === 1) {
+      if (!a.level && !t.level) return 'melee';
+      const l = gates && gates.links[node(a)];
+      if (l && l.indexOf(node(t)) !== -1) return 'melee';
+      return ranged ? 'ranged' : null;
+    }
+    return ranged && d <= attackRange(a.range, h(a), h(t)) ? 'ranged' : null;
+  }
+
   function bestAttackHex(reach, opts) {
-    const startKey = hexKey(opts.start.q, opts.start.r);
+    const startKey = hexKey(opts.start.q, opts.start.r) + (opts.start.level ? '^' : '');
     const tq = opts.target.q, tr = opts.target.r;
-    const hT = opts.heightAt(hexKey(tq, tr)) || 0;
     const ranged = (opts.range || 1) > 1;
     let best = null;
     for (const [k, cost] of reach.dist) {
       if (k !== startKey && opts.canStand && !opts.canStand(k)) continue;
-      const [q, r] = k.split(',').map(Number);
+      const s = stepOf(k);
+      const q = s[0], r = s[1];
       const d = hexDistance(q, r, tq, tr);
-      const h = opts.heightAt(k) || 0;
-      if (d === 0 || d > attackRange(opts.range, h, hT)) continue;
-      const cand = { key: k, q, r, cost, d, h };
+      const from = { q, r, level: s[2] ? 1 : 0, range: opts.range };
+      const h = s[2] && opts.gates ? opts.gates.tops[hexKey(q, r)] : (opts.heightAt(hexKey(q, r)) || 0);
+      if (!combatKind(from, opts.target, opts.gates || null, opts.heightAt)) continue;
+      const cand = { key: k, q, r, level: from.level, cost, d, h };
       if (!best) { best = cand; continue; }
       const cmp = ranged
         ? (best.d - d) || (cost - best.cost) || (best.h - h)
@@ -325,7 +359,7 @@
     if (!best) return null;
     const path = pathFromPrev(reach.prev, startKey, best.key);
     if (!path) return null;
-    return { key: best.key, q: best.q, r: best.r, cost: best.cost, path };
+    return { key: best.key, q: best.q, r: best.r, level: best.level, cost: best.cost, path };
   }
 
   // Path [[q, r], ...] from the start (excluded) to key, or null
@@ -333,9 +367,15 @@
     if (key === startKey) return [];
     if (!prev.has(key)) return null;
     const out = [];
-    for (let k = key; k && k !== startKey; k = prev.get(k)) out.unshift(k.split(',').map(Number));
+    for (let k = key; k && k !== startKey; k = prev.get(k)) out.unshift(stepOf(k));
     return out;
   }
+  // Path step of a node key: [q, r] on the ground, [q, r, 1] on the wall walk above a gate ("q,r^")
+  function stepOf(k) {
+    if (k.charAt(k.length - 1) === '^') { const s = k.slice(0, -1).split(',').map(Number); s.push(1); return s; }
+    return k.split(',').map(Number);
+  }
+  function stepKey(s) { return s[0] + ',' + s[1] + (s[2] ? '^' : ''); }
 
   // ---- time ----
   function clampInt(v, min, max, def) {
@@ -415,8 +455,8 @@
 
   return {
     RULES, snap, hexKey, edgeKey, DIRS, isMounted,
-    movementTable, stepCost, reachable, pathFromPrev,
-    hexDistance, attackRange, hasFullSpeed, bestAttackHex, ability, buildOptions, sabotageOption,
+    movementTable, stepCost, reachable, pathFromPrev, stepOf, stepKey,
+    hexDistance, attackRange, combatKind, hasFullSpeed, bestAttackHex, ability, buildOptions, sabotageOption,
     hoursPerTurn, timeOfDay, dayNumber, isNightHour, formatHour,
     defaultSettings, mergeSettings,
   };

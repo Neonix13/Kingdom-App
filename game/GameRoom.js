@@ -5,7 +5,7 @@ const { hexDistance, hexKey, buildHexMap, findPathCost, getStartingZones, segmen
 const TERRAINS = require('./data/terrains');
 const SEGMENTS = require('./data/segments');
 const maps = require('./maps');
-const { effectiveSegments } = require('../public/js/mapProps.js');
+const { effectiveSegments, gateTops } = require('../public/js/mapProps.js');
 const { getTurnController } = require('./turns');
 const rules = require('./rules');
 const replay = require('./replay');
@@ -15,7 +15,7 @@ const { RULES } = rules;
 
 const MAP_RADIUS = 70;
 // Derived from the map or rebuilt on load: never serialized
-const TRANSIENT = new Set(['map', 'hexMap', 'unitMap', 'terrainData', 'segmentData', 'heightData', 'mapCenter', '_events', '_moveTable', '_rng', '_losGrid', '_losCache', '_mainAreaCache']);
+const TRANSIENT = new Set(['map', 'hexMap', 'unitMap', 'topMap', 'gates','terrainData', 'segmentData', 'heightData', 'mapCenter', '_events', '_moveTable', '_rng', '_losGrid', '_losCache', '_mainAreaCache']);
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
@@ -41,6 +41,7 @@ class GameRoom {
     this.mode = options.mode || 'sequential';
     this.hexMap = {};
     this.unitMap = {}; // hexKey -> unit
+    this.topMap = {}; // hexKey -> unit on the wall walk above that gate
     this.turn = 1;
     this.manche = 1;
     this.turnOrder = [];       // IDs des joueurs dans l'ordre d'initiative
@@ -105,6 +106,7 @@ class GameRoom {
     this.terrainData = maps.terrainLookup(map);
     this.segmentData = effectiveSegments(map.segments, map.decor, map.height);
     this.heightData = map.height || {};
+    this.gates = gateTops(map.decor, map.height, map.segments);
     this.hexMap = buildHexMap(map);
     resetLos(this);
     this._applyMapEdits();
@@ -728,7 +730,7 @@ class GameRoom {
 
   // ---- spectators: delayed vision keeps the unit positions of the previous round ----
   _slimUnit(u, p) {
-    return { id: u.id, playerId: p.id, typeId: u.typeId, name: u.name, isGeneral: !!u.isGeneral, category: u.category, q: u.q, r: u.r, vitality: u.vitality, maxVitality: u.maxVitality, morale: u.morale, maxMorale: u.maxMorale, facing: u.facing, stance: u.stance || null, isFleeing: !!u.isFleeing, generalId: u.generalId || null, isMine: false };
+    return { id: u.id, playerId: p.id, typeId: u.typeId, name: u.name, isGeneral: !!u.isGeneral, category: u.category, q: u.q, r: u.r, ...(u.level ? { level: 1 } : {}), vitality: u.vitality, maxVitality: u.maxVitality, morale: u.morale, maxMorale: u.maxMorale, facing: u.facing, stance: u.stance || null, isFleeing: !!u.isFleeing, generalId: u.generalId || null, isMine: false };
   }
 
   _snapshotForSpectators() {
@@ -768,11 +770,72 @@ class GameRoom {
 
   _rebuildUnitMap() {
     this.unitMap = {};
+    this.topMap = {};
     for (const p of this.players) {
       for (const u of p.units) {
-        if (u.q !== null) this.unitMap[hexKey(u.q, u.r)] = u;
+        if (u.q !== null) (u.level ? this.topMap : this.unitMap)[hexKey(u.q, u.r)] = u;
       }
     }
+  }
+
+  // ---- two levels on the gates: the passage ("q,r", unitMap) and the wall walk above it ("q,r^", topMap) ----
+  // unit.level = 1 when the unit stands on the wall walk above a gate (mapProps.gateTops)
+  nodeOf(u) { return hexKey(u.q, u.r) + (u.level ? '^' : ''); }
+  _nodeAt(k) {
+    if (k.charAt(k.length - 1) !== '^') return this.hexMap[k] || null;
+    const b = k.slice(0, -1);
+    const h = this.gates && this.gates.tops[b];
+    return h != null && this.hexMap[b] ? { terrain: 'plain', height: h } : null;
+  }
+  occupantAt(k) {
+    if (k.charAt(k.length - 1) !== '^') return this.unitMap[k] || null;
+    return (this.topMap || {})[k.slice(0, -1)] || null;
+  }
+  _vacate(u) {
+    const m = u.level ? (this.topMap || (this.topMap = {})) : this.unitMap, k = hexKey(u.q, u.r);
+    if (m[k] === u || !m[k]) delete m[k];
+  }
+  _occupy(u) { (u.level ? (this.topMap || (this.topMap = {})) : this.unitMap)[hexKey(u.q, u.r)] = u; }
+  _setPos(u, q, r, level = 0) {
+    u.q = q; u.r = r;
+    if (level) u.level = 1; else delete u.level;
+  }
+  unitHeight(u) {
+    if (u.level && this.gates && this.gates.tops[hexKey(u.q, u.r)] != null) return this.gates.tops[hexKey(u.q, u.r)];
+    return this.heightData[hexKey(u.q, u.r)] || 0;
+  }
+  // Wall-walk connection between two nodes (direct access: rampart, stairs, ladder, wall walk of the next gate)
+  linked(a, b) { const l = this.gates && this.gates.links[a]; return !!l && l.includes(b); }
+  // Melee between two units: neighbours on the ground, or a direct access when one of them is on a wall walk
+  meleeReach(a, b) {
+    if (!a.level && !b.level) return hexDistance(a.q, a.r, b.q, b.r) <= 1;
+    return this.linked(this.nodeOf(a), this.nodeOf(b));
+  }
+  // How a can strike t from where it stands: 'melee', 'ranged' or null (out of reach). Never straight down or up
+  // through a gate; melee with a unit on a wall walk needs a direct access, a shooter next to it without one fires
+  combatKind(a, t) { return rules.combatKind(a, t, this.gates, (k) => this.heightData[k] || 0); }
+  reachOpts() { return this.gates ? { tops: this.gates.tops, links: this.gates.links } : {}; }
+  // Two nodes one step apart: ground neighbours, or a wall-walk connection
+  isStep(a, b) {
+    if (this.linked(a, b)) return true;
+    if (a.charAt(a.length - 1) === '^' || b.charAt(b.length - 1) === '^') return false;
+    const [aq, ar] = a.split(',').map(Number), [bq, br] = b.split(',').map(Number);
+    return hexDistance(aq, ar, bq, br) === 1;
+  }
+  // Cost of one step between two nodes ("q,r" / "q,r^"), Infinity when it is not a legal step
+  stepCostNodes(unit, a, b) {
+    const ta = a.charAt(a.length - 1) === '^', tb = b.charAt(b.length - 1) === '^';
+    const [aq, ar] = (ta ? a.slice(0, -1) : a).split(',').map(Number);
+    const [bq, br] = (tb ? b.slice(0, -1) : b).split(',').map(Number);
+    const from = this._nodeAt(a), to = this._nodeAt(b);
+    if (!from || !to) return Infinity;
+    const mounted = rules.isMounted(unit);
+    const link = this.linked(a, b);
+    if (!link && (ta || tb || hexDistance(aq, ar, bq, br) !== 1)) return Infinity;
+    if (link && mounted) return Infinity;
+    let seg = this.segmentData[segmentEdgeKey(aq, ar, bq, br)] || null;
+    if (link && seg !== 'escalier' && seg !== 'echelle') seg = null;
+    return rules.stepCost(this.moveTable(), from, to, seg, mounted);
   }
 
   getCurrentPlayerId() {
@@ -816,15 +879,15 @@ class GameRoom {
     if (night) baseRange = Math.max(RULES.night.visionMin, Math.floor(baseRange * RULES.night.visionFactor));
     const forestSight = spy ? V.spy.forestSight : V.forestSight;
     const general = !!unit.isGeneral;
-    const ck = `${unit.q},${unit.r}|${baseRange}|${forestSight}|${general ? 1 : 0}`;
+    const ck = `${unit.q},${unit.r}${unit.level ? '^' : ''}|${baseRange}|${forestSight}|${general ? 1 : 0}`;
     if (!this._losCache) this._losCache = new Map();
     const hit = this._losCache.get(ck);
     if (hit) return hit;
-    const myHeight = this.heightData[hexKey(unit.q, unit.r)] || 0;
+    const myHeight = unit.level ? this.unitHeight(unit) : (this.heightData[hexKey(unit.q, unit.r)] || 0);
     const heightBonus = general ? myHeight * V.generalHeightFactor : myHeight;
     const maxRange = baseRange + heightBonus;
     const out = [];
-    const sight = { forestSight, seesOverLowerForest: general };
+    const sight = { forestSight, seesOverLowerForest: general, fromHeight: unit.level ? myHeight : null };
     for (let dq = -maxRange; dq <= maxRange; dq++) {
       for (let dr = Math.max(-maxRange, -dq - maxRange); dr <= Math.min(maxRange, -dq + maxRange); dr++) {
         const q = unit.q + dq, r = unit.r + dr;
@@ -1031,18 +1094,21 @@ class GameRoom {
     if (!Number.isInteger(targetQ) || !Number.isInteger(targetR) || !this.hexMap[hexKey(targetQ, targetR)]) return { error: 'Case invalide.' };
     if (unit.isFleeing) return { error: 'Unité en fuite.' };
     if (unit.speedRemaining <= 0) return { error: 'Plus de déplacement disponible.' };
+    const lastStep = Array.isArray(route) && route.length ? route[route.length - 1] : null;
+    const targetKey = hexKey(targetQ, targetR) + ((lastStep ? lastStep[2] : opts.level) ? '^' : '');
+    if (!this._nodeAt(targetKey)) return { error: 'Case invalide.' };
 
     // Only units the mover can see block the path; the walk stops in front of a hidden unit (ambush)
     const vis = this.getVisibleHexes(playerId);
     const blocked = (k) => {
-      const occ = this.unitMap[k];
+      const occ = this.occupantAt(k);
       return !!occ && this.canSee(playerId, occ, occ.q, occ.r, vis);
     };
     // Chariots drive through the enemy units they can see (striking each one), but never stop on one
     const ab = this.ability(unit);
     const drive = !!ab && ab.type === 'trample';
-    const crossable = (k) => { const occ = this.unitMap[k]; return blocked(k) && !this.areAllies(playerId, occ.playerId); };
-    if (drive && blocked(hexKey(targetQ, targetR))) return { error: 'Case occupée.' };
+    const crossable = (k) => { const occ = this.occupantAt(k); return blocked(k) && !this.areAllies(playerId, occ.playerId); };
+    if (drive && blocked(targetKey)) return { error: 'Case occupée.' };
     let found;
     if (route) {
       found = this._checkRoute(unit, route, blocked, drive ? crossable : null);
@@ -1050,33 +1116,40 @@ class GameRoom {
       const end = found.path[found.path.length - 1];
       if (end[0] !== targetQ || end[1] !== targetR) return { error: 'Le chemin ne mène pas à cette case.' };
     } else {
-      found = findPathCost(this.hexMap, this.unitMap, unit.q, unit.r, targetQ, targetR, unit.speedRemaining, unit, this.segmentData, blocked, this.moveTable(), rules.hasFullSpeed(unit), drive ? crossable : null);
-      if (found === null) return { error: 'Chemin inaccessible.' };
+      const startKey = this.nodeOf(unit);
+      const { dist, prev } = rules.reachable(this.moveTable(), {
+        start: { q: unit.q, r: unit.r, level: unit.level }, maxCost: unit.speedRemaining, minStep: rules.hasFullSpeed(unit), mounted: rules.isMounted(unit),
+        hexAt: (k) => this.hexMap[k] || null, blocked, transit: drive ? crossable : null,
+        segAt: (a, b, c, d) => this.segmentData[segmentEdgeKey(a, b, c, d)] || null, ...this.reachOpts(),
+      });
+      const p = targetKey === startKey ? [] : rules.pathFromPrev(prev, startKey, targetKey);
+      if (!p) return { error: 'Chemin inaccessible.' };
+      found = { path: p, cost: dist.get(targetKey) || 0 };
     }
 
-    const fromQ = unit.q, fromR = unit.r;
+    const fromQ = unit.q, fromR = unit.r, fromLevel = unit.level ? 1 : 0;
     let path = found.path;
     let ambush = null;
-    const stop = path.findIndex(([q, r]) => {
-      const occ = this.unitMap[hexKey(q, r)];
-      return !!occ && !(drive && crossable(hexKey(q, r)));
+    const stop = path.findIndex((s) => {
+      const occ = this.occupantAt(rules.stepKey(s));
+      return !!occ && !(drive && crossable(rules.stepKey(s)));
     });
     if (stop !== -1) {
-      const occ = this.unitMap[hexKey(path[stop][0], path[stop][1])];
+      const occ = this.occupantAt(rules.stepKey(path[stop]));
       ambush = { byUnitId: occ.id, q: occ.q, r: occ.r, playerId: occ.playerId };
       path = path.slice(0, stop);
     }
-    while (drive && path.length && this.unitMap[hexKey(path[path.length - 1][0], path[path.length - 1][1])]) path.pop();
+    while (drive && path.length && this.occupantAt(rules.stepKey(path[path.length - 1]))) path.pop();
     const moveCost = path.length ? this._pathCost(unit, fromQ, fromR, path) : 0;
 
-    delete this.unitMap[hexKey(unit.q, unit.r)];
+    this._vacate(unit);
     if (path.length) {
-      unit.q = path[path.length - 1][0];
-      unit.r = path[path.length - 1][1];
+      const end = path[path.length - 1];
+      this._setPos(unit, end[0], end[1], end[2] ? 1 : 0);
       unit.hasMoved = true;
     }
     unit.speedRemaining = ambush ? 0 : Math.max(0, rules.snap(unit.speedRemaining - moveCost));
-    this.unitMap[hexKey(unit.q, unit.r)] = unit;
+    this._occupy(unit);
 
     if (path.length > 0) {
       const last = path.length - 1;
@@ -1092,7 +1165,7 @@ class GameRoom {
       }
       this.emitEvent({ event: 'ambush', unitId: unit.id, playerId, byUnitId: ambush.byUnitId, byPlayerId: ambush.playerId, q: ambush.q, r: ambush.r });
     }
-    this._record('move', { u: unit.id, path: [[fromQ, fromR], ...path], ambush: ambush ? ambush.byUnitId : undefined });
+    this._record('move', { u: unit.id, path: [fromLevel ? [fromQ, fromR, 1] : [fromQ, fromR], ...path], ambush: ambush ? ambush.byUnitId : undefined });
 
     // Trample: the chariot strikes every enemy unit it drove through (no riposte)
     const trampledAttacks = [];
@@ -1117,17 +1190,16 @@ class GameRoom {
   // A march route: adjacent steps on the map over passable edges (units on the way are dealt with turn by turn)
   _checkMarchRoute(unit, route) {
     if (!Array.isArray(route) || !route.length || route.length > MARCH_MAX_STEPS) return { error: 'Chemin invalide.' };
-    const mounted = rules.isMounted(unit);
-    let q = unit.q, r = unit.r;
+    let cur = this.nodeOf(unit);
     const path = [];
     for (const step of route) {
-      const [nq, nr] = step || [];
-      const k = hexKey(nq, nr);
-      if (!Number.isInteger(nq) || !Number.isInteger(nr) || hexDistance(q, r, nq, nr) !== 1 || !this.hexMap[k]) return { error: 'Chemin invalide.' };
-      const c = rules.stepCost(this.moveTable(), this.hexMap[hexKey(q, r)], this.hexMap[k], this.segmentData[segmentEdgeKey(q, r, nq, nr)] || null, mounted);
-      if (!isFinite(c)) return { error: 'Chemin infranchissable.' };
-      path.push([nq, nr]);
-      q = nq; r = nr;
+      const s = this._step(step);
+      if (!s) return { error: 'Chemin invalide.' };
+      const k = rules.stepKey(s);
+      if (!this._nodeAt(k) || !this.isStep(cur, k)) return { error: 'Chemin invalide.' };
+      if (!isFinite(this.stepCostNodes(unit, cur, k))) return { error: 'Chemin infranchissable.' };
+      path.push(s);
+      cur = k;
     }
     return { path };
   }
@@ -1147,21 +1219,21 @@ class GameRoom {
     const vis = this.getVisibleHexes(playerId);
     if (this.marchContact(playerId, unit, vis)) { unit.march = null; return null; }
     const route = unit.march.route;
-    const mounted = rules.isMounted(unit);
     const fresh = rules.hasFullSpeed(unit);
-    let q = unit.q, r = unit.r, cost = 0, blockedAhead = false;
+    let cur = this.nodeOf(unit), cost = 0, blockedAhead = false;
     const pre = [];
-    for (const [nq, nr] of route) {
-      const occ = this.unitMap[hexKey(nq, nr)];
+    for (const step of route) {
+      const k = rules.stepKey(step);
+      const occ = this.occupantAt(k);
       if (occ && this.canSee(playerId, occ, occ.q, occ.r, vis)) { blockedAhead = true; break; }
-      const c = rules.stepCost(this.moveTable(), this.hexMap[hexKey(q, r)], this.hexMap[hexKey(nq, nr)], this.segmentData[segmentEdgeKey(q, r, nq, nr)] || null, mounted);
+      const c = this.stepCostNodes(unit, cur, k);
       if (!isFinite(c)) { blockedAhead = true; break; }
       const next = rules.snap(cost + c);
       const minStep = !pre.length && fresh && unit.speedRemaining > 0;
       if (next > unit.speedRemaining + 1e-9 && !minStep) break;
       cost = next;
-      pre.push([nq, nr]);
-      q = nq; r = nr;
+      pre.push(step.slice());
+      cur = k;
       if (next > unit.speedRemaining + 1e-9) break;
     }
     if (!pre.length) {
@@ -1169,7 +1241,7 @@ class GameRoom {
       return null;
     }
     const end = pre[pre.length - 1];
-    const res = this.moveUnit(playerId, unit.id, end[0], end[1], pre, { keepMarch: true });
+    const res = this.moveUnit(playerId, unit.id, end[0], end[1], pre, { keepMarch: true, level: end[2] ? 1 : 0 });
     if (!res || res.error) { unit.march = null; return null; }
     if (res.ambush || res.path.length < pre.length) unit.march = null;
     else {
@@ -1222,35 +1294,44 @@ class GameRoom {
   // (one step is always allowed when the unit has not spent anything yet)
   _checkRoute(unit, route, blocked, crossable) {
     if (!Array.isArray(route) || !route.length || route.length > 60) return { error: 'Chemin invalide.' };
-    const mounted = rules.isMounted(unit);
-    let q = unit.q, r = unit.r, cost = 0;
+    let cur = this.nodeOf(unit), cost = 0;
     const path = [];
     for (const step of route) {
-      const [nq, nr] = step || [];
-      const k = hexKey(nq, nr);
-      if (!Number.isInteger(nq) || !Number.isInteger(nr) || hexDistance(q, r, nq, nr) !== 1 || !this.hexMap[k]) return { error: 'Chemin invalide.' };
-      const c = rules.stepCost(this.moveTable(), this.hexMap[hexKey(q, r)], this.hexMap[k], this.segmentData[segmentEdgeKey(q, r, nq, nr)] || null, mounted);
+      const s = this._step(step);
+      if (!s) return { error: 'Chemin invalide.' };
+      const k = rules.stepKey(s);
+      if (!this._nodeAt(k) || !this.isStep(cur, k)) return { error: 'Chemin invalide.' };
+      const c = this.stepCostNodes(unit, cur, k);
       if (!isFinite(c)) return { error: 'Chemin infranchissable.' };
       if (blocked(k) && !(crossable && crossable(k))) return { error: 'Le chemin traverse une case occupée.' };
       cost = rules.snap(cost + c);
-      path.push([nq, nr]);
-      q = nq; r = nr;
+      path.push(s);
+      cur = k;
     }
-    if (crossable && crossable(hexKey(q, r))) return { error: 'Case occupée.' };
+    if (crossable && crossable(cur)) return { error: 'Case occupée.' };
     const minStep = path.length === 1 && unit.speedRemaining > 0 && rules.hasFullSpeed(unit);
     if (cost > unit.speedRemaining + 1e-9 && !minStep) return { error: `Chemin trop long (coût ${cost}, vitesse ${unit.speedRemaining}).` };
     return { path, cost };
   }
 
+  // from the unit's current node (call before it moves) along path
   _pathCost(unit, fromQ, fromR, path) {
-    const mounted = rules.isMounted(unit);
     let cost = 0;
-    let pq = fromQ, pr = fromR;
-    for (const [nq, nr] of path) {
-      cost = rules.snap(cost + rules.stepCost(this.moveTable(), this.hexMap[hexKey(pq, pr)], this.hexMap[hexKey(nq, nr)], this.segmentData[segmentEdgeKey(pq, pr, nq, nr)] || null, mounted));
-      pq = nq; pr = nr;
+    let cur = hexKey(fromQ, fromR) + (unit.level && unit.q === fromQ && unit.r === fromR ? '^' : '');
+    for (const s of path) {
+      const k = rules.stepKey(s);
+      const c = this.stepCostNodes(unit, cur, k);
+      cost = rules.snap(cost + (isFinite(c) ? c : 1));
+      cur = k;
     }
     return cost;
+  }
+
+  // A path step [q, r] or [q, r, 1] (wall walk above a gate), normalized, or null when malformed
+  _step(step) {
+    if (!Array.isArray(step) || !Number.isInteger(step[0]) || !Number.isInteger(step[1])) return null;
+    if (step.length > 3 || (step.length === 3 && step[2] !== 1 && step[2] !== 0)) return null;
+    return step[2] === 1 ? [step[0], step[1], 1] : [step[0], step[1]];
   }
 
   // Terrain and stance helpers
@@ -1315,6 +1396,13 @@ class GameRoom {
     for (const unit of [...player.units]) {
       if (!unit.isFleeing || unit.q === null) continue;
       unit.march = null;
+      // on the wall walk above a gate: first down into the passage when it is free
+      if (unit.level) {
+        if (!this.unitMap[hexKey(unit.q, unit.r)]) { this._vacate(unit); this._setPos(unit, unit.q, unit.r, 0); this._occupy(unit); }
+        unit.speedRemaining = 0;
+        unit.hasMoved = true;
+        continue;
+      }
       // Move away from the map center toward the nearest edge
       const c = this.mapCenter || { q: 0, r: 0 };
       const dist = hexDistance(c.q, c.r, unit.q, unit.r);
@@ -1443,14 +1531,12 @@ class GameRoom {
     const target = this.findUnit(targetId);
     if (!target || target.playerId === playerId || target.q === null || !this.canSee(playerId, target)) return { error: 'Cible introuvable.' };
     if (!Number.isInteger(q) || !Number.isInteger(r) || !this.hexMap[hexKey(q, r)]) return { error: 'Case invalide.' };
-    if (q === attacker.q && r === attacker.r) return { move: null, attack: this.initiateCombat(playerId, attackerId, targetId) };
-    const d = hexDistance(q, r, target.q, target.r);
-    if (d === 0 || d > rules.attackRange(attacker.range, this.heightData[hexKey(q, r)], this.heightData[hexKey(target.q, target.r)])) {
-      return { error: 'La cible ne serait pas à portée depuis cette case.' };
-    }
-    const move = this.moveUnit(playerId, attackerId, q, r, route);
+    const lvl = Array.isArray(route) && route.length && Array.isArray(route[route.length - 1]) && route[route.length - 1][2] ? 1 : 0;
+    if (q === attacker.q && r === attacker.r && lvl === (attacker.level ? 1 : 0)) return { move: null, attack: this.initiateCombat(playerId, attackerId, targetId) };
+    if (!this.combatKind({ ...attacker, q, r, level: lvl }, target)) return { error: 'La cible ne serait pas à portée depuis cette case.' };
+    const move = this.moveUnit(playerId, attackerId, q, r, route, { level: lvl });
     if (move.error) return move;
-    if (move.ambush || attacker.q !== q || attacker.r !== r) return { move, attack: null };
+    if (move.ambush || attacker.q !== q || attacker.r !== r || (attacker.level ? 1 : 0) !== lvl) return { move, attack: null };
     return { move, attack: this.initiateCombat(playerId, attackerId, targetId) };
   }
 
@@ -1472,10 +1558,13 @@ class GameRoom {
     if (this.areAllies(playerId, targetPlayer.id)) return { error: 'Impossible d\'attaquer un allié.' };
 
     const dist = hexDistance(attacker.q, attacker.r, target.q, target.r);
-    const hA = this.heightData[hexKey(attacker.q, attacker.r)] || 0;
-    const hT = this.heightData[hexKey(target.q, target.r)] || 0;
-    const effectiveRange = rules.attackRange(attacker.range, hA, hT);
-    if (dist > effectiveRange) return { error: `Cible hors de portée (distance: ${dist}, portée: ${effectiveRange}).` };
+    const effectiveRange = rules.attackRange(attacker.range, this.unitHeight(attacker), this.unitHeight(target));
+    const kind = this.combatKind(attacker, target);
+    if (!kind) {
+      if (dist === 0) return { error: 'Impossible de frapper une unité juste au-dessus ou en dessous.' };
+      if (dist === 1) return { error: 'Pas d\'accès direct à cette unité sur le mur : seulement des tirs.' };
+      return { error: `Cible hors de portée (distance: ${dist}, portée: ${effectiveRange}).` };
+    }
 
     // Deduct speed (all remaining, min 1 — cavalier léger: a fixed cost, it may move again afterwards)
     const abA = this.ability(attacker);
@@ -1485,16 +1574,17 @@ class GameRoom {
     this._reveal(attacker);
 
     // General against general in melee: a duel, resolved without a defense choice
-    const duel = !!(attacker.isGeneral && target.isGeneral && dist === 1);
+    const isRanged = kind === 'ranged';
+    const duel = !!(attacker.isGeneral && target.isGeneral && !isRanged);
     const attackId = `atk_${require('crypto').randomBytes(8).toString('hex')}`;
     this.pendingAttacks[attackId] = {
-      attackerPlayerId: playerId, attackerId, targetPlayerId: targetPlayer.id, targetId, dist,
+      attackerPlayerId: playerId, attackerId, targetPlayerId: targetPlayer.id, targetId, dist: isRanged ? Math.max(2, dist) : dist,
       attackerName: attacker.name, targetName: target.name,
       attackerQ: attacker.q, attackerR: attacker.r, targetQ: target.q, targetR: target.r,
-      isRanged: dist > 1, targetTypeId: target.typeId, attackerTypeId: attacker.typeId, duel,
+      isRanged, targetTypeId: target.typeId, attackerTypeId: attacker.typeId, duel,
     };
 
-    return { pending: true, attackId, duel, targetPlayerId: targetPlayer.id, attackerName: attacker.name, targetName: target.name, targetQ: target.q, targetR: target.r, isRanged: dist > 1, targetTypeId: target.typeId, attackerTypeId: attacker.typeId };
+    return { pending: true, attackId, duel, targetPlayerId: targetPlayer.id, attackerName: attacker.name, targetName: target.name, targetQ: target.q, targetR: target.r, isRanged, targetTypeId: target.typeId, attackerTypeId: attacker.typeId };
   }
 
   resolveAttack(attackId, defenseChoice) {
@@ -1534,7 +1624,7 @@ class GameRoom {
   // Damage preview for an attack in the current configuration (stances, angle, terrain, height, night, effects),
   // from (fromQ, fromR) when the attacker walks there first, with an optional planned stance. Sampled with a fixed
   // seed: { kind, choice, dmg, morale, counter, counterMorale, kill, rout } where each value is { min, avg, max }
-  previewAttack(playerId, attackerId, targetId, fromQ = null, fromR = null, stance = null) {
+  previewAttack(playerId, attackerId, targetId, fromQ = null, fromR = null, stance = null, fromLevel = 0) {
     const attacker = this.findUnit(attackerId);
     const target = this.findUnit(targetId);
     if (!attacker || !target || attacker.playerId !== playerId || attacker.q === null) return { error: 'Unité introuvable.' };
@@ -1542,8 +1632,11 @@ class GameRoom {
     const q = fromQ ?? attacker.q, r = fromR ?? attacker.r;
     if (!this.hexMap[hexKey(q, r)]) return { error: 'Case invalide.' };
     const a = { ...attacker, q, r };
+    if (fromQ != null) { if (fromLevel) a.level = 1; else delete a.level; }
     if (typeof stance === 'string' && !attacker.isGeneral && rules.hasStance(stance)) a.stance = stance;
-    const isCac = hexDistance(q, r, target.q, target.r) <= 1;
+    const kind = this.combatKind(a, target);
+    if (!kind) return { error: 'Hors d\'atteinte.' };
+    const isCac = kind === 'melee';
     if (isCac && attacker.isGeneral && target.isGeneral) return { ok: true, kind: 'duel' };
     const sim = this.mode === 'simultaneous';
     const S = RULES.simultaneous;
@@ -1658,7 +1751,7 @@ class GameRoom {
       this._stat(attacker, 'kills');
       this._stat(target, 'losses');
       targetPlayer.units = targetPlayer.units.filter(u => u.id !== target.id);
-      delete this.unitMap[hexKey(target.q, target.r)];
+      this._vacate(target);
       if (target.isGeneral) { targetPlayer.isEliminated = true; combatLog.generalKilled = true; combatLog.eliminatedPlayer = targetPlayer.name; this._dropObjectives(targetPlayer.id); this._checkVictory(); }
     }
     if (attacker.vitality <= 0) {
@@ -1666,7 +1759,7 @@ class GameRoom {
       this._stat(target, 'kills');
       this._stat(attacker, 'losses');
       attackerPlayer.units = attackerPlayer.units.filter(u => u.id !== attacker.id);
-      delete this.unitMap[hexKey(attacker.q, attacker.r)];
+      this._vacate(attacker);
       if (attacker.isGeneral) { attackerPlayer.isEliminated = true; combatLog.generalKilled = true; combatLog.eliminatedPlayer = attackerPlayer.name; this._dropObjectives(attackerPlayer.id); this._checkVictory(); }
     }
   }
@@ -1770,12 +1863,13 @@ class GameRoom {
     const type = isCac ? 'cac' : 'tir';
     const stA = attacker.isGeneral ? {} : this._getStanceMods(attacker);
     const stD = target.isGeneral ? {} : this._getStanceMods(target);
-    const tA = this._getTerrainMods(attacker.q, attacker.r);
-    const tD = this._getTerrainMods(target.q, target.r);
-    const segDef = isCac ? this._getSegmentDef(attacker.q, attacker.r, target.q, target.r) : null;
+    const plain = () => this._terrains().plain;
+    const tA = attacker.level ? plain() : this._getTerrainMods(attacker.q, attacker.r);
+    const tD = target.level ? plain() : this._getTerrainMods(target.q, target.r);
+    const segDef = isCac && !attacker.level && !target.level ? this._getSegmentDef(attacker.q, attacker.r, target.q, target.r) : null;
     const seg = (k) => (segDef ? (segDef[k] || 0) : 0);
-    const hA = this.heightData[hexKey(attacker.q, attacker.r)] || 0;
-    const hD = this.heightData[hexKey(target.q, target.r)] || 0;
+    const hA = this.unitHeight(attacker);
+    const hD = this.unitHeight(target);
     const heightDiff = hA - hD;
     const nightMod = this.isNight() ? (RULES.night.attackMod[type] || 0) : 0;
     const powerA = this._effectValue('power_boost', attacker.playerId);
@@ -2097,17 +2191,18 @@ class GameRoom {
   // Remaining speed only counts when it pays for at least one step (same rules as moveUnit)
   _canStepSomewhere(playerId, unit, vis) {
     const blocked = (k) => {
-      const occ = this.unitMap[k];
+      const occ = this.occupantAt(k);
       return !!occ && this.canSee(playerId, occ, occ.q, occ.r, vis);
     };
     const ab = this.ability(unit);
     const transit = ab && ab.type === 'trample' ? blocked : null;
-    const table = this.moveTable();
-    for (const [dq, dr] of [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]]) {
-      const q = unit.q + dq, r = unit.r + dr, k = hexKey(q, r);
-      if (!this.hexMap[k] || blocked(k)) continue;
-      if (findPathCost(this.hexMap, this.unitMap, unit.q, unit.r, q, r, unit.speedRemaining, unit, this.segmentData, blocked, table, rules.hasFullSpeed(unit), transit) !== null) return true;
-    }
+    const start = this.nodeOf(unit);
+    const { dist } = rules.reachable(this.moveTable(), {
+      start: { q: unit.q, r: unit.r, level: unit.level }, maxCost: unit.speedRemaining, minStep: rules.hasFullSpeed(unit), mounted: rules.isMounted(unit),
+      hexAt: (k) => this.hexMap[k] || null, blocked, transit,
+      segAt: (a, b, c, d) => this.segmentData[segmentEdgeKey(a, b, c, d)] || null, ...this.reachOpts(),
+    });
+    for (const k of dist.keys()) if (k !== start && !blocked(k)) return true;
     return false;
   }
 
@@ -2137,14 +2232,11 @@ class GameRoom {
   }
 
   _hasTargetInRange(playerId, unit, vis) {
-    const hA = this.heightData[hexKey(unit.q, unit.r)] || 0;
     for (const p of this.players) {
       if (p.id === playerId || p.isEliminated) continue;
       for (const t of p.units) {
         if (t.q === null) continue;
-        const dist = hexDistance(unit.q, unit.r, t.q, t.r);
-        const range = rules.attackRange(unit.range, hA, this.heightData[hexKey(t.q, t.r)] || 0);
-        if (dist <= range && this.canSee(playerId, t, t.q, t.r, vis)) return true;
+        if (this.combatKind(unit, t) && this.canSee(playerId, t, t.q, t.r, vis)) return true;
       }
     }
     return false;

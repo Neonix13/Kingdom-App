@@ -4,11 +4,10 @@
 -------
 
 Nouveau:
-- j'aimerais pouvoir placer des unité sur le mur au dessus des portes (tu vas peut être devoir laissé lee modèle 2D de coté)
-- 
+-
 
 Priorité:
--
+- 
 
 Question:
 
@@ -16,6 +15,7 @@ Question:
 -------
 
 FAIT (24/11/2026)
+- unités sur le mur au-dessus des portes : chaque porte voisine d'un rempart a un chemin de ronde au-dessus du passage (deux niveaux sur la case) ; on y monte depuis le rempart voisin, la porte voisine ou un escalier / une échelle (infanterie, tireurs, généraux) ; l'unité du haut ne bloque pas le passage, ne tire pas sur l'unité juste en dessous, n'est atteinte au corps à corps que par un accès direct, sinon par des tirs ; Alt+clic sur une porte pour choisir l'autre niveau ; 2D : unité dessinée en haut de sa case sur des créneaux ; 3D : à la hauteur du rempart (mode classique et simultané)
 - Maj+clic : la dernière étape est la destination (planification : l'ordre suit chaque étape posée ; mode classique : l'unité part quand on relâche Maj ; retirer une étape raccourcit l'ordre)
 - postures dans une barre en bas au centre : 6 carrés en ligne avec l'icône, la touche (1 à 6) et le nom ; retirées de la fiche d'unité
 - Ctrl+clic sur une case du trajet ordonné : changer de posture à cette étape (plusieurs changements possibles, −2 vitesse chacun ; à l'arrivée aussi l'orientation) sans annuler la suite de l'ordre ; si le trajet ne tient plus, la fin passe au tour suivant au lieu d'être annulée ; les changements situés aux tours suivants d'une marche sont reportés avec elle

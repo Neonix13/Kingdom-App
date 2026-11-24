@@ -101,9 +101,10 @@ function canSeeHex(room, o, t, n, sight) {
   const io = G.idx(o.q, o.r), it = G.idx(t.q, t.r);
   if (io < 0 || it < 0) return false;
   const L = RULES.vision.los;
+  const h0 = sight.fromHeight != null ? sight.fromHeight : G.height[io];
   const s = {
-    h0: G.height[io],
-    z0: G.height[io] + L.eyeHeight,
+    h0,
+    z0: h0 + L.eyeHeight,
     z1: G.height[it] + L.targetHeight,
     forestSight: sight.forestSight,
     seesOverLowerForest: !!sight.seesOverLowerForest,

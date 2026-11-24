@@ -265,5 +265,41 @@
     return groups;
   }
 
-  return { PROP_TYPES, PROP_BY_ID, DIRS, validateDecor, drawDecor2D, RAMPART_ACCESS, rampartEdges, withRampartRules, unreachableRamparts, AUTO_CLIFF_DH, STEEP_PASSABLE, autoCliffs, effectiveSegments };
+  // ---- Wall walk above the gates: a second level on every gate hex next to a rampart ----
+  // Its node key is "q,r^" (the passage below keeps "q,r"); a unit up there does not block the passage. It is reached from
+  // a neighbouring rampart hex (about the same height), from the wall walk above a neighbouring gate, or from any
+  // neighbour through stairs / a ladder on the edge. Returns { tops: { "q,r": height }, links: { node: [node, ...] } }.
+  const TOP = '^';
+  const isTop = (k) => typeof k === 'string' && k.charAt(k.length - 1) === TOP;
+  const topKey = (q, r) => `${q},${r}${TOP}`;
+  const baseKey = (k) => (isTop(k) ? k.slice(0, -1) : k);
+  function gateTops(decor, height, segments) {
+    const H = height || {};
+    const R = new Set((decor && decor.ramparts) || []);
+    const gates = ((decor && decor.props) || []).filter((p) => p && p.type === 'porte' && `${p.q},${p.r}` in H);
+    const tops = {};
+    for (const g of gates) {
+      let best = null;
+      for (const [dq, dr] of DIRS) {
+        const nk = `${g.q + dq},${g.r + dr}`;
+        if (R.has(nk) && nk in H && (best === null || H[nk] > best)) best = H[nk];
+      }
+      if (best !== null && best > (H[`${g.q},${g.r}`] || 0)) tops[`${g.q},${g.r}`] = best;
+    }
+    const links = {};
+    const link = (a, b) => { (links[a] || (links[a] = [])).push(b); (links[b] || (links[b] = [])).push(a); };
+    for (const gk of Object.keys(tops)) {
+      const [q, r] = gk.split(',').map(Number);
+      for (let d = 0; d < 6; d++) {
+        const nq = q + DIRS[d][0], nr = r + DIRS[d][1], nk = `${nq},${nr}`;
+        if (!(nk in H)) continue;
+        if (nk in tops) { if (d < 3) link(topKey(q, r), topKey(nq, nr)); continue; }
+        const seg = (segments || {})[edgeKey(q, r, nq, nr)];
+        if ((R.has(nk) && Math.abs((H[nk] || 0) - tops[gk]) <= 1) || RAMPART_ACCESS.indexOf(seg) !== -1) link(topKey(q, r), nk);
+      }
+    }
+    return { tops, links };
+  }
+
+  return { PROP_TYPES, PROP_BY_ID, DIRS, validateDecor, drawDecor2D, RAMPART_ACCESS, rampartEdges, withRampartRules, unreachableRamparts, AUTO_CLIFF_DH, STEEP_PASSABLE, autoCliffs, effectiveSegments, gateTops, isTop, topKey, baseKey };
 });

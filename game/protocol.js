@@ -1125,7 +1125,7 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
       return;
     }
     const route = data.path != null ? v.path(data.path) : null;
-    const result = engine(room.moveUnit(p.id, v.id(data.unitId), v.int(data.targetQ, -10000, 10000), v.int(data.targetR, -10000, 10000), route));
+    const result = engine(room.moveUnit(p.id, v.id(data.unitId), v.int(data.targetQ, -10000, 10000), v.int(data.targetR, -10000, 10000), route, { level: data.level === 1 ? 1 : 0 }));
     tx.dirty = true;
     emitMoveAnim(tx, p, result);
     if (result.trampledAttacks && result.trampledAttacks.length) {
@@ -1346,7 +1346,7 @@ function createProtocol({ store, transport, scheduler = null, now = Date.now, co
     requirePhase(tx, 'battle');
     const key = v.cleanText(data.key, 160);
     const from = data.fromQ != null && data.fromR != null ? [v.int(data.fromQ, -10000, 10000), v.int(data.fromR, -10000, 10000)] : [null, null];
-    const res = tx.room.previewAttack(p.id, v.id(data.attackerId), v.id(data.targetId), from[0], from[1], data.stance || null);
+    const res = tx.room.previewAttack(p.id, v.id(data.attackerId), v.id(data.targetId), from[0], from[1], data.stance || null, data.fromLevel === 1 ? 1 : 0);
     reply(tx, connId, { event: 'attack_preview', key, preview: res && res.ok ? res : null });
   });
 

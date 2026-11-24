@@ -1058,6 +1058,30 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
   });
   // walls, gates, towers, buildings, fences and cliff faces soldiers must stay clear of (and arrows can hit)
   const obs = createObstacles(world);
+  // a unit on the wall walk above a gate (unit.level, game rules) stands at the height of the neighbouring rampart deck
+  const topLevels = new Map();
+  function gateTopLevel(u) {
+    if (!u || !u.level) return null;
+    const k = `${u.q},${u.r}`;
+    if (topLevels.has(k)) return topLevels.get(k);
+    const gi = window.gateInfo ? window.gateInfo() : null;
+    const H = gi && gi.tops[k];
+    let y = null;
+    if (H != null) {
+      for (const n of gi.links[k + '^'] || []) {
+        if (n.endsWith('^')) continue;
+        const [q, r] = n.split(',').map(Number);
+        const c = hexToWorld(q, r);
+        const d = obs.deckAt(c.x, c.z, 0, true);
+        if (d) { y = d.y; break; }
+      }
+      if (y == null) y = H * (world.HEX_HEIGHT_STEP || 1);
+    }
+    const L = y == null ? null : { onWall: true, deckY: y, garrison: false, forced: true };
+    topLevels.set(k, L);
+    return L;
+  }
+  const formLevel = (f) => gateTopLevel(f.u) || levelAt(f.px, f.pz);
   const levels = new Map();
   function levelAt(x, z) {
     const k = `${Math.round(x * 20)},${Math.round(z * 20)}`;
@@ -1201,7 +1225,7 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
   function stepFree(f, dt) {
     const t = now(), tr = tier();
     const marching = !!f.ov || f.moving;
-    f.L = levelAt(f.px, f.pz);
+    f.L = formLevel(f);
     if (marching) trailPush(f);
     if (f.press && t > f.press.end) f.press = null;
     let busy = marching || !!f.lunge || !!f.press;
@@ -1223,7 +1247,7 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
       const cav = isCav(m);
       let maxS = memberAim(f, m, t, marching, _aim) * m.smul * (cav ? 1.5 : 1);
       // keep the aim clear of walls and buildings: on the march, around the leader's path (single file through gates)
-      if (_aim.trail) { m.cx = _aim.cx; m.cz = _aim.cz; m.L = levelAt(_aim.cx, _aim.cz); } else { m.cx = f.px; m.cz = f.pz; m.L = f.L; }
+      if (_aim.trail) { m.cx = _aim.cx; m.cz = _aim.cz; m.L = f.L && f.L.forced ? f.L : levelAt(_aim.cx, _aim.cz); } else { m.cx = f.px; m.cz = f.pz; m.L = f.L; }
       obs.fit(_aim.x, _aim.z, m.L, m.cx, m.cz, _fo);
       _aim.x = _fo.x; _aim.z = _fo.z;
       if (_fo.hide !== !!m.hidden) { m.hidden = _fo.hide; }
@@ -1340,7 +1364,7 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
       const c = world.deckClamp(mx, mz, 0.26); // crossing a bridge: the formation narrows onto the deck
       if (c) { mx = c.x; mz = c.z; }
     }
-    const L = f.L || (f.L = levelAt(f.px, f.pz));
+    const L = f.L || (f.L = formLevel(f));
     obs.fit(mx, mz, L, f.px, f.pz, _fo);
     m.hidden = _fo.hide;
     writeMemberAt(m, _fo.x, _fo.z, h + m.yaw, L, !f.moving && !f.ov && !f.lunge);
@@ -1382,7 +1406,7 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
   // --- formations ---
   function writeFormation(f) {
     const bx = f.px + f.lungeX, bz = f.pz + f.lungeZ;
-    f.L = levelAt(f.px, f.pz);
+    f.L = formLevel(f);
     if (f.free) { const still = !f.moving && !f.ov; for (const m of f.members) { if (m) writeMemberAt(m, m.wx, m.wz, m.wyaw, m.L || f.L, still && m.v < 0.05 && !m.duel); } }
     else for (const m of f.members) if (m) writeMemberMatrix(f, m, bx, bz, f.heading);
     if (f.id === selId) selRing.place(f.px, f.pz);
@@ -1656,7 +1680,7 @@ export function createUnitLayer(world, { getPlayerColor = () => '#bbbbbb', getPl
     writeFormationAttrs(f);
   }
   function memberWorld(f, m, out) {
-    const L = m.L || f.L || (f.L = levelAt(f.px, f.pz));
+    const L = m.L || f.L || (f.L = formLevel(f));
     if (f.free) { out.x = m.wx; out.z = m.wz; out.y = standY(out.x, out.z, L); return out; }
     const h = f.heading, ch = Math.cos(h), sh = Math.sin(h);
     const bx = f.px + f.lungeX, bz = f.pz + f.lungeZ;

@@ -30,6 +30,29 @@ let gridColorRGB = '180,140,60';
 // Chargement des segments
 let segmentData = {};
 let UNIT_TYPES = {};
+// Wall walks above the gates (mapProps.gateTops): node "q,r^" above the passage "q,r"
+let gateInfo = { tops: {}, links: {} };
+function nodeKeyOf(u) { return `${u.q},${u.r}${u.level ? '^' : ''}`; }
+function unitAtNode(k) {
+  const top = k.endsWith('^');
+  const [q, r] = (top ? k.slice(0, -1) : k).split(',').map(Number);
+  return (gameState?.units || []).find(u => u.q === q && u.r === r && !!u.level === top) || null;
+}
+// Which level of a gate hex a click / hover means for this unit: the one it can reach; when both (or neither), the
+// wall walk if the unit stands on the wall (or a rampart at that height), the passage otherwise. Alt+click: the other one
+function hexNode(unit, hex, alt = false) {
+  const base = `${hex.q},${hex.r}`;
+  const h = gateInfo.tops[base];
+  if (h == null) return base;
+  const top = base + '^';
+  const canTop = movableTiles.has(top) || (unit && marchTargets(unit).has(top));
+  const canBase = movableTiles.has(base) || (unit && marchTargets(unit).has(base));
+  let up;
+  if (canTop !== canBase) up = canTop;
+  else up = !!unit && (!!unit.level || (mapHeight[`${unit.q},${unit.r}`] || 0) >= h - 1);
+  return (alt ? !up : up) ? top : base;
+}
+window.gateInfo = () => gateInfo;
 
 // Map changes made during the battle (espions, bâtisseurs): game_state.mapEdits over the map document
 function applyMapEdits() {
@@ -63,6 +86,7 @@ function ensureMap(id) {
     if (mapId !== id) return;
     mapDoc = doc;
     mapHeight = doc.height || {};
+    gateInfo = window.KBMapProps && KBMapProps.gateTops ? KBMapProps.gateTops(doc.decor, doc.height, doc.segments) : { tops: {}, links: {} };
     applyMapEdits();
     mapHexes = Object.keys(mapHeight).map(k => { const [q, r] = k.split(',').map(Number); return { q, r, key: k }; });
     mapBg = doc.background && doc.background.image ? doc.background : null;
@@ -117,13 +141,14 @@ function movementTable() {
 // opts: { start, maxCost, minStep } to continue a route from one of its waypoints
 function clientReachable(unit, opts = {}) {
   const maxSpeed = opts.maxCost != null ? opts.maxCost : unit.speedRemaining != null ? unit.speedRemaining : unit.speed;
-  const occupied = new Set((gameState?.units || []).map(u => `${u.q},${u.r}`));
+  const occupied = new Set((gameState?.units || []).map(nodeKeyOf));
   const ab = KBRules.ability(unit, UNIT_TYPES);
   const drive = !!ab && ab.type === 'trample';
   // Hexes out of sight are not blocked: the map is public, a hidden unit on the way stops the move (ambush)
   return KBRules.reachable(movementTable(), {
     transit: drive ? (k) => occupied.has(k) && !!gameState && gameState.visibleHexes.has(k) : null,
-    start: opts.start || { q: unit.q, r: unit.r },
+    tops: gateInfo.tops, links: gateInfo.links,
+    start: opts.start || { q: unit.q, r: unit.r, level: unit.level },
     maxCost: maxSpeed,
     minStep: opts.minStep != null ? opts.minStep : KBRules.hasFullSpeed(unit),
     mounted: KBRules.isMounted(unit),
@@ -140,32 +165,33 @@ function routeWaypoints(unit) { return unit && route.unitId === unit.id ? route.
 function resetRoute() { route.unitId = null; route.waypoints = []; route.tool = false; }
 // reachFrom(start, budget, fresh) -> { dist, prev }; returns { path (origin included), costs (cumulative, per hex),
 // cost, left, end, reach (from the end, with what is left) } or null when a waypoint is no longer reachable
+// Waypoints and path steps are [q, r] or [q, r, 1] (wall walk above a gate); start / end: { q, r, level }
 function composeRoute(unit, budget, reachFrom) {
-  let cur = { q: unit.q, r: unit.r }, left = budget, cost = 0, fresh = true;
-  const path = [[unit.q, unit.r]], costs = [0];
-  for (const [wq, wr] of routeWaypoints(unit)) {
+  let cur = { q: unit.q, r: unit.r, level: unit.level ? 1 : 0 }, left = budget, cost = 0, fresh = true;
+  const path = [unit.level ? [unit.q, unit.r, 1] : [unit.q, unit.r]], costs = [0];
+  for (const w of routeWaypoints(unit)) {
     const { dist, prev } = reachFrom(cur, left, fresh);
-    const k = `${wq},${wr}`;
+    const k = KBRules.stepKey(w);
     if (!dist.has(k)) return null;
-    const leg = KBRules.pathFromPrev(prev, `${cur.q},${cur.r}`, k);
+    const leg = KBRules.pathFromPrev(prev, nodeKeyOf(cur), k);
     if (!leg || !leg.length) return null;
-    for (const [q, r] of leg) { path.push([q, r]); costs.push(KBRules.snap(cost + dist.get(`${q},${r}`))); }
+    for (const s of leg) { path.push(s); costs.push(KBRules.snap(cost + dist.get(KBRules.stepKey(s)))); }
     cost = KBRules.snap(cost + dist.get(k));
     left = Math.max(0, KBRules.snap(left - dist.get(k)));
-    cur = { q: wq, r: wr };
+    cur = { q: w[0], r: w[1], level: w[2] ? 1 : 0 };
     fresh = false;
   }
   return { path, costs, cost, left, end: cur, reach: reachFrom(cur, left, fresh) };
 }
-// Full route to (tq, tr) through the waypoints: { path, costs, cost } or null
+// Full route to node k ("q,r" / "q,r^", or (q, r) on the ground) through the waypoints: { path, costs, cost } or null
 function extendRoute(R, tq, tr) {
   if (!R) return null;
-  const k = `${tq},${tr}`;
-  if (tq === R.end.q && tr === R.end.r) return { path: R.path, costs: R.costs, cost: R.cost };
+  const k = typeof tq === 'string' ? tq : `${tq},${tr}`;
+  if (k === nodeKeyOf(R.end)) return { path: R.path, costs: R.costs, cost: R.cost };
   if (!R.reach.dist.has(k)) return null;
-  const leg = KBRules.pathFromPrev(R.reach.prev, `${R.end.q},${R.end.r}`, k);
+  const leg = KBRules.pathFromPrev(R.reach.prev, nodeKeyOf(R.end), k);
   if (!leg || !leg.length) return null;
-  return { path: [...R.path, ...leg], costs: [...R.costs, ...leg.map(([q, r]) => KBRules.snap(R.cost + R.reach.dist.get(`${q},${r}`)))], cost: KBRules.snap(R.cost + R.reach.dist.get(k)) };
+  return { path: [...R.path, ...leg], costs: [...R.costs, ...leg.map((s) => KBRules.snap(R.cost + R.reach.dist.get(KBRules.stepKey(s))))], cost: KBRules.snap(R.cost + R.reach.dist.get(k)) };
 }
 // Click on hex while a unit is selected: add a waypoint (Maj or tool) or cut the route back to an existing one.
 // Returns true when the click was used by the route.
@@ -173,9 +199,10 @@ function routeClick(unit, hex, add, movable, onChange) {
   if (!unit) return false;
   const i = routeWaypoints(unit).findIndex(([q, r]) => q === hex.q && r === hex.r);
   if (i !== -1) { route.waypoints = route.waypoints.slice(0, i); onChange(); return true; }
-  if (!add || !movable.has(`${hex.q},${hex.r}`)) return false;
+  const k = hexNode(unit, hex, hex.alt);
+  if (!add || !movable.has(k)) return false;
   if (route.unitId !== unit.id) { route.unitId = unit.id; route.waypoints = []; }
-  route.waypoints.push([hex.q, hex.r]);
+  route.waypoints.push(KBRules.stepOf(k));
   onChange();
   return true;
 }
@@ -211,11 +238,11 @@ function marchRoute(unit) {
 let marchReachCache = { sig: null, keys: new Set() };
 function marchTargets(unit) {
   if (!unit || unit.q == null) return new Set();
-  const sig = `${unit.id}|${unit.q},${unit.r}|${routeWaypoints(unit).join(';')}|${(gameState?.units || []).length}`;
+  const sig = `${unit.id}|${nodeKeyOf(unit)}|${routeWaypoints(unit).join(';')}|${(gameState?.units || []).length}`;
   if (marchReachCache.sig === sig) return marchReachCache.keys;
   const R = marchRoute(unit);
   const keys = new Set(R ? R.reach.dist.keys() : []);
-  keys.delete(`${unit.q},${unit.r}`);
+  keys.delete(nodeKeyOf(unit));
   marchReachCache = { sig, keys };
   return keys;
 }
@@ -239,10 +266,10 @@ function marchTurns(unit, path, costs, first, fresh) {
   ends.push(path.length - 1);
   return ends;
 }
-// March plan to (tq, tr): { path (origin included), costs, cost, turnEnds, turns, march: true } or null.
+// March plan to (tq, tr) or to node key tq: { path (origin included), costs, cost, turnEnds, turns, march: true } or null.
 // budget / fresh: what this turn can pay (classic: speedRemaining; planning: the order budget).
 function marchPlan(unit, tq, tr, budget, fresh) {
-  if (!unit || unit.q == null || !marchTargets(unit).has(`${tq},${tr}`)) return null;
+  if (!unit || unit.q == null || !marchTargets(unit).has(typeof tq === 'string' ? tq : `${tq},${tr}`)) return null;
   const R = marchRoute(unit);
   const full = extendRoute(R, tq, tr);
   if (!full || full.path.length < 2) return null;
@@ -853,7 +880,7 @@ function render() {
       const fogFar = 1 - Math.exp(-((fogDist.get(key) || FOG_DIST_MAX) - 1) / 12);
       let fill = isVisible ? 'rgba(0,0,0,0)' : `rgba(4,3,3,${(fogLight ? 0.42 + 0.14 * fogFar : 0.55 + 0.42 * fogFar).toFixed(3)})`;
       let stroke = isVisible ? `rgba(${gridColorRGB},${gridOpacity})` : 'rgba(0,0,0,0)';
-      if (isVisible && movableTiles.has(key)) fill = 'rgba(255,255,255,0.22)';
+      if (isVisible && (movableTiles.has(key) || movableTiles.has(key + '^'))) fill = 'rgba(255,255,255,0.22)';
       if (abilityTiles.has(key)) fill = 'rgba(47,95,168,0.45)';
       if (isVisible && attackableTiles.has(key)) fill = approachAttacks.has(key) ? 'rgba(216,53,42,0.24)' : 'rgba(216,53,42,0.45)';
       if (isHovered && isVisible) stroke = '#D8352A';
@@ -987,15 +1014,26 @@ function render() {
   for (const u of units) {
     if (u.q === null) continue;
     const animPos = getAnimatedPos(u);
-    const { x, y } = animPos || hexToPixel(u.q, u.r);
+    const base = animPos || hexToPixel(u.q, u.r);
+    // on the wall walk above a gate: drawn higher on its hex, standing on a strip of battlements
+    const top = !animPos && u.level;
+    const x = base.x, y = top ? base.y - HEX_SIZE * 0.42 : base.y;
     const isSelected = selectedUnit && selectedUnit.id === u.id;
 
     // Vision radius for general (highlight)
     if (isSelected && u.visionRange > 0) {
-      drawHex(ctx, x, y, 'transparent', 'rgba(216,53,42,0.4)', 0.5);
+      drawHex(ctx, base.x, base.y, 'transparent', 'rgba(216,53,42,0.4)', 0.5);
     }
 
     drawUnit(ctx, x, y, u, u.playerId, isSelected);
+    if (top) {
+      const w = HEX_SIZE * 1.1, h = HEX_SIZE * 0.16, by = y + HEX_SIZE * 0.5;
+      ctx.save();
+      ctx.fillStyle = '#8c8274'; ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5;
+      ctx.fillRect(x - w / 2, by, w, h); ctx.strokeRect(x - w / 2, by, w, h);
+      for (let i = 0; i < 5; i++) { const cx = x - w / 2 + (i + 0.25) * (w / 5); ctx.fillRect(cx, by - h * 0.7, w / 10, h * 0.7); ctx.strokeRect(cx, by - h * 0.7, w / 10, h * 0.7); }
+      ctx.restore();
+    }
   }
 
   // Arbres par dessus les unités
@@ -1319,7 +1357,7 @@ canvas.addEventListener('mousedown', (e) => {
     return;
   }
   const hex = getHexUnderMouse(e);
-  handleHexClick(hex, { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey || e.metaKey, clientX: e.clientX, clientY: e.clientY });
+  handleHexClick(hex, { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey || e.metaKey, altKey: e.altKey, clientX: e.clientX, clientY: e.clientY });
 });
 
 canvas.addEventListener('mousemove', (e) => {
@@ -1488,6 +1526,7 @@ function getHexUnderMouse(e) {
 
 // ---- GAME LOGIC ----
 function handleHexClick(hex, opts = {}) {
+  hex = { ...hex, alt: !!opts.altKey };
   const key = `${hex.q},${hex.r}`;
 
   if (mode === 'deploy') {
@@ -1514,9 +1553,10 @@ function handleHexClick(hex, opts = {}) {
   if (selectedUnit) {
     // Étapes du chemin : Maj+clic (ou outil Étapes) ajoute une étape, clic sur une étape coupe le chemin jusqu'à elle
     if (selectedUnit.isMine && gameState?.currentPlayerId === myId && routeClick(selectedUnit, hex, !!opts.shiftKey || route.tool, { has: (k) => movableTiles.has(k) || marchTargets(selectedUnit).has(k) }, refreshRouteTiles)) return;
-    // Clic sur case de déplacement → déplacer (le long des étapes s'il y en a)
-    if (movableTiles.has(key)) {
-      const full = routeWaypoints(selectedUnit).length ? extendRoute(seqRoute(selectedUnit), hex.q, hex.r) : null;
+    // Clic sur case de déplacement → déplacer (le long des étapes s'il y en a) ; une porte : le passage ou le chemin de ronde
+    const node = hexNode(selectedUnit, hex, hex.alt);
+    if (movableTiles.has(node)) {
+      const full = routeWaypoints(selectedUnit).length || node.endsWith('^') ? extendRoute(seqRoute(selectedUnit), node) : null;
       wsSend('move_unit', full
         ? { roomCode, unitId: selectedUnit.id, targetQ: hex.q, targetR: hex.r, path: full.path.slice(1) }
         : { roomCode, unitId: selectedUnit.id, targetQ: hex.q, targetR: hex.r });
@@ -1530,11 +1570,11 @@ function handleHexClick(hex, opts = {}) {
 
     // Clic sur ennemi attaquable → attaquer (hors de portée : l'unité s'approche puis attaque, en une action)
     if (attackableTiles.has(key)) {
-      const target = gameState.units.find(u => u.q === hex.q && u.r === hex.r && !u.isMine && !u.isAlly);
+      const target = attackTargetOn(key);
       if (target) {
         const a = approachAt(key);
         const msg = { roomCode, attackerId: selectedUnit.id, targetId: target.id };
-        if (a) Object.assign(msg, { approachQ: a.q, approachR: a.r }, a.routed && a.path.length > 1 ? { path: a.path.slice(1) } : {});
+        if (a) Object.assign(msg, { approachQ: a.q, approachR: a.r }, (a.routed || a.level) && a.path.length > 1 ? { path: a.path.slice(1) } : {});
         wsSend('attack_unit', msg);
         resetRoute();
         movableTiles.clear();
@@ -1554,8 +1594,8 @@ function handleHexClick(hex, opts = {}) {
     }
 
     // Case hors d'atteinte ce tour : marche sur plusieurs tours, donnée en un clic (le survol montre le trajet)
-    if (selectedUnit.isMine && gameState?.currentPlayerId === myId && !selectedUnit.isFleeing && !gameState.units.some(u => u.q === hex.q && u.r === hex.r)) {
-      const plan = marchPlan(selectedUnit, hex.q, hex.r, selectedUnit.speedRemaining || 0, KBRules.hasFullSpeed(selectedUnit));
+    if (selectedUnit.isMine && gameState?.currentPlayerId === myId && !selectedUnit.isFleeing && !unitAtNode(node)) {
+      const plan = marchPlan(selectedUnit, node, null, selectedUnit.speedRemaining || 0, KBRules.hasFullSpeed(selectedUnit));
       if (plan) {
         if (plan.path.length - 1 > 200) { notify('Destination trop lointaine pour une seule marche.', 'info'); return; }
         {
@@ -1674,34 +1714,43 @@ function selectUnit(unit) {
 function computeMovableTiles(unit) {
   const R = seqRoute(unit);
   if (!R || R.march) return;
-  const occupied = new Set((gameState?.units || []).map(u => `${u.q},${u.r}`));
+  const occupied = new Set((gameState?.units || []).map(nodeKeyOf));
   for (const k of R.reach.dist.keys()) if (!occupied.has(k)) movableTiles.add(k);
-  movableTiles.delete(`${unit.q},${unit.r}`);
-  for (const [q, r] of routeWaypoints(unit)) movableTiles.delete(`${q},${r}`);
+  movableTiles.delete(nodeKeyOf(unit));
+  for (const w of routeWaypoints(unit)) movableTiles.delete(KBRules.stepKey(w));
 }
+// Enemy on this hex that the selected unit can strike (two may share a gate hex: the passage and the wall walk)
+const attackTargetAt = new Map(); // hex key -> unit id
+function attackTargetOn(key) {
+  const id = attackTargetAt.get(key);
+  return (gameState?.units || []).find(u => (id ? u.id === id : `${u.q},${u.r}` === key) && !u.isMine && !u.isAlly) || null;
+}
+const ckHeight = (k) => mapHeight[k] || 0;
 
 function computeAttackableTiles(unit) {
   approachAttacks.clear();
+  attackTargetAt.clear();
   if (!gameState) return;
   if (routeWaypoints(unit).length) { computeRoutedAttacks(unit); return; }
-  const hd = mapHeight;
-  const hA = hd[`${unit.q},${unit.r}`] || 0;
   const canApproach = gameState.currentPlayerId === myId && unit.speedRemaining > 0 && !unit.isFleeing && !unit.hasAttacked;
   let reach = null;
+  const here = unit.level ? [unit.q, unit.r, 1] : [unit.q, unit.r];
 
   for (const u of gameState.units) {
     if (u.isMine || u.isAlly) continue;
-    const dist = hexDistance(unit.q, unit.r, u.q, u.r);
-    const hT = hd[`${u.q},${u.r}`] || 0;
-    const effectiveRange = KBRules.attackRange(unit.range, hA, hT);
-    if (dist <= effectiveRange) {
-      attackableTiles.add(`${u.q},${u.r}`);
-    } else if (canApproach) {
+    const key = `${u.q},${u.r}`;
+    if (attackTargetAt.has(key) && !approachAttacks.has(key)) continue;
+    if (KBRules.combatKind(unit, u, gateInfo, ckHeight)) {
+      attackableTiles.add(key);
+      attackTargetAt.set(key, u.id);
+      approachAttacks.delete(key);
+    } else if (canApproach && !attackTargetAt.has(key)) {
       reach = reach || clientReachable(unit);
-      const best = KBRules.bestAttackHex(reach, { start: unit, target: u, range: unit.range || 1, heightAt: (k) => hd[k] || 0, canStand: (k) => k === `${unit.q},${unit.r}` || !gameState.units.some(o => `${o.q},${o.r}` === k) });
+      const best = KBRules.bestAttackHex(reach, { start: unit, target: u, range: unit.range || 1, heightAt: ckHeight, gates: gateInfo, canStand: (k) => k === nodeKeyOf(unit) || !gameState.units.some(o => nodeKeyOf(o) === k) });
       if (best && best.path.length) {
-        attackableTiles.add(`${u.q},${u.r}`);
-        approachAttacks.set(`${u.q},${u.r}`, { targetId: u.id, q: best.q, r: best.r, path: [[unit.q, unit.r], ...best.path] });
+        attackableTiles.add(key);
+        attackTargetAt.set(key, u.id);
+        approachAttacks.set(key, { targetId: u.id, q: best.q, r: best.r, level: best.level, path: [here, ...best.path] });
       }
     }
   }
@@ -1711,21 +1760,23 @@ function computeAttackableTiles(unit) {
 function computeRoutedAttacks(unit) {
   const R = seqRoute(unit);
   if (!R || R.march) return;
-  const hd = mapHeight;
   const E = R.end;
-  const occupied = (k) => gameState.units.some(o => `${o.q},${o.r}` === k);
+  const occupied = (k) => gameState.units.some(o => nodeKeyOf(o) === k);
   for (const u of gameState.units) {
     if (u.isMine || u.isAlly) continue;
     const key = `${u.q},${u.r}`;
-    if (hexDistance(E.q, E.r, u.q, u.r) <= KBRules.attackRange(unit.range, hd[`${E.q},${E.r}`] || 0, hd[key] || 0)) {
+    if (attackTargetAt.has(key)) continue;
+    if (KBRules.combatKind({ ...unit, q: E.q, r: E.r, level: E.level }, u, gateInfo, ckHeight)) {
       attackableTiles.add(key);
-      approachAttacks.set(key, { targetId: u.id, q: E.q, r: E.r, path: R.path, routed: true });
+      attackTargetAt.set(key, u.id);
+      approachAttacks.set(key, { targetId: u.id, q: E.q, r: E.r, level: E.level, path: R.path, routed: true });
       continue;
     }
-    const best = KBRules.bestAttackHex(R.reach, { start: E, target: u, range: unit.range || 1, heightAt: (k) => hd[k] || 0, canStand: (k) => !occupied(k) });
+    const best = KBRules.bestAttackHex(R.reach, { start: E, target: u, range: unit.range || 1, heightAt: ckHeight, gates: gateInfo, canStand: (k) => !occupied(k) });
     if (best && best.path.length) {
       attackableTiles.add(key);
-      approachAttacks.set(key, { targetId: u.id, q: best.q, r: best.r, path: [...R.path, ...best.path], routed: true });
+      attackTargetAt.set(key, u.id);
+      approachAttacks.set(key, { targetId: u.id, q: best.q, r: best.r, level: best.level, path: [...R.path, ...best.path], routed: true });
     }
   }
 }
@@ -1739,10 +1790,11 @@ function approachAt(key) {
 // March preview for the hovered hex (classic turn or planning), or null
 function marchPlanFor(unit, q, r) {
   if (!unit || !unit.isMine || unit.isFleeing || q == null) return null;
-  if (window.KBSim && KBSim.active()) return KBSim.marchPlan ? KBSim.marchPlan(unit, q, r) : null;
+  if (window.KBSim && KBSim.active()) return KBSim.marchPlan ? KBSim.marchPlan(unit, hexNode(unit, { q, r })) : null;
   if (gameState?.currentPlayerId !== myId || gameState?.phase !== 'battle') return null;
-  if (movableTiles.has(`${q},${r}`) || (gameState.units || []).some(u => u.q === q && u.r === r)) return null;
-  return marchPlan(unit, q, r, unit.speedRemaining || 0, KBRules.hasFullSpeed(unit));
+  const node = hexNode(unit, { q, r });
+  if (movableTiles.has(node) || unitAtNode(node)) return null;
+  return marchPlan(unit, node, null, unit.speedRemaining || 0, KBRules.hasFullSpeed(unit));
 }
 
 // ---- path drawing (2D): smoothed trails, black outline, arrow at the end ----
@@ -1876,7 +1928,7 @@ function drawRoutePreview(ctx) {
   const unit = selectedUnit;
   if (!unit || !unit.isMine) return;
   const sim = !!(window.KBSim && KBSim.active());
-  const hk = hoveredHex ? `${hoveredHex.q},${hoveredHex.r}` : null;
+  const hk = hoveredHex ? hexNode(unit, hoveredHex) : null;
   const mp = hk && !movableTiles.has(hk) ? marchPlanFor(unit, hoveredHex.q, hoveredHex.r) : null;
   if (mp) {
     const confirm = pendingMarch && pendingMarch.unitId === unit.id && pendingMarch.key === hk;
@@ -1887,7 +1939,7 @@ function drawRoutePreview(ctx) {
   if (!info) return;
   const wps = info.waypoints || [];
   let res = null;
-  if (hk && movableTiles.has(hk)) res = sim ? KBSim.pathTo(unit, hoveredHex.q, hoveredHex.r) : extendRoute(seqRoute(unit), hoveredHex.q, hoveredHex.r);
+  if (hk && movableTiles.has(hk)) res = sim ? KBSim.pathTo(unit, hk) : extendRoute(seqRoute(unit), hk);
   else if (wps.length) res = sim ? KBSim.routePath() : seqRoute(unit);
   if (!res || res.path.length < 2) return;
   const pts = res.path.map(([q, r]) => hexToPixel(q, r));
@@ -3857,11 +3909,13 @@ window.gameBridge = {
   },
   // Path preview through the waypoints: { path (origin included), costs (cumulative), cost } or null
   pathTo(unit, tq, tr) {
-    if (window.KBSim && KBSim.active()) return KBSim.pathTo(unit, tq, tr);
+    const k = typeof tq === 'string' ? tq : hexNode(unit, { q: tq, r: tr });
+    if (window.KBSim && KBSim.active()) return KBSim.pathTo(unit, k);
     if (!unit || unit.q == null) return null;
-    if (!movableTiles.has(`${tq},${tr}`)) return null;
-    return extendRoute(seqRoute(unit), tq, tr);
+    if (!movableTiles.has(k)) return null;
+    return extendRoute(seqRoute(unit), k);
   },
+  hexNode(unit, hex) { return hexNode(unit, hex); },
   // March over several turns to a hex beyond this turn's reach: { path (origin included), turnEnds, turns, ... } or null
   get combatHistory() { return combatHistoryEntries; },
   marchPlan(unit, tq, tr) { return marchPlanFor(unit, tq, tr); },

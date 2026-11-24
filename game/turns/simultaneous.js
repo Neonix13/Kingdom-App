@@ -186,18 +186,19 @@ function validateOrder(room, playerId, unit, raw) {
   if (order.type === 'move' || routed) {
     const path = raw.path;
     if (!Array.isArray(path) || path.length < 1 || path.length > (march ? MARCH_MAX_STEPS : 60)) return { error: 'Chemin invalide.' };
-    let q = unit.q, r = unit.r, cost = 0;
+    let cur = room.nodeOf(unit), cost = 0;
     const out = [], cum = [];
     for (const step of path) {
-      if (!Array.isArray(step) || !isInt(step[0]) || !isInt(step[1])) return { error: 'Chemin invalide.' };
-      const [nq, nr] = step;
-      if (hexDistance(q, r, nq, nr) !== 1 || !room.hexMap[hexKey(nq, nr)]) return { error: 'Chemin invalide.' };
-      const c = rules.stepCost(room.moveTable(), room.hexMap[hexKey(q, r)], room.hexMap[hexKey(nq, nr)], room.segmentData[segmentEdgeKey(q, r, nq, nr)] || null, rules.isMounted(unit));
+      const s = room._step(step);
+      if (!s) return { error: 'Chemin invalide.' };
+      const k = rules.stepKey(s);
+      if (!room._nodeAt(k) || !room.isStep(cur, k)) return { error: 'Chemin invalide.' };
+      const c = room.stepCostNodes(unit, cur, k);
       if (!isFinite(c)) return { error: 'Chemin infranchissable.' };
       cost = rules.snap(cost + c);
-      out.push([nq, nr]);
+      out.push(s);
       cum.push(cost);
-      q = nq; r = nr;
+      cur = k;
     }
     const fresh = (b) => b > 0 && b === unit.speedRemaining && rules.hasFullSpeed(unit);
     const fit = (b) => { let f = -1; cum.forEach((c, i) => { if (c <= b + 1e-9 || (i === 0 && fresh(b))) f = i + 1; }); return f; };

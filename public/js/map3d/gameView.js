@@ -138,7 +138,7 @@ export async function mountGameView(bridge, { container }) {
     down = null;
     if (moved > 6 || !quick) return;
     const hex = world.pickHex(e.clientX, e.clientY);
-    if (b === 0) { bridge.click(hex, { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey || e.metaKey, clientX: e.clientX, clientY: e.clientY }); lastMove = e; hovered = null; }
+    if (b === 0) { bridge.click(hex, { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey || e.metaKey, altKey: e.altKey, clientX: e.clientX, clientY: e.clientY }); lastMove = e; hovered = null; }
     else if (b === 2) bridge.contextMenu(hex, e.clientX, e.clientY);
   });
   canvas.addEventListener('dblclick', (e) => {
@@ -227,7 +227,7 @@ export async function mountGameView(bridge, { container }) {
       const stuck = bridge.deployBlockedFor ? bridge.deployBlockedFor(bridge.selectedUnit) : null;
       if (stuck) fills.push({ keys: stuck, color: 'rgba(216,53,42,0.55)', edge: 'rgba(255,110,90,0.95)' });
     }
-    fills.push({ keys: bridge.movableTiles, color: 'rgba(60,170,40,0.42)', edge: 'rgba(150,255,100,0.9)' });
+    fills.push({ keys: new Set([...bridge.movableTiles].map((k) => k.replace('^', ''))), color: 'rgba(60,170,40,0.42)', edge: 'rgba(150,255,100,0.9)' });
     if (bridge.abilityTiles && bridge.abilityTiles.size) fills.push({ keys: new Set(bridge.abilityTiles.keys()), color: 'rgba(40,110,200,0.5)', edge: 'rgba(120,190,255,0.95)' });
     fills.push({ keys: bridge.attackableTiles, color: 'rgba(200,40,20,0.5)', edge: 'rgba(255,120,80,0.95)' });
     if (bridge.approachAt) {
@@ -356,7 +356,7 @@ export async function mountGameView(bridge, { container }) {
         hovered = valid;
         const sel = bridge.selectedUnit;
         const attackable = key && bridge.attackableTiles.has(key);
-        const movable = key && bridge.movableTiles.has(key);
+        const movable = key && (bridge.movableTiles.has(key) || bridge.movableTiles.has(key + '^'));
         const hu = valid && shownUnits.find((x) => x.q === valid.q && x.r === valid.r);
         const outOfReach = sel && hu && !hu.isMine && !hu.isAlly && !attackable && !bridge.simultaneous;
         world.layers.setHover(valid, attackable ? '#ff6040' : movable ? '#a0ff70' : outOfReach ? '#8a8a8a' : '#ffd25a');
