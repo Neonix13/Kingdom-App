@@ -554,7 +554,8 @@
       if (!u) continue;
       const p0 = hexToPixel(u.q, u.r);
       const selected = isSel(order);
-      const trail = { color, width: selected ? 5.5 : 3.5, alpha: selected ? 1 : 0.6 };
+      // selected unit: glowing trail with beads on its hexes; the others: thin and faint
+      const trail = selected ? { color, width: 5, alpha: 1, glow: true, beads: true } : { color, width: 3, alpha: 0.55, subtle: true };
       ctx.globalAlpha = trail.alpha;
       if ((order.type === 'attack' || order.type === 'charge') && order.path && order.path.length > 1 && order.target) {
         const pts = order.path.map(([q, r]) => hexToPixel(q, r));
@@ -572,7 +573,7 @@
         ctx.beginPath(); ctx.arc(p0.x, p0.y, HEX_SIZE * 0.95, 0, Math.PI * 2); ctx.stroke();
         ctx.strokeStyle = '#6f9bf0'; ctx.lineWidth = 3; ctx.stroke();
       }
-      if (selected && order.stanceSteps) for (const s of order.stanceSteps) window.drawStanceStep(ctx, s.hex[0], s.hex[1], s.stance);
+      if (selected && order.stanceSteps) for (const s of order.stanceSteps) window.drawStanceStep(ctx, s.hex[0], s.hex[1], s.stance, color);
       ctx.globalAlpha = trail.alpha;
       const tags = [];
       if (order.type === 'hold') tags.push('Tenir');
@@ -606,7 +607,7 @@
       const a = sel && tgt && approachTo(sel, tgt);
       if (a && a.path.length > 1) {
         const pts = a.path.map(([q, r]) => hexToPixel(q, r));
-        window.drawTrail(ctx, pts, { color, width: 4, alpha: 0.75, dash: [12, 7], arrow: false });
+        window.drawTrail(ctx, pts, { color, width: 4.5, alpha: 0.9, glow: true, arrow: false });
         window.drawTrail(ctx, [pts[pts.length - 1], hexToPixel(tgt.q, tgt.r)], { color: '#D8352A', width: 3.5, alpha: 0.75, dash: (sel.range || 1) > 1 ? [3, 8] : null });
       }
     }

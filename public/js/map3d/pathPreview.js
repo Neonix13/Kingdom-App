@@ -206,7 +206,33 @@ export function createOrdersLayer(world, { opacity = 0.85 } = {}) {
 
   function clearArcs() { for (const a of arcs) { scene.remove(a); a.geometry.dispose(); } arcs.length = 0; }
 
-  const base = new THREE.Color(), dim = new THREE.Color(), grey = new THREE.Color(0x3a3a3a), big = new THREE.Vector3(1.4, 1, 1.4), small = new THREE.Vector3(0.8, 1, 0.8);
+  const base = new THREE.Color(), dim = new THREE.Color(), grey = new THREE.Color(0x3a3a3a), big = new THREE.Vector3(1.4, 1, 1.4), small = new THREE.Vector3(0.7, 1, 0.7);
+  // glow under the selected unit's trail: a soft wide ribbon and a bright thin core, draped on the ground
+  const glowMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.32, depthWrite: false, fog: false, toneMapped: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+  const coreMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, depthWrite: false, fog: false, toneMapped: false, side: THREE.DoubleSide });
+  const ribbons = [];
+  function clearRibbons() { for (const r of ribbons) { scene.remove(r); r.geometry.dispose(); } ribbons.length = 0; }
+  function ribbon(curve, len, width, mat, lift) {
+    const n = Math.max(8, Math.floor(len / 0.12));
+    const pos = [], idx = [];
+    for (let i = 0; i <= n; i++) {
+      const t = i / n, pt = curve.getPointAt(t), tan = curve.getTangentAt(t);
+      // taper at both ends
+      const w = width * Math.min(1, t * 6, (1 - t) * 6 + 0.15);
+      const nx = -tan.z * w, nz = tan.x * w;
+      const ax = pt.x + nx, az = pt.z + nz, bx = pt.x - nx, bz = pt.z - nz;
+      pos.push(ax, groundHeight(ax, az) + lift, az, bx, groundHeight(bx, bz) + lift, bz);
+      if (i) { const k = i * 2; idx.push(k - 2, k - 1, k, k - 1, k + 1, k); }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setIndex(idx);
+    const m = new THREE.Mesh(g, mat);
+    m.renderOrder = 7;
+    m.frustumCulled = false;
+    scene.add(m);
+    ribbons.push(m);
+  }
   // selectedId: that unit's trail is drawn larger and in full colour, the others smaller and darker
   function show(orders, color, anchorOf, selectedId = null) {
     const sig = JSON.stringify(orders || []) + color + '|' + selectedId;
@@ -214,8 +240,11 @@ export function createOrdersLayer(world, { opacity = 0.85 } = {}) {
     lastSig = sig;
     mat.color.set(0xffffff);
     base.set(color || '#ffd25a');
-    dim.copy(base).lerp(grey, 0.55);
+    dim.copy(base).lerp(grey, 0.7);
+    glowMat.color.copy(base);
+    coreMat.color.copy(base).lerp(new THREE.Color(0xffffff), 0.45);
     clearArcs();
+    clearRibbons();
     let n = 0;
     const list = [...(orders || [])].sort((a, b) => (String(a.unitId) === String(selectedId)) - (String(b.unitId) === String(selectedId)));
     for (const o of list) {
@@ -224,7 +253,8 @@ export function createOrdersLayer(world, { opacity = 0.85 } = {}) {
         const pts = o.path.map(([hq, hr]) => { const c = hexToWorld(hq, hr); return new THREE.Vector3(c.x, 0, c.z); });
         const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal', 0.3);
         const len = curve.getLength();
-        const cnt = Math.max(2, Math.floor(len / (sel ? 0.3 : 0.4)));
+        if (sel) { ribbon(curve, len, 0.2, glowMat, 0.045); ribbon(curve, len, 0.035, coreMat, 0.05); }
+        const cnt = Math.max(2, Math.floor(len / (sel ? 0.3 : 0.5)));
         for (let i = 1; i <= cnt && n < MAX; i++) {
           const t = Math.min(0.999, i / cnt);
           const pt = curve.getPointAt(t), tan = curve.getTangentAt(t);
@@ -279,12 +309,16 @@ export function createPathMarks(world) {
     g.fillStyle = '#ffffff'; g.font = 'bold 30px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
     g.fillText(String(n), 32, 34);
   });
-  const stanceTex = (s) => texture(`s${s}`, (g) => {
+  // round seal: ring in the player's colour (soft glow), disc in the stance colour, pictogram
+  const stanceTex = (s, ring) => texture(`s${s}${ring}`, (g) => {
     const sty = window.stanceStyle ? window.stanceStyle(s) : { c: '#444' };
-    g.fillStyle = '#ffffff'; g.fillRect(2, 2, 60, 60);
-    g.fillStyle = '#000000'; g.fillRect(6, 6, 52, 52);
-    g.fillStyle = sty.c || '#444'; g.fillRect(10, 10, 44, 44);
-    if (window.drawStanceIcon) window.drawStanceIcon(g, s, 32, 32, 36);
+    const grd = g.createRadialGradient(32, 32, 20, 32, 32, 32);
+    grd.addColorStop(0, ring); grd.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = grd; g.beginPath(); g.arc(32, 32, 32, 0, Math.PI * 2); g.fill();
+    g.fillStyle = ring; g.beginPath(); g.arc(32, 32, 24, 0, Math.PI * 2); g.fill();
+    g.fillStyle = sty.c || '#444'; g.beginPath(); g.arc(32, 32, 20, 0, Math.PI * 2); g.fill();
+    g.lineWidth = 2; g.strokeStyle = 'rgba(0,0,0,0.8)'; g.stroke();
+    if (window.drawStanceIcon) window.drawStanceIcon(g, s, 32, 32, 26);
   });
   const sprites = [];
   let lastSig = '';
@@ -306,12 +340,12 @@ export function createPathMarks(world) {
       if (!mk) return;
       const c = hexToWorld(mk.q, mk.r);
       const y = groundHeight(c.x, c.z);
-      sp.material.map = mk.kind === 'turn' ? turnTex(mk.n) : stanceTex(mk.stance);
+      sp.material.map = mk.kind === 'turn' ? turnTex(mk.n) : stanceTex(mk.stance, mk.ring || '#ffffff');
       sp.material.needsUpdate = true;
-      const k = mk.kind === 'turn' ? 0.42 : 0.38;
+      const k = mk.kind === 'turn' ? 0.42 : 0.5;
       sp.scale.set(k, k, 1);
-      if (mk.kind === 'turn') sp.position.set(c.x, y + 0.45, c.z);
-      else sp.position.set(c.x + 0.28, y + 0.75, c.z - 0.2);
+      // the stance seal sits on the trail itself, just above the ground
+      sp.position.set(c.x, y + (mk.kind === 'turn' ? 0.45 : 0.3), c.z);
     });
   }
   function clear() { show([]); }

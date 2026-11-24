@@ -7,11 +7,7 @@ Nouveau:
 -
 
 Priorité:
-- les unités n'on pas la bonne couleur au déploiement
-- les zones de déploieement sont topujous les même pour l'ordre des joueurs
-- Selection deds royaume attaquant et défenseur pour le col de Kankoku + bonus pour les attaquants
-- revoit le chemin qu'empruntera une unité, je préférerais quelque chose de plus design et voir un peu glow pour l'unité sélection et pour disscret pour les unités pas selectioné
-- affiche le changement de posture à venir avec le logo de la posture dans un rondd sur la tuille mais affiche seulement quand l'unité est seelectionné,. Combine avec le tracé pour faire quelque chose de jolie
+- 
 
 
 Question:
@@ -20,6 +16,11 @@ Question:
 -------
 
 FAIT (25/11/2026)
+- déploiement : les unités ont la couleur de leur joueur (et non plus le bleu par défaut)
+- zones de déploiement tirées au hasard à chaque partie (en mode équipe, les alliés restent du même côté)
+- Col de Kankoku : chaque joueur choisit dans le salon son camp, attaquant (coalition) ou défenseur (forteresse Qin) ; chaque camp se déploie dans ses zones, les joueurs d'un même camp sont alliés ; bonus d'or des attaquants réglé par l'hôte (Paramètres > Armées) ; les IA prennent le camp le moins rempli (ou celui choisi par l'hôte)
+- tracés : halo lumineux et perles sur les cases pour l'unité sélectionnée, tracés fins et pâles pour les autres, tête de flèche arrondie (2D) ; halo sous le tracé sélectionné, chevrons des autres plus petits et sombres (3D)
+- changement de posture à venir : sceau rond sur le tracé (anneau à la couleur du joueur, disque de la posture, pictogramme), seulement pour l'unité sélectionnée (2D et 3D)
 - déplacement : le coût du terrain se paie en entrant dans la case (et non plus en la quittant) ; la case de départ ne modifie plus la vitesse du tour (plus de double pénalité forêt / fleuve / bâtiment, plus de bonus de route) ; infobulle de terrain : coût d'entrée
 - à revoir plus tard : coûts différents selon le type d'unité (cavalerie en forêt…)
 

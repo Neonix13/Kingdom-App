@@ -1809,56 +1809,80 @@ function traceSmooth(c2d, pts) {
     c2d.quadraticCurveTo(pts[i].x, pts[i].y, i === pts.length - 2 ? pts[i + 1].x : mx, i === pts.length - 2 ? pts[i + 1].y : my);
   }
 }
-// opts: { color, width, alpha, dash, arrow, outline }
-function drawTrail(c2d, pts, { color = '#fff', width = 4, alpha = 1, dash = null, arrow = true, outline = true } = {}) {
+// opts: { color, width, alpha, dash, arrow, outline, glow, beads, subtle }
+//   glow: selected unit — soft halo in the path colour, bright core, beads on the hexes it walks through
+//   subtle: other units — thin, faint, no outline
+function drawTrail(c2d, pts, { color = '#fff', width = 4, alpha = 1, dash = null, arrow = true, outline = true, glow = false, beads = false, subtle = false } = {}) {
   if (!pts || pts.length < 2) return;
+  if (subtle) { width = Math.min(width, 2.5); alpha = Math.min(alpha, 0.45); outline = false; }
   c2d.save();
   c2d.globalAlpha = alpha;
   c2d.lineCap = 'round'; c2d.lineJoin = 'round';
   const a = pts[pts.length - 2], b = pts[pts.length - 1];
   const ang = Math.atan2(b.y - a.y, b.x - a.x);
-  const head = Math.max(10, width * 3.2);
+  const head = Math.max(subtle ? 7 : 10, width * 2.8);
   // stop the line under the arrow head
-  const cut = arrow ? [...pts.slice(0, -1), { x: b.x - Math.cos(ang) * head * 0.6, y: b.y - Math.sin(ang) * head * 0.6 }] : pts;
-  if (outline) { c2d.strokeStyle = '#000'; c2d.lineWidth = width + 3.5; c2d.setLineDash(dash || []); traceSmooth(c2d, cut); c2d.stroke(); }
+  const cut = arrow ? [...pts.slice(0, -1), { x: b.x - Math.cos(ang) * head * 0.55, y: b.y - Math.sin(ang) * head * 0.55 }] : pts;
+  if (glow) {
+    c2d.save();
+    c2d.shadowColor = color; c2d.shadowBlur = width * 4;
+    c2d.strokeStyle = color; c2d.globalAlpha = alpha * 0.35; c2d.lineWidth = width + 9; c2d.setLineDash([]);
+    traceSmooth(c2d, cut); c2d.stroke();
+    c2d.restore();
+  }
+  if (outline) { c2d.strokeStyle = 'rgba(0,0,0,0.85)'; c2d.lineWidth = width + 3; c2d.setLineDash(dash || []); traceSmooth(c2d, cut); c2d.stroke(); }
   c2d.strokeStyle = color; c2d.lineWidth = width; c2d.setLineDash(dash || []); traceSmooth(c2d, cut); c2d.stroke();
+  if (glow) { c2d.strokeStyle = 'rgba(255,255,255,0.55)'; c2d.lineWidth = Math.max(1, width * 0.3); traceSmooth(c2d, cut); c2d.stroke(); }
   c2d.setLineDash([]);
+  if (beads) {
+    for (let i = 1; i < pts.length - 1; i++) {
+      c2d.beginPath(); c2d.arc(pts[i].x, pts[i].y, width * 0.75, 0, Math.PI * 2);
+      c2d.fillStyle = '#fff'; c2d.fill();
+      c2d.lineWidth = 1.5; c2d.strokeStyle = color; c2d.stroke();
+    }
+  }
   if (arrow) {
+    // rounded chevron head
+    const w = 0.55;
     c2d.beginPath();
     c2d.moveTo(b.x, b.y);
-    c2d.lineTo(b.x - head * Math.cos(ang - 0.5), b.y - head * Math.sin(ang - 0.5));
-    c2d.lineTo(b.x - head * Math.cos(ang + 0.5), b.y - head * Math.sin(ang + 0.5));
+    c2d.lineTo(b.x - head * Math.cos(ang - w), b.y - head * Math.sin(ang - w));
+    c2d.quadraticCurveTo(b.x - head * 0.55 * Math.cos(ang), b.y - head * 0.55 * Math.sin(ang), b.x - head * Math.cos(ang + w), b.y - head * Math.sin(ang + w));
     c2d.closePath();
-    c2d.fillStyle = color; c2d.strokeStyle = '#000'; c2d.lineWidth = 2;
-    c2d.fill(); c2d.stroke();
+    if (glow) { c2d.shadowColor = color; c2d.shadowBlur = width * 3; }
+    c2d.fillStyle = color; c2d.fill();
+    c2d.shadowBlur = 0;
+    if (outline) { c2d.strokeStyle = 'rgba(0,0,0,0.85)'; c2d.lineWidth = 1.5; c2d.stroke(); }
   }
   c2d.restore();
 }
-// Stance change on a hex of a path: a square chip in the stance colour with its pictogram
-function drawStanceStep(c2d, q, r, stance) {
+// Stance change ahead on a hex of the selected unit's path: a round seal on the path itself (ring in the path colour,
+// disc in the stance colour, pictogram)
+function drawStanceStep(c2d, q, r, stance, ring = '#fff') {
   const p = hexToPixel(q, r);
-  const s = HEX_SIZE * 0.46;
-  const x = p.x + HEX_SIZE * 0.36, y = p.y - HEX_SIZE * 0.5;
+  const R = HEX_SIZE * 0.3;
   c2d.save();
-  c2d.fillStyle = (STANCE_STYLE[stance] || {}).c || '#444';
-  c2d.strokeStyle = '#fff'; c2d.lineWidth = 4;
-  c2d.strokeRect(x - s / 2, y - s / 2, s, s);
-  c2d.strokeStyle = '#000'; c2d.lineWidth = 2;
-  c2d.fillRect(x - s / 2, y - s / 2, s, s); c2d.strokeRect(x - s / 2, y - s / 2, s, s);
-  drawStanceIcon(c2d, stance, x, y, s * 0.8);
+  c2d.shadowColor = ring; c2d.shadowBlur = R * 0.9;
+  c2d.beginPath(); c2d.arc(p.x, p.y, R + 3, 0, Math.PI * 2);
+  c2d.fillStyle = ring; c2d.fill();
+  c2d.shadowBlur = 0;
+  c2d.beginPath(); c2d.arc(p.x, p.y, R, 0, Math.PI * 2);
+  c2d.fillStyle = (STANCE_STYLE[stance] || {}).c || '#444'; c2d.fill();
+  c2d.lineWidth = 1.5; c2d.strokeStyle = 'rgba(0,0,0,0.8)'; c2d.stroke();
+  drawStanceIcon(c2d, stance, p.x, p.y, R * 1.3);
   c2d.restore();
 }
 window.drawTrail = drawTrail;
 window.drawStanceStep = drawStanceStep;
 
 // Draws a march: this turn's part like a route, the next turns fainter, a numbered marker where each turn ends
-function drawMarchPath(ctx, path, turnEnds, { color = '#fff', alpha = 1, label = null, numbers = true, width = 4 } = {}) {
+function drawMarchPath(ctx, path, turnEnds, { color = '#fff', alpha = 1, label = null, numbers = true, width = 4, glow = false, subtle = false } = {}) {
   if (!path || path.length < 2) return;
   const pts = path.map(([q, r]) => hexToPixel(q, r));
   const first = Math.max(0, turnEnds && turnEnds.length ? turnEnds[0] : pts.length - 1);
   ctx.save();
-  if (first < pts.length - 1) drawTrail(ctx, pts.slice(first), { color: '#a8a8a8', width: Math.max(2.5, width - 1.5), alpha: alpha * 0.8, dash: [2, 9], arrow: true });
-  if (first > 0) drawTrail(ctx, pts.slice(0, first + 1), { color, width, alpha, arrow: first === pts.length - 1 });
+  if (first < pts.length - 1) drawTrail(ctx, pts.slice(first), { color: '#b4b4b4', width: Math.max(2.5, width - 1.5), alpha: alpha * 0.85, dash: [2, 9], arrow: true, subtle });
+  if (first > 0) drawTrail(ctx, pts.slice(0, first + 1), { color, width, alpha, arrow: first === pts.length - 1, glow, beads: glow, subtle });
   ctx.globalAlpha = alpha;
   ctx.font = `bold ${Math.round(HEX_SIZE * 0.3)}px 'Dela Gothic One', 'Zen Kaku Gothic New', sans-serif`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -1921,7 +1945,7 @@ function drawMarches(ctx, selectedOnly) {
     const sel = selectedUnit && selectedUnit.id === u.id;
     const ends = marchEnds(u, path);
     const turns = ends.length + (planned ? 1 : 0);
-    drawMarchPath(ctx, path, [0, ...ends], { color: '#9a9a9a', alpha: sel ? 1 : 0.5, width: sel ? 4 : 3, numbers: sel, label: sel ? `Marche · ${turns} tour${turns > 1 ? 's' : ''}` : null });
+    drawMarchPath(ctx, path, [0, ...ends], { color: '#9a9a9a', alpha: sel ? 1 : 0.5, width: sel ? 4 : 3, subtle: !sel, numbers: sel, label: sel ? `Marche · ${turns} tour${turns > 1 ? 's' : ''}` : null });
   }
 }
 
@@ -1933,7 +1957,7 @@ function drawRoutePreview(ctx) {
   const mp = hk && !movableTiles.has(hk) ? marchPlanFor(unit, hoveredHex.q, hoveredHex.r) : null;
   if (mp) {
     const confirm = pendingMarch && pendingMarch.unitId === unit.id && pendingMarch.key === hk;
-    drawMarchPath(ctx, mp.path, mp.turnEnds, { color: getPlayerColor(myId) || '#fff', alpha: 0.9, label: marchLabel(mp) });
+    drawMarchPath(ctx, mp.path, mp.turnEnds, { color: getPlayerColor(myId) || '#fff', alpha: 0.95, glow: true, label: marchLabel(mp) });
     return;
   }
   const info = sim ? KBSim.routeInfo() : routeInfo();
@@ -1944,7 +1968,7 @@ function drawRoutePreview(ctx) {
   else if (wps.length) res = sim ? KBSim.routePath() : seqRoute(unit);
   if (!res || res.path.length < 2) return;
   const pts = res.path.map(([q, r]) => hexToPixel(q, r));
-  drawTrail(ctx, pts, { color: getPlayerColor(myId) || '#fff', width: 5, alpha: 0.9, dash: [12, 7] });
+  drawTrail(ctx, pts, { color: getPlayerColor(myId) || '#fff', width: 5, alpha: 0.95, glow: true, beads: true });
   ctx.save();
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   ctx.font = `bold ${Math.round(HEX_SIZE * 0.32)}px 'Zen Kaku Gothic New', sans-serif`;
@@ -1977,7 +2001,7 @@ function drawApproachPreview(ctx) {
   const pts = a.path.map(([q, r]) => hexToPixel(q, r));
   const tgt = hexToPixel(hoveredHex.q, hoveredHex.r);
   const pe = pts[pts.length - 1];
-  drawTrail(ctx, pts, { color: getPlayerColor(myId) || '#fff', width: 4.5, alpha: 0.85, dash: [12, 7], arrow: false });
+  drawTrail(ctx, pts, { color: getPlayerColor(myId) || '#fff', width: 4.5, alpha: 0.9, glow: true, arrow: false });
   drawTrail(ctx, [pe, tgt], { color: '#D8352A', width: 4, alpha: 0.9, dash: (selectedUnit.range || 1) > 1 ? [3, 7] : null });
   ctx.save();
   ctx.fillStyle = '#D8352A'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2.5;

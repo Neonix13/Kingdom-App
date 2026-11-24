@@ -266,7 +266,7 @@ export async function mountGameView(bridge, { container }) {
     const sm = sel && !bridge.playback && window.selectedMarch ? window.selectedMarch() : null;
     if (sm) sm.ends.forEach((idx, n) => { if (idx > 0 && sm.path[idx]) marks.push({ kind: 'turn', q: sm.path[idx][0], r: sm.path[idx][1], n: n + 1 }); });
     const so = sel && bridge.simultaneous && !bridge.playback ? (bridge.plannedOrders || []).find((o) => String(o.unitId) === String(sel.id)) : null;
-    if (so && so.stanceSteps) for (const s of so.stanceSteps) marks.push({ kind: 'stance', q: s.hex[0], r: s.hex[1], stance: s.stance });
+    if (so && so.stanceSteps) for (const s of so.stanceSteps) marks.push({ kind: 'stance', q: s.hex[0], r: s.hex[1], stance: s.stance, ring: bridge.getPlayerColor(bridge.myId) });
     pathMarks.show(marks);
     // trees step aside on hexes holding a unit and on every forest hex in sight, so that a visible forest stays readable
     const seenForest = Array.from(st && st.phase === 'battle' && st.visibleHexes ? st.visibleHexes : []).filter((k) => world.allHexes.get(k)?.terrain === 'forest');
