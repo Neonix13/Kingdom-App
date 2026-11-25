@@ -1879,11 +1879,13 @@ function drawTrail(c2d, pts, { color = '#fff', width = 4, alpha = 1, dash = null
 }
 // Stance change ahead on a hex of the selected unit's path: a round seal on the path itself (ring in the path colour,
 // disc in the stance colour, pictogram)
-function drawStanceStep(c2d, q, r, stance, ring = '#fff', grey = false) {
-  const p = hexToPixel(q, r);
+function drawStanceStep(c2d, q, r, stance, ring = '#fff', grey = false, onUnit = false) {
+  const p0 = hexToPixel(q, r);
+  const p = onUnit ? { x: p0.x + HEX_SIZE * 0.52, y: p0.y - HEX_SIZE * 0.42 } : p0;
   const R = HEX_SIZE * 0.3;
   c2d.save();
   if (grey) { c2d.filter = 'grayscale(1)'; ring = '#9a9a9a'; }
+  if (onUnit) c2d.globalAlpha = 1;
   c2d.shadowColor = ring; c2d.shadowBlur = R * 0.9;
   c2d.beginPath(); c2d.arc(p.x, p.y, R + 3, 0, Math.PI * 2);
   c2d.fillStyle = ring; c2d.fill();

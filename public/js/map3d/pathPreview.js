@@ -416,8 +416,10 @@ export function createPathMarks(world) {
       sp.material.needsUpdate = true;
       const k = mk.kind === 'turn' ? 0.36 : mk.kind === 'step' ? 0.85 : 0.5;
       sp.scale.set(k, k, 1);
-      // the stance seal sits on the trail itself, just above the ground
-      sp.position.set(c.x, y + 0.3, c.z);
+      // the stance seal sits on the trail itself, just above the ground; on the unit's own hex (change on the spot) it
+      // stands beside the troops, a little higher
+      if (mk.onUnit) sp.position.set(c.x + 0.42, y + 0.55, c.z + 0.22);
+      else sp.position.set(c.x, y + 0.3, c.z);
     });
   }
   function clear() { show([]); }

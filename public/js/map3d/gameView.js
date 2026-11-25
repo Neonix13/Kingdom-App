@@ -406,6 +406,12 @@ export async function mountGameView(bridge, { container }) {
     if (so && so.type === 'move' && so.path && so.path.length > 1) { const e = so.path[so.path.length - 1]; marks.push({ kind: 'turn', q: e[0], r: e[1], n: 1 }); }
     // a stance change in a later turn of the march: the seal in black and white
     if (so && so.stanceSteps) for (const s of so.stanceSteps) { const later = s.at > (so.path ? so.path.length - 1 : 0); marks.push({ kind: 'stance', q: s.hex[0], r: s.hex[1], stance: s.stance, ring: later ? '#9a9a9a' : bridge.getPlayerColor(bridge.myId), grey: later }); }
+    // a stance change on the spot (taken at the start of the turn): the seal on the unit itself, for every unit of mine
+    if (bridge.simultaneous && !bridge.playback) for (const o of bridge.plannedOrders || []) {
+      if (!o.stance) continue;
+      const u = shownUnits.find((x) => String(x.id) === String(o.unitId));
+      if (u && u.q != null && o.stance !== u.stance) marks.push({ kind: 'stance', q: u.q, r: u.r, stance: o.stance, ring: bridge.getPlayerColor(bridge.myId), onUnit: true });
+    }
     pathMarks.show(marks);
     // trees step aside on hexes holding a unit and on every forest hex in sight, so that a visible forest stays readable
     const seenForest = Array.from(st && st.phase === 'battle' && st.visibleHexes ? st.visibleHexes : []).filter((k) => world.allHexes.get(k)?.terrain === 'forest');
