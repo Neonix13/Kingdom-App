@@ -717,8 +717,24 @@ body.hud-d #toolbar .tuto-highlight { outline: 3px solid var(--hud-red); outline
 .uc-grp { flex: 1; display: flex; border: 2px solid #000; background: #fff; min-width: 0; }
 .uc-grp .stat { border: 0; }
 .uc-grp .stat + .stat { border-left: 1px dashed #8a8178; }
-/* stat detail on hover: base, stance and terrain modifiers */
+/* hover card of a stat: name and value, what it does, base / stance / terrain lines */
 .uc-grp .stat { position: relative; cursor: help; }
-.uc-grp .stat[data-tip]:hover::after { content: attr(data-tip); position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); z-index: 5;
-  white-space: pre; padding: 5px 9px; background: #000; color: #fff; border: 2px solid #fff; box-shadow: 0 0 0 2px #000, 3px 3px 0 var(--hud-red);
-  font: 700 11px/1.45 var(--hud-body); text-align: left; pointer-events: none; }
+.uc-grp .stat:hover { background: #f1eee8; }
+.uc-tip { position: fixed; left: 0; top: 0; z-index: 9000; width: 230px; transform: translate(-50%, calc(-100% - 12px)) rotate(1deg); pointer-events: none;
+  background: #fff; border: 3px solid #000; box-shadow: 5px 5px 0 #000; font: 700 11px var(--hud-body); color: #000; }
+.uc-tip[hidden] { display: none; }
+.uc-tip::after { content: ''; position: absolute; left: 50%; bottom: -11px; width: 14px; height: 14px; background: #fff; border-right: 3px solid #000; border-bottom: 3px solid #000; transform: translateX(-50%) rotate(45deg); }
+.uc-tip .ut-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 10px 4px; background: #000; color: #fff; }
+.uc-tip .ut-h span { display: flex; align-items: center; gap: 6px; font: 400 13px var(--hud-display); letter-spacing: .5px; }
+.uc-tip .ut-h em { font: 900 9px var(--hud-body); font-style: normal; letter-spacing: 1px; padding: 1px 5px; background: #fff; color: #000; }
+.uc-tip .ut-h b { font: 400 24px/1 var(--hud-display); }
+.uc-tip .ut-h b.up { color: #6fd77f; } .uc-tip .ut-h b.down { color: #ff6a55; }
+.uc-tip .ut-help { padding: 5px 10px; font: 700 10.5px/1.3 var(--hud-body); color: #3a3632; border-bottom: 2px solid #000; background: repeating-linear-gradient(135deg, #fff 0 6px, #f4f1ea 6px 7px); }
+.uc-tip .ut-rows { position: relative; z-index: 1; padding: 4px 0; background: #fff; }
+.uc-tip .ut-r { display: grid; grid-template-columns: 20px 1fr auto; align-items: center; gap: 7px; padding: 2px 10px; }
+.uc-tip .ut-r .st-chip { width: 18px; height: 18px; border-width: 1.5px; }
+.uc-tip .ut-r .st-chip svg { width: 12px; height: 12px; }
+.uc-tip .ut-ic { display: flex; justify-content: center; font-style: normal; font-size: 12px; color: #3a3632; }
+.uc-tip .ut-r b { font: 400 15px var(--hud-display); min-width: 28px; text-align: right; }
+.uc-tip .ut-r b.up { color: #1d7a2a; } .uc-tip .ut-r b.down { color: var(--hud-red); }
+.uc-tip .ut-r.zero { opacity: .4; }

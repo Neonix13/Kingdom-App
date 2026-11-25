@@ -328,14 +328,7 @@ export function mountBattleHud(bridge, view) {
         [stat('PUISSANCE', u.power, `puissance_${kind}`), stat('ARMURE', u.armor, 'armure')],
         [stat('INTIMIDATION', u.intimidation ?? 0, `intimidation_${kind}`), stat('COURAGE', 0, `courage_${kind}`)]];
     for (const s of stats.flat()) if (s.v == null || Number.isNaN(s.v)) { s.v = '—'; s.d = 0; }
-    // hover detail of a value: base, then the stance's and the terrain's modifiers
-    const sgn = (x) => (x > 0 ? '+' : '−') + Math.abs(x);
-    const stName = sd.name || (G('stanceNames') || {})[u.stance] || u.stance;
     const tName = (TERRAINS[tt] || {}).name || tt;
-    for (const s of stats.flat()) {
-      if (s.base == null || s.v === '—') continue;
-      s.tip = [`${s.label} ${s.v}`, `base ${s.base}`, s.ds ? `posture ${stName} ${sgn(s.ds)}` : '', s.dt ? `terrain ${tName} ${sgn(s.dt)}` : ''].filter(Boolean).join('\n');
-    }
     return { stats, kind, terrainName: tName };
   }
 
@@ -387,11 +380,16 @@ export function mountBattleHud(bridge, view) {
     return fresh || u;
   }
 
+  let lastCardHtml = '';
+  const ucTip = document.createElement('div');
+  ucTip.className = 'uc-tip';
+  ucTip.hidden = true;
+  document.body.appendChild(ucTip);
   function renderCard(st, deploying, sim) {
     const u = currentUnit(st, deploying);
     const tip = $('stance-tooltip');
     if (tip && tip.style.display === 'block' && el.stancebar.contains(document.querySelector('.hud-stancebar [data-stance]:hover')) && window.hideStanceTooltip) window.hideStanceTooltip();
-    if (!u) { el.card.hidden = true; el.card.innerHTML = ''; el.stancebar.hidden = true; return; }
+    if (!u) { el.card.hidden = true; el.card.innerHTML = ''; lastCardHtml = ''; ucTip.hidden = true; el.stancebar.hidden = true; return; }
     el.card.hidden = false;
     const src = portrait(u);
     const color = bridge.getPlayerColor ? bridge.getPlayerColor(u.playerId) : '#000';
@@ -420,6 +418,23 @@ export function mountBattleHud(bridge, view) {
     const stCost = bridge.orientCosts ? bridge.orientCosts().stance : 2;
     const stanceShown = canAct;
     const sty = (s) => (window.stanceStyle ? window.stanceStyle(s) : { k: '', svg: '', c: '#000', name: names[s] || s, short: names[s] || s });
+    // hover card of a value: what it does, its base, then the stance's and the terrain's modifiers
+    const STAT_HELP = { ATTAQUE: 'Chances de toucher', 'DÉFENSE': 'Chances d\'esquiver les coups', PUISSANCE: 'Dégâts de chaque coup porté', ARMURE: 'Réduit les dégâts reçus',
+      INTIMIDATION: 'Moral retiré à la cible à chaque coup', COURAGE: 'Réduit le moral perdu sous les coups', FORCE: 'Puissance du général en duel', 'STRATÉGIE': 'Portée de vision (cases)', CHARISME: 'Rayon et réussite de la motivation' };
+    const sgnv = (x) => `<b class="${x > 0 ? 'up' : x < 0 ? 'down' : ''}">${x > 0 ? '+' : x < 0 ? '−' : '±'}${Math.abs(x)}</b>`;
+    const stS = !u.isGeneral && u.stance ? sty(u.stance) : null;
+    const statTip = (s) => {
+      if (s.v === '—') return '';
+      const rows = [];
+      if (s.base != null) {
+        rows.push(`<div class="ut-r"><i class="ut-ic">◆</i><span>Base</span><b>${s.base}</b></div>`);
+        if (stS) rows.push(`<div class="ut-r${s.ds ? '' : ' zero'}"><i class="st-chip" style="background:${esc(stS.c)}">${stS.svg || ''}</i><span>Posture · ${esc(stS.name)}</span>${sgnv(s.ds)}</div>`);
+        if (!u.isGeneral && u.q != null) rows.push(`<div class="ut-r${s.dt ? '' : ' zero'}"><i class="ut-ic">⛰\uFE0E</i><span>Terrain · ${esc(terrainName)}</span>${sgnv(s.dt)}</div>`);
+      }
+      const cls = s.d > 0 ? 'up' : s.d < 0 ? 'down' : '';
+      const ctx = s.base != null && !u.isGeneral && s.label !== 'ARMURE' ? `<em>${kind === 'tir' ? 'TIR' : 'MÊLÉE'}</em>` : '';
+      return `<div class="ut-h"><span>${esc(s.label)}${ctx}</span><b class="${cls}">${s.v}</b></div>${STAT_HELP[s.label] ? `<div class="ut-help">${esc(STAT_HELP[s.label])}</div>` : ''}${rows.length ? `<div class="ut-rows">${rows.join('')}</div>` : ''}`;
+    };
     const step = sim && canAct && window.KBSim && KBSim.stepInfo ? KBSim.stepInfo(u) : null;
     const stanceBtns = (step ? `<span class="sb-step" title="Ctrl+clic sur la case ou Échap pour revenir à la posture de départ">${step.at === step.total ? "À L'ARRIVÉE" : `ÉTAPE ${step.at} / ${step.total}`} · POSTURE ICI</span>` : '') + list.map((s, i) => {
       const ss = sty(s);
@@ -467,14 +482,16 @@ export function mountBattleHud(bridge, view) {
       const left = planned != null ? planned : u.speedRemaining != null ? u.speedRemaining : u.speed;
       gauges.push(gauge('VITESSE', 'sp', u.speed ? left / u.speed : 0, esc(fmtSpeed(left)), u.speed, `Vitesse restante ce tour, ordres compris : ${fmtSpeed(left)} / ${u.speed}`));
     }
-    el.card.innerHTML = `
+    const cardHtml = `
       <div class="pic">${src ? `<img src="${esc(src)}" alt="">` : ''}<span class="k">${unitKanji(u)}</span><i class="owner" style="background:${esc(color)}"></i></div>
       <div class="body">
         <div class="head"><span class="name">${stanceNow}${esc((u.name || '').toUpperCase())}</span><span class="meta">${meta.join('')}</span></div>
         <div class="uc-gauges">${gauges.join('')}</div>
-        <div class="stats">${stats.map((grp) => `<div class="uc-grp">${grp.map((s) => `<div class="stat"${s.tip ? ` data-tip="${esc(s.tip)}"` : ''}><span>${s.label}</span><b class="${s.d > 0 ? 'up' : s.d < 0 ? 'down' : ''}">${s.v ?? '—'}</b></div>`).join('')}</div>`).join('')}</div>
+        <div class="stats">${stats.map((grp) => `<div class="uc-grp">${grp.map((s) => `<div class="stat" data-tip="${esc(statTip(s))}"><span>${s.label}</span><b class="${s.d > 0 ? 'up' : s.d < 0 ? 'down' : ''}">${s.v ?? '—'}</b></div>`).join('')}</div>`).join('')}</div>
       </div>
       <div class="tools">${u.isMine && u.march && u.march.route && u.march.route.length ? '<button data-card="unmarch" title="Annuler la marche sur plusieurs tours">STOP MARCHE</button>' : ''}<button data-card="sheet" title="Fiche complète de l'unité">FICHE</button></div>`;
+    // rewritten only when it changes: the hovered value keeps its hover card
+    if (cardHtml !== lastCardHtml) { lastCardHtml = cardHtml; el.card.innerHTML = cardHtml; }
   }
   el.card.addEventListener('change', (e) => {
     const sel = e.target.closest('[data-card=stance-at]');
@@ -508,6 +525,16 @@ export function mountBattleHud(bridge, view) {
       if (u && window.showUnitCard) window.showUnitCard(u);
     }
   });
+  el.card.addEventListener('mouseover', (e) => {
+    const st = e.target.closest('.uc-grp .stat[data-tip]');
+    if (!st || !st.dataset.tip) { ucTip.hidden = true; return; }
+    ucTip.innerHTML = st.dataset.tip;
+    ucTip.hidden = false;
+    const sr = st.getBoundingClientRect();
+    ucTip.style.left = `${Math.round(sr.left + sr.width / 2)}px`;
+    ucTip.style.top = `${Math.round(sr.top)}px`;
+  });
+  el.card.addEventListener('mouseleave', () => { ucTip.hidden = true; });
   el.stancebar.addEventListener('mouseover', (e) => {
     const sb = e.target.closest('[data-stance]');
     if (!sb || !window.showStanceTooltip) return;
