@@ -430,7 +430,8 @@ export async function mountGameView(bridge, { container }) {
       const u = shownUnits.find((x) => String(x.id) === String(o.unitId));
       const at = end || (u ? [u.q, u.r] : null);
       if (!at) continue;
-      arrows.push({ q: at[0], r: at[1], dq: d[0], dr: d[1], color: bridge.getPlayerColor(bridge.myId), dim: !(sel && String(sel.id) === String(o.unitId)) });
+      const isSel = !!(sel && String(sel.id) === String(o.unitId));
+      arrows.push({ q: at[0], r: at[1], dq: d[0], dr: d[1], from: path ? path[path.length - 2] : null, color: bridge.getPlayerColor(bridge.myId), width: isSel ? 0.075 : 0.034, dim: !isSel });
     }
     facingMarks.show(arrows);
     // trees step aside on hexes holding a unit and on every forest hex in sight, so that a visible forest stays readable

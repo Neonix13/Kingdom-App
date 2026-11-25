@@ -537,47 +537,54 @@ export function createZoneRims(world) {
   return { show, clear };
 }
 
-// Final facing of the units with an order: a flat arrow on the ground of the arrival hex, in the player's colour, pointing at
-// the neighbour faced (the chosen facing, else the direction of the last step). marks: [{ q, r, dq, dr, color, dim }]
+// Final facing of the units with an order: the trail goes on past the centre of the arrival hex, bends toward the
+// neighbour faced (the chosen facing, else the direction of the last step) and ends on an arrowhead, same colour and width
+// as the trail. marks: [{ q, r, dq, dr, from: [q, r] | null (hex before the arrival), color, width, dim }]
 export function createFacingMarks(world) {
   const { scene, hexToWorld } = world;
   const groundHeight = world.walkHeight || world.groundHeight;
-  const c = document.createElement('canvas');
-  c.width = c.height = 64;
-  const g = c.getContext('2d');
-  const arrow = () => { g.beginPath(); g.moveTo(32, 6); g.lineTo(56, 34); g.lineTo(42, 34); g.lineTo(42, 58); g.lineTo(22, 58); g.lineTo(22, 34); g.lineTo(8, 34); g.closePath(); };
-  g.lineJoin = 'round';
-  arrow(); g.lineWidth = 8; g.strokeStyle = '#000'; g.stroke();
-  arrow(); g.fillStyle = '#fff'; g.fill();
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  const pool = [];
+  const meshes = [];
   let lastSig = '';
+  function head(tip, dir, size, ground, color, opacity, order) {
+    const side = { x: -dir.z, z: dir.x };
+    const base = { x: tip.x - dir.x * size, z: tip.z - dir.z * size };
+    const pts = [tip, { x: base.x + side.x * size * 0.62, z: base.z + side.z * size * 0.62 }, { x: base.x - side.x * size * 0.62, z: base.z - side.z * size * 0.62 }];
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pts.flatMap((p) => [p.x, ground(p.x, p.z) + 0.06, p.z]), 3));
+    g.setIndex([0, 1, 2]);
+    const m = new THREE.Mesh(g, trailMat(color, opacity));
+    m.renderOrder = order;
+    scene.add(m);
+    meshes.push(m);
+  }
   function show(marks) {
     const list = marks || [];
     const sig = JSON.stringify(list);
     if (sig === lastSig) return;
     lastSig = sig;
-    while (pool.length < list.length) {
-      const m = new THREE.Mesh(_flatGeo, new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false, fog: false, toneMapped: false }));
-      m.rotation.order = 'YXZ';
-      m.renderOrder = 9;
-      m.scale.set(0.42, 0.42, 1);
-      scene.add(m);
-      pool.push(m);
+    disposeAll(scene, meshes);
+    for (const mk of list) {
+      const c = hexToWorld(mk.q, mk.r), n = hexToWorld(mk.q + mk.dq, mk.r + mk.dr);
+      const len = Math.hypot(n.x - c.x, n.z - c.z) || 1;
+      const dir = { x: (n.x - c.x) / len, z: (n.z - c.z) / len };
+      const w = mk.width || 0.05;
+      const opacity = mk.dim ? 0.85 : 0.96;
+      // quadratic bend: from a little before the centre (along the way in) through the centre to the tip
+      const tipD = 0.62, headL = Math.max(0.16, w * 3);
+      const end = { x: c.x + dir.x * (tipD - headL * 0.8), z: c.z + dir.z * (tipD - headL * 0.8) };
+      let start = c;
+      if (mk.from) { const f = hexToWorld(mk.from[0], mk.from[1]); const fl = Math.hypot(c.x - f.x, c.z - f.z) || 1; start = { x: c.x - (c.x - f.x) / fl * 0.3, z: c.z - (c.z - f.z) / fl * 0.3 }; }
+      const pts = [];
+      for (let i = 0; i <= 14; i++) {
+        const t = i / 14, u = 1 - t;
+        pts.push({ x: u * u * start.x + 2 * u * t * c.x + t * t * end.x, z: u * u * start.z + 2 * u * t * c.z + t * t * end.z });
+      }
+      const sh = trailMesh(pts, w * 1.45, groundHeight, 0.04, trailMat(0x000000, 0.3)); sh.renderOrder = 7; scene.add(sh); meshes.push(sh);
+      const rb = trailMesh(pts, w, groundHeight, 0.05, trailMat(mk.color || 0xffffff, opacity)); rb.renderOrder = 8; scene.add(rb); meshes.push(rb);
+      const tip = { x: c.x + dir.x * tipD, z: c.z + dir.z * tipD };
+      head({ x: tip.x + dir.x * 0.03, z: tip.z + dir.z * 0.03 }, dir, headL * 1.25, groundHeight, 0x000000, 0.45, 7);
+      head(tip, dir, headL, groundHeight, mk.color || 0xffffff, opacity, 8);
     }
-    pool.forEach((m, i) => {
-      const mk = list[i];
-      m.visible = !!mk;
-      if (!mk) return;
-      const a = hexToWorld(mk.q, mk.r), b = hexToWorld(mk.q + mk.dq, mk.r + mk.dr);
-      const dx = b.x - a.x, dz = b.z - a.z, len = Math.hypot(dx, dz) || 1;
-      const x = a.x + (dx / len) * 0.55, z = a.z + (dz / len) * 0.55;
-      m.position.set(x, groundHeight(x, z) + 0.07, z);
-      m.rotation.set(-Math.PI / 2, Math.atan2(-dx, -dz), 0);
-      m.material.color.set(mk.color || '#ffffff');
-      m.material.opacity = mk.dim ? 0.6 : 1;
-    });
   }
   return { show, clear: () => show([]) };
 }
