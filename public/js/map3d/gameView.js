@@ -458,6 +458,7 @@ export async function mountGameView(bridge, { container }) {
     return p.setY(world.groundHeight(p.x, p.z));
   }
   const _v = new THREE.Vector3();
+  const _plateAt = new THREE.Vector3();
   function anchorOf(u) {
     if (units3d) {
       const a = units3d.getAnchor(u.id);
@@ -562,7 +563,8 @@ export async function mountGameView(bridge, { container }) {
     if (showPlates) {
       for (const el of plateEls.values()) {
         const u = el._unit;
-        const s = world.projectToScreen(anchorOf(u));
+        // the banner's pole stands among the soldiers: its foot a little below the top of the formation
+        const s = world.projectToScreen(_plateAt.copy(anchorOf(u)).setY(anchorOf(u).y - 0.4));
         if (!s.visible) { el.style.display = 'none'; continue; }
         el.style.display = '';
         // stacking by the real distance to the camera (not the screen height, which flips with low or tilted views):
