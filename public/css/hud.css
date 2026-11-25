@@ -756,3 +756,44 @@ body.hud-d #toolbar .tuto-highlight { outline: 3px solid var(--hud-red); outline
 .tt4-other b { font-weight: 900; } .tt4-other b.up { color: #4f9a5c; } .tt4-other b.down { color: #c46a60; }
 .tt4-notes { margin-top: 8px; padding-top: 6px; border-top: 2px dashed #ccc; display: flex; flex-direction: column; gap: 2px; font-size: 11px; line-height: 1.35; color: #3a3632; }
 .tt4-hint { margin: 8px -11px -10px; padding: 4px 11px; background: #000; color: #fff; font: 700 10.5px "Zen Kaku Gothic New", sans-serif; letter-spacing: .3px; }
+/* ---- command panel (simultaneous), left: points, army with its orders; folds into a thin strip ---- */
+.hud-orders.hud-cmd { left: 16px; right: auto; top: 128px; width: 292px; transform: rotate(-.6deg); max-height: calc(100vh - 128px - 250px); transition: width .18s ease; }
+.hud-cmd .hd { gap: 10px; padding: 7px 8px 7px 12px; }
+.hud-cmd .hd .t { flex: 1; font-size: 15px; white-space: nowrap; overflow: hidden; }
+.hud-cmd .hd .c { font-size: 20px; white-space: nowrap; } .hud-cmd .hd .c small { font-size: 13px; }
+.hud-cmd .fold { width: 24px; height: 24px; flex-shrink: 0; padding: 0; border: 2px solid #fff; background: #000; color: #fff; font: 900 14px/1 var(--hud-body); cursor: pointer; }
+.hud-cmd .fold:hover { background: var(--hud-red); }
+.hud-cmd .pips { padding: 7px 12px; }
+.hud-cmd .list { overflow-y: auto; overflow-x: hidden; min-height: 0; scrollbar-width: thin; }
+.hud-cmd .cu { position: relative; display: flex; align-items: center; gap: 9px; padding: 6px 10px 8px 12px; border-bottom: 2px solid #000; cursor: pointer; background: #fff; }
+.hud-cmd .cu:hover { background: #f1eee8; }
+.hud-cmd .cu.sel { background: #000; color: #fff; }
+.hud-cmd .cu.sel .tx span { color: #d9d2c6; }
+.hud-cmd .cu .k { position: relative; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0; font: 400 20px var(--hud-brush); }
+.hud-cmd .cu .k svg { width: 20px; height: 20px; }
+.hud-cmd .cu .dot { position: absolute; right: -4px; top: -3px; width: 9px; height: 9px; border: 2px solid #000; background: var(--hud-red); display: none; }
+.hud-cmd .cu.has .dot { display: block; }
+.hud-cmd .cu .tx { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.hud-cmd .cu .tx b { font-size: 13px; font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hud-cmd .cu .tx span { font-size: 11.5px; font-weight: 700; color: #6a625a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hud-cmd .cu.has .tx span { color: #000; } .hud-cmd .cu.sel.has .tx span { color: #fff; }
+.hud-cmd .cu .tx em { font-style: normal; color: var(--hud-red); }
+.hud-cmd .cu .v { font: 400 15px var(--hud-display); flex-shrink: 0; }
+.hud-cmd .cu button { width: 24px; height: 24px; border: 2px solid currentColor; background: transparent; color: inherit; font: 900 12px var(--hud-body); cursor: pointer; padding: 0; flex-shrink: 0; }
+.hud-cmd .cu button:hover { background: var(--hud-red); border-color: var(--hud-red); color: #fff; }
+.hud-cmd .cu .bar { position: absolute; left: 0; bottom: 0; height: 3px; background: #1d7a2a; }
+.hud-cmd .cu.flee .bar, .hud-cmd .cu.flee .v { color: var(--hud-red); } .hud-cmd .cu.flee .bar { background: var(--hud-red); }
+.hud-cmd .cu.gone { opacity: .45; }
+.hud-cmd .foot { padding: 7px 12px; font-size: 11px; color: #3a3632; border-top: 1px solid #000; background: repeating-linear-gradient(135deg, #fff 0 6px, #f4f1ea 6px 7px); }
+.hud-cmd .who { padding: 7px 12px; border-top: 2px solid #000; }
+/* folded: a thin strip */
+.hud-cmd.folded { width: 62px; }
+.hud-cmd.folded .hd { flex-direction: column; gap: 4px; padding: 6px 4px; }
+.hud-cmd.folded .hd .t, .hud-cmd.folded .foot, .hud-cmd.folded .cu .tx, .hud-cmd.folded .cu .v, .hud-cmd.folded .cu button { display: none; }
+.hud-cmd.folded .hd .c { font-size: 16px; } .hud-cmd.folded .hd .c small { font-size: 11px; }
+.hud-cmd.folded .pips { flex-wrap: wrap; gap: 2px; padding: 5px; } .hud-cmd.folded .pips i { flex: 0 0 calc(50% - 1px); height: 7px; border-width: 1.5px; }
+.hud-cmd.folded .cu { justify-content: center; padding: 7px 4px 9px; }
+.hud-cmd.folded .who { padding: 5px 4px; justify-content: center; }
+.hud-cmd.folded .who span { font-size: 0; width: 12px; height: 12px; padding: 0; background: currentColor; }
+.hud-cmd.folded .who span.ok { background: #000; }
+@media (max-width: 1360px) { .hud-orders.hud-cmd { max-height: calc(100vh - 128px - 236px); } }

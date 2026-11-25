@@ -259,6 +259,8 @@ export function mountBattleHud(bridge, view) {
     let title = '';
     if (deploying) { units = ds.units || []; const placed = units.filter((u) => u.q != null).length; title = `À DÉPLOYER · ${placed}/${units.length}`; }
     else if (st && st.phase !== 'ended') { units = st.myUnits || []; title = sim ? 'ARMÉE · ORDRES' : 'ARMÉE'; }
+    // simultaneous battle: the army and its orders are in the command panel (renderOrders)
+    if (!deploying && sim && bridge.planning && !G('isSpectator') && st && st.phase === 'battle') units = [];
     if (!units.length) { el.roster.innerHTML = ''; return; }
     const sel = bridge.selectedUnit;
     const orders = sim ? new Set(bridge.plannedOrders.map((o) => String(o.unitId))) : null;
@@ -678,34 +680,59 @@ export function mountBattleHud(bridge, view) {
     return main + (extra.length ? ` · ${extra.join(' · ')}` : '');
   }
 
+  // ---- command panel (simultaneous), left: command points, then every unit of my army with its order (or what it does
+  // without one), ✕ to cancel; folds into a thin strip (points, pictograms, a dot on the units with an order) ----
+  let cmdFolded = localStorage.getItem('kb-cmd-folded') === '1';
   function renderOrders(st, sim) {
     const pl = bridge.planning;
-    if (!sim || !pl || G('isSpectator')) { el.orders.hidden = true; return; }
+    if (!sim || !pl || G('isSpectator') || !st || st.phase !== 'battle' || (bridge.mode === 'deploy' && bridge.deployState)) { el.orders.hidden = true; return; }
     el.orders.hidden = false;
+    el.orders.classList.add('hud-cmd');
+    el.orders.classList.toggle('folded', cmdFolded);
     const pb = bridge.playback;
-    const orders = bridge.plannedOrders;
+    const orders = bridge.plannedOrders || [];
     const mine = st.myUnits || [];
     const cp = pl.commandPoints || { used: 0, max: 0 };
-    const head = pb ? `<div class="hd"><span class="t">RÉSOLUTION</span><span class="c">${Math.min(pb.tick + 1, pb.ticks)}<small style="font-size:13px"> / ${pb.ticks}</small></span></div>`
-      : `<div class="hd"><span class="t">${pl.committed ? 'ORDRES ENVOYÉS' : 'COMMANDEMENT'}</span><span class="c">${cp.used}<small style="font-size:13px"> / ${cp.max}</small></span></div>`;
+    const sel = bridge.selectedUnit;
+    const fold = `<button class="fold" data-fold title="${cmdFolded ? 'Déplier le panneau' : 'Replier le panneau'}" aria-label="${cmdFolded ? 'Déplier' : 'Replier'}">${cmdFolded ? '»' : '«'}</button>`;
+    const head = pb ? `<div class="hd"><span class="t">RÉSOLUTION</span><span class="c">${Math.min(pb.tick + 1, pb.ticks)}<small> / ${pb.ticks}</small></span>${fold}</div>`
+      : `<div class="hd"><span class="t">${pl.committed ? 'ORDRES ENVOYÉS' : 'COMMANDEMENT'}</span><span class="c">${cp.used}<small> / ${cp.max}</small></span>${fold}</div>`;
     const pips = !pb && cp.max > 0 && cp.max <= 16 ? `<div class="pips">${Array.from({ length: cp.max }, (_, i) => `<i class="${i < cp.used ? 'u' : ''}"></i>`).join('')}</div>` : '';
-    const rows = pb ? '' : orders.map((o) => {
-      const u = mine.find((x) => String(x.id) === String(o.unitId));
-      if (!u) return '';
-      return `<div class="ord" data-unit="${esc(o.unitId)}"><span class="k">${unitKanji(u)}</span><span class="tx"><b>${esc(u.name)}</b><span>${describeOrder(o, st)}</span></span>${pl.canPlan ? `<button data-clear="${esc(o.unitId)}" title="Annuler l'ordre" aria-label="Annuler l'ordre">✕</button>` : ''}</div>`;
+    const names = G('stanceNames') || {};
+    const rows = mine.map((u, i) => {
+      const o = pb ? null : orders.find((x) => String(x.unitId) === String(u.id));
+      let line, cls = 'cu';
+      if (u.q == null) { cls += ' gone'; line = 'hors combat'; }
+      else if (u.isFleeing) { cls += ' flee'; line = '<em>En fuite</em>'; }
+      else if (o) { cls += ' has'; line = describeOrder(o, st); }
+      else if (u.march && u.march.route && u.march.route.length) line = `Marche · ${u.march.route.length} case${u.march.route.length > 1 ? 's' : ''}`;
+      else line = `Tient${!u.isGeneral && u.stance ? ` · ${esc(names[u.stance] || u.stance)}` : ''}`;
+      if (sel && sel.id === u.id) cls += ' sel';
+      const pct = u.maxVitality ? Math.max(0, Math.min(100, (u.vitality / u.maxVitality) * 100)) : 0;
+      const clear = o && pl.canPlan ? `<button data-clear="${esc(u.id)}" title="Annuler l'ordre" aria-label="Annuler l'ordre">✕</button>` : '';
+      return `<div class="${cls}" data-unit="${esc(u.id)}" data-i="${i}" title="${esc(u.name)}"><span class="k">${unitKanji(u)}<i class="dot"></i></span><span class="tx"><b>${esc(u.name)}</b><span>${line}</span></span><span class="v">${u.vitality ?? ''}</span>${clear}<i class="bar" style="width:${pct}%"></i></div>`;
     }).join('');
-    const holding = mine.filter((u) => !orders.some((o) => String(o.unitId) === String(u.id))).length;
+    const holding = mine.filter((u) => u.q != null && !orders.some((o) => String(o.unitId) === String(u.id))).length;
     const foot = pb ? '<div class="foot">Les ordres de tous les généraux s\'exécutent case par case.</div>'
-      : `<div class="foot hud-hatch">${orders.length ? '' : 'Sélectionnez une unité puis cliquez une case ou un ennemi. '}${holding > 1 ? `${holding} unités sans ordre tiennent leur position et réagissent selon leur posture.` : holding === 1 ? '1 unité sans ordre tient sa position et réagit selon sa posture.' : 'Toutes les unités ont un ordre.'}</div>`;
+      : `<div class="foot">${orders.length ? '' : 'Sélectionnez une unité puis cliquez une case ou un ennemi. '}${holding ? `Sans ordre, une unité tient sa position et réagit selon sa posture.` : 'Toutes les unités ont un ordre.'}</div>`;
     const players = (st.players || []).filter((p) => !p.isEliminated);
-    const who = pb ? '' : `<div class="who">${players.map((p) => { const ok = (pl.committedIds || []).includes(p.id); return `<span class="${ok ? 'ok' : ''}" style="${ok ? '' : `color:${esc(p.color)}`}">${ok ? 'PRÊT' : 'RÉFLÉCHIT'} · ${esc(p.name)}</span>`; }).join('')}</div>`;
-    el.orders.innerHTML = head + pips + `<div class="list">${rows}</div>` + foot + who;
+    const who = pb ? '' : `<div class="who">${players.map((p) => { const ok = (pl.committedIds || []).includes(p.id); return `<span class="${ok ? 'ok' : ''}" style="${ok ? '' : `color:${esc(p.color)}`}" title="${esc(p.name)}">${ok ? 'PRÊT' : 'RÉFLÉCHIT'} · ${esc(p.name)}</span>`; }).join('')}</div>`;
+    const html = head + pips + `<div class="list">${rows}</div>` + foot + who;
+    if (el.orders._html !== html) { el.orders._html = html; el.orders.innerHTML = html; }
   }
   el.orders.addEventListener('click', (e) => {
+    if (e.target.closest('[data-fold]')) {
+      cmdFolded = !cmdFolded;
+      localStorage.setItem('kb-cmd-folded', cmdFolded ? '1' : '0');
+      el.orders._html = null;
+      render();
+      return;
+    }
     const clear = e.target.closest('[data-clear]');
     const row = e.target.closest('[data-unit]');
     if (!row) return;
-    const u = (bridge.state?.units || []).find((x) => String(x.id) === row.dataset.unit && x.isMine);
+    const mu = (bridge.state?.myUnits || [])[Number(row.dataset.i)];
+    const u = (bridge.state?.units || []).find((x) => String(x.id) === row.dataset.unit && x.isMine) || (mu && mu.q != null ? { ...mu, isMine: true } : null);
     if (!u) return;
     if (window.selectUnit) window.selectUnit(u);
     if (clear) {
