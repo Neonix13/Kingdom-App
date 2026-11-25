@@ -86,8 +86,8 @@ const PLATE_CSS = `
 .u3-plate.sel .u3-ban { filter:drop-shadow(0 0 5px rgba(216,53,42,.9)); }
 .u3-plate.moved .u3-cloth { filter:grayscale(.75) brightness(.8); }
 .u3-plate.fleeing .u3-cloth { animation-duration:.9s; }
-.u3-plate.concealed .u3-ban { animation:u3-hidden 1.5s ease-in-out infinite; }
-@keyframes u3-hidden { 0%, 100% { opacity:1; } 50% { opacity:.75; } }
+.u3-plate.concealed .u3-ban { animation:u3-hidden 1.8s ease-in-out infinite; }
+@keyframes u3-hidden { 0%, 100% { opacity:1; } 25%, 80% { opacity:.75; } }
 /* far: a smaller flag, vitality only */
 #view3d-loading { position:absolute; inset:0; z-index:3; display:flex; flex-direction:column; align-items:center; justify-content:center;
   background:rgba(10,6,4,0.92); color:#d9bf78; font:12px 'Segoe UI',system-ui,sans-serif; letter-spacing:2px; transition:opacity .6s; }
