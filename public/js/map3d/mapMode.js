@@ -20,6 +20,9 @@ body.v3-map.hud-d .v3-map-chip { bottom: auto; top: 196px; }
 `;
 
 const MAP_FOV = 9;
+// furthest zoom of the Strategy view: about 22 world units of ground on the screen's height (a dozen hexes)
+const MAX_HALF_H = 11;
+const maxStrategyDistance = () => MAX_HALF_H / Math.tan(MAP_FOV * Math.PI / 360);
 const DUR_IN = 0.85, DUR_OUT = 0.75;
 const ease = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
 
@@ -117,14 +120,16 @@ export function createMapMode(world, { onChange } = {}) {
     if (world.scene.fog) world.scene.fog.density = 0.0006;
     if (world.clouds) world.clouds.visible = false;
     const b = world.bounds;
-    const center = new THREE.Vector3((b.bx0 + b.bx1) / 2, 0, (b.bz0 + b.bz1) / 2);
+    const fit = fitDistance(MAP_FOV), cap = maxStrategyDistance();
+    // the whole map when it fits within the zoom limit, else the place the player was looking at
+    const center = fit <= cap ? new THREE.Vector3((b.bx0 + b.bx1) / 2, 0, (b.bz0 + b.bz1) / 2) : controls.target.clone();
     center.y = world.groundHeight(center.x, center.z);
-    const dist = fitDistance(MAP_FOV);
+    const dist = Math.min(fit, cap);
     // theta 0: north (−z) at the top of the screen, like the 2D board
     startAnim(center, new THREE.Spherical(dist, 0.0004, 0), MAP_FOV, DUR_IN, () => {
       state = 'on';
       controls.minDistance = fitDistance(MAP_FOV) * 0.06;
-      controls.maxDistance = fitDistance(MAP_FOV) * 1.05; // no further than the whole map
+      controls.maxDistance = Math.min(fitDistance(MAP_FOV) * 1.05, maxStrategyDistance()); // whole map at most, and the zoom limit
       controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
       controls.screenSpacePanning = false;
       syncOrtho();
