@@ -5,9 +5,10 @@
 const STYLE = `
 #hud-root .hud-ibtn[hidden] { display: none; }
 body.v3-map #view3d-plates .u3-plate { transform-origin: 0 0; }
-body.v3-map #view3d-plates .u3-plate .k { width: 22px; height: 22px; margin-left: 0; }
-body.v3-map #view3d-plates .u3-plate:not(.sel):not(.hov) { padding: 0; gap: 0; }
-body.v3-map #view3d-plates .u3-plate:not(.sel):not(.hov) > :not(.k) { display: none; }
+body.v3-map #view3d-plates .u3-plate:not(.sel):not(.hov) { padding: 0; }
+body.v3-map #view3d-plates .u3-plate:not(.sel):not(.hov) .u3-body,
+body.v3-map #view3d-plates .u3-plate:not(.sel):not(.hov) .st,
+body.v3-map #view3d-plates .u3-plate:not(.sel):not(.hov) .u3-in::after { display: none; }
 body.v3-map .v3-map-chip.show { display: flex; }
 .v3-map-chip { display: none; position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 60; align-items: center; gap: 10px;
   padding: 6px 14px; background: #000; color: #fff; border: 2px solid #fff; box-shadow: 0 0 0 2px #000, 4px 4px 0 #D8352A;
