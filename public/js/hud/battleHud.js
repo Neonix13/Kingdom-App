@@ -56,7 +56,7 @@ export function mountBattleHud(bridge, view) {
       <div class="hud-timer"></div>
       <div class="hud-group" role="group" aria-label="Vue">
         <button class="hud-ibtn" data-hud="2d" title="Vue 2D" aria-label="Vue 2D">2D</button>
-        <button class="hud-ibtn" data-hud="map" title="Vue carte, de haut (M)" aria-label="Vue carte">${ICONS.map}</button>
+        <button class="hud-ibtn" data-hud="map" title="Vue Stratégie, de haut (M) — ou dézoomer au maximum" aria-label="Vue Stratégie">${ICONS.map}</button>
       </div>
       <div class="hud-menuwrap">
         <button class="hud-ibtn" data-hud="menu" title="Menu : règles, journal, outils" aria-label="Menu" aria-haspopup="true" aria-expanded="false">${ICONS.tools}<span class="hud-dot"></span></button>

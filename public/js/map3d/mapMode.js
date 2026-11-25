@@ -33,7 +33,7 @@ export function createMapMode(world, { onChange } = {}) {
   }
   const chip = document.createElement('div');
   chip.className = 'v3-map-chip';
-  chip.innerHTML = '<b>CARTE</b> molette : zoom · glisser : déplacer · <kbd>M</kbd> ou <kbd>Échap</kbd> : revenir';
+  chip.innerHTML = '<b>STRATÉGIE</b> molette : zoom (à fond : retour à la bataille) · glisser : déplacer · <kbd>M</kbd> ou <kbd>Échap</kbd> : revenir';
   document.body.appendChild(chip);
 
   const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.5, 900);

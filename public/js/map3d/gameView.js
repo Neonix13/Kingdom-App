@@ -124,12 +124,24 @@ export async function mountGameView(bridge, { container }) {
   {
     const C = world.controls, cam = world.camera;
     const sph = new THREE.Spherical(), off = new THREE.Vector3();
-    const pitchFor = (r) => THREE.MathUtils.degToRad(70 - 46 * THREE.MathUtils.smoothstep(r, 4, 75)); // from the vertical
+    const pitchFor = (r) => THREE.MathUtils.degToRad(70 - 46 * THREE.MathUtils.smoothstep(r, 4, 55)); // from the vertical
     let tilt = null, mmb = false, wheelAt = -1e9;
     canvas.addEventListener('pointerdown', (e) => { if (e.button === 1 || e.button === 2) mmb = true; if (e.button === 1) e.preventDefault(); });
     window.addEventListener('pointerup', (e) => { if (e.button === 1 || e.button === 2) mmb = false; });
     canvas.addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault(); });
-    canvas.addEventListener('wheel', () => { wheelAt = performance.now(); }, { passive: true });
+    // zoom-out limit of the battle view: wheeling further out switches to the Strategy view (map mode, M); in the
+    // Strategy view, wheeling in all the way comes back to the battle view
+    C.maxDistance = 55;
+    let push = 0;
+    canvas.addEventListener('wheel', (e) => {
+      wheelAt = performance.now();
+      const d = cam.position.distanceTo(C.target);
+      if (!mapMode.active) {
+        if (e.deltaY > 0 && d >= C.maxDistance * 0.97) { push += e.deltaY; if (push > 120) { push = 0; mapMode.enter(); } } else push = 0;
+      } else if (mapMode.state === 'on') {
+        if (e.deltaY < 0 && d <= C.minDistance * 1.05) { push -= e.deltaY; if (push > 120) { push = 0; mapMode.exit(); } } else push = 0;
+      }
+    }, { passive: true });
     world.frameHooks.push((dt) => {
       if (!C.enabled || document.body.classList.contains('v3-map')) return; // map mode (M): its own camera
       off.copy(cam.position).sub(C.target);
@@ -540,7 +552,7 @@ export async function mountGameView(bridge, { container }) {
     preview.update(dt);
     const camDist = world.camera.position.distanceTo(world.controls.target);
     const pm = ui.platesMode();
-    const showPlates = !ui.photo && (pm === 'always' || (pm === 'auto' && (camDist < 48 || mapMode.active)));
+    const showPlates = !ui.photo && (pm === 'always' || (pm === 'auto' && (camDist < 60 || mapMode.active)));
     plates.classList.toggle('names', camDist < 14);
     plates.classList.toggle('near', camDist < 16);
     plates.classList.toggle('far', camDist > 30 && !mapMode.active);

@@ -82,10 +82,10 @@ export function createGameUI({ world, container, bridge, getView }) {
     <label>Dés 3D <input type="checkbox" data-k="dice"></label>
     <label>Ralentis sur les unités détruites <input type="checkbox" data-k="killCam"></label>
     <label>Profondeur de champ <input type="checkbox" data-k="dof"></label>
-    <div class="row"><button data-act="photo">Mode photo (P)</button><button data-act="top">Vue carte (M)</button></div>
+    <div class="row"><button data-act="photo">Mode photo (P)</button><button data-act="top">Stratégie (M)</button></div>
     <div class="row"><button data-act="walk">Promenade sur le terrain (B)</button></div>
     <div class="hint">Caméra façon Total War : ZQSD / WASD / flèches ou souris au bord de l'écran : déplacer · A/E : pivoter · molette : zoom (la caméra se couche en s'approchant, plonge en s'éloignant) · clic molette ou clic droit maintenu : pivoter et incliner · Maj : plus vite<br>
-    Clic gauche : sélection · glisser : déplacer la vue · clic droit glissé depuis l'unité : orienter · Espace : centrer sur l’unité · Échap : désélectionner · B : promenade · M : vue carte</div>`;
+    Clic gauche : sélection · glisser : déplacer la vue · clic droit glissé depuis l'unité : orienter · Espace : centrer sur l’unité · Échap : désélectionner · B : promenade · M ou dézoom maximal : vue Stratégie</div>`;
   container.appendChild(panel);
   gear.addEventListener('click', (e) => { e.stopPropagation(); panel.classList.toggle('open'); });
   document.addEventListener('pointerdown', (e) => { if (!panel.contains(e.target) && e.target !== gear) panel.classList.remove('open'); });
