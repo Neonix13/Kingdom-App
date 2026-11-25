@@ -315,8 +315,8 @@ export function mountBattleHud(bridge, view) {
     const tt = u.q != null ? (terrain[`${u.q},${u.r}`] || 'plain') : 'plain';
     const tr = u.isGeneral ? {} : (TERRAINS[tt] || TERRAINS.plain || {});
     const stat = (label, base, key) => {
-      const d = (sd[key] || 0) + (tr[key] || 0);
-      return { label, v: base + d, d };
+      const ds = sd[key] || 0, dt = tr[key] || 0;
+      return { label, v: base + ds + dt, d: ds + dt, base, ds, dt };
     };
     // a shooter's attack and power take the ranged modifiers; defense against both melee and shots
     const kind = (u.range || 1) > 1 ? 'tir' : 'cac';
@@ -328,7 +328,16 @@ export function mountBattleHud(bridge, view) {
         [stat('PUISSANCE', u.power, `puissance_${kind}`), stat('ARMURE', u.armor, 'armure')],
         [stat('INTIMIDATION', u.intimidation ?? 0, `intimidation_${kind}`), stat('COURAGE', 0, `courage_${kind}`)]];
     for (const s of stats.flat()) if (s.v == null || Number.isNaN(s.v)) { s.v = '—'; s.d = 0; }
-    return { stats, kind, terrainName: (TERRAINS[tt] || {}).name || tt };
+    // hover detail of a value: base, then the stance's and the terrain's modifiers
+    const sgn = (x) => (x > 0 ? '+' : '−') + Math.abs(x);
+    const stName = sd.name || (G('stanceNames') || {})[u.stance] || u.stance;
+    const tName = (TERRAINS[tt] || {}).name || tt;
+    for (const s of stats.flat()) {
+      if (s.base == null || s.v === '—') continue;
+      s.tip = [`${s.label} ${s.v}`, `base ${s.base}`, s.ds ? `posture ${stName} ${sgn(s.ds)}` : '', s.dt ? `terrain ${tName} ${sgn(s.dt)}` : ''].filter(Boolean).join('
+');
+    }
+    return { stats, kind, terrainName: tName };
   }
 
   // ---- my general's active ability, bottom-left: portrait, name, recharge or ready; click = use it (select the general and
@@ -464,7 +473,7 @@ export function mountBattleHud(bridge, view) {
       <div class="body">
         <div class="head"><span class="name">${stanceNow}${esc((u.name || '').toUpperCase())}</span><span class="meta">${meta.join('')}</span></div>
         <div class="uc-gauges">${gauges.join('')}</div>
-        <div class="stats">${stats.map((grp) => `<div class="uc-grp">${grp.map((s) => `<div class="stat" title="${s.d ? `base ${s.v - s.d}, ${s.d > 0 ? '+' : ''}${s.d} posture / terrain` : ''}"><span>${s.label}</span><b class="${s.d > 0 ? 'up' : s.d < 0 ? 'down' : ''}">${s.v ?? '—'}${s.d ? `<small>${s.d > 0 ? '+' : '−'}${Math.abs(s.d)}</small>` : ''}</b></div>`).join('')}</div>`).join('')}</div>
+        <div class="stats">${stats.map((grp) => `<div class="uc-grp">${grp.map((s) => `<div class="stat"${s.tip ? ` data-tip="${esc(s.tip)}"` : ''}><span>${s.label}</span><b class="${s.d > 0 ? 'up' : s.d < 0 ? 'down' : ''}">${s.v ?? '—'}</b></div>`).join('')}</div>`).join('')}</div>
       </div>
       <div class="tools">${u.isMine && u.march && u.march.route && u.march.route.length ? '<button data-card="unmarch" title="Annuler la marche sur plusieurs tours">STOP MARCHE</button>' : ''}<button data-card="sheet" title="Fiche complète de l'unité">FICHE</button></div>`;
   }
