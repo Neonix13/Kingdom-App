@@ -22,7 +22,7 @@ Deux modes de tour (réglage de l'hôte) : **séquentiel** (initiative, §2, dé
 |---|---|
 | Se déplacer | coût du chemin (§3) |
 | Pivoter (clic droit) | 1 vitesse |
-| Changer de posture | 2 vitesse |
+| Changer de posture | 1 vitesse |
 | Attaquer | toute la vitesse restante (au moins 1), une attaque par manche ; cavalier léger : 2 de vitesse, et il peut encore se déplacer |
 | Attaquer à distance (clic sur un ennemi hors de portée) | l'unité se rend sur la meilleure case d'où elle peut frapper (§5), puis attaque : une seule action |
 | Motiver (général) | toute la vitesse restante (au moins 1), remplace l'attaque du général |

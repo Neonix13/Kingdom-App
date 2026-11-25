@@ -1559,7 +1559,7 @@ class GameRoom {
     if (unit.isFleeing) return { error: 'Unité en fuite.' };
     if (unit.speedRemaining <= 0) return { error: 'Plus de vitesse disponible pour changer de posture.' };
     if (unit.stance === stanceId) return { error: 'Déjà dans cette posture.' };
-    unit.speedRemaining = Math.max(0, rules.snap(unit.speedRemaining - 2));
+    unit.speedRemaining = Math.max(0, rules.snap(unit.speedRemaining - rules.RULES.simultaneous.stanceCost));
     unit.stance = stanceId;
     this._record('stance', { u: unit.id, s: stanceId });
     return { ok: true };

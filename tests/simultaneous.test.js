@@ -262,7 +262,7 @@ test('simultané : points de commandement, validation des ordres', () => {
   room.settings.commandPoints = 0;
   assert.match(T.setOrders(room, 'p0', { [A[0].id]: { type: 'move', path: [[5, 4], [6, 4], [7, 4], [8, 4]] } }).error, /trop long/);
   assert.match(T.setOrders(room, 'p0', { [A[0].id]: { type: 'move', path: [[5, 4], [7, 4]] } }).error, /Chemin invalide/);
-  assert.match(T.setOrders(room, 'p0', { [A[0].id]: { type: 'move', path: [[5, 4], [6, 4]], stance: 'defense_combat' } }).error, /trop long/, 'la posture coûte 2');
+  assert.match(T.setOrders(room, 'p0', { [A[0].id]: { type: 'move', path: [[5, 4], [6, 4], [7, 4]], stance: 'defense_combat' } }).error, /trop long/, 'la posture coûte 1');
   assert.equal(T.setOrders(room, 'p0', { [A[0].id]: { type: 'attack', targetId: B[0].id } }).error, 'Cible introuvable.', 'cible invisible');
   assert.equal(T.setOrders(room, 'p0', { [A[0].id]: { type: 'attack', targetId: A[1].id } }).error, 'Cible introuvable.');
   assert.ok(T.setOrders(room, 'p0', { [B[0].id]: { type: 'hold', stance: 'combat' } }).error, 'unité adverse');

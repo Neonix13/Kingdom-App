@@ -415,7 +415,7 @@ export function mountBattleHud(bridge, view) {
     const curStance = simOrder && simOrder.stance ? simOrder.stance : u.stance;
     const canAct = u.isMine && !deploying && !u.isGeneral && !u.isFleeing && u.q != null
       && (sim ? !!(bridge.planning && bridge.planning.canPlan) : st?.currentPlayerId === bridge.myId);
-    const stCost = bridge.orientCosts ? bridge.orientCosts().stance : 2;
+    const stCost = bridge.orientCosts ? bridge.orientCosts().stance : 1;
     const stanceShown = canAct;
     const sty = (s) => (window.stanceStyle ? window.stanceStyle(s) : { k: '', svg: '', c: '#000', name: names[s] || s, short: names[s] || s });
     // hover card of a value: what it does, its base, then the stance's and the terrain's modifiers

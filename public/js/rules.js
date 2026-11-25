@@ -153,7 +153,7 @@
     simultaneous: {
       commandPoints: { base: 2, strategyDivisor: 3 },   // units that may receive an order per turn = 2 + ceil(Strategy / 3)
       maxTicks: 40,
-      stanceCost: 2, facingCost: 0,                     // taken from the speed budget, as in sequential mode (turning is free)
+      stanceCost: 1, facingCost: 0,                     // taken from the speed budget, as in sequential mode (turning is free)
       // Defender reaction in place of the defense prompt (rien | counter | absorb); generals: counter
       stanceReaction: { marche: 'absorb', combat: 'counter', charge: 'counter', defense_combat: 'counter', defense_distance: 'absorb', repos: 'rien' },
       marchMovingReaction: 'rien',                      // a unit in Marche caught while it moved this turn does not defend
