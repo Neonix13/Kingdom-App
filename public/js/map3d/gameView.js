@@ -16,13 +16,20 @@ const PLATE_CSS = `
    stance in a square under it, kanji tags for the state, and a strip sewn along its right edge with the two gauges (vitality,
    morale — red stripes below zero), so the whole flag sways in the wind as one. Fleeing: the stance is torn off and the
    flag flashes red. Values in the tooltips. Sizes in --cw / --ch (smaller from far away), map mode: cloth only */
-.u3-plate { position:absolute; left:0; top:0; pointer-events:auto; cursor:pointer; will-change:transform; padding:0 4px;
+/* banner -> Strategy token morph: --m (0 banner, 1 token) and --mi = 1 - --m on #view3d-plates; the cloth turns into the square
+   token while the pole, crossbar, ties, gauges and stance fade (--mf) and fold away. --dd: the details shown (0 from far) */
+.u3-plate { --dd:var(--det, 1); position:absolute; left:0; top:0; pointer-events:auto; cursor:pointer; will-change:transform; padding:0 calc(4px * var(--mi, 1));
   font:900 10px 'Zen Kaku Gothic New','Segoe UI',system-ui,sans-serif; color:#fff; }
 /* size follows the camera distance continuously (--sc on #view3d-plates), details fade out with it (--det) */
-.u3-ban { --cw:38px; --ch:58px; position:relative; width:calc(var(--cw) + 6px); height:calc(var(--ch) + 23px); transform-origin:1.5px 100%;
-  transform:scale(var(--sc, 1)); transition:transform .15s; }
-.u3-plate.hov .u3-ban, .u3-plate.sel .u3-ban { transform:scale(max(1, calc(var(--sc, 1) * 1.18))); }
-.u3-plate:not(.hov):not(.sel) .u3-vbar.mo, .u3-plate:not(.hov):not(.sel) .st, .u3-plate:not(.hov):not(.sel) .u3-tags { opacity:var(--det, 1); transition:opacity .2s; }
+.u3-ban { --cw:38px; --ch:58px; --tw:26px; position:relative;
+  width:calc((var(--cw) + 6px) * var(--mi, 1) + var(--tw) * var(--m, 0)); height:calc((var(--ch) + 23px) * var(--mi, 1) + var(--tw) * var(--m, 0));
+  transform-origin:calc(1.5px * var(--mi, 1) + 50% * var(--m, 0)) calc(100% - 50% * var(--m, 0)); transform:scale(var(--sc, 1)); transition:transform .15s; }
+.u3-plate.hov, .u3-plate.sel { --dd:1; }
+.u3-plate.hov .u3-ban, .u3-plate.sel .u3-ban { transform:scale(max(1, calc(var(--sc, 1) * var(--hs, 1.18)))); }
+.u3-plate .st, .u3-plate .u3-tags { opacity:calc(var(--dd) * var(--mf, 1)); transition:opacity .2s; }
+.u3-pole, .u3-cap, .u3-bar-x, .u3-ties, .u3-gauges { opacity:var(--mf, 1); }
+#view3d-plates.tok .u3-pole, #view3d-plates.tok .u3-cap, #view3d-plates.tok .u3-bar-x, #view3d-plates.tok .u3-ties,
+#view3d-plates.tok .u3-gauges, #view3d-plates.tok .st, #view3d-plates.tok .u3-tags { display:none; }
 /* pole, finial and crossbar */
 .u3-pole { position:absolute; left:0; top:4px; bottom:0; width:3px; background:linear-gradient(90deg, #2a1a0e, #7a5634 45%, #2a1a0e); box-shadow:0 0 0 1px #000; }
 .u3-cap { position:absolute; left:-2px; top:0; width:7px; height:7px; border-radius:50%; background:#8a6a48; box-shadow:0 0 0 1px #000; z-index:4; }
@@ -35,23 +42,26 @@ const PLATE_CSS = `
 .u3-ties { position:absolute; left:-1px; top:11px; width:6px; height:calc(var(--ch) - 12px); z-index:3; pointer-events:none;
   background:repeating-linear-gradient(180deg, #efe6d4 0 2px, #000 2px 3px, transparent 3px 10px); }
 /* cloth: hangs right under the crossbar, its left edge along the pole */
-.u3-cloth { position:absolute; left:3px; top:9px; width:var(--cw); height:var(--ch); overflow:hidden;
+.u3-cloth { position:absolute; left:calc(3px * var(--mi, 1)); top:calc(9px * var(--mi, 1));
+  width:calc(var(--cw) * var(--mi, 1) + var(--tw) * var(--m, 0)); height:calc(var(--ch) * var(--mi, 1) + var(--tw) * var(--m, 0)); overflow:hidden;
   background:linear-gradient(90deg, rgba(0,0,0,.3), transparent 25%, rgba(255,255,255,.14) 55%, rgba(0,0,0,.18)), var(--pc);
-  clip-path:polygon(0 0, 100% 0, 100% 100%, 50% 86%, 0 100%); transform-origin:0 0; animation:u3-wind 2.8s ease-in-out infinite; animation-delay:var(--wd, 0s); }
-@keyframes u3-wind { 0%, 100% { transform:skewY(0deg) scaleX(1); } 35% { transform:skewY(2.5deg) scaleX(.95); } 70% { transform:skewY(-1.5deg) scaleX(1.02); } }
-.u3-cloth-edge { position:absolute; inset:0; z-index:4; pointer-events:none; clip-path:polygon(0 0, 100% 0, 100% 100%, 50% 86%, 0 100%);
+  clip-path:polygon(0 0, 100% 0, 100% 100%, 50% calc(86% + 14% * var(--m, 0)), 0 100%); transform-origin:0 0; animation:u3-wind 2.8s ease-in-out infinite; animation-delay:var(--wd, 0s); }
+@keyframes u3-wind { 0%, 100% { transform:skewY(0deg) scaleX(1); } 35% { transform:skewY(calc(2.5deg * var(--mi, 1))) scaleX(calc(1 - .05 * var(--mi, 1))); }
+  70% { transform:skewY(calc(-1.5deg * var(--mi, 1))) scaleX(calc(1 + .02 * var(--mi, 1))); } }
+.u3-cloth-edge { position:absolute; inset:0; z-index:4; pointer-events:none; clip-path:polygon(0 0, 100% 0, 100% 100%, 50% calc(86% + 14% * var(--m, 0)), 0 100%);
   box-shadow:inset 0 3px 0 rgba(0,0,0,.35), inset 0 0 0 2px #fff, inset 0 0 0 3px #000; }
 .u3-flash { position:absolute; inset:0; z-index:1; background:#D8352A; opacity:0; pointer-events:none; }
 .u3-plate.fleeing .u3-flash { animation:u3-redflash .8s steps(2) infinite; }
 @keyframes u3-redflash { 0% { opacity:0; } 50% { opacity:.85; } }
 /* main column: tags, pictogram, stance */
-.u3-main { position:absolute; left:3px; right:14px; top:5px; z-index:2; display:flex; flex-direction:column; align-items:center; gap:3px; }
+.u3-main { position:absolute; left:calc(3px * var(--mi, 1)); right:calc((9px + 5px * var(--dd)) * var(--mi, 1)); top:calc(5px * var(--mi, 1) + 4.5px * var(--m, 0));
+  z-index:2; display:flex; flex-direction:column; align-items:center; gap:calc(3px * var(--mi, 1)); }
 .u3-cloth .k { display:flex; color:#fff; font:400 17px 'Yuji Boku','Zen Old Mincho',serif; line-height:1; filter:drop-shadow(0 0 1px #000) drop-shadow(0 0 1px #000); }
 .u3-cloth .k svg { width:16px; height:16px; }
-.u3-tags { display:flex; flex-direction:column; align-items:center; gap:1px; }
+.u3-tags { display:flex; flex-direction:column; align-items:center; gap:1px; max-height:calc(60px * var(--mi, 1)); overflow:hidden; }
 .u3-tag { display:flex; align-items:center; justify-content:center; width:12px; height:12px; font:400 9px/1 'Yuji Boku','Zen Old Mincho',serif; background:#fff; color:#000; box-shadow:0 0 0 1px #000; }
 .u3-tag.gen { background:#e8c060; color:#000; } .u3-tag.hide { background:#2f6a3a; color:#cfe9c9; } .u3-tag.stun { background:#ffcf40; color:#000; }
-.u3-plate .st { width:19px; height:19px; display:flex; align-items:center; justify-content:center; border-radius:0; border:2px solid #fff; box-shadow:0 0 0 1.5px #000, 1px 1px 0 2px rgba(0,0,0,.5); }
+.u3-plate .st { width:19px; height:calc(19px * var(--mi, 1)); box-sizing:border-box; display:flex; align-items:center; justify-content:center; border-radius:0; border:2px solid #fff; box-shadow:0 0 0 1.5px #000, 1px 1px 0 2px rgba(0,0,0,.5); }
 .u3-plate .st svg { width:13px; height:13px; }
 .u3-plate .st:empty:not(.torn) { display:none; }
 /* fleeing: the stance has been torn off — a ragged hole with a loose thread */
@@ -59,14 +69,15 @@ const PLATE_CSS = `
   clip-path:polygon(50% 0, 62% 14%, 82% 6%, 84% 28%, 100% 40%, 86% 56%, 96% 78%, 72% 80%, 62% 100%, 46% 86%, 26% 98%, 22% 76%, 2% 70%, 14% 50%, 0 30%, 22% 22%, 26% 2%); }
 .u3-plate .st.torn::after { content:''; position:absolute; left:3px; right:3px; top:50%; height:1px; background:rgba(255,255,255,.5); transform:rotate(-35deg); }
 /* gauges: a strip sewn along the right edge of the cloth (seam on its left), vitality wide, morale narrow */
-.u3-gauges { position:absolute; right:3px; top:3px; bottom:4px; z-index:2; width:11px; display:flex; gap:1px; padding:1px;
+/* from far away the morale gauge folds away (--dd): the strip narrows to the vitality alone instead of showing an empty track */
+.u3-gauges { position:absolute; right:3px; top:3px; bottom:4px; z-index:2; width:calc(6px + 5px * var(--dd)); box-sizing:content-box; display:flex; gap:calc(1px * var(--dd)); padding:1px;
   background:#0f0e0d; box-shadow:0 0 0 1px #fff, 0 0 0 2px #000; }
 .u3-vbar { position:relative; flex:none; width:4px; height:100%; background:#2a2725; overflow:hidden; }
 .u3-vbar > i { position:absolute; left:0; right:0; bottom:0; transition:height .3s; }
 .u3-vbar.hp > i { background:linear-gradient(90deg, #ffffff, #d8d0c2); }
 .u3-vbar.hp.low > i { background:linear-gradient(90deg, #ff6a55, #b8261c); }
 .u3-vbar.hp::after { content:''; position:absolute; inset:0; background:repeating-linear-gradient(0deg, transparent 0 calc(25% - 1px), rgba(0,0,0,.7) calc(25% - 1px) 25%); }
-.u3-vbar.mo { width:4px; box-shadow:-1px 0 0 #000; }
+.u3-vbar.mo { width:calc(4px * var(--dd)); opacity:var(--dd); box-shadow:-1px 0 0 #000; }
 .u3-vbar.mo > i { background:linear-gradient(90deg, #8fd0ff, #2f86e6); box-shadow:0 0 3px rgba(80,170,255,.9); }
 .u3-vbar.mo.neg > i { top:0; bottom:auto; background:repeating-linear-gradient(135deg, #ff5a45 0 2px, #8a1a12 2px 4px); }
 /* states */
@@ -559,14 +570,17 @@ export async function mountGameView(bridge, { container }) {
     plates.classList.toggle('near', camDist < 16);
     // banners shrink smoothly with the distance (1 → 0.72) and their details fade (stance, morale, tags)
     const far = THREE.MathUtils.smoothstep(camDist, 14, 50);
-    plates.style.setProperty('--sc', (1 - 0.28 * far).toFixed(3));
     plates.style.setProperty('--det', (1 - THREE.MathUtils.smoothstep(camDist, 26, 46)).toFixed(3));
-    // banner <-> Strategy token: follows the camera transition (kbMapProgress 0 → 1): the banner glides to the centre
-    // of its hex while fading out, the token fades in there
+    // banner <-> Strategy token: follows the camera transition (kbMapProgress 0 → 1): the banner glides to the centre of
+    // its hex and its cloth turns into the token (CSS --m), the pole and the rest fold away
     const mp = Math.max(0, Math.min(1, window.kbMapProgress || 0));
-    const tok = mp >= 0.5;
+    const tok = mp >= 1;
     plates.classList.toggle('tok', tok);
-    plates.style.opacity = (tok ? THREE.MathUtils.smoothstep(mp, 0.5, 0.9) : 1 - THREE.MathUtils.smoothstep(mp, 0.1, 0.5)).toFixed(3);
+    plates.style.setProperty('--m', mp.toFixed(3));
+    plates.style.setProperty('--mi', (1 - mp).toFixed(3));
+    plates.style.setProperty('--mf', (1 - THREE.MathUtils.smoothstep(mp, 0, 0.6)).toFixed(3));
+    plates.style.setProperty('--hs', (1 + 0.18 * (1 - mp)).toFixed(3));
+    plates.style.setProperty('--sc', (1 - 0.28 * far * (1 - mp)).toFixed(3));
     plates.style.display = showPlates ? '' : 'none';
     if (showPlates) {
       for (const el of plateEls.values()) {
@@ -586,9 +600,8 @@ export async function mountGameView(bridge, { container }) {
         // the closer, the more in front; hovered / selected always on top
         const camD = world.camera.position.distanceTo(anchorOf(u));
         el.style.zIndex = String(Math.max(1, 90000 - Math.round(camD * 100)) + (el.classList.contains('sel') ? 200000 : el.classList.contains('hov') ? 100000 : 0));
-        el.style.transform = tok
-          ? `translate(${s.x.toFixed(1)}px, ${s.y.toFixed(1)}px) translate(-50%, -50%)`
-          : `translate(${(s.x - 5.5).toFixed(1)}px, ${s.y.toFixed(1)}px) translate(0, -100%)`;
+        // anchor: the pole's foot for the banner (bottom left), the centre for the token, blended along the morph
+        el.style.transform = `translate(${(s.x - 5.5 * (1 - mp)).toFixed(1)}px, ${s.y.toFixed(1)}px) translate(${(-50 * mp).toFixed(1)}%, ${(-100 + 50 * mp).toFixed(1)}%)`;
       }
     }
   }

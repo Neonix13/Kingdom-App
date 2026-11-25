@@ -1,20 +1,12 @@
 // Map mode (M): the camera eases to a steep view from above (a narrower lens, still in perspective). Wheel zooms,
-// drag pans, no rotation. M again (or Esc) eases back to the battle camera.
+// drag pans, right / middle drag turns the view around the vertical (pitch locked). M again (or Esc) eases back to the battle camera.
 const STYLE = `
 #hud-root .hud-ibtn[hidden] { display: none; }
-/* Strategy view: each unit is a flat square token on its hex (player's colour, pictogram), no pole, no waving cloth */
-#view3d-plates.tok .u3-plate { padding: 0; }
-#view3d-plates.tok .u3-ban { width: auto; height: auto; transform: none; filter: none; }
-#view3d-plates.tok .u3-pole, #view3d-plates.tok .u3-cap, #view3d-plates.tok .u3-bar-x,
-#view3d-plates.tok .u3-ties, #view3d-plates.tok .u3-gauges, #view3d-plates.tok .st,
-#view3d-plates.tok .u3-tags { display: none; }
-#view3d-plates.tok .u3-cloth { position: relative; left: 0; top: 0; width: 26px; height: 26px; clip-path: none; animation: none; transform: none;
-  box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px #000, 2px 3px 4px rgba(0,0,0,.5); }
-#view3d-plates.tok .u3-cloth-edge { display: none; }
-#view3d-plates.tok .u3-main { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
-#view3d-plates.tok .u3-plate.general .u3-cloth { box-shadow: 0 0 0 2px #e8c060, 0 0 0 3.5px #000, 2px 3px 4px rgba(0,0,0,.5); }
-#view3d-plates.tok .u3-plate.sel .u3-cloth { box-shadow: 0 0 0 2px #D8352A, 0 0 0 3.5px #000, 0 0 8px 2px rgba(216,53,42,.8); }
-#view3d-plates.tok .u3-plate.hov .u3-cloth { box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px #000, 0 0 8px 2px rgba(255,255,255,.6); }
+/* Strategy view: each unit is a flat square token on its hex (the banner's cloth, morphed: see gameView.js) */
+#view3d-plates.tok .u3-cloth { animation: none; transform: none; }
+#view3d-plates.tok .u3-ban { filter: drop-shadow(2px 3px 2px rgba(0,0,0,.55)); }
+#view3d-plates.tok .u3-plate.sel .u3-ban { filter: drop-shadow(0 0 6px rgba(216,53,42,.95)); }
+#view3d-plates.tok .u3-plate.hov .u3-ban { filter: drop-shadow(0 0 6px rgba(255,255,255,.8)); }
 body.v3-map .v3-map-chip.show { display: flex; }
 .v3-map-chip { display: none; position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 60; align-items: center; gap: 10px;
   padding: 6px 14px; background: #000; color: #fff; border: 2px solid #fff; box-shadow: 0 0 0 2px #000, 4px 4px 0 #D8352A;
@@ -44,7 +36,7 @@ export function createMapMode(world, { onChange } = {}) {
   }
   const chip = document.createElement('div');
   chip.className = 'v3-map-chip';
-  chip.innerHTML = '<b>STRATÉGIE</b> molette : zoom (à fond : retour à la bataille) · glisser : déplacer · <kbd>M</kbd> ou <kbd>Échap</kbd> : revenir';
+  chip.innerHTML = '<b>STRATÉGIE</b> molette : zoom (à fond : retour à la bataille) · glisser : déplacer · clic droit : tourner · <kbd>M</kbd> ou <kbd>Échap</kbd> : revenir';
   document.body.appendChild(chip);
 
   let state = 'off'; // off | in | on | out
@@ -103,6 +95,7 @@ export function createMapMode(world, { onChange } = {}) {
     saved = {
       p: camera.position.clone(), t: controls.target.clone(), fov: camera.fov,
       min: controls.minDistance, max: controls.maxDistance, rotate: controls.enableRotate,
+      minPolar: controls.minPolarAngle, maxPolar: controls.maxPolarAngle,
       buttons: { ...controls.mouseButtons }, grid: world.grid,
       fog: world.scene.fog ? world.scene.fog.density : null, clouds: world.clouds ? world.clouds.visible : null,
       guard: world.camGuard ? world.camGuard.enabled : null, dof: world.dof ? world.dof.user : null,
@@ -130,7 +123,10 @@ export function createMapMode(world, { onChange } = {}) {
       // no zooming in within the Strategy view: wheeling in goes back to the battle camera (gameView.js)
       controls.minDistance = (halfH / tanMap) * 0.98;
       controls.maxDistance = Math.min(fitDistance(MAP_FOV) * 1.05, maxStrategyDistance()); // whole map at most, and the zoom limit
-      controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+      // the view still turns (right or middle button), but flat: around the vertical only, the pitch stays locked
+      controls.enableRotate = true;
+      controls.minPolarAngle = controls.maxPolarAngle = MAP_PHI;
+      controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: THREE.MOUSE.ROTATE };
       controls.screenSpacePanning = false;
       // camera moves requested by the game (auto camera, focus on a unit) become pans in map mode
       world.setFlyFilter((toPos, toTarget) => {
@@ -151,6 +147,8 @@ export function createMapMode(world, { onChange } = {}) {
     controls.minDistance = saved.min;
     controls.maxDistance = saved.max;
     controls.enableRotate = saved.rotate;
+    controls.minPolarAngle = saved.minPolar;
+    controls.maxPolarAngle = saved.maxPolar;
     controls.mouseButtons = saved.buttons;
     world.setGrid(saved.grid);
     if (world.scene.fog && saved.fog != null) world.scene.fog.density = saved.fog;
