@@ -43,7 +43,8 @@ Chaque pas coûte le **coût du terrain dans lequel on entre** :
 |---|---|
 | Route, pont | 1/2 |
 | Plaine, bâtiment | 1 |
-| Forêt, fleuve | 2 |
+| Forêt | 1,5 |
+| Fleuve | 2 |
 
 Puis on ajoute :
 

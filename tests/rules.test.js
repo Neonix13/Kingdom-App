@@ -69,7 +69,7 @@ test('mouvement : falaise infranchissable, échelle pour l\'infanterie seulement
   assert.equal(rules.stepCost(T, high, flat, null, false), 1, 'descente gratuite');
   assert.equal(rules.stepCost(T, flat, { terrain: 'road', height: 0 }, null, false), 1 / 2, 'payé à l\'entrée de la case');
   assert.equal(rules.stepCost(T, { terrain: 'road', height: 0 }, flat, null, false), 1);
-  assert.equal(rules.stepCost(T, flat, { terrain: 'forest', height: 0 }, null, false), 2);
+  assert.equal(rules.stepCost(T, flat, { terrain: 'forest', height: 0 }, null, false), 1.5);
   assert.equal(rules.snap(1 / 2 + 1 / 2 + 1 / 2), 1.5);
 
   const room = battle({ a: [{ typeId: 'soldats', count: 1 }, { typeId: 'cavalier_leger', count: 1 }] });
