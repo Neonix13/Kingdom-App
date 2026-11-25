@@ -99,6 +99,17 @@ function turnBadge(n) {
   return t;
 }
 
+// turn number laid flat on the ground (as in Humankind), its top turned away from the camera so that it reads upright
+const _flatGeo = new THREE.PlaneGeometry(1, 1);
+function flatMark(size) {
+  const m = new THREE.Mesh(_flatGeo, new THREE.MeshBasicMaterial({ transparent: true, depthTest: false, depthWrite: false, fog: false, toneMapped: false }));
+  m.scale.set(size, size, 1);
+  m.rotation.order = 'YXZ';
+  m.renderOrder = 10;
+  m.onBeforeRender = (r, sc, cam) => m.rotation.set(-Math.PI / 2, Math.atan2(cam.position.x - m.position.x, cam.position.z - m.position.z), 0);
+  return m;
+}
+
 // Movement path chevrons draped on the terrain + attack arc between two formations
 export function createPathPreview(world) {
   const { scene, hexToWorld } = world;
@@ -147,9 +158,7 @@ export function createPathPreview(world) {
   function showTurnMarks(hexes, ends) {
     const list = (ends || []).map((idx, k) => ({ idx, n: k + 1 })).filter((e) => e.idx > 0);
     while (turnMarks.length < list.length) {
-      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false, depthWrite: false, fog: false, toneMapped: false }));
-      sp.scale.set(0.36, 0.36, 1);
-      sp.renderOrder = 10;
+      const sp = flatMark(0.46);
       scene.add(sp);
       turnMarks.push(sp);
     }
@@ -160,7 +169,7 @@ export function createPathPreview(world) {
       const c = hexToWorld(hq, hr);
       sp.material.map = numberTexture(list[i].n);
       sp.material.needsUpdate = true;
-      sp.position.set(c.x, groundHeight(c.x, c.z) + 0.3, c.z);
+      sp.position.set(c.x, groundHeight(c.x, c.z) + 0.08, c.z);
     });
   }
 
@@ -393,13 +402,25 @@ export function createPathMarks(world) {
     g.lineWidth = 5; g.strokeStyle = ring; g.stroke();
   });
   const sprites = [];
+  const flats = [];
   let lastSig = '';
   // marks: [{ q, r, kind: 'turn' | 'stance', n?, stance? }]
   function show(marks) {
     const sig = JSON.stringify(marks || []);
     if (sig === lastSig) return;
     lastSig = sig;
-    const list = marks || [];
+    const turns = (marks || []).filter((mk) => mk.kind === 'turn');
+    const list = (marks || []).filter((mk) => mk.kind !== 'turn');
+    while (flats.length < turns.length) { const m = flatMark(0.46); scene.add(m); flats.push(m); }
+    flats.forEach((m, i) => {
+      const mk = turns[i];
+      m.visible = !!mk;
+      if (!mk) return;
+      const c = hexToWorld(mk.q, mk.r);
+      m.material.map = turnTex(mk.n);
+      m.material.needsUpdate = true;
+      m.position.set(c.x, groundHeight(c.x, c.z) + 0.08, c.z);
+    });
     while (sprites.length < list.length) {
       const sp = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false, depthWrite: false, fog: false, toneMapped: false }));
       sp.renderOrder = 11;
