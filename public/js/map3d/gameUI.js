@@ -85,7 +85,7 @@ export function createGameUI({ world, container, bridge, getView }) {
     <div class="row"><button data-act="photo">Mode photo (P)</button><button data-act="top">Stratégie (M)</button></div>
     <div class="row"><button data-act="walk">Promenade sur le terrain (B)</button></div>
     <div class="hint">Caméra façon Total War / Baldur's Gate 3 : ZQSD / WASD / flèches ou souris au bord de l'écran : déplacer · A/E : pivoter · molette ou Page préc. / suiv. : zoom (la caméra se couche en s'approchant, plonge en s'éloignant) · clic molette ou clic droit maintenu : pivoter et incliner · Maj : plus vite · Fin : nord en haut · Origine ou Espace : centrer sur l'unité<br>
-    Clic gauche : sélection · glisser : déplacer la vue · clic droit glissé depuis l'unité : orienter · Échap : désélectionner · B : promenade · M, Tab ou dézoom maximal : vue Stratégie</div>`;
+    Clic gauche : sélection · glisser : déplacer la vue · clic gauche maintenu sur l'unité ou la fin de son trajet : orienter · Échap : désélectionner · B : promenade · M, Tab ou dézoom maximal : vue Stratégie</div>`;
   container.appendChild(panel);
   gear.addEventListener('click', (e) => { e.stopPropagation(); panel.classList.toggle('open'); });
   document.addEventListener('pointerdown', (e) => { if (!panel.contains(e.target) && e.target !== gear) panel.classList.remove('open'); });

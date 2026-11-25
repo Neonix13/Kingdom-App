@@ -939,7 +939,7 @@
     },
     stepInfo: (unit) => { const sp = stepInfo(unit); return sp ? { at: sp.at, total: sp.total, hex: sp.hex, here: sp.here, before: sp.before } : null; },
     clearStep() { st.step = null; render(); },
-    // where right-dragging orients the unit on arrival: its own hex, or the end of this turn's path
+    // where holding the left button orients the unit on arrival: its own hex, or the end of this turn's path
     orientAnchor(unit, hex) {
       const u = unit && myUnit(unit.id);
       if (!u || !hex) return null;

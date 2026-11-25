@@ -210,19 +210,33 @@ export async function mountGameView(bridge, { container }) {
   if (window.KBCorpses) window.KBCorpses.onChange((list) => corpses.set(list));
 
   // --- Input: click vs drag, hover, context menu ---
-  let down = null, orienting = false;
-  // right-drag starting on the selected unit orients it; captured on the container so the orbit controls never start
+  let down = null, orienting = false, holdOrient = null;
+  // left button held on the selected unit (or on the end of its path) orients it: after a short hold or as soon as the
+  // pointer moves, an arrow follows the cursor; a quick click stays a click. Captured on the container: no pan meanwhile
+  const beginOrient = (e) => {
+    const h = holdOrient;
+    holdOrient = null;
+    clearTimeout(h.timer);
+    if (!KBOrient.start(bridge, h.u, h.anchor)) { world.controls.enabled = true; return; }
+    orienting = true;
+    KBOrient.move(world.pickHex(e.clientX, e.clientY), e.clientX, e.clientY);
+  };
   container.addEventListener('pointerdown', (e) => {
-    if (e.button !== 2 || e.target !== canvas || !window.KBOrient) return;
+    if (e.button !== 0 || e.target !== canvas || !window.KBOrient || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
     const u = bridge.selectedUnit;
     const hex = u && world.pickHex(e.clientX, e.clientY);
     const anchor = hex && bridge.orientAnchor ? bridge.orientAnchor(u, hex) : null;
-    if (!anchor || !KBOrient.start(bridge, u, anchor)) return;
-    orienting = true;
+    if (!anchor || !(bridge.canOrient && bridge.canOrient(u))) return;
     world.controls.enabled = false;
+    const pos = { clientX: e.clientX, clientY: e.clientY };
+    holdOrient = { u, anchor, x: e.clientX, y: e.clientY, timer: setTimeout(() => { if (holdOrient) beginOrient(holdOrient.last || pos); }, 260) };
   }, true);
-  window.addEventListener('pointermove', (e) => { if (orienting) KBOrient.move(world.pickHex(e.clientX, e.clientY), e.clientX, e.clientY); });
+  window.addEventListener('pointermove', (e) => {
+    if (holdOrient) { holdOrient.last = { clientX: e.clientX, clientY: e.clientY }; if (Math.hypot(e.clientX - holdOrient.x, e.clientY - holdOrient.y) > 8) beginOrient(e); return; }
+    if (orienting) KBOrient.move(world.pickHex(e.clientX, e.clientY), e.clientX, e.clientY);
+  });
   window.addEventListener('pointerup', () => {
+    if (holdOrient) { clearTimeout(holdOrient.timer); holdOrient = null; world.controls.enabled = true; return; }
     if (!orienting) return;
     orienting = false;
     KBOrient.end();

@@ -1302,11 +1302,24 @@ canvas.addEventListener('dblclick', (e) => {
   if (hex && window.gameBridge) window.gameBridge.doubleClick(hex);
 });
 
+// left button held on the selected unit (or on the end of its path): orient it (arrow after a short hold or as soon as the
+// pointer moves); a quick click stays a click, handled on release
+let holdOrient2d = null;
+function beginOrient2d(e) {
+  const h = holdOrient2d;
+  holdOrient2d = null;
+  clearTimeout(h.timer);
+  if (KBOrient.start(window.gameBridge, h.u, h.anchor)) KBOrient.move(getHexUnderMouse(e), e.clientX, e.clientY);
+}
 canvas.addEventListener('mousedown', (e) => {
-  if (e.button === 2 && selectedUnit && window.KBOrient) {
+  if (e.button === 0 && selectedUnit && window.KBOrient && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && !pingMode) {
     const hex = getHexUnderMouse(e);
     const anchor = window.gameBridge.orientAnchor(selectedUnit, hex);
-    if (anchor && KBOrient.start(window.gameBridge, selectedUnit, anchor)) { dragStart = { x: e.clientX, y: e.clientY }; return; }
+    if (anchor && window.gameBridge.canOrient(selectedUnit)) {
+      const ev = { clientX: e.clientX, clientY: e.clientY, x: e.clientX, y: e.clientY };
+      holdOrient2d = { u: selectedUnit, anchor, hex, x: e.clientX, y: e.clientY, last: ev, timer: setTimeout(() => { if (holdOrient2d) beginOrient2d(holdOrient2d.last); }, 260) };
+      return;
+    }
   }
   if (e.button === 1 || e.button === 2) {
     isDragging = true;
@@ -1324,6 +1337,7 @@ canvas.addEventListener('mousedown', (e) => {
 });
 
 canvas.addEventListener('mousemove', (e) => {
+  if (holdOrient2d) { holdOrient2d.last = e; if (Math.hypot(e.clientX - holdOrient2d.x, e.clientY - holdOrient2d.y) > 8) beginOrient2d(e); return; }
   if (window.KBOrient && KBOrient.active()) { KBOrient.move(getHexUnderMouse(e), e.clientX, e.clientY); return; }
   if (isDragging) {
     camX = camAtDrag.x + (e.clientX - dragStart.x);
@@ -1356,11 +1370,18 @@ canvas.addEventListener('mousemove', (e) => {
 canvas.addEventListener('mouseleave', hideTerrainTooltip);
 
 let orientJustEnded = false;
-canvas.addEventListener('mouseup', () => {
+canvas.addEventListener('mouseup', (e) => {
   isDragging = false;
-  if (window.KBOrient && KBOrient.active()) { KBOrient.end(); orientJustEnded = true; }
+  if (holdOrient2d) {
+    const h = holdOrient2d;
+    clearTimeout(h.timer);
+    holdOrient2d = null;
+    handleHexClick(h.hex, { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey || e.metaKey, altKey: e.altKey, clientX: e.clientX, clientY: e.clientY });
+    return;
+  }
+  if (window.KBOrient && KBOrient.active()) KBOrient.end();
 });
-// Right click: deselect (a right-drag pans the map, or orients the selected unit when it starts on it)
+// Right click: deselect (a right-drag pans the map)
 canvas.addEventListener('contextmenu', (e) => {
   e.preventDefault();
   if (orientJustEnded) { orientJustEnded = false; return; }
@@ -3987,7 +4008,7 @@ window.gameBridge = {
   },
   contextMenu() { this.deselect(); },
   facingToward(unit, hex) { return facingToward(unit, hex); },
-  // hex where a right-drag starts orienting the selected unit: the unit itself, or (simultaneous) the end of its path
+  // hex where holding the left button starts orienting the selected unit: the unit itself, or (simultaneous) the end of its path
   orientAnchor(unit, hex) {
     if (!unit || !hex) return null;
     if (window.KBSim && KBSim.active()) return KBSim.orientAnchor(unit, hex);
