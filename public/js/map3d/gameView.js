@@ -78,6 +78,7 @@ const PLATE_CSS = `
 .u3-vbar.hp.low > i { background:linear-gradient(90deg, #ff6a55, #b8261c); }
 .u3-vbar.hp::after { content:''; position:absolute; inset:0; background:repeating-linear-gradient(0deg, transparent 0 calc(25% - 1px), rgba(0,0,0,.7) calc(25% - 1px) 25%); }
 .u3-vbar.mo { width:calc(4px * var(--dd)); opacity:var(--dd); box-shadow:-1px 0 0 #000; }
+.u3-plate.general .u3-gauges { width:6px; gap:0; } .u3-plate.general .u3-main { right:calc(9px * var(--mi, 1)); }
 .u3-vbar.mo > i { background:linear-gradient(90deg, #8fd0ff, #2f86e6); box-shadow:0 0 3px rgba(80,170,255,.9); }
 .u3-vbar.mo.neg > i { top:0; bottom:auto; background:repeating-linear-gradient(135deg, #ff5a45 0 2px, #8a1a12 2px 4px); }
 /* states */
@@ -286,7 +287,7 @@ export async function mountGameView(bridge, { container }) {
     hpBar.classList.toggle('low', hp <= 0.35);
     hpBar.title = `Vitalité ${u.vitality ?? '?'} / ${u.maxVitality ?? '?'}`;
     const moBar = el.querySelector('.u3-vbar.mo');
-    if (u.maxMorale && u.morale != null) {
+    if (!u.isGeneral && u.maxMorale && u.morale != null) { // a general has no morale to lose
       // negative morale (the unit flees below zero): red stripes from the top, as long as the deficit
       const neg = u.morale < 0;
       moBar.style.display = '';
