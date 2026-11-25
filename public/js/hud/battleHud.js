@@ -450,7 +450,7 @@ export function mountBattleHud(bridge, view) {
         <div class="stats">${stats.map((s) => `<div class="stat"><span>${s.label}</span><b class="${s.d > 0 ? 'up' : s.d < 0 ? 'down' : ''}" title="${s.d ? `base ${s.v - s.d}, ${s.d > 0 ? '+' : ''}${s.d} posture/terrain` : ''}">${s.v ?? '—'}</b></div>`).join('')}
           ${u.isGeneral ? `<div class="stat inv"><span>PUISSANCE</span><b>${u.power ?? '—'}</b></div>` : `<div class="stat inv"><span>MORAL</span><b>${u.morale ?? '—'}</b></div>`}</div>
       </div>
-      <div class="tools">${u.isMine && u.march && u.march.route && u.march.route.length ? '<button data-card="unmarch" title="Annuler la marche sur plusieurs tours">STOP MARCHE</button>' : ''}<button data-card="sheet" title="Fiche complète (double-clic sur l'unité)">FICHE</button></div>`;
+      <div class="tools">${u.isMine && u.march && u.march.route && u.march.route.length ? '<button data-card="unmarch" title="Annuler la marche sur plusieurs tours">STOP MARCHE</button>' : ''}<button data-card="sheet" title="Fiche complète de l'unité">FICHE</button></div>`;
   }
   el.card.addEventListener('change', (e) => {
     const sel = e.target.closest('[data-card=stance-at]');

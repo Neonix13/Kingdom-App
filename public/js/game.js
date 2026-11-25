@@ -1291,12 +1291,6 @@ function drawStar(ctx, cx, cy, spikes, outerR, innerR) {
 }
 
 // ---- INPUT ----
-canvas.addEventListener('dblclick', (e) => {
-  const hex = getHexUnderMouse(e);
-  const units = gameState?.units || deployState?.units || [];
-  const unit = units.find(u => u.q === hex.q && u.r === hex.r);
-  if (unit) showUnitCard(unit);
-});
 
 canvas.addEventListener('mousedown', (e) => {
   if (e.button === 2 && selectedUnit && window.KBOrient) {
@@ -3939,11 +3933,7 @@ window.gameBridge = {
     if (pingMode) { if (roomCode) wsSend('ping', { roomCode, q: hex.q, r: hex.r }); return; }
     handleHexClick(hex, opts);
   },
-  doubleClick(hex) {
-    const units = gameState?.units || deployState?.units || [];
-    const unit = units.find(u => u.q === hex.q && u.r === hex.r);
-    if (unit) showUnitCard(unit);
-  },
+  doubleClick() {}, // a double click no longer opens the character sheet (FICHE button on the unit card)
   contextMenu() { this.deselect(); },
   facingToward(unit, hex) { return facingToward(unit, hex); },
   // hex where a right-drag starts orienting the selected unit: the unit itself, or (simultaneous) the end of its path
