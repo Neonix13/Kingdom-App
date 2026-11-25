@@ -563,8 +563,9 @@ export async function mountGameView(bridge, { container }) {
     if (showPlates) {
       for (const el of plateEls.values()) {
         const u = el._unit;
-        // the banner's pole stands among the soldiers: its foot a little below the top of the formation
-        const s = world.projectToScreen(_plateAt.copy(anchorOf(u)).setY(anchorOf(u).y - 0.4));
+        // the banner's pole stands among the soldiers: its foot a little below the top of the formation; the general's
+        // escort is taller (mounted), its banner is brought down to the height of the others
+        const s = world.projectToScreen(_plateAt.copy(anchorOf(u)).setY(anchorOf(u).y - (u.isGeneral ? 0.65 : 0.2)));
         if (!s.visible) { el.style.display = 'none'; continue; }
         el.style.display = '';
         // stacking by the real distance to the camera (not the screen height, which flips with low or tilted views):
