@@ -13,7 +13,7 @@ const PLATE_CSS = `
 #view3d-plates { position:absolute; inset:0; pointer-events:none; z-index:2; overflow:hidden; }
 /* ---- unit plates: a little war banner (nobori) planted above each unit.
    The cloth hangs from the crossbar and is tied to the pole (loops along its edge); it carries the type pictogram, the
-   stance seal under it, kanji tags for the state, and a strip sewn along its right edge with the two gauges (vitality,
+   stance in a square under it, kanji tags for the state, and a strip sewn along its right edge with the two gauges (vitality,
    morale — red stripes below zero), so the whole flag sways in the wind as one. Fleeing: the stance is torn off and the
    flag flashes red. Values in the tooltips. Sizes in --cw / --ch (smaller from far away), map mode: cloth only */
 .u3-plate { position:absolute; left:0; top:0; pointer-events:auto; cursor:pointer; will-change:transform; padding:0 4px;
@@ -48,7 +48,7 @@ const PLATE_CSS = `
 .u3-tags { display:flex; flex-direction:column; align-items:center; gap:1px; }
 .u3-tag { display:flex; align-items:center; justify-content:center; width:12px; height:12px; font:400 9px/1 'Yuji Boku','Zen Old Mincho',serif; background:#fff; color:#000; box-shadow:0 0 0 1px #000; }
 .u3-tag.gen { background:#e8c060; color:#000; } .u3-tag.hide { background:#2f6a3a; color:#cfe9c9; } .u3-tag.stun { background:#ffcf40; color:#000; }
-.u3-plate .st { width:14px; height:14px; display:flex; align-items:center; justify-content:center; border-radius:50%; border:1.5px solid #fff; box-shadow:0 0 0 1px #000; }
+.u3-plate .st { width:14px; height:14px; display:flex; align-items:center; justify-content:center; border-radius:0; border:1.5px solid #fff; box-shadow:0 0 0 1px #000; }
 .u3-plate .st svg { width:8px; height:8px; }
 .u3-plate .st:empty:not(.torn) { display:none; }
 /* fleeing: the stance has been torn off — a ragged hole with a loose thread */
