@@ -273,9 +273,8 @@ export async function mountGameView(bridge, { container }) {
     const kj = u.isGeneral ? 'general' : u.typeId;
     const kEl = el.querySelector('.k');
     if (kEl.dataset.t !== kj) { kEl.dataset.t = kj; kEl.innerHTML = self.KBUnitIcon(u.typeId, u.isGeneral); }
-    // kanji tags for the state only (the cloth's colour already tells the side): general, fleeing, hidden, stunned
+    // kanji tags for the state only (the cloth's colour already tells the side, the gold edge the general): hidden, stunned
     const tags = [];
-    if (u.isGeneral) tags.push('<i class="u3-tag gen" title="Général">将</i>');
     if (u.concealed) tags.push('<i class="u3-tag hide" title="Cachée">伏</i>');
     if (u.stunned) tags.push('<i class="u3-tag stun" title="Sonné">暈</i>');
     const tagEl = el.querySelector('.u3-tags');
