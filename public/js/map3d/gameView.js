@@ -18,7 +18,7 @@ const PLATE_CSS = `
    flag flashes red. Values in the tooltips. Sizes in --cw / --ch (smaller from far away), map mode: cloth only */
 .u3-plate { position:absolute; left:0; top:0; pointer-events:auto; cursor:pointer; will-change:transform; padding:0 4px;
   font:900 10px 'Zen Kaku Gothic New','Segoe UI',system-ui,sans-serif; color:#fff; }
-.u3-ban { --cw:33px; --ch:54px; position:relative; width:calc(var(--cw) + 6px); height:calc(var(--ch) + 23px); transform-origin:1.5px 100%; transition:transform .15s; }
+.u3-ban { --cw:38px; --ch:58px; position:relative; width:calc(var(--cw) + 6px); height:calc(var(--ch) + 23px); transform-origin:1.5px 100%; transition:transform .15s; }
 .u3-plate.hov .u3-ban, .u3-plate.sel .u3-ban { transform:scale(1.18); }
 /* pole, finial and crossbar */
 .u3-pole { position:absolute; left:0; top:4px; bottom:0; width:3px; background:linear-gradient(90deg, #2a1a0e, #7a5634 45%, #2a1a0e); box-shadow:0 0 0 1px #000; }
@@ -48,8 +48,8 @@ const PLATE_CSS = `
 .u3-tags { display:flex; flex-direction:column; align-items:center; gap:1px; }
 .u3-tag { display:flex; align-items:center; justify-content:center; width:12px; height:12px; font:400 9px/1 'Yuji Boku','Zen Old Mincho',serif; background:#fff; color:#000; box-shadow:0 0 0 1px #000; }
 .u3-tag.gen { background:#e8c060; color:#000; } .u3-tag.hide { background:#2f6a3a; color:#cfe9c9; } .u3-tag.stun { background:#ffcf40; color:#000; }
-.u3-plate .st { width:14px; height:14px; display:flex; align-items:center; justify-content:center; border-radius:0; border:1.5px solid #fff; box-shadow:0 0 0 1px #000; }
-.u3-plate .st svg { width:8px; height:8px; }
+.u3-plate .st { width:19px; height:19px; display:flex; align-items:center; justify-content:center; border-radius:0; border:2px solid #fff; box-shadow:0 0 0 1.5px #000, 1px 1px 0 2px rgba(0,0,0,.5); }
+.u3-plate .st svg { width:13px; height:13px; }
 .u3-plate .st:empty:not(.torn) { display:none; }
 /* fleeing: the stance has been torn off — a ragged hole with a loose thread */
 .u3-plate .st.torn { position:relative; background:rgba(0,0,0,.6); border:0; box-shadow:none; border-radius:0;
@@ -74,7 +74,7 @@ const PLATE_CSS = `
 .u3-plate.fleeing .u3-cloth { animation-duration:.9s; }
 .u3-plate.concealed .u3-cloth { opacity:.65; }
 /* far: a smaller flag, vitality only */
-#view3d-plates.far .u3-plate:not(.hov):not(.sel) .u3-ban { --cw:22px; --ch:38px; }
+#view3d-plates.far .u3-plate:not(.hov):not(.sel) .u3-ban { --cw:24px; --ch:40px; }
 #view3d-plates.far .u3-plate:not(.hov):not(.sel) .u3-vbar.mo, #view3d-plates.far .u3-plate:not(.hov):not(.sel) .st, #view3d-plates.far .u3-plate:not(.hov):not(.sel) .u3-tags { display:none; }
 #view3d-plates.far .u3-plate:not(.hov):not(.sel) .u3-gauges { width:6px; }
 #view3d-plates.far .u3-plate:not(.hov):not(.sel) .u3-main { right:9px; }
@@ -249,7 +249,7 @@ export async function mountGameView(bridge, { container }) {
     if (st.dataset.st !== stKey) {
       st.dataset.st = stKey;
       st.classList.toggle('torn', torn);
-      st.innerHTML = !torn && sst && window.stanceIconSvg ? window.stanceIconSvg(u.stance, 9) : '';
+      st.innerHTML = !torn && sst && window.stanceIconSvg ? window.stanceIconSvg(u.stance, 13) : '';
       st.style.background = !torn && sst ? sst.c : '';
       st.title = torn ? 'En fuite : la posture est arrachée' : sst ? `Posture : ${sst.name}` : '';
     }
