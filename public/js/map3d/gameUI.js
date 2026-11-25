@@ -84,7 +84,7 @@ export function createGameUI({ world, container, bridge, getView }) {
     <label>Profondeur de champ <input type="checkbox" data-k="dof"></label>
     <div class="row"><button data-act="photo">Mode photo (P)</button><button data-act="top">Vue carte (M)</button></div>
     <div class="row"><button data-act="walk">Promenade sur le terrain (B)</button></div>
-    <div class="hint">Caméra façon Total War : ZQSD / WASD / flèches ou souris au bord de l'écran : déplacer · A/E : pivoter · molette : zoom (la caméra se couche en s'approchant, plonge en s'éloignant) · clic molette maintenu : pivoter et incliner · Maj : plus vite<br>
+    <div class="hint">Caméra façon Total War : ZQSD / WASD / flèches ou souris au bord de l'écran : déplacer · A/E : pivoter · molette : zoom (la caméra se couche en s'approchant, plonge en s'éloignant) · clic molette ou clic droit maintenu : pivoter et incliner · Maj : plus vite<br>
     Clic gauche : sélection · glisser : déplacer la vue · clic droit glissé depuis l'unité : orienter · Espace : centrer sur l’unité · Échap : désélectionner · B : promenade · M : vue carte</div>`;
   container.appendChild(panel);
   gear.addEventListener('click', (e) => { e.stopPropagation(); panel.classList.toggle('open'); });

@@ -116,8 +116,9 @@ export async function mountGameView(bridge, { container }) {
   const { THREE } = world;
   // Camera in the manner of Total War: the middle button held turns and tilts the view, the wheel zooms along a curve
   // (close: the camera lowers toward the horizon; far: it looks down on the battlefield), keys / screen edges move it
-  // (gameUI.js); the left button still drags the view, the right button orients units
-  world.controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: -1 };
+  // (gameUI.js); the left button still drags the view; the right button turns it too (or orients the selected unit when
+  // the drag starts on it)
+  world.controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: THREE.MOUSE.ROTATE };
   world.controls.screenSpacePanning = false;
   world.controls.panSpeed = 1.2;
   {
@@ -125,8 +126,8 @@ export async function mountGameView(bridge, { container }) {
     const sph = new THREE.Spherical(), off = new THREE.Vector3();
     const pitchFor = (r) => THREE.MathUtils.degToRad(70 - 46 * THREE.MathUtils.smoothstep(r, 4, 75)); // from the vertical
     let tilt = null, mmb = false, wheelAt = -1e9;
-    canvas.addEventListener('pointerdown', (e) => { if (e.button === 1) { mmb = true; e.preventDefault(); } });
-    window.addEventListener('pointerup', (e) => { if (e.button === 1) mmb = false; });
+    canvas.addEventListener('pointerdown', (e) => { if (e.button === 1 || e.button === 2) mmb = true; if (e.button === 1) e.preventDefault(); });
+    window.addEventListener('pointerup', (e) => { if (e.button === 1 || e.button === 2) mmb = false; });
     canvas.addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault(); });
     canvas.addEventListener('wheel', () => { wheelAt = performance.now(); }, { passive: true });
     world.frameHooks.push((dt) => {
