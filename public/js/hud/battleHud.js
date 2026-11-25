@@ -441,11 +441,11 @@ export function mountBattleHud(bridge, view) {
       if (step) {
         const on = step.here === s;
         const off = !on && s === step.before;
-        return `<button class="sb-key${on ? ' on' : ''}" data-stance="${i}" ${off ? 'disabled' : ''} title="${esc(ss.name)} (touche ${i + 1})${on ? ' — prévue ici, cliquer pour la retirer' : off ? ' — déjà la posture à cette étape' : ` — à cette étape, −${stCost} vitesse`}" aria-label="${esc(ss.name)}"><kbd>${i + 1}</kbd><i class="st-chip" style="background:${esc(ss.c)}">${ss.svg || ''}</i></button>`;
+        return `<button class="sb-key${on ? ' on' : ''}" data-stance="${i}" ${off ? 'disabled' : ''} data-hint="Touche ${i + 1}${on ? ' — prévue ici, cliquer pour la retirer' : off ? ' — déjà la posture à cette étape' : ` — à cette étape, −${stCost} vitesse`}" aria-label="${esc(ss.name)}"><kbd>${i + 1}</kbd><i class="st-chip" style="background:${esc(ss.c)}">${ss.svg || ''}</i></button>`;
       }
       const on = curStance === s;
       const off = !sim && !on && (u.speedRemaining || 0) < stCost;
-      return `<button class="sb-key${on ? ' on' : ''}" data-stance="${i}" ${off ? 'disabled' : ''} title="${esc(ss.name)} (touche ${i + 1})${on ? ' — actuelle' : ` — −${stCost} vitesse${sim ? ', au début de la résolution' : ''}`}" aria-label="${esc(ss.name)}"><kbd>${i + 1}</kbd><i class="st-chip" style="background:${esc(ss.c)}">${ss.svg || ''}</i></button>`;
+      return `<button class="sb-key${on ? ' on' : ''}" data-stance="${i}" ${off ? 'disabled' : ''} data-hint="Touche ${i + 1}${on ? ' — actuelle' : ` — −${stCost} vitesse${sim ? ', au début de la résolution' : ''}`}" aria-label="${esc(ss.name)}"><kbd>${i + 1}</kbd><i class="st-chip" style="background:${esc(ss.c)}">${ss.svg || ''}</i></button>`;
     }).join('');
     const genShown = u.isMine && !deploying && u.isGeneral && u.q != null && bridge.selectedUnit && bridge.selectedUnit.id === u.id
       && (sim ? !!(bridge.planning && bridge.planning.canPlan) : st?.currentPlayerId === bridge.myId);
@@ -467,7 +467,7 @@ export function mountBattleHud(bridge, view) {
       const fx = window.stanceEffectsText ? window.stanceEffectsText(u.stance, kind, 4) : '';
       const full = [window.stanceEffectsText ? window.stanceEffectsText(u.stance) : '', window.stanceAngleText ? window.stanceAngleText(u.stance) : '', sim && window.stanceReactionText ? `si attaquée : ${window.stanceReactionText(u.stance)}` : ''].filter(Boolean).join(' — ');
       // the stance's icon only, next to the name (its name and effects in the tooltip)
-      stanceNow = `<i class="st-chip uc-st" style="background:${esc(ss.c)}" title="${esc(`${ss.name} — ${full}`)}">${ss.svg || ''}</i>`;
+      stanceNow = `<i class="st-chip uc-st" style="background:${esc(ss.c)}" data-stance-id="${esc(u.stance)}">${ss.svg || ''}</i>`;
     }
     // gauges: vitality, morale (red stripes below zero, as long as the deficit) and speed left this turn
     const gauge = (label, cls, frac, val, max, tip) => `<div class="uc-g ${cls}" title="${esc(tip)}"><span class="gl">${label}</span><div class="gb"><i style="width:${(Math.max(0, Math.min(1, frac)) * 100).toFixed(0)}%"></i><b>${val} / ${max}</b></div></div>`;
@@ -535,11 +535,15 @@ export function mountBattleHud(bridge, view) {
     ucTip.style.top = `${Math.round(sr.top)}px`;
   });
   el.card.addEventListener('mouseleave', () => { ucTip.hidden = true; });
+  // the stance icon before the name: the stance's recap card (no browser tooltip on top of it)
+  el.card.addEventListener('mouseover', (e) => { const i = e.target.closest('.uc-st[data-stance-id]'); if (i && window.showStanceTooltip) window.showStanceTooltip(e, i.dataset.stanceId); });
+  el.card.addEventListener('mousemove', (e) => { if (e.target.closest('.uc-st') && window.positionStanceTooltip) window.positionStanceTooltip(e); });
+  el.card.addEventListener('mouseout', (e) => { if (e.target.closest('.uc-st') && window.hideStanceTooltip) window.hideStanceTooltip(); });
   el.stancebar.addEventListener('mouseover', (e) => {
     const sb = e.target.closest('[data-stance]');
     if (!sb || !window.showStanceTooltip) return;
     const s = (G('stanceList') || [])[Number(sb.dataset.stance)];
-    if (s) window.showStanceTooltip(e, s);
+    if (s) window.showStanceTooltip(e, s, sb.dataset.hint || '');
   });
   el.stancebar.addEventListener('mousemove', (e) => { if (e.target.closest('[data-stance]') && window.positionStanceTooltip) window.positionStanceTooltip(e); });
   el.stancebar.addEventListener('mouseout', (e) => { if (e.target.closest('[data-stance]') && window.hideStanceTooltip) window.hideStanceTooltip(); });

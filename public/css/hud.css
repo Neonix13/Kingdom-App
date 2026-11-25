@@ -755,3 +755,4 @@ body.hud-d #toolbar .tuto-highlight { outline: 3px solid var(--hud-red); outline
 .tt4-other { margin: 5px 0 0 56px; font-size: 10.5px; line-height: 1.35; color: #8a8178; }
 .tt4-other b { font-weight: 900; } .tt4-other b.up { color: #4f9a5c; } .tt4-other b.down { color: #c46a60; }
 .tt4-notes { margin-top: 8px; padding-top: 6px; border-top: 2px dashed #ccc; display: flex; flex-direction: column; gap: 2px; font-size: 11px; line-height: 1.35; color: #3a3632; }
+.tt4-hint { margin: 8px -11px -10px; padding: 4px 11px; background: #000; color: #fff; font: 700 10.5px "Zen Kaku Gothic New", sans-serif; letter-spacing: .3px; }

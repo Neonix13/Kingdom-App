@@ -3209,7 +3209,6 @@ function renderStancePanel(unit) {
   for (const s of stanceList) {
     const btn = document.createElement('button');
     btn.className = 'stance-btn' + (unit.stance === s ? ' active' : '');
-    btn.title = stanceNames[s] || s;
     const icon = stanceIcons[s];
     if (icon && icon.complete && icon.naturalWidth) {
       btn.innerHTML = `<img src="${icon.src}" alt="${s}"> ${stanceNames[s] || s}`;
@@ -3360,10 +3359,11 @@ function buildStanceTooltip(stanceId) {
     notes: [react ? `↩︎ Si attaquée : <b>${escapeHtml(react)}</b>` : ''] });
 }
 
-function showStanceTooltip(e, stanceId) {
+function showStanceTooltip(e, stanceId, hint = '') {
   const tt = document.getElementById('stance-tooltip');
   if (!tt) return;
   tt.innerHTML = buildStanceTooltip(stanceId);
+  if (hint) { const card = tt.querySelector('.tt2'); if (card) card.insertAdjacentHTML('beforeend', `<div class="tt4-hint">${escapeHtml(hint)}</div>`); }
   tt.style.display = 'block';
   positionStanceTooltip(e);
 }
