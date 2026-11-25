@@ -70,7 +70,6 @@ const PLATE_CSS = `
 .u3-plate.general .u3-cloth-edge { box-shadow:inset 0 3px 0 rgba(0,0,0,.35), inset 0 0 0 2px #e8c060, inset 0 0 0 3px #000; }
 .u3-plate.sel .u3-cloth-edge { box-shadow:inset 0 3px 0 rgba(0,0,0,.35), inset 0 0 0 2px #D8352A, inset 0 0 0 3px #000; }
 .u3-plate.sel .u3-ban { filter:drop-shadow(0 0 5px rgba(216,53,42,.9)); }
-.u3-plate.hov { z-index:5; } .u3-plate.sel { z-index:6; }
 .u3-plate.moved .u3-cloth { filter:grayscale(.75) brightness(.8); }
 .u3-plate.fleeing .u3-cloth { animation-duration:.9s; }
 .u3-plate.concealed .u3-cloth { opacity:.65; }
@@ -521,6 +520,8 @@ export async function mountGameView(bridge, { container }) {
         const s = world.projectToScreen(anchorOf(u));
         if (!s.visible) { el.style.display = 'none'; continue; }
         el.style.display = '';
+        // stacking: the lower on screen (the closer to the camera), the more in front; hovered / selected always on top
+        el.style.zIndex = String(Math.max(0, Math.round(s.y)) + (el.classList.contains('sel') ? 200000 : el.classList.contains('hov') ? 100000 : 0));
         el.style.transform = `translate(${(s.x - 5.5).toFixed(1)}px, ${s.y.toFixed(1)}px) translate(0, ${mapMode.active ? '-50%' : '-100%'})`;
       }
     }
