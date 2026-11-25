@@ -1291,6 +1291,11 @@ function drawStar(ctx, cx, cy, spikes, outerR, innerR) {
 }
 
 // ---- INPUT ----
+// double click on one of my units: cancel all its moves (see gameBridge.doubleClick)
+canvas.addEventListener('dblclick', (e) => {
+  const hex = getHexUnderMouse(e);
+  if (hex && window.gameBridge) window.gameBridge.doubleClick(hex);
+});
 
 canvas.addEventListener('mousedown', (e) => {
   if (e.button === 2 && selectedUnit && window.KBOrient) {
@@ -3933,7 +3938,19 @@ window.gameBridge = {
     if (pingMode) { if (roomCode) wsSend('ping', { roomCode, q: hex.q, r: hex.r }); return; }
     handleHexClick(hex, opts);
   },
-  doubleClick() {}, // a double click no longer opens the character sheet (FICHE button on the unit card)
+  // double click on one of my units: cancel all its moves (planning: its path and march; classic turn: its standing
+  // march, the steps already walked stay walked)
+  doubleClick(hex) {
+    const units = gameState?.units || [];
+    const sel = selectedUnit && selectedUnit.q === hex.q && selectedUnit.r === hex.r ? selectedUnit : null;
+    const unit = sel || units.find(u => u.q === hex.q && u.r === hex.r && u.isMine);
+    if (!unit || !unit.isMine || gameState?.phase !== 'battle') return;
+    let done = false;
+    if (window.KBSim && KBSim.active()) done = KBSim.cancelMoves(unit);
+    if (unit.march && unit.march.route && unit.march.route.length) { wsSend('cancel_march', { roomCode, unitId: unit.id }); done = true; }
+    if (route.unitId === unit.id) { resetRoute(); refreshRouteTiles(); }
+    notify(done ? `${unit.name} : déplacements annulés.` : `${unit.name} n'a aucun déplacement à annuler.`, 'info');
+  },
   contextMenu() { this.deselect(); },
   facingToward(unit, hex) { return facingToward(unit, hex); },
   // hex where a right-drag starts orienting the selected unit: the unit itself, or (simultaneous) the end of its path

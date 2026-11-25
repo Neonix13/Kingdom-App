@@ -880,6 +880,23 @@
     },
     skipPlayback,
     orderOf: (unit) => (unit ? current(unit) : null),
+    // double click: drop every move of the unit (its path; a move order becomes "hold", an attack keeps its target),
+    // stance changes and facing kept; returns true when something was cancelled
+    cancelMoves(unit) {
+      const u = unit && myUnit(unit.id);
+      if (!u || !canPlan()) return false;
+      const o = current(u);
+      if (!o || !(o.path && o.path.length) && !o.marchRest) return false;
+      if (o.type === 'move') {
+        const keep = o.stance || o.facing != null || o.ability || o.unitAbility;
+        if (keep) patchOrder(u, { type: 'hold', path: undefined, march: undefined, stanceSteps: undefined, stanceAt: undefined });
+        else setOrder(u.id, null);
+      } else patchOrder(u, { path: undefined, stanceSteps: undefined });
+      if (route.unitId === u.id) resetRoute();
+      computeTiles(u);
+      render();
+      return true;
+    },
     setFacing(unit, f) {
       const u = unit && myUnit(unit.id);
       if (!u || !canPlan()) return;
