@@ -18,7 +18,7 @@ const PLATE_CSS = `
    flag flashes red. Values in the tooltips. Sizes in --cw / --ch (smaller from far away), map mode: cloth only */
 .u3-plate { position:absolute; left:0; top:0; pointer-events:auto; cursor:pointer; will-change:transform; padding:0 4px;
   font:900 10px 'Zen Kaku Gothic New','Segoe UI',system-ui,sans-serif; color:#fff; }
-.u3-ban { --cw:30px; --ch:54px; position:relative; width:calc(var(--cw) + 6px); height:calc(var(--ch) + 23px); transform-origin:1.5px 100%; transition:transform .15s; }
+.u3-ban { --cw:33px; --ch:54px; position:relative; width:calc(var(--cw) + 6px); height:calc(var(--ch) + 23px); transform-origin:1.5px 100%; transition:transform .15s; }
 .u3-plate.hov .u3-ban, .u3-plate.sel .u3-ban { transform:scale(1.18); }
 /* pole, finial and crossbar */
 .u3-pole { position:absolute; left:0; top:4px; bottom:0; width:3px; background:linear-gradient(90deg, #2a1a0e, #7a5634 45%, #2a1a0e); box-shadow:0 0 0 1px #000; }
@@ -42,7 +42,7 @@ const PLATE_CSS = `
 .u3-plate.fleeing .u3-flash { animation:u3-redflash .8s steps(2) infinite; }
 @keyframes u3-redflash { 0% { opacity:0; } 50% { opacity:.85; } }
 /* main column: tags, pictogram, stance */
-.u3-main { position:absolute; left:3px; right:11px; top:5px; z-index:2; display:flex; flex-direction:column; align-items:center; gap:3px; }
+.u3-main { position:absolute; left:3px; right:14px; top:5px; z-index:2; display:flex; flex-direction:column; align-items:center; gap:3px; }
 .u3-cloth .k { display:flex; color:#fff; font:400 17px 'Yuji Boku','Zen Old Mincho',serif; line-height:1; filter:drop-shadow(0 0 1px #000) drop-shadow(0 0 1px #000); }
 .u3-cloth .k svg { width:16px; height:16px; }
 .u3-tags { display:flex; flex-direction:column; align-items:center; gap:1px; }
@@ -56,15 +56,15 @@ const PLATE_CSS = `
   clip-path:polygon(50% 0, 62% 14%, 82% 6%, 84% 28%, 100% 40%, 86% 56%, 96% 78%, 72% 80%, 62% 100%, 46% 86%, 26% 98%, 22% 76%, 2% 70%, 14% 50%, 0 30%, 22% 22%, 26% 2%); }
 .u3-plate .st.torn::after { content:''; position:absolute; left:3px; right:3px; top:50%; height:1px; background:rgba(255,255,255,.5); transform:rotate(-35deg); }
 /* gauges: a strip sewn along the right edge of the cloth (seam on its left), vitality wide, morale narrow */
-.u3-gauges { position:absolute; right:3px; top:3px; bottom:4px; z-index:2; width:8px; display:flex; gap:1px; padding:1px;
+.u3-gauges { position:absolute; right:3px; top:3px; bottom:4px; z-index:2; width:11px; display:flex; gap:1px; padding:1px;
   background:rgba(0,0,0,.45); box-shadow:-1px 0 0 rgba(255,255,255,.6); }
 .u3-vbar { position:relative; flex:none; width:4px; height:100%; background:#1d1b19; overflow:hidden; }
 .u3-vbar > i { position:absolute; left:0; right:0; bottom:0; transition:height .3s; }
 .u3-vbar.hp > i { background:linear-gradient(90deg, #ffffff, #d8d0c2); }
 .u3-vbar.hp.low > i { background:linear-gradient(90deg, #ff6a55, #b8261c); }
 .u3-vbar.hp::after { content:''; position:absolute; inset:0; background:repeating-linear-gradient(0deg, transparent 0 calc(25% - 1px), rgba(0,0,0,.7) calc(25% - 1px) 25%); }
-.u3-vbar.mo { width:2px; }
-.u3-vbar.mo > i { background:#a8c4ec; }
+.u3-vbar.mo { width:4px; box-shadow:-1px 0 0 #000; }
+.u3-vbar.mo > i { background:linear-gradient(90deg, #8fd0ff, #2f86e6); box-shadow:0 0 3px rgba(80,170,255,.9); }
 .u3-vbar.mo.neg > i { top:0; bottom:auto; background:repeating-linear-gradient(135deg, #ff5a45 0 2px, #8a1a12 2px 4px); }
 /* states */
 .u3-plate.general .u3-cloth-edge { box-shadow:inset 0 3px 0 rgba(0,0,0,.35), inset 0 0 0 2px #e8c060, inset 0 0 0 3px #000; }
