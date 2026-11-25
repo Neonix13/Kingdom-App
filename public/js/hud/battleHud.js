@@ -744,11 +744,11 @@ export function mountBattleHud(bridge, view) {
       else if (u.isFleeing) { cls += ' flee'; line = '<em>En fuite</em>'; }
       else if (o) { cls += ' has'; line = describeOrder(o, st); }
       else if (u.march && u.march.route && u.march.route.length) line = `Marche · ${u.march.route.length} case${u.march.route.length > 1 ? 's' : ''}`;
-      else line = `Tient${!u.isGeneral && u.stance ? ` · ${esc(names[u.stance] || u.stance)}` : ''}`;
+      else line = '';
       if (sel && sel.id === u.id) cls += ' sel';
       const pct = u.maxVitality ? Math.max(0, Math.min(100, (u.vitality / u.maxVitality) * 100)) : 0;
       const clear = o && pl.canPlan ? `<button data-clear="${esc(u.id)}" title="Annuler l'ordre" aria-label="Annuler l'ordre">✕</button>` : '';
-      return `<div class="${cls}" data-unit="${esc(u.id)}" data-i="${i}" title="${esc(u.name)}"><span class="k">${unitKanji(u)}<i class="dot"></i></span><span class="tx"><b>${esc(u.name)}</b><span>${line}</span></span><span class="seq">${orderSeq(o)}</span>${clear}<i class="bar" style="width:${pct}%"></i></div>`;
+      return `<div class="${cls}" data-unit="${esc(u.id)}" data-i="${i}" title="${esc(u.name)}"><span class="k">${unitKanji(u)}<i class="dot"></i></span><span class="tx"><b>${esc(u.name)}</b>${line ? `<span>${line}</span>` : ''}</span><span class="seq">${orderSeq(o)}</span>${clear}<i class="bar" style="width:${pct}%"></i></div>`;
     }).join('');
     const holding = mine.filter((u) => u.q != null && !orders.some((o) => String(o.unitId) === String(u.id))).length;
     const foot = pb ? '<div class="foot">Les ordres de tous les généraux s\'exécutent case par case.</div>'
