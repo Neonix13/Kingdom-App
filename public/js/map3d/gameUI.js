@@ -34,7 +34,7 @@ body.v3-photo #v3-photo-bar { display:flex; }
 `;
 
 const CAM_CODES = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Equal', 'Minus', 'NumpadAdd', 'NumpadSubtract']);
-const DEFAULTS = { quality: 'auto', grid: 0.16, plates: 'auto', hour: 'auto', camSpeed: 1, staging: true, combatCard: 'full', combatClose: 'mine', followPlayback: true, dice: true, killCam: true, dof: true, colors: 'kingdom', fogStyle: 'dark' };
+const DEFAULTS = { quality: 'auto', grid: 0.16, plates: 'auto', hour: 'auto', camSpeed: 1, staging: true, combatCard: 'full', combatClose: 'mine', followPlayback: true, dice: true, killCam: true, dof: true, colors: 'kingdom', fogStyle: 'dark', edgeScroll: true };
 
 export function createGameUI({ world, container, bridge, getView }) {
   const style = document.createElement('style');
@@ -74,6 +74,7 @@ export function createGameUI({ world, container, bridge, getView }) {
     <label>Étiquettes <select data-k="plates"><option value="auto">Auto</option><option value="always">Toujours</option><option value="never">Jamais</option></select></label>
     <label>Heure <select data-k="hour"><option value="auto">Suit les tours</option><option value="6.5">Aube</option><option value="10">Matin</option><option value="13">Midi</option><option value="16.2">Après-midi</option><option value="18.2">Crépuscule</option><option value="20.3">Nuit</option></select></label>
     <label>Vitesse caméra <input type="range" data-k="camSpeed" min="0.4" max="2.5" step="0.1"></label>
+    <label>Défilement par les bords de l'écran <input type="checkbox" data-k="edgeScroll"></label>
     <label>Mise en scène des combats <input type="checkbox" data-k="staging"></label>
     <label>Fiche de combat <select data-k="combatCard"><option value="full">Grande</option><option value="small">Petite</option><option value="off">Aucune</option></select></label>
     <label>Fermeture des fiches <select data-k="combatClose"><option value="mine">Manuelle pour mes combats</option><option value="manual">Toujours manuelle</option><option value="auto">Automatique</option></select></label>
@@ -83,8 +84,8 @@ export function createGameUI({ world, container, bridge, getView }) {
     <label>Profondeur de champ <input type="checkbox" data-k="dof"></label>
     <div class="row"><button data-act="photo">Mode photo (P)</button><button data-act="top">Vue carte (M)</button></div>
     <div class="row"><button data-act="walk">Promenade sur le terrain (B)</button></div>
-    <div class="hint">Clic gauche : sélection · glisser : déplacer la vue · clic droit glissé : pivoter · molette : zoom<br>
-    ZQSD / WASD / flèches : déplacer · A/E : pivoter · Espace : centrer sur l’unité · Échap : désélectionner · B : promenade · M : vue carte</div>`;
+    <div class="hint">Caméra façon Total War : ZQSD / WASD / flèches ou souris au bord de l'écran : déplacer · A/E : pivoter · molette : zoom (la caméra se couche en s'approchant, plonge en s'éloignant) · clic molette maintenu : pivoter et incliner · Maj : plus vite<br>
+    Clic gauche : sélection · glisser : déplacer la vue · clic droit glissé depuis l'unité : orienter · Espace : centrer sur l’unité · Échap : désélectionner · B : promenade · M : vue carte</div>`;
   container.appendChild(panel);
   gear.addEventListener('click', (e) => { e.stopPropagation(); panel.classList.toggle('open'); });
   document.addEventListener('pointerdown', (e) => { if (!panel.contains(e.target) && e.target !== gear) panel.classList.remove('open'); });
@@ -242,13 +243,33 @@ export function createGameUI({ world, container, bridge, getView }) {
     }
   });
   window.addEventListener('keyup', (e) => keys.delete(e.code));
-  window.addEventListener('blur', () => keys.clear());
+  window.addEventListener('blur', () => { keys.clear(); mouse.in = false; });
+  // Total War: Shift speeds the camera up; the mouse at the edge of the screen scrolls the view
+  let shift = false;
+  window.addEventListener('keydown', (e) => { if (e.key === 'Shift') shift = true; }, true);
+  window.addEventListener('keyup', (e) => { if (e.key === 'Shift') shift = false; }, true);
+  const mouse = { x: 0, y: 0, in: false, onView: false, buttons: 0 };
+  window.addEventListener('pointermove', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; mouse.in = true; mouse.buttons = e.buttons; mouse.onView = e.target === world.renderer.domElement; });
+  document.addEventListener('pointerleave', () => { mouse.in = false; });
+  document.addEventListener('mouseout', (e) => { if (!e.relatedTarget) mouse.in = false; });
+  const EDGE = 14;
+  function edgeDir() {
+    if (!settings.edgeScroll || !mouse.in || mouse.buttons || !document.hasFocus()) return null;
+    const w = window.innerWidth, h = window.innerHeight;
+    // only from the 3D view itself, or right at the very border of the window (HUD panels do not scroll)
+    const atBorder = mouse.x <= 2 || mouse.y <= 2 || mouse.x >= w - 3 || mouse.y >= h - 3;
+    if (!mouse.onView && !atBorder) return null;
+    const dx = mouse.x < EDGE ? -1 : mouse.x > w - EDGE ? 1 : 0;
+    const dy = mouse.y < EDGE ? 1 : mouse.y > h - EDGE ? -1 : 0;
+    return dx || dy ? { dx, dy } : null;
+  }
   const fwd = new THREE.Vector3(), right = new THREE.Vector3(), move = new THREE.Vector3();
 
   function update(dt) {
-    if (!keys.size || walker.active) return;
+    const edge = walker.active || photo || (getView() && getView().mapMode) ? null : edgeDir();
+    if ((!keys.size && !edge) || walker.active) return;
     const dist = camera.position.distanceTo(controls.target);
-    const sp = dist * 0.9 * settings.camSpeed * dt * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) / Math.tan(THREE.MathUtils.degToRad(21));
+    const sp = (shift ? 2.2 : 1) * dist * 0.9 * settings.camSpeed * dt * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) / Math.tan(THREE.MathUtils.degToRad(21));
     camera.getWorldDirection(fwd);
     fwd.y = 0; fwd.normalize();
     right.crossVectors(fwd, camera.up).normalize();
@@ -258,6 +279,7 @@ export function createGameUI({ world, container, bridge, getView }) {
     if (keys.has('KeyS') || keys.has('ArrowDown')) move.sub(fwd);
     if (keys.has('KeyD') || keys.has('ArrowRight')) move.add(right);
     if (keys.has('KeyA') || keys.has('ArrowLeft')) move.sub(right);
+    if (edge) { move.addScaledVector(fwd, edge.dy); move.addScaledVector(right, edge.dx); }
     if (move.lengthSq() > 0) {
       move.normalize().multiplyScalar(sp);
       camera.position.add(move);
@@ -266,11 +288,12 @@ export function createGameUI({ world, container, bridge, getView }) {
     const rot = (keys.has('KeyE') ? 1 : 0) - (keys.has('KeyQ') ? 1 : 0);
     if (rot) {
       const off = camera.position.clone().sub(controls.target);
-      off.applyAxisAngle(camera.up, -rot * dt * 1.4 * settings.camSpeed);
+      off.applyAxisAngle(camera.up, -rot * dt * 1.4 * settings.camSpeed * (shift ? 1.8 : 1));
       camera.position.copy(controls.target).add(off);
     }
     const zoom = (keys.has('Minus') || keys.has('NumpadSubtract') ? 1 : 0) - (keys.has('Equal') || keys.has('NumpadAdd') ? 1 : 0);
     if (zoom) {
+      window.kbCamZoomAt = performance.now();
       const off = camera.position.clone().sub(controls.target);
       const len = Math.min(controls.maxDistance, Math.max(controls.minDistance, off.length() * (1 + zoom * dt * 1.6)));
       camera.position.copy(controls.target).add(off.setLength(len));

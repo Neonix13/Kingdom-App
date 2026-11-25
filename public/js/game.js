@@ -1739,18 +1739,24 @@ function strokeZone(keys, center, color, dash = null) {
   const col = (a) => `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${a})`;
   const path = new Path2D();
   for (const l of loops) { path.moveTo(l[0][0], l[0][1]); for (let i = 1; i < l.length; i++) path.lineTo(l[i][0], l[i][1]); path.closePath(); }
+  // no fill (the movement range is the filled one): shots = double golden line with a soft glow, charisma = blue dashes
   const k = Math.max(1, 1 / zoom);
+  const charisma = color === '#6ebeff';
   ctx.save();
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-  ctx.fillStyle = col(dash ? 0.05 : 0.08);
-  ctx.fill(path, 'evenodd');
   ctx.save();
-  ctx.clip(path, 'evenodd');
-  for (const [w, a] of [[HEX_SIZE * 1.1, 0.07], [HEX_SIZE * 0.6, 0.1], [HEX_SIZE * 0.28, 0.16]]) { ctx.strokeStyle = col(dash ? a * 0.6 : a); ctx.lineWidth = w; ctx.stroke(path); }
+  ctx.shadowColor = col(0.8); ctx.shadowBlur = dash ? 6 : 10;
+  ctx.strokeStyle = col(dash ? 0.12 : 0.22); ctx.lineWidth = (dash ? 6 : 9) * k; ctx.stroke(path);
   ctx.restore();
-  ctx.setLineDash(dash ? dash.map((d) => d * k) : []);
-  ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 4.5 * k; ctx.stroke(path);
-  ctx.strokeStyle = col(dash ? 0.85 : 0.98); ctx.lineWidth = 2 * k; ctx.stroke(path);
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = (dash ? 4 : 6) * k; ctx.stroke(path);
+  if (charisma || dash) {
+    ctx.setLineDash((charisma ? [9, 7] : [6, 8]).map((d) => d * k));
+    ctx.strokeStyle = col(dash ? 0.85 : 0.98); ctx.lineWidth = (dash ? 1.8 : 2.4) * k; ctx.stroke(path);
+  } else {
+    // double line: a wide coloured stroke with a dark core
+    ctx.strokeStyle = col(0.98); ctx.lineWidth = 4.2 * k; ctx.stroke(path);
+    ctx.strokeStyle = 'rgba(20,14,4,0.85)'; ctx.lineWidth = 1.3 * k; ctx.stroke(path);
+  }
   ctx.restore();
 }
 

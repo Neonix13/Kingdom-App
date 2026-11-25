@@ -1,5 +1,5 @@
 import { createWorld } from './world.js';
-import { createPathPreview, createOrdersLayer, createPathMarks } from './pathPreview.js';
+import { createPathPreview, createOrdersLayer, createPathMarks, createZoneRims } from './pathPreview.js';
 import { createMapEditsLayer } from './mapEdits3d.js';
 import { createGameUI } from './gameUI.js';
 import { createMapMode } from './mapMode.js';
@@ -114,9 +114,36 @@ export async function mountGameView(bridge, { container }) {
     onProgress: (pct) => { loading.querySelector('i').style.width = pct + '%'; },
   });
   const { THREE } = world;
-  world.controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+  // Camera in the manner of Total War: the middle button held turns and tilts the view, the wheel zooms along a curve
+  // (close: the camera lowers toward the horizon; far: it looks down on the battlefield), keys / screen edges move it
+  // (gameUI.js); the left button still drags the view, the right button orients units
+  world.controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: -1 };
   world.controls.screenSpacePanning = false;
   world.controls.panSpeed = 1.2;
+  {
+    const C = world.controls, cam = world.camera;
+    const sph = new THREE.Spherical(), off = new THREE.Vector3();
+    const pitchFor = (r) => THREE.MathUtils.degToRad(70 - 46 * THREE.MathUtils.smoothstep(r, 4, 75)); // from the vertical
+    let tilt = null, mmb = false, wheelAt = -1e9;
+    canvas.addEventListener('pointerdown', (e) => { if (e.button === 1) { mmb = true; e.preventDefault(); } });
+    window.addEventListener('pointerup', (e) => { if (e.button === 1) mmb = false; });
+    canvas.addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault(); });
+    canvas.addEventListener('wheel', () => { wheelAt = performance.now(); }, { passive: true });
+    world.frameHooks.push((dt) => {
+      if (!C.enabled || document.body.classList.contains('v3-map')) return; // map mode (M): its own camera
+      off.copy(cam.position).sub(C.target);
+      sph.setFromVector3(off);
+      const base = pitchFor(sph.radius);
+      // the tilt chosen with the middle button is kept as an offset to the zoom curve
+      if (tilt === null || mmb) { tilt = THREE.MathUtils.clamp(sph.phi - base, -0.6, 0.6); return; }
+      const now = performance.now();
+      if (now - wheelAt > 450 && now - (window.kbCamZoomAt || -1e9) > 200) return;
+      const want = THREE.MathUtils.clamp(base + tilt, 0.12, C.maxPolarAngle);
+      sph.phi += (want - sph.phi) * Math.min(1, dt * 9);
+      off.setFromSpherical(sph);
+      cam.position.copy(C.target).add(off);
+    });
+  }
   world.setGrid(0.16);
 
   let units3d = null;
@@ -137,6 +164,7 @@ export async function mountGameView(bridge, { container }) {
   const preview = createPathPreview(world);
   const ordersLayer = createOrdersLayer(world);
   const marchLayer = createOrdersLayer(world, { opacity: 0.45 }); // standing marches of my units (rest of the route)
+  const zoneRims = createZoneRims(world); // range / charisma zones: crisp ribbons on the relief
   const pathMarks = createPathMarks(world); // selected unit: turn numbers of its march, stance changes on its path
   const editsLayer = createMapEditsLayer(world);
   const baseMap = () => (bridge.mapDoc ? { seg: bridge.mapDoc.segments || {}, ter: bridge.mapDoc.terrain || {} } : { seg: {}, ter: {} });
@@ -274,17 +302,16 @@ export async function mountGameView(bridge, { container }) {
   }
   // the range from the selected unit's destination (hovered hex, or end of its planned path) is added to the overlay;
   // it follows the hover without a full sync
-  // zone colours: range (warm gold), charisma (sky blue)
-  const ZONE_RGB = { tir: [255, 206, 92], charisme: [110, 190, 255] };
   let lastOverlay = { fills: [], outlines: [], zones: [] }, previewSig = '';
   function previewOutline() {
     const rp = bridge.rangePreview;
     previewSig = rp ? `${rp.kind}|${rp.center.q},${rp.center.r}|${rp.keys.size}` : '';
     if (!rp || !rp.keys.size) return [];
-    return [{ keys: rp.keys, center: hexKey(rp.center.q, rp.center.r), rgb: rp.kind === 'tir' ? ZONE_RGB.tir : ZONE_RGB.charisme, dash: true }];
+    return [{ keys: rp.keys, center: hexKey(rp.center.q, rp.center.r), kind: rp.kind === 'tir' ? 'tir' : 'charisme', dash: true }];
   }
   function applyOverlay() {
-    world.layers.setOverlay({ fills: lastOverlay.fills, outlines: lastOverlay.outlines, zones: [...lastOverlay.zones, ...previewOutline()] });
+    world.layers.setOverlay({ fills: lastOverlay.fills, outlines: lastOverlay.outlines });
+    zoneRims.show([...lastOverlay.zones, ...previewOutline()]);
   }
   function syncNow() {
     dirty = false;
@@ -320,8 +347,8 @@ export async function mountGameView(bridge, { container }) {
     const rc = bridge.rangeCenter, mc = bridge.motivateCenter;
     // range (pale gold) and charisma (blue): light veil, soft halo, crisp edge
     const zones = [];
-    if (rc) zones.push({ keys: bridge.rangeTiles, center: hexKey(rc.q, rc.r), rgb: ZONE_RGB.tir });
-    if (mc) zones.push({ keys: bridge.motivateTiles, center: hexKey(mc.q, mc.r), rgb: ZONE_RGB.charisme });
+    if (rc) zones.push({ keys: bridge.rangeTiles, center: hexKey(rc.q, rc.r), kind: 'tir' });
+    if (mc) zones.push({ keys: bridge.motivateTiles, center: hexKey(mc.q, mc.r), kind: 'charisme' });
     lastOverlay = { fills, outlines, zones };
     applyOverlay();
 

@@ -415,3 +415,91 @@ export function createPathMarks(world) {
   function clear() { show([]); }
   return { show, clear };
 }
+
+// Range (shots) and charisma zones: crisp ribbons draped on the relief along one smooth contour (KBRules.zoneLoops),
+// no fill (the movement range is the filled one). Shots: a double golden line with a soft outer glow; charisma: sky-blue
+// dashes; the planned range (dash: true) is thinner and paler. zones: [{ keys, center: "q,r", kind: 'tir' | 'charisme', dash? }]
+export function createZoneRims(world) {
+  const { scene, hexToWorld } = world;
+  const ground = world.walkHeight || world.groundHeight;
+  const meshes = [];
+  let lastSig = '';
+  const DIR_TO_GEO_EDGE = [0, 5, 4, 3, 2, 1];
+  const edgeOf = (q, r, d) => {
+    const c = hexToWorld(q, r), g = DIR_TO_GEO_EDGE[d];
+    const a0 = Math.PI / 3 * g, a1 = Math.PI / 3 * (g + 1);
+    return [[c.x + Math.cos(a0) * 0.98, c.z + Math.sin(a0) * 0.98], [c.x + Math.cos(a1) * 0.98, c.z + Math.sin(a1) * 0.98]];
+  };
+  const STYLE = {
+    tir: { color: 0xffc94a, glow: 0xffb020 },
+    charisme: { color: 0x7cc8ff, glow: 0x3d9bff },
+  };
+  // closed polyline resampled every `step`, as [{ x, z }]
+  function resampleLoop(loop, step) {
+    const out = [];
+    for (let i = 0; i < loop.length; i++) {
+      const a = loop[i], b = loop[(i + 1) % loop.length];
+      const d = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.max(1, Math.ceil(d / step));
+      for (let j = 0; j < n; j++) out.push({ x: a[0] + (b[0] - a[0]) * j / n, z: a[1] + (b[1] - a[1]) * j / n });
+    }
+    return out;
+  }
+  // strip along pts (open), offset sideways by `shift`, half width w, lifted above the ground
+  function strip(pts, w, shift, lift, mat, closed) {
+    const pos = [], idx = [];
+    const n = pts.length;
+    for (let i = 0; i < n; i++) {
+      const a = pts[closed ? (i - 1 + n) % n : Math.max(0, i - 1)], b = pts[closed ? (i + 1) % n : Math.min(n - 1, i + 1)];
+      let tx = b.x - a.x, tz = b.z - a.z;
+      const l = Math.hypot(tx, tz) || 1; tx /= l; tz /= l;
+      const nx = -tz, nz = tx, p = pts[i];
+      const ox = p.x + nx * shift, oz = p.z + nz * shift;
+      const x1 = ox + nx * w, z1 = oz + nz * w, x2 = ox - nx * w, z2 = oz - nz * w;
+      pos.push(x1, ground(x1, z1) + lift, z1, x2, ground(x2, z2) + lift, z2);
+      if (i) { const k = i * 2; idx.push(k - 2, k - 1, k, k - 1, k + 1, k); }
+    }
+    if (closed && n > 2) { const k = (n - 1) * 2; idx.push(k, k + 1, 0, k + 1, 1, 0); }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setIndex(idx);
+    const m = new THREE.Mesh(g, mat);
+    m.frustumCulled = false;
+    m.renderOrder = 6;
+    scene.add(m);
+    meshes.push(m);
+  }
+  const mat = (color, opacity, additive = false) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, fog: false, toneMapped: false, side: THREE.DoubleSide, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending, polygonOffset: true, polygonOffsetFactor: -2 });
+  function clear() { for (const m of meshes) { scene.remove(m); m.geometry.dispose(); m.material.dispose(); } meshes.length = 0; }
+  function show(zones) {
+    const sig = JSON.stringify((zones || []).map((z) => [z.kind, z.center, z.dash ? 1 : 0, [...z.keys].sort()]));
+    if (sig === lastSig) return;
+    lastSig = sig;
+    clear();
+    const R = self.KBRules;
+    if (!R || !R.zoneLoops) return;
+    for (const z of zones || []) {
+      if (!z.keys || !z.keys.size) continue;
+      const st = STYLE[z.kind] || STYLE.tir;
+      const k = z.dash ? 0.65 : 1;
+      for (const loop of R.zoneLoops(z.keys, z.center, edgeOf, 3)) {
+        const pts = resampleLoop(loop, 0.08);
+        if (pts.length < 3) continue;
+        // soft outer glow, dark under-line, then the rim (inner side of the contour = toward the zone)
+        strip(pts, 0.16 * k, 0, 0.03, mat(st.glow, z.dash ? 0.12 : 0.2, true), true);
+        strip(pts, 0.05 * k, 0, 0.035, mat(0x000000, 0.45), true);
+        if (z.kind === 'charisme') {
+          // dashes
+          const dash = z.dash ? 3 : 4, gap = 3;
+          for (let i = 0; i < pts.length; i += dash + gap) strip(pts.slice(i, Math.min(pts.length, i + dash + 1)), 0.03 * k, 0, 0.04, mat(st.color, 0.98 * (z.dash ? 0.8 : 1)), false);
+        } else if (z.dash) {
+          for (let i = 0; i < pts.length; i += 6) strip(pts.slice(i, Math.min(pts.length, i + 4)), 0.022, 0, 0.04, mat(st.color, 0.8), false);
+        } else {
+          // double golden line
+          strip(pts, 0.016, 0.04, 0.04, mat(st.color, 0.98), true);
+          strip(pts, 0.016, -0.04, 0.04, mat(st.color, 0.98), true);
+        }
+      }
+    }
+  }
+  return { show, clear };
+}
