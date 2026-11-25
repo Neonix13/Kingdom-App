@@ -309,7 +309,7 @@ export function createOrdersLayer(world, { opacity = 0.85, tint = false } = {}) 
     glowMat.color.copy(base);
     coreMat.color.copy(base).lerp(new THREE.Color(0xffffff), 0.45);
     thinMat.color.set(tint ? base.getHex() : 0xffffff);
-    thinMat.opacity = 0.4;
+    thinMat.opacity = tint ? 0.85 : 0.4;
     clearArcs();
     clearRibbons();
     let n = 0;
@@ -323,7 +323,7 @@ export function createOrdersLayer(world, { opacity = 0.85, tint = false } = {}) 
         // selected: thick white trail, soft glow in the player's colour; others: thin faint trail ending on a dot
         if (sel) ribbons.push(...addTrail(scene, hexToWorld, groundHeight, o.path, { width: 0.075, glow: base.getHex(), color: tint ? base.getHex() : 0xffffff, opacity: Math.min(0.96, opacity + 0.15) }));
         else {
-          ribbons.push(...addTrail(scene, hexToWorld, groundHeight, o.path, { width: 0.028, opacity: 0.4, shadow: false, color: tint ? base.getHex() : 0xffffff }));
+          ribbons.push(...addTrail(scene, hexToWorld, groundHeight, o.path, { width: tint ? 0.034 : 0.028, opacity: tint ? 0.85 : 0.4, shadow: tint, color: tint ? base.getHex() : 0xffffff }));
           endDot(pts[pts.length - 1], 0.06, thinMat);
         }
         void curve; void len;

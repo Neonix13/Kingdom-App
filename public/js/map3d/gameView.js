@@ -187,7 +187,7 @@ export async function mountGameView(bridge, { container }) {
   }
 
   const preview = createPathPreview(world);
-  const ordersLayer = createOrdersLayer(world);
+  const ordersLayer = createOrdersLayer(world, { tint: true }); // moves of this turn: in the player's colour
   const marchLayer = createOrdersLayer(world, { opacity: 0.45 }); // standing marches of my units (rest of the route)
   const zoneRims = createZoneRims(world); // range / charisma zones: crisp ribbons on the relief
   const pathMarks = createPathMarks(world); // selected unit: turn numbers of its march, stance changes on its path
