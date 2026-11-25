@@ -139,7 +139,7 @@ export async function mountGameView(bridge, { container }) {
       if (!mapMode.active) {
         if (e.deltaY > 0 && d >= C.maxDistance * 0.97) { push += e.deltaY; if (push > 120) { push = 0; mapMode.enter(); } } else push = 0;
       } else if (mapMode.state === 'on') {
-        if (e.deltaY < 0 && d <= C.minDistance * 1.05) { push -= e.deltaY; if (push > 120) { push = 0; mapMode.exit(); } } else push = 0;
+        if (e.deltaY < 0 && d <= C.minDistance * 1.05) { push -= e.deltaY; if (push > 40) { push = 0; mapMode.exit(); } } else push = 0;
       }
     }, { passive: true });
     world.frameHooks.push((dt) => {

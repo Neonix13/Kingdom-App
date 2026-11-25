@@ -128,7 +128,8 @@ export function createMapMode(world, { onChange } = {}) {
     // theta 0: north (−z) at the top of the screen, like the 2D board
     startAnim(center, new THREE.Spherical(dist, 0.0004, 0), MAP_FOV, DUR_IN, () => {
       state = 'on';
-      controls.minDistance = fitDistance(MAP_FOV) * 0.06;
+      // no zooming in within the Strategy view: wheeling in goes back to the battle camera (gameView.js)
+      controls.minDistance = Math.min(fitDistance(MAP_FOV), maxStrategyDistance()) * 0.98;
       controls.maxDistance = Math.min(fitDistance(MAP_FOV) * 1.05, maxStrategyDistance()); // whole map at most, and the zoom limit
       controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
       controls.screenSpacePanning = false;
