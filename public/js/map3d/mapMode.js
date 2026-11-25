@@ -23,8 +23,9 @@ const MAP_FOV = 9;
 // furthest zoom of the Strategy view: about 44 world units of ground on the screen's height (two dozen hexes)
 const MAX_HALF_H = 22;
 const maxStrategyDistance = () => MAX_HALF_H / Math.tan(MAP_FOV * Math.PI / 360);
-const DUR_IN = 0.85, DUR_OUT = 0.75;
-const ease = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+// short and starting at once (ease-out): no dead time between the wheel notch and the camera moving
+const DUR_IN = 0.5, DUR_OUT = 0.45;
+const ease = (x) => 1 - Math.pow(1 - x, 3);
 
 export function createMapMode(world, { onChange } = {}) {
   const { THREE, camera, controls } = world;
