@@ -565,14 +565,20 @@ export async function mountGameView(bridge, { container }) {
         const u = el._unit;
         // the banner's pole stands among the soldiers: its foot a little below the top of the formation; the general's
         // escort is taller (mounted), its banner is brought down to the height of the others
-        const s = world.projectToScreen(_plateAt.copy(anchorOf(u)).setY(anchorOf(u).y - (u.isGeneral ? 0.65 : 0.2)));
+        // Strategy view (top-down): a flat token on the centre of the unit's hex instead of a banner
+        const a = anchorOf(u);
+        const s = mapMode.active
+          ? world.projectToScreen(_plateAt.set(a.x, world.standHeight(a.x, a.z), a.z))
+          : world.projectToScreen(_plateAt.copy(a).setY(a.y - (u.isGeneral ? 0.65 : 0.2)));
         if (!s.visible) { el.style.display = 'none'; continue; }
         el.style.display = '';
         // stacking by the real distance to the camera (not the screen height, which flips with low or tilted views):
         // the closer, the more in front; hovered / selected always on top
         const camD = world.camera.position.distanceTo(anchorOf(u));
         el.style.zIndex = String(Math.max(1, 90000 - Math.round(camD * 100)) + (el.classList.contains('sel') ? 200000 : el.classList.contains('hov') ? 100000 : 0));
-        el.style.transform = `translate(${(s.x - 5.5).toFixed(1)}px, ${s.y.toFixed(1)}px) translate(0, ${mapMode.active ? '-50%' : '-100%'})`;
+        el.style.transform = mapMode.active
+          ? `translate(${s.x.toFixed(1)}px, ${s.y.toFixed(1)}px) translate(-50%, -50%)`
+          : `translate(${(s.x - 5.5).toFixed(1)}px, ${s.y.toFixed(1)}px) translate(0, -100%)`;
       }
     }
   }

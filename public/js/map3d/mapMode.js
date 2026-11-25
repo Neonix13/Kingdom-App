@@ -4,12 +4,19 @@
 // copies its framing every frame, so picking, projections and camera moves keep working.
 const STYLE = `
 #hud-root .hud-ibtn[hidden] { display: none; }
-body.v3-map #view3d-plates .u3-plate { transform-origin: 0 0; }
-body.v3-map #view3d-plates .u3-plate:not(.sel):not(.hov) { padding: 0; }
-body.v3-map #view3d-plates .u3-plate:not(.sel):not(.hov) .u3-gauges,
-body.v3-map #view3d-plates .u3-plate:not(.sel):not(.hov) .st,
-body.v3-map #view3d-plates .u3-plate:not(.sel):not(.hov) .u3-tags { display: none; }
-body.v3-map #view3d-plates .u3-plate:not(.sel):not(.hov) .u3-main { right: 3px; }
+/* Strategy view: each unit is a flat square token on its hex (player's colour, pictogram), no pole, no waving cloth */
+body.v3-map #view3d-plates .u3-plate { padding: 0; }
+body.v3-map #view3d-plates .u3-ban { width: auto; height: auto; transform: none; filter: none; }
+body.v3-map #view3d-plates .u3-pole, body.v3-map #view3d-plates .u3-cap, body.v3-map #view3d-plates .u3-bar-x,
+body.v3-map #view3d-plates .u3-ties, body.v3-map #view3d-plates .u3-gauges, body.v3-map #view3d-plates .st,
+body.v3-map #view3d-plates .u3-tags { display: none; }
+body.v3-map #view3d-plates .u3-cloth { position: relative; left: 0; top: 0; width: 26px; height: 26px; clip-path: none; animation: none; transform: none;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px #000, 2px 3px 4px rgba(0,0,0,.5); }
+body.v3-map #view3d-plates .u3-cloth-edge { display: none; }
+body.v3-map #view3d-plates .u3-main { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+body.v3-map #view3d-plates .u3-plate.general .u3-cloth { box-shadow: 0 0 0 2px #e8c060, 0 0 0 3.5px #000, 2px 3px 4px rgba(0,0,0,.5); }
+body.v3-map #view3d-plates .u3-plate.sel .u3-cloth { box-shadow: 0 0 0 2px #D8352A, 0 0 0 3.5px #000, 0 0 8px 2px rgba(216,53,42,.8); }
+body.v3-map #view3d-plates .u3-plate.hov .u3-cloth { box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px #000, 0 0 8px 2px rgba(255,255,255,.6); }
 body.v3-map .v3-map-chip.show { display: flex; }
 .v3-map-chip { display: none; position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 60; align-items: center; gap: 10px;
   padding: 6px 14px; background: #000; color: #fff; border: 2px solid #fff; box-shadow: 0 0 0 2px #000, 4px 4px 0 #D8352A;
