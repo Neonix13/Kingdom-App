@@ -73,12 +73,14 @@ export function createMapMode(world, { onChange } = {}) {
       let dTheta = anim.s1.theta - anim.s0.theta;
       if (dTheta > Math.PI) dTheta -= Math.PI * 2;
       if (dTheta < -Math.PI) dTheta += Math.PI * 2;
-      const r = Math.exp(Math.log(anim.s0.radius) + (Math.log(anim.s1.radius) - Math.log(anim.s0.radius)) * k);
-      _s.set(r, anim.s0.phi + (anim.s1.phi - anim.s0.phi) * k, anim.s0.theta + dTheta * k);
+      // the field of view narrows (or widens) while the camera backs off (or comes closer) so that the ground seen keeps
+      // the same size on screen all along: the zoom level does not change from one view to the other
+      const lt0 = Math.log(Math.tan(THREE.MathUtils.degToRad(anim.f0) / 2)), lt1 = Math.log(Math.tan(THREE.MathUtils.degToRad(anim.f1) / 2));
+      const tanF = Math.exp(lt0 + (lt1 - lt0) * k);
+      const halfH = Math.exp(Math.log(anim.h0) + (Math.log(anim.h1) - Math.log(anim.h0)) * k);
+      _s.set(halfH / tanF, anim.s0.phi + (anim.s1.phi - anim.s0.phi) * k, anim.s0.theta + dTheta * k);
       controls.target.copy(anim.t0).lerp(anim.t1, k);
       camera.position.copy(controls.target).add(_off.setFromSpherical(_s));
-      // narrowing the field of view while backing off keeps the framing and flattens the perspective
-      const tanF = Math.tan(THREE.MathUtils.degToRad(anim.f0) / 2) + (Math.tan(THREE.MathUtils.degToRad(anim.f1) / 2) - Math.tan(THREE.MathUtils.degToRad(anim.f0) / 2)) * k;
       camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(tanF));
       camera.updateProjectionMatrix();
       camera.lookAt(controls.target);
@@ -89,14 +91,17 @@ export function createMapMode(world, { onChange } = {}) {
       }
     }
     if (state === 'on') syncOrtho();
+    window.kbMapBusy = state !== 'off'; // the battle camera's own pitch easing stays off meanwhile (gameView.js)
   }
   world.frameHooks.unshift(frame);
   world.resizeHooks.push(() => { if (state === 'on') syncOrtho(); });
 
-  function startAnim(toT, toS, toFov, dur, done) {
+  // toS.radius is ignored: the end distance follows from the end framing (half height of ground seen, toHalfH) and toFov
+  function startAnim(toT, toS, toFov, dur, done, toHalfH) {
     world.stopFly();
     _s0.setFromVector3(_off.copy(camera.position).sub(controls.target));
-    anim = { t: 0, dur, t0: controls.target.clone(), t1: toT.clone(), s0: _s0.clone(), s1: toS.clone(), f0: camera.fov, f1: toFov, done };
+    const h0 = _s0.radius * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+    anim = { t: 0, dur, t0: controls.target.clone(), t1: toT.clone(), s0: _s0.clone(), s1: toS.clone(), f0: camera.fov, f1: toFov, h0, h1: toHalfH ?? h0, done };
   }
 
   function enter() {
@@ -119,17 +124,18 @@ export function createMapMode(world, { onChange } = {}) {
     world.setGrid(Math.max(0.24, saved.grid));
     if (world.scene.fog) world.scene.fog.density = 0.0006;
     if (world.clouds) world.clouds.visible = false;
-    const b = world.bounds;
+    // same place, same heading, same zoom level (the ground seen keeps its size); only the pitch goes to vertical
     const fit = fitDistance(MAP_FOV), cap = maxStrategyDistance();
-    // the whole map when it fits within the zoom limit, else the place the player was looking at
-    const center = fit <= cap ? new THREE.Vector3((b.bx0 + b.bx1) / 2, 0, (b.bz0 + b.bz1) / 2) : controls.target.clone();
+    const tanMap = Math.tan(THREE.MathUtils.degToRad(MAP_FOV) / 2);
+    const now = new THREE.Spherical().setFromVector3(camera.position.clone().sub(controls.target));
+    saved.phi = now.phi;
+    const halfH = Math.min(now.radius * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2), Math.min(fit, cap) * tanMap);
+    const center = controls.target.clone();
     center.y = world.groundHeight(center.x, center.z);
-    const dist = Math.min(fit, cap);
-    // theta 0: north (−z) at the top of the screen, like the 2D board
-    startAnim(center, new THREE.Spherical(dist, 0.0004, 0), MAP_FOV, DUR_IN, () => {
+    startAnim(center, new THREE.Spherical(1, 0.0004, now.theta), MAP_FOV, DUR_IN, () => {
       state = 'on';
       // no zooming in within the Strategy view: wheeling in goes back to the battle camera (gameView.js)
-      controls.minDistance = Math.min(fitDistance(MAP_FOV), maxStrategyDistance()) * 0.98;
+      controls.minDistance = (halfH / tanMap) * 0.98;
       controls.maxDistance = Math.min(fitDistance(MAP_FOV) * 1.05, maxStrategyDistance()); // whole map at most, and the zoom limit
       controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
       controls.screenSpacePanning = false;
@@ -146,7 +152,7 @@ export function createMapMode(world, { onChange } = {}) {
       clearTimeout(chip._t);
       chip._t = setTimeout(() => chip.classList.remove('show'), 4000);
       onChange && onChange(true);
-    });
+    }, halfH);
     onChange && onChange(true);
   }
 
@@ -169,14 +175,21 @@ export function createMapMode(world, { onChange } = {}) {
     world.setViewCamera(camera);
     document.body.classList.remove('v3-map');
     chip.classList.remove('show');
+    // back to the battle camera at the place now looked at, with the same zoom level (within the battle view's own
+    // limits), the heading kept and the pitch the player had before
+    const now = new THREE.Spherical().setFromVector3(camera.position.clone().sub(controls.target));
+    const tanB = Math.tan(THREE.MathUtils.degToRad(back.fov) / 2);
+    const halfNow = now.radius * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+    const distB = Math.min(back.max, Math.max(back.min, halfNow / tanB));
+    const toT = controls.target.clone();
+    const toS = new THREE.Spherical(distB, back.phi ?? new THREE.Spherical().setFromVector3(back.p.clone().sub(back.t)).phi, now.theta);
     const finish = () => {
       anim = null;
       restoreSettings();
       camera.fov = back.fov;
       camera.updateProjectionMatrix();
-      camera.position.copy(back.p);
-      controls.target.copy(back.t);
-      camera.lookAt(back.t);
+      if (instant) { camera.position.copy(back.p); controls.target.copy(back.t); }
+      camera.lookAt(controls.target);
       controls.update();
       state = 'off';
       saved = null;
@@ -186,7 +199,7 @@ export function createMapMode(world, { onChange } = {}) {
     state = 'out';
     controls.minDistance = 0.01;
     controls.maxDistance = 1e6;
-    startAnim(back.t, new THREE.Spherical().setFromVector3(back.p.clone().sub(back.t)), back.fov, DUR_OUT, finish);
+    startAnim(toT, toS, back.fov, DUR_OUT, finish, distB * tanB);
   }
 
   function toggle() {

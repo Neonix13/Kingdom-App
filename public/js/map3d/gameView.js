@@ -143,7 +143,7 @@ export async function mountGameView(bridge, { container }) {
       }
     }, { passive: true });
     world.frameHooks.push((dt) => {
-      if (!C.enabled || document.body.classList.contains('v3-map')) return; // map mode (M): its own camera
+      if (!C.enabled || window.kbMapBusy || document.body.classList.contains('v3-map')) return; // Strategy view (or its transition): its own camera
       off.copy(cam.position).sub(C.target);
       sph.setFromVector3(off);
       const base = pitchFor(sph.radius);
