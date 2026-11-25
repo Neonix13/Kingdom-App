@@ -3357,7 +3357,7 @@ function buildStanceTooltip(stanceId) {
   const perTurn = (v) => (v > 0 ? '+' : '−') + Math.abs(v);
   return bonusTip({ title: STANCE_FULL_NAMES[stanceId] || stanceNames[stanceId] || stanceId, kicker: 'Posture', marker, data: st,
     single: [['Vitesse', st.vitesse], ['Armure / tour', st.armure_tour, perTurn], ['Moral / tour', st.moral_tour, perTurn], ['Vitalité / tour', st.vitalite_tour, perTurn]],
-    notes: [react ? `↩︎ Si attaquée : <b>${escapeHtml(react)}</b>` : '', window.stanceAngleText && window.stanceAngleText(stanceId) ? `◢︎ ${escapeHtml(window.stanceAngleText(stanceId).replace(/^attaquée : /, 'Coups reçus : ').replace(/, /g, ' · '))}` : ''] });
+    notes: [react ? `↩︎ Si attaquée : <b>${escapeHtml(react)}</b>` : ''] });
 }
 
 function showStanceTooltip(e, stanceId) {
