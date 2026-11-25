@@ -1808,7 +1808,7 @@ function drawTrail(c2d, pts, { color = '#fff', width = 4, alpha = 1, dash = null
   if (!pts || pts.length < 2) return;
   if (glow) { drawHKTrail(c2d, pts, { color, width, alpha, dash, badge: badge ?? (arrow ? 1 : null) }); return; }
   let dot = false;
-  if (subtle) { width = Math.min(width, 2.5); alpha = Math.min(alpha, 0.55); outline = false; dot = arrow; arrow = false; }
+  if (subtle) { width = Math.min(width, 2.5); alpha = Math.min(alpha, 0.4); outline = false; dot = arrow; arrow = false; }
   c2d.save();
   c2d.globalAlpha = alpha;
   c2d.lineCap = 'round'; c2d.lineJoin = 'round';

@@ -492,7 +492,7 @@
       const p0 = hexToPixel(u.q, u.r);
       const selected = isSel(order);
       // selected unit: glowing trail with beads on its hexes; the others: thin and faint
-      const trail = selected ? { color, width: 5, alpha: 1, glow: true, beads: true } : { color, width: 3, alpha: 0.55, subtle: true };
+      const trail = selected ? { color, width: 5, alpha: 1, glow: true, beads: true } : { color, width: 3, alpha: 0.4, subtle: true };
       ctx.globalAlpha = trail.alpha;
       if ((order.type === 'attack' || order.type === 'charge') && order.path && order.path.length > 1 && order.target) {
         const pts = order.path.map(([q, r]) => hexToPixel(q, r));
