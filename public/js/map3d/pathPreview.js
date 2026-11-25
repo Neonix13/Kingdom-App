@@ -536,9 +536,8 @@ export function createZoneRims(world) {
   return { show, clear };
 }
 
-// Final facing of the units with an order: the trail goes on past the centre of the arrival hex, bends toward the
-// neighbour faced (the chosen facing, else the direction of the last step) and ends on an arrowhead, same colour and width
-// as the trail. marks: [{ q, r, dq, dr, from: [q, r] | null (hex before the arrival), color, width, dim }]
+// Final facing of the units with an order: an arrowhead caps the trail on the arrival hex, pointing at the neighbour
+// faced (the chosen facing, else the direction of the last step), same colour as the trail. marks: [{ q, r, dq, dr, from: [q, r] | null (hex before the arrival), color, width, dim }]
 export function createFacingMarks(world) {
   const { scene, hexToWorld } = world;
   const groundHeight = world.walkHeight || world.groundHeight;
@@ -568,18 +567,8 @@ export function createFacingMarks(world) {
       const dir = { x: (n.x - c.x) / len, z: (n.z - c.z) / len };
       const w = mk.width || 0.05;
       const opacity = mk.dim ? 0.85 : 0.96;
-      // quadratic bend: from a little before the centre (along the way in) through the centre to the tip
-      const tipD = 0.62, headL = Math.max(0.16, w * 3);
-      const end = { x: c.x + dir.x * (tipD - headL * 0.8), z: c.z + dir.z * (tipD - headL * 0.8) };
-      let start = c;
-      if (mk.from) { const f = hexToWorld(mk.from[0], mk.from[1]); const fl = Math.hypot(c.x - f.x, c.z - f.z) || 1; start = { x: c.x - (c.x - f.x) / fl * 0.3, z: c.z - (c.z - f.z) / fl * 0.3 }; }
-      const pts = [];
-      for (let i = 0; i <= 14; i++) {
-        const t = i / 14, u = 1 - t;
-        pts.push({ x: u * u * start.x + 2 * u * t * c.x + t * t * end.x, z: u * u * start.z + 2 * u * t * c.z + t * t * end.z });
-      }
-      const sh = trailMesh(pts, w * 1.45, groundHeight, 0.04, trailMat(0x000000, 0.3)); sh.renderOrder = 7; scene.add(sh); meshes.push(sh);
-      const rb = trailMesh(pts, w, groundHeight, 0.05, trailMat(mk.color || 0xffffff, opacity)); rb.renderOrder = 8; scene.add(rb); meshes.push(rb);
+      // the arrowhead caps the trail: its base on the arrival point, pointing at the final facing
+      const headL = Math.max(0.2, w * 3.4), tipD = headL;
       const tip = { x: c.x + dir.x * tipD, z: c.z + dir.z * tipD };
       head({ x: tip.x + dir.x * 0.03, z: tip.z + dir.z * 0.03 }, dir, headL * 1.25, groundHeight, 0x000000, 0.45, 7);
       head(tip, dir, headL, groundHeight, mk.color || 0xffffff, opacity, 8);
