@@ -129,6 +129,8 @@ export async function mountGameView(bridge, { container }) {
     canvas.addEventListener('pointerdown', (e) => { if (e.button === 1 || e.button === 2) mmb = true; if (e.button === 1) e.preventDefault(); });
     window.addEventListener('pointerup', (e) => { if (e.button === 1 || e.button === 2) mmb = false; });
     canvas.addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault(); });
+    // leaving the Strategy view: the angle is the player's — forget the wheel that triggered it and re-read the tilt
+    window.addEventListener('kb-mapmode', (e) => { if (!e.detail) { wheelAt = -1e9; window.kbCamZoomAt = -1e9; tilt = null; } });
     // zoom-out limit of the battle view: wheeling further out switches to the Strategy view (map mode, M); in the
     // Strategy view, wheeling in all the way comes back to the battle view
     C.maxDistance = 55;

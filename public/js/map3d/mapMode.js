@@ -176,13 +176,13 @@ export function createMapMode(world, { onChange } = {}) {
     document.body.classList.remove('v3-map');
     chip.classList.remove('show');
     // back to the battle camera at the place now looked at, with the same zoom level (within the battle view's own
-    // limits), the heading kept and the pitch the player had before
+    // limits); the angle is not touched (heading and pitch stay as they are): the player tilts the view as he likes
     const now = new THREE.Spherical().setFromVector3(camera.position.clone().sub(controls.target));
     const tanB = Math.tan(THREE.MathUtils.degToRad(back.fov) / 2);
     const halfNow = now.radius * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
     const distB = Math.min(back.max, Math.max(back.min, halfNow / tanB));
     const toT = controls.target.clone();
-    const toS = new THREE.Spherical(distB, back.phi ?? new THREE.Spherical().setFromVector3(back.p.clone().sub(back.t)).phi, now.theta);
+    const toS = new THREE.Spherical(distB, Math.max(now.phi, 0.02), now.theta);
     const finish = () => {
       anim = null;
       restoreSettings();
