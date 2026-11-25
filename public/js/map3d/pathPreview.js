@@ -1,5 +1,104 @@
 import * as THREE from 'three';
 
+// ---- unit trails (in the spirit of Humankind): a thick white ribbon draped on the ground, corners rounded off, a soft
+// dark shadow under it, round caps, no arrows; the turns ahead fainter; numbered discs where each turn ends ----
+// Chaikin corner cutting on [{ x, z }]: rounded bends with a large radius, ends kept
+function smooth2(pts, iters = 3) {
+  let out = pts;
+  for (let k = 0; k < iters && out.length > 2; k++) {
+    const nx = [out[0]];
+    for (let i = 0; i < out.length - 1; i++) {
+      const a = out[i], b = out[i + 1];
+      nx.push({ x: a.x * 0.75 + b.x * 0.25, z: a.z * 0.75 + b.z * 0.25 }, { x: a.x * 0.25 + b.x * 0.75, z: a.z * 0.25 + b.z * 0.75 });
+    }
+    nx.push(out[out.length - 1]);
+    out = nx;
+  }
+  return out;
+}
+// evenly spaced samples along the polyline (so the ribbon follows the relief between hex centres)
+function resample(pts, step = 0.1) {
+  const out = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i];
+    const d = Math.hypot(b.x - a.x, b.z - a.z), n = Math.max(1, Math.ceil(d / step));
+    for (let j = 1; j <= n; j++) out.push({ x: a.x + (b.x - a.x) * j / n, z: a.z + (b.z - a.z) * j / n });
+  }
+  return out;
+}
+// ribbon mesh along pts, width w, lifted above the ground; round caps at both ends
+function trailMesh(pts, w, ground, lift, mat) {
+  const pos = [], idx = [];
+  const n = pts.length;
+  for (let i = 0; i < n; i++) {
+    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)];
+    let tx = b.x - a.x, tz = b.z - a.z;
+    const l = Math.hypot(tx, tz) || 1; tx /= l; tz /= l;
+    const nx = -tz * w, nz = tx * w, p = pts[i];
+    pos.push(p.x + nx, ground(p.x + nx, p.z + nz) + lift, p.z + nz, p.x - nx, ground(p.x - nx, p.z - nz) + lift, p.z - nz);
+    if (i) { const k = i * 2; idx.push(k - 2, k - 1, k, k - 1, k + 1, k); }
+  }
+  // round caps: fans of triangles around both ends
+  const cap = (p, dirx, dirz) => {
+    const c0 = pos.length / 3;
+    pos.push(p.x, ground(p.x, p.z) + lift, p.z);
+    const seg = 8, base = Math.atan2(dirz, dirx);
+    for (let j = 0; j <= seg; j++) {
+      const ang = base - Math.PI / 2 + Math.PI * j / seg;
+      const x = p.x + Math.cos(ang) * w, z = p.z + Math.sin(ang) * w;
+      pos.push(x, ground(x, z) + lift, z);
+      if (j) idx.push(c0, c0 + j, c0 + j + 1);
+    }
+  };
+  if (n > 1) {
+    cap(pts[n - 1], pts[n - 1].x - pts[n - 2].x, pts[n - 1].z - pts[n - 2].z);
+    cap(pts[0], pts[0].x - pts[1].x, pts[0].z - pts[1].z);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  const m = new THREE.Mesh(g, mat);
+  m.frustumCulled = false;
+  return m;
+}
+const trailMat = (color, opacity, additive = false) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, fog: false, toneMapped: false, side: THREE.DoubleSide, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending });
+// draws a trail for the hexes [[q, r], ...] (origin included): returns the meshes added to the scene
+// opts: { width, color, opacity, shadow, glow (colour), from (index where the faint part starts), faint }
+function addTrail(scene, hexToWorld, ground, hexes, opts) {
+  const out = [];
+  if (!hexes || hexes.length < 2) return out;
+  const pts = resample(smooth2(hexes.map(([q, r]) => { const c = hexToWorld(q, r); return { x: c.x, z: c.z }; })));
+  const w = opts.width || 0.07;
+  const add = (m, order) => { m.renderOrder = order; scene.add(m); out.push(m); };
+  if (opts.glow) add(trailMesh(pts, w * 2.6, ground, 0.035, trailMat(opts.glow, 0.28, true)), 6);
+  if (opts.shadow !== false) add(trailMesh(pts, w * 1.45, ground, 0.04, trailMat(0x000000, 0.3)), 7);
+  // split where the next turns begin: the rest of the march is fainter
+  let cut = pts.length;
+  if (opts.from != null && opts.from < hexes.length - 1) {
+    const c = hexToWorld(hexes[opts.from][0], hexes[opts.from][1]);
+    let best = Infinity;
+    pts.forEach((p, i) => { const d = (p.x - c.x) ** 2 + (p.z - c.z) ** 2; if (d < best) { best = d; cut = i; } });
+  }
+  if (cut > 1) add(trailMesh(pts.slice(0, cut + 1), w, ground, 0.05, trailMat(opts.color || 0xffffff, opts.opacity ?? 0.96)), 8);
+  if (cut < pts.length - 1) add(trailMesh(pts.slice(Math.max(0, cut - 1)), w * 0.8, ground, 0.05, trailMat(opts.color || 0xffffff, (opts.opacity ?? 0.96) * (opts.faint ?? 0.5))), 8);
+  return out;
+}
+const disposeAll = (scene, list) => { for (const m of list) { scene.remove(m); m.geometry.dispose(); m.material.dispose(); } list.length = 0; };
+// numbered disc (turn ends): white, black ring and figure, like a board-game counter
+function turnBadge(n) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  g.fillStyle = 'rgba(0,0,0,0.35)'; g.beginPath(); g.arc(33, 35, 28, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#ffffff'; g.beginPath(); g.arc(32, 32, 27, 0, Math.PI * 2); g.fill();
+  g.lineWidth = 4; g.strokeStyle = '#1a1a1a'; g.beginPath(); g.arc(32, 32, 22, 0, Math.PI * 2); g.stroke();
+  g.fillStyle = '#1a1a1a'; g.font = 'bold 28px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(String(n), 32, 34);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 // Movement path chevrons draped on the terrain + attack arc between two formations
 export function createPathPreview(world) {
   const { scene, hexToWorld } = world;
@@ -41,28 +140,15 @@ export function createPathPreview(world) {
   scene.add(farChev);
   const numTex = new Map();
   function numberTexture(n) {
-    if (numTex.has(n)) return numTex.get(n);
-    const c = document.createElement('canvas');
-    c.width = c.height = 64;
-    const g = c.getContext('2d');
-    g.fillStyle = n === 1 ? '#ffffff' : '#000000';
-    g.strokeStyle = n === 1 ? '#000000' : '#ffffff';
-    g.lineWidth = 6;
-    g.beginPath(); g.arc(32, 32, 27, 0, Math.PI * 2); g.fill(); g.stroke();
-    g.fillStyle = n === 1 ? '#000000' : '#ffffff';
-    g.font = 'bold 34px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText(String(n), 32, 34);
-    const t = new THREE.CanvasTexture(c);
-    t.colorSpace = THREE.SRGBColorSpace;
-    numTex.set(n, t);
-    return t;
+    if (!numTex.has(n)) numTex.set(n, turnBadge(n));
+    return numTex.get(n);
   }
   const turnMarks = [];
   function showTurnMarks(hexes, ends) {
     const list = (ends || []).map((idx, k) => ({ idx, n: k + 1 })).filter((e) => e.idx > 0);
     while (turnMarks.length < list.length) {
       const sp = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false, depthWrite: false, fog: false, toneMapped: false }));
-      sp.scale.set(0.42, 0.42, 1);
+      sp.scale.set(0.36, 0.36, 1);
       sp.renderOrder = 10;
       scene.add(sp);
       turnMarks.push(sp);
@@ -74,7 +160,7 @@ export function createPathPreview(world) {
       const c = hexToWorld(hq, hr);
       sp.material.map = numberTexture(list[i].n);
       sp.material.needsUpdate = true;
-      sp.position.set(c.x, groundHeight(c.x, c.z) + 0.45, c.z);
+      sp.position.set(c.x, groundHeight(c.x, c.z) + 0.3, c.z);
     });
   }
 
@@ -95,48 +181,18 @@ export function createPathPreview(world) {
   }
 
   // opts.turnEnds (march): index in hexes of the last hex of each turn
+  const trail = [];
   function showPath(hexes, opts = {}) {
     const ends = opts.turnEnds && opts.turnEnds.length > 1 ? opts.turnEnds : null;
-    const first = ends ? ends[0] : hexes ? hexes.length - 1 : 0;
-    farChev.count = 0;
-    if (ends && hexes && first < hexes.length - 1) {
-      const far = samplePath(hexes.slice(first), FAR_MAX);
-      far.forEach((pt, i) => {
-        q.setFromAxisAngle(up, pt.a);
-        p.set(pt.x, groundHeight(pt.x, pt.z) + 0.07, pt.z);
-        s.set(0.85, 1, 0.85);
-        m.compose(p, q, s);
-        farChev.setMatrixAt(i, m);
-      });
-      farChev.count = far.length;
-      farChev.instanceMatrix.needsUpdate = true;
-    }
-    showTurnMarks(hexes || [], ends);
-    pathPoints = hexes && hexes.length > 1 && first > 0 ? samplePath(hexes.slice(0, first + 1)) : null;
-    if (!hexes || hexes.length < 2) { chevrons.count = 0; endMark.visible = false; return; }
-    if (!pathPoints) chevrons.count = 0;
-    const last = hexes[hexes.length - 1];
-    const c = hexToWorld(last[0], last[1]);
-    endMark.position.set(c.x, groundHeight(c.x, c.z) + 0.08, c.z);
-    endMark.visible = true;
-    layout();
+    disposeAll(scene, trail);
+    chevrons.count = 0; farChev.count = 0; endMark.visible = false; pathPoints = null;
+    if (!hexes || hexes.length < 2) { showTurnMarks([], null); return; }
+    trail.push(...addTrail(scene, hexToWorld, groundHeight, hexes, { width: 0.075, from: ends ? ends[0] : null }));
+    // a numbered disc ends each turn; a simple move ends on "1"
+    showTurnMarks(hexes, ends || [hexes.length - 1]);
   }
 
-  function layout() {
-    if (!pathPoints) return;
-    const n = pathPoints.length;
-    chevrons.count = n;
-    for (let i = 0; i < n; i++) {
-      const pt = pathPoints[i];
-      q.setFromAxisAngle(up, pt.a);
-      p.set(pt.x, groundHeight(pt.x, pt.z) + 0.07, pt.z);
-      const k = 0.8 + 0.35 * Math.max(0, Math.sin(phase * 5 - i * 0.6));
-      s.set(k, 1, k);
-      m.compose(p, q, s);
-      chevrons.setMatrixAt(i, m);
-    }
-    chevrons.instanceMatrix.needsUpdate = true;
-  }
+  function layout() {}
 
   function showAttack(from, to, ranged) {
     if (arc) { scene.remove(arc); arc.geometry.dispose(); arc = null; }
@@ -175,7 +231,6 @@ export function createPathPreview(world) {
 
   function update(dt) {
     phase += dt;
-    if (pathPoints) layout();
     if (arc) arcMat.opacity = 0.65 + 0.25 * Math.sin(phase * 6);
   }
 
@@ -183,7 +238,7 @@ export function createPathPreview(world) {
 }
 
 // Planned orders (simultaneous mode): one chevron trail per move, an arc per attack, all in the player's colour
-export function createOrdersLayer(world, { opacity = 0.85 } = {}) {
+export function createOrdersLayer(world, { opacity = 0.85, tint = false } = {}) {
   const { scene, hexToWorld } = world;
   const groundHeight = world.walkHeight || world.groundHeight;
   const MAX = 512;
@@ -212,7 +267,7 @@ export function createOrdersLayer(world, { opacity = 0.85 } = {}) {
   const coreMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, depthWrite: false, fog: false, toneMapped: false, side: THREE.DoubleSide });
   const thinMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: Math.min(0.75, opacity + 0.15), depthWrite: false, fog: false, toneMapped: false, side: THREE.DoubleSide });
   const ribbons = [];
-  function clearRibbons() { for (const r of ribbons) { scene.remove(r); r.geometry.dispose(); } ribbons.length = 0; }
+  function clearRibbons() { for (const r of ribbons) { scene.remove(r); r.geometry.dispose(); if (r.material !== thinMat && r.material !== glowMat && r.material !== coreMat) r.material.dispose(); } ribbons.length = 0; }
   function ribbon(curve, len, width, mat, lift) {
     const n = Math.max(8, Math.floor(len / 0.12));
     const pos = [], idx = [];
@@ -253,7 +308,8 @@ export function createOrdersLayer(world, { opacity = 0.85 } = {}) {
     base.set(color || '#ffd25a');
     glowMat.color.copy(base);
     coreMat.color.copy(base).lerp(new THREE.Color(0xffffff), 0.45);
-    thinMat.color.copy(base).lerp(grey, 0.35);
+    thinMat.color.set(tint ? base.getHex() : 0xffffff);
+    thinMat.opacity = 0.55;
     clearArcs();
     clearRibbons();
     let n = 0;
@@ -264,18 +320,13 @@ export function createOrdersLayer(world, { opacity = 0.85 } = {}) {
         const pts = o.path.map(([hq, hr]) => { const c = hexToWorld(hq, hr); return new THREE.Vector3(c.x, 0, c.z); });
         const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal', 0.3);
         const len = curve.getLength();
-        if (!sel) { ribbon(curve, len, 0.022, thinMat, 0.05); endDot(pts[pts.length - 1], 0.06, thinMat); }
-        if (sel) { ribbon(curve, len, 0.2, glowMat, 0.045); ribbon(curve, len, 0.035, coreMat, 0.05); }
-        const cnt = Math.max(2, Math.floor(len / (sel ? 0.3 : 0.5)));
-        for (let i = 1; sel && i <= cnt && n < MAX; i++) {
-          const t = Math.min(0.999, i / cnt);
-          const pt = curve.getPointAt(t), tan = curve.getTangentAt(t);
-          q.setFromAxisAngle(up, Math.atan2(tan.x, tan.z));
-          p.set(pt.x, groundHeight(pt.x, pt.z) + (sel ? 0.09 : 0.07), pt.z);
-          m.compose(p, q, big);
-          chev.setColorAt(n, base);
-          chev.setMatrixAt(n++, m);
+        // selected: thick white trail, soft glow in the player's colour; others: thin faint trail ending on a dot
+        if (sel) ribbons.push(...addTrail(scene, hexToWorld, groundHeight, o.path, { width: 0.075, glow: base.getHex(), color: tint ? base.getHex() : 0xffffff, opacity: Math.min(0.96, opacity + 0.15) }));
+        else {
+          ribbons.push(...addTrail(scene, hexToWorld, groundHeight, o.path, { width: 0.028, opacity: 0.55, shadow: false, color: tint ? base.getHex() : 0xffffff }));
+          endDot(pts[pts.length - 1], 0.06, thinMat);
         }
+        void curve; void len;
       }
       if (o.target && o.target.q != null && (o.type === 'attack' || o.type === 'charge')) {
         const from = o.path && o.path.length ? o.path[o.path.length - 1] : null;
@@ -315,12 +366,7 @@ export function createPathMarks(world) {
     tex.set(key, t);
     return t;
   }
-  const turnTex = (n) => texture(`t${n}`, (g) => {
-    g.fillStyle = '#ffffff'; g.beginPath(); g.arc(32, 32, 29, 0, Math.PI * 2); g.fill();
-    g.fillStyle = '#000000'; g.beginPath(); g.arc(32, 32, 24, 0, Math.PI * 2); g.fill();
-    g.fillStyle = '#ffffff'; g.font = 'bold 30px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText(String(n), 32, 34);
-  });
+  const turnTex = (n) => { if (!tex.has(`t${n}`)) tex.set(`t${n}`, turnBadge(n)); return tex.get(`t${n}`); };
   // round seal: ring in the player's colour (soft glow), disc in the stance colour, pictogram
   const stanceTex = (s, ring) => texture(`s${s}${ring}`, (g) => {
     const sty = window.stanceStyle ? window.stanceStyle(s) : { c: '#444' };
@@ -360,10 +406,10 @@ export function createPathMarks(world) {
       const y = groundHeight(c.x, c.z);
       sp.material.map = mk.kind === 'turn' ? turnTex(mk.n) : mk.kind === 'step' ? stepTex(mk.ring || '#ffffff') : stanceTex(mk.stance, mk.ring || '#ffffff');
       sp.material.needsUpdate = true;
-      const k = mk.kind === 'turn' ? 0.42 : mk.kind === 'step' ? 0.85 : 0.5;
+      const k = mk.kind === 'turn' ? 0.36 : mk.kind === 'step' ? 0.85 : 0.5;
       sp.scale.set(k, k, 1);
       // the stance seal sits on the trail itself, just above the ground
-      sp.position.set(c.x, y + (mk.kind === 'turn' ? 0.45 : 0.3), c.z);
+      sp.position.set(c.x, y + 0.3, c.z);
     });
   }
   function clear() { show([]); }

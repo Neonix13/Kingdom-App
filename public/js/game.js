@@ -1762,8 +1762,51 @@ function traceSmooth(c2d, pts) {
 // opts: { color, width, alpha, dash, arrow, outline, glow, beads, subtle }
 //   glow: selected unit — soft halo in the path colour, bright core, beads on the hexes it walks through
 //   subtle: other units — thin, faint, no outline, a dot at the destination instead of an arrow head
-function drawTrail(c2d, pts, { color = '#fff', width = 4, alpha = 1, dash = null, arrow = true, outline = true, glow = false, beads = false, subtle = false } = {}) {
+// Chaikin corner cutting: rounded bends with a large radius, ends kept
+function chaikin(pts, iters = 3) {
+  let out = pts;
+  for (let k = 0; k < iters && out.length > 2; k++) {
+    const nx = [out[0]];
+    for (let i = 0; i < out.length - 1; i++) {
+      const a = out[i], b = out[i + 1];
+      nx.push({ x: a.x * 0.75 + b.x * 0.25, y: a.y * 0.75 + b.y * 0.25 }, { x: a.x * 0.25 + b.x * 0.75, y: a.y * 0.25 + b.y * 0.75 });
+    }
+    nx.push(out[out.length - 1]);
+    out = nx;
+  }
+  return out;
+}
+// Selected unit's trail, in the spirit of Humankind: a thick white line with rounded bends, a soft dark shadow and a
+// faint halo in the player's colour, round ends, no arrow; badge: number drawn in a white disc at the end
+function drawHKTrail(c2d, pts, { color = '#fff', width = 5, alpha = 1, dash = null, badge = null } = {}) {
+  const sm = chaikin(pts);
+  const line = () => { c2d.beginPath(); sm.forEach((p, i) => (i ? c2d.lineTo(p.x, p.y) : c2d.moveTo(p.x, p.y))); };
+  const core = Math.max(5, width * 1.25);
+  c2d.save();
+  c2d.lineCap = 'round'; c2d.lineJoin = 'round';
+  c2d.setLineDash([]);
+  c2d.globalAlpha = alpha * 0.3; c2d.strokeStyle = color; c2d.lineWidth = core * 3; line(); c2d.stroke();
+  c2d.globalAlpha = alpha * 0.4; c2d.strokeStyle = '#000'; c2d.lineWidth = core + 4;
+  c2d.shadowColor = 'rgba(0,0,0,0.6)'; c2d.shadowBlur = 6; c2d.shadowOffsetY = 2; line(); c2d.stroke();
+  c2d.shadowBlur = 0; c2d.shadowOffsetY = 0;
+  c2d.globalAlpha = alpha; c2d.strokeStyle = '#fbfaf6'; c2d.lineWidth = core; c2d.setLineDash(dash || []); line(); c2d.stroke();
+  c2d.setLineDash([]);
+  if (badge != null) {
+    const e = pts[pts.length - 1], R = Math.max(9, HEX_SIZE * 0.2);
+    c2d.globalAlpha = 1;
+    c2d.shadowColor = 'rgba(0,0,0,0.5)'; c2d.shadowBlur = 5; c2d.shadowOffsetY = 2;
+    c2d.beginPath(); c2d.arc(e.x, e.y, R, 0, Math.PI * 2); c2d.fillStyle = '#fff'; c2d.fill();
+    c2d.shadowBlur = 0; c2d.shadowOffsetY = 0;
+    c2d.beginPath(); c2d.arc(e.x, e.y, R * 0.8, 0, Math.PI * 2); c2d.lineWidth = 2; c2d.strokeStyle = '#1a1a1a'; c2d.stroke();
+    c2d.fillStyle = '#1a1a1a'; c2d.font = `bold ${Math.round(R * 1.05)}px sans-serif`; c2d.textAlign = 'center'; c2d.textBaseline = 'middle';
+    c2d.fillText(String(badge), e.x, e.y + 1);
+  }
+  c2d.restore();
+}
+
+function drawTrail(c2d, pts, { color = '#fff', width = 4, alpha = 1, dash = null, arrow = true, outline = true, glow = false, beads = false, subtle = false, badge = null } = {}) {
   if (!pts || pts.length < 2) return;
+  if (glow) { drawHKTrail(c2d, pts, { color, width, alpha, dash, badge: badge ?? (arrow ? 1 : null) }); return; }
   let dot = false;
   if (subtle) { width = Math.min(width, 2.5); alpha = Math.min(alpha, 0.55); outline = false; dot = arrow; arrow = false; }
   c2d.save();
@@ -1838,17 +1881,31 @@ function drawMarchPath(ctx, path, turnEnds, { color = '#fff', alpha = 1, label =
   const pts = path.map(([q, r]) => hexToPixel(q, r));
   const first = Math.max(0, turnEnds && turnEnds.length ? turnEnds[0] : pts.length - 1);
   ctx.save();
-  if (first < pts.length - 1) drawTrail(ctx, pts.slice(first), { color: '#b4b4b4', width: Math.max(2.5, width - 1.5), alpha: alpha * 0.85, dash: [2, 9], arrow: true, subtle });
-  if (first > 0) drawTrail(ctx, pts.slice(0, first + 1), { color, width, alpha, arrow: first === pts.length - 1, glow, beads: glow, subtle });
+  // the selected unit (glow): white trail, the next turns fainter, a white numbered disc where each turn ends
+  const hk = glow || (color === '#9a9a9a' && !subtle);
+  if (first < pts.length - 1) {
+    if (hk) drawHKTrail(ctx, pts.slice(first), { color, width: width * 0.85, alpha: alpha * 0.5 });
+    else drawTrail(ctx, pts.slice(first), { color: '#b4b4b4', width: Math.max(2.5, width - 1.5), alpha: alpha * 0.85, dash: [2, 9], arrow: true, subtle });
+  }
+  if (first > 0) {
+    if (hk) drawHKTrail(ctx, pts.slice(0, first + 1), { color, width, alpha });
+    else drawTrail(ctx, pts.slice(0, first + 1), { color, width, alpha, arrow: first === pts.length - 1, subtle });
+  }
   ctx.globalAlpha = alpha;
   ctx.font = `bold ${Math.round(HEX_SIZE * 0.3)}px 'Dela Gothic One', 'Zen Kaku Gothic New', sans-serif`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   if (numbers) (turnEnds || []).forEach((idx, n) => {
     if (idx <= 0) return;
-    const p = pts[idx];
-    ctx.fillStyle = n === 0 ? '#fff' : '#000'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(p.x, p.y, HEX_SIZE * 0.22, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = n === 0 ? '#000' : '#fff'; ctx.fillText(String(n + 1), p.x, p.y + 1);
+    const p = pts[idx], R = Math.max(9, HEX_SIZE * 0.2);
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 5; ctx.shadowOffsetY = 2;
+    ctx.beginPath(); ctx.arc(p.x, p.y, R, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
+    ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+    ctx.beginPath(); ctx.arc(p.x, p.y, R * 0.8, 0, Math.PI * 2); ctx.lineWidth = 2; ctx.strokeStyle = '#1a1a1a'; ctx.stroke();
+    ctx.fillStyle = '#1a1a1a'; ctx.font = `bold ${Math.round(R * 1.05)}px sans-serif`;
+    ctx.fillText(String(n + 1), p.x, p.y + 1);
+    ctx.restore();
   });
   if (label) {
     const pe = pts[pts.length - 1];

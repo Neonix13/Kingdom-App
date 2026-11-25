@@ -282,6 +282,8 @@ export async function mountGameView(bridge, { container }) {
     const so = sel && bridge.simultaneous && !bridge.playback ? (bridge.plannedOrders || []).find((o) => String(o.unitId) === String(sel.id)) : null;
     const sp = so && window.KBSim && KBSim.stepInfo ? KBSim.stepInfo(sel) : null;
     if (sp) marks.push({ kind: 'step', q: sp.hex[0], r: sp.hex[1], ring: bridge.getPlayerColor(bridge.myId) });
+    // the end of this turn's move: a white disc numbered 1 (the next turns of a march carry 2, 3…)
+    if (so && so.type === 'move' && so.path && so.path.length > 1) { const e = so.path[so.path.length - 1]; marks.push({ kind: 'turn', q: e[0], r: e[1], n: 1 }); }
     if (so && so.stanceSteps) for (const s of so.stanceSteps) marks.push({ kind: 'stance', q: s.hex[0], r: s.hex[1], stance: s.stance, ring: bridge.getPlayerColor(bridge.myId) });
     pathMarks.show(marks);
     // trees step aside on hexes holding a unit and on every forest hex in sight, so that a visible forest stays readable

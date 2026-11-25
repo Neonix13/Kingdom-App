@@ -500,7 +500,7 @@
         const pe = pts[pts.length - 1], p1 = hexToPixel(order.target.q, order.target.r);
         window.drawTrail(ctx, [pe, p1], { color: '#D8352A', width: order.type === 'charge' ? 5 : 3.5, alpha: trail.alpha, dash: (u.range || 1) > 1 ? [3, 8] : null });
       } else if (order.type === 'move' && order.path && order.path.length > 1) {
-        window.drawTrail(ctx, order.path.map(([q, r]) => hexToPixel(q, r)), { ...trail, arrow: !order.marchRest });
+        window.drawTrail(ctx, order.path.map(([q, r]) => hexToPixel(q, r)), { ...trail, arrow: !order.marchRest, badge: selected ? 1 : null });
       } else if ((order.type === 'attack' || order.type === 'charge') && order.target) {
         const p1 = hexToPixel(order.target.q, order.target.r);
         const ranged = (u.range || 1) > 1;
