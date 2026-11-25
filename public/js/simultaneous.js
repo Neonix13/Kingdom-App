@@ -10,7 +10,6 @@
   const S = KBRules.RULES.simultaneous;
   const DEFERRED = new Set(['game_state', 'planning_start', 'objective_captured', 'time_change', 'game_over', 'units_fled', 'turn_auto_ended', 'planning_timeout']);
   const ORDER_LABEL = { move: 'Déplacement', attack: 'Attaque', charge: 'Charge', hold: 'Tenir', motivate: 'Motiver' };
-  const FACING_BTNS = [{ idx: 3, label: '↖' }, { idx: 2, label: '↑' }, { idx: 1, label: '↗' }, { idx: 4, label: '↙' }, { idx: 5, label: '↓' }, { idx: 0, label: '↘' }];
 
   const st = {
     orders: {},          // my orders as stored by the server
@@ -26,6 +25,7 @@
     playback: null,
     tickSent: 0,
     popupTurn: null,
+    step: null,          // { unitId, at }: step of the selected unit's path chosen with Ctrl+click (keys 1-6 set its stance)
   };
 
   function isSim() {
@@ -177,6 +177,7 @@
   function select(unit) {
     if (!isSim()) return;
     if (!unit || route.unitId !== unit.id) { route.unitId = null; route.waypoints = []; }
+    if (!unit || !st.step || st.step.unitId !== unit.id) st.step = null;
     selectedUnit = unit && unit.isMine ? unit : null;
     st.tool = null;
     computeTiles(selectedUnit);
@@ -200,12 +201,11 @@
     if (!canPlan()) { if (unitAt) showUnitDetail(unitAt); return; }
     if (selectedUnit) {
       const sel = myUnit(selectedUnit.id) || selectedUnit;
-      // Ctrl+click on a hex of the ordered path: change stance there (or face on arrival), the rest of the order stays
+      // Ctrl+click on a hex of the ordered path: that step is chosen, keys 1-6 set the stance taken there (again: released)
       if (opts.ctrlKey && !unitAt) {
-        const o = current(sel);
-        const full = o && o.path ? [...o.path, ...(o.marchRest || [])] : [];
+        const full = fullPath(current(sel));
         const at = full.findIndex(([q, r]) => q === hex.q && r === hex.r) + 1;
-        if (at > 0) { stepMenu(sel, at, full.length, opts.clientX, opts.clientY); return; }
+        if (at > 0) { st.step = st.step && st.step.unitId === sel.id && st.step.at === at ? null : { unitId: sel.id, at }; render(); return; }
       }
       // waypoints: Maj+clic (or the Étapes tool) adds one, a click on a waypoint cuts the route back to it
       // the last waypoint is the destination: the move order follows the route at once
@@ -243,9 +243,9 @@
       }
       if (movableTiles.has(node)) {
         const path = pathTo(sel, node);
-        // Ctrl+click: the move, plus a choice of what to do on arrival (face / stance / attack from there)
-        if (path && opts.ctrlKey) { arrivalMenu(sel, path.path.slice(1), opts.clientX, opts.clientY); return; }
         if (path) { st.wps[sel.id] = routeWaypoints(sel).map(w => w.slice()); patchOrder(sel, { type: 'move', path: path.path.slice(1) }); }
+        // Ctrl+click: the move, with its arrival chosen as the step (keys 1-6: stance on arrival)
+        st.step = path && opts.ctrlKey ? { unitId: sel.id, at: path.path.length - 1 } : null;
         resetRoute();
         computeTiles(sel);
         return;
@@ -334,64 +334,26 @@
     return R ? { waypoints: routeWaypoints(unit), cost: R.cost, left: R.march ? 0 : R.left, budget: budgetFor(unit), tool: route.tool, march: !!R.march } : null;
   }
 
-  function contextMenu(hex, clientX, clientY) {
-    if (!hex || !canPlan()) return;
-    const unit = gameState.units.find(u => u.q === hex.q && u.r === hex.r && u.isMine);
-    if (!unit) return;
-    document.getElementById('facing-popup')?.remove();
-    const popup = document.createElement('div');
-    popup.id = 'facing-popup';
-    Object.assign(popup.style, { position: 'fixed', left: `${clientX - 54}px`, top: `${clientY - 40}px`, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '3px', background: 'rgba(10,5,0,0.95)', border: '1px solid #5a3c10', borderRadius: '8px', padding: '6px', zIndex: '1000' });
-    const o = current(unit);
-    for (const { idx, label } of FACING_BTNS) {
-      const b = document.createElement('button');
-      b.textContent = label;
-      b.className = 'sim-facing-btn' + ((o && o.facing === idx) ? ' active' : '');
-      b.onclick = () => { patchOrder(unit, { facing: o && o.facing === idx ? undefined : idx }); popup.remove(); };
-      popup.appendChild(b);
-    }
-    document.body.appendChild(popup);
-    setTimeout(() => document.addEventListener('click', () => popup.remove(), { once: true }), 0);
+  function fullPath(o) { return o && o.path ? [...o.path, ...(o.marchRest || [])] : []; }
+  // the chosen step of the selected unit, while it still lies on its order: { unit, o, at, total, hex, here, before }
+  function stepInfo(unit) {
+    const u = unit && myUnit(unit.id);
+    if (!u || !st.step || st.step.unitId !== u.id || !canPlan() || u.isGeneral) return null;
+    const o = current(u);
+    const full = fullPath(o);
+    const at = st.step.at;
+    if (!full.length || at < 1 || at > full.length) { st.step = null; return null; }
+    const steps = o.stanceSteps || [];
+    const here = steps.find(x => x.at === at);
+    return { unit: u, o, at, total: full.length, hex: full[at - 1], here: here ? here.stance : null, before: stanceBefore(u, steps, at, o) };
   }
-
-
-  // ---------- Ctrl+click on a destination: move there, then face / change stance / attack on arrival ----------
-  function arrivalMenu(unit, path, x, y) {
-    document.getElementById('arrival-menu')?.remove();
-    const end = path[path.length - 1];
-    const enemies = (gameState.units || []).filter(e => !e.isMine && !e.isAlly && e.q != null);
-    const near = enemies.filter(e => KBRules.hexDistance ? KBRules.hexDistance(end[0], end[1], e.q, e.r) <= Math.max(1, unit.range || 1) : Math.abs(e.q - end[0]) + Math.abs(e.r - end[1]) <= 2);
-    const el = document.createElement('div');
-    el.id = 'arrival-menu';
-    el.className = 'arrival-menu';
-    const stances = unit.isGeneral ? [] : stanceList;
-    el.innerHTML = `<div class="am-title">À l'arrivée</div>
-      <div class="am-sec">Se tourner</div><div class="am-row am-dirs">${FACING_BTNS.map(b => `<button data-face="${b.idx}">${b.label}</button>`).join('')}</div>
-      ${stances.length ? `<div class="am-sec">Changer de posture (−${S.stanceCost} vitesse)</div><div class="am-row">${stances.map(s => { const sty = stanceStyle(s); return `<button data-stance="${s}"><i class="st-chip" style="background:${sty.c}">${sty.svg || ''}</i>${escapeHtml(stanceNames[s] || s)}</button>`; }).join('')}</div>` : ''}
-      <div class="am-sec">Attaquer depuis cette case</div><div class="am-row">${near.length ? near.map(e => `<button data-attack="${escapeHtml(e.id)}">${escapeHtml(e.name)}</button>`).join('') : '<span class="am-none">Aucun ennemi visible à portée de cette case</span>'}</div>
-      <div class="am-row am-foot"><button data-just="1">Seulement se déplacer</button></div>`;
-    document.body.appendChild(el);
-    const r = el.getBoundingClientRect();
-    el.style.left = `${Math.max(8, Math.min(innerWidth - r.width - 8, (x || innerWidth / 2) + 12))}px`;
-    el.style.top = `${Math.max(8, Math.min(innerHeight - r.height - 8, (y || innerHeight / 2) - 20))}px`;
-    const done = (patch) => {
-      el.remove();
-      st.wps[unit.id] = routeWaypoints(unit).map(w => w.slice());
-      patchOrder(unit, { type: 'move', path, targetId: undefined, ...patch });
-      resetRoute();
-      computeTiles(unit);
-      render();
-    };
-    el.addEventListener('click', (e) => {
-      const b = e.target.closest('button');
-      if (!b) return;
-      if (b.dataset.face != null) done({ facing: Number(b.dataset.face) });
-      else if (b.dataset.stance) done({ stanceSteps: withStep(keptSteps(unit, path), path.length, b.dataset.stance, unit) });
-      else if (b.dataset.attack) done({ type: 'attack', targetId: b.dataset.attack });
-      else done({});
-    });
-    setTimeout(() => document.addEventListener('pointerdown', function off(e) { if (!el.contains(e.target)) { el.remove(); document.removeEventListener('pointerdown', off); } }), 0);
-  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || !st.step) return;
+    st.step = null;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    render();
+  }, true);
 
   // Stance held just before step `at` of the order (start stance, then the earlier changes)
   function stanceBefore(unit, steps, at, o = current(unit)) {
@@ -410,41 +372,6 @@
     return out.length ? out : undefined;
   }
 
-  // ---------- Ctrl+click on a hex of the ordered path: stance change at that step, the order goes on ----------
-  function stepMenu(unit, at, total, x, y) {
-    document.getElementById('arrival-menu')?.remove();
-    const o = current(unit);
-    if (!o) return;
-    const steps = o.stanceSteps || [];
-    const here = steps.find(s => s.at === at);
-    const before = stanceBefore(unit, steps, at, o);
-    const last = at === total;
-    const el = document.createElement('div');
-    el.id = 'arrival-menu';
-    el.className = 'arrival-menu';
-    const stances = unit.isGeneral ? [] : stanceList;
-    el.innerHTML = `<div class="am-title">${last ? 'À l\'arrivée' : `Étape ${at} sur ${total}`}</div>
-      ${stances.length ? `<div class="am-sec">Changer de posture ici (−${S.stanceCost} vitesse)</div><div class="am-row">${stances.map(s => { const sty = stanceStyle(s); const on = here ? here.stance === s : false; return `<button data-stance="${s}" ${s === before && !on ? 'disabled' : ''} class="${on ? 'on' : ''}"><i class="st-chip" style="background:${sty.c}">${sty.svg || ''}</i>${escapeHtml(stanceNames[s] || s)}</button>`; }).join('')}</div>` : '<div class="am-sec">Les généraux n\'ont pas de posture.</div>'}
-      ${last ? `<div class="am-sec">Se tourner à l'arrivée</div><div class="am-row am-dirs">${FACING_BTNS.map(b => `<button data-face="${b.idx}" class="${o.facing === b.idx ? 'on' : ''}">${b.label}</button>`).join('')}</div>` : ''}
-      <div class="am-row am-foot">${here ? '<button data-clear="1">Retirer ce changement</button>' : ''}<button data-close="1">Fermer</button></div>`;
-    document.body.appendChild(el);
-    const r = el.getBoundingClientRect();
-    el.style.left = `${Math.max(8, Math.min(innerWidth - r.width - 8, (x || innerWidth / 2) + 12))}px`;
-    el.style.top = `${Math.max(8, Math.min(innerHeight - r.height - 8, (y || innerHeight / 2) - 20))}px`;
-    const close = () => { el.remove(); document.removeEventListener('pointerdown', off); };
-    const off = (e) => { if (!el.contains(e.target)) close(); };
-    el.addEventListener('click', (e) => {
-      const b = e.target.closest('button');
-      if (!b || b.disabled) return;
-      if (b.dataset.stance) patchOrder(unit, { stanceSteps: withStep(steps, at, here && here.stance === b.dataset.stance ? null : b.dataset.stance, unit) });
-      else if (b.dataset.face != null) patchOrder(unit, { facing: o.facing === Number(b.dataset.face) ? undefined : Number(b.dataset.face) });
-      else if (b.dataset.clear) patchOrder(unit, { stanceSteps: withStep(steps, at, null, unit) });
-      close();
-      render();
-    });
-    setTimeout(() => document.addEventListener('pointerdown', off), 0);
-  }
-
   // ---------- side panel (orders of the selected unit) and bottom bar (commit, timer, status) ----------
   function ensureDom() {
     if (document.getElementById('sim-bar')) return;
@@ -459,7 +386,6 @@
       #sim-commit { padding:8px 20px; font-weight:bold; background:#1a3a08; border:2px solid #4a8020; color:#a0e080; border-radius:7px; cursor:pointer; }
       #sim-commit.cancel { background:#3a2408; border-color:#7a5820; color:#e0c080; }
       #sim-commit:disabled { opacity:0.5; cursor:default; }
-      .sim-facing-btn { width:30px; height:30px; font-size:16px; }
     `;
     document.head.appendChild(css);
     const bar = document.createElement('div');
@@ -539,6 +465,17 @@
     ctx.fill();
   }
 
+  function drawStepRing(ctx, q, r, color) {
+    const p = hexToPixel(q, r);
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.setLineDash([6, 4]);
+    ctx.lineWidth = 5; ctx.strokeStyle = '#000';
+    ctx.beginPath(); ctx.arc(p.x, p.y, HEX_SIZE * 0.62, 0, Math.PI * 2); ctx.stroke();
+    ctx.lineWidth = 3; ctx.strokeStyle = color || '#fff'; ctx.stroke();
+    ctx.restore();
+  }
+
   function draw(ctx) {
     if (!isSim() || st.playback || gameState.phase !== 'battle') return;
     const color = getPlayerColor(myId);
@@ -579,8 +516,11 @@
       if (order.type === 'hold') tags.push('Tenir');
       if (order.stance) tags.push(stanceNames[order.stance] || order.stance);
       if (order.ability) tags.push('Capacité');
+      if (selected) { const sp = stepInfo(u); if (sp) drawStepRing(ctx, sp.hex[0], sp.hex[1], color); }
       if (order.facing != null) {
         const a = FACING_ANGLES[order.facing];
+        const fe = order.path && order.path.length ? order.path[order.path.length - 1] : null;
+        const p0 = fe ? hexToPixel(fe[0], fe[1]) : hexToPixel(u.q, u.r);
         ctx.strokeStyle = '#ffffff'; ctx.fillStyle = '#ffffff'; ctx.lineWidth = 2.5;
         const end = { x: p0.x + Math.cos(a) * HEX_SIZE * 0.95, y: p0.y + Math.sin(a) * HEX_SIZE * 0.95 };
         const mid = { x: p0.x + Math.cos(a) * HEX_SIZE * 0.55, y: p0.y + Math.sin(a) * HEX_SIZE * 0.55 };
@@ -929,7 +869,7 @@
   window.KBSim = {
     isSim,
     active: () => isSim() && gameState.phase === 'battle',
-    intercept, onState, click, select, contextMenu, pathTo, marchPlan, approachTo, draw, refresh, routeInfo,
+    intercept, onState, click, select, pathTo, marchPlan, approachTo, draw, refresh, routeInfo,
     routeWaypoints: () => routeWaypoints(selectedUnit),
     routeEdited() { const u = selectedUnit && myUnit(selectedUnit.id); if (u && canPlan()) orderAlongRoute(u); else refresh(); },
     routePath: () => { const u = selectedUnit && myUnit(selectedUnit.id); return u ? simRoute(u) : null; },
@@ -950,7 +890,24 @@
     setStance(unit, s) {
       const u = unit && myUnit(unit.id);
       if (!u || !canPlan()) return;
+      const sp = stepInfo(u);
+      if (sp) {
+        if (s === sp.before && sp.here !== s) return;
+        patchOrder(u, { stanceSteps: withStep(sp.o.stanceSteps, sp.at, sp.here === s ? null : s, u) });
+        return;
+      }
       patchOrder(u, { stance: s === u.stance ? undefined : s });
+    },
+    stepInfo: (unit) => { const sp = stepInfo(unit); return sp ? { at: sp.at, total: sp.total, hex: sp.hex, here: sp.here, before: sp.before } : null; },
+    clearStep() { st.step = null; render(); },
+    // where right-dragging orients the unit on arrival: its own hex, or the end of this turn's path
+    orientAnchor(unit, hex) {
+      const u = unit && myUnit(unit.id);
+      if (!u || !hex) return null;
+      if (hex.q === u.q && hex.r === u.r) return { q: u.q, r: u.r };
+      const o = current(u);
+      const end = o && o.path && o.path.length ? o.path[o.path.length - 1] : null;
+      return end && end[0] === hex.q && end[1] === hex.r ? { q: end[0], r: end[1] } : null;
     },
     // where the planned stance change happens: 0 = at the start, n = after the n-th step of the path
     setStanceAt(unit, n) {

@@ -405,9 +405,15 @@ export function mountBattleHud(bridge, view) {
     const stCost = bridge.orientCosts ? bridge.orientCosts().stance : 2;
     const stanceShown = canAct;
     const sty = (s) => (window.stanceStyle ? window.stanceStyle(s) : { k: '', svg: '', c: '#000', name: names[s] || s, short: names[s] || s });
-    const stanceBtns = list.map((s, i) => {
-      const on = curStance === s;
+    const step = sim && canAct && window.KBSim && KBSim.stepInfo ? KBSim.stepInfo(u) : null;
+    const stanceBtns = (step ? `<span class="sb-step" title="Ctrl+clic sur la case ou Échap pour revenir à la posture de départ">${step.at === step.total ? "À L'ARRIVÉE" : `ÉTAPE ${step.at} / ${step.total}`} · POSTURE ICI</span>` : '') + list.map((s, i) => {
       const ss = sty(s);
+      if (step) {
+        const on = step.here === s;
+        const off = !on && s === step.before;
+        return `<button class="sb-key${on ? ' on' : ''}" data-stance="${i}" ${off ? 'disabled' : ''} title="${esc(ss.name)} (touche ${i + 1})${on ? ' — prévue ici, cliquer pour la retirer' : off ? ' — déjà la posture à cette étape' : ` — à cette étape, −${stCost} vitesse`}" aria-label="${esc(ss.name)}"><kbd>${i + 1}</kbd><i class="st-chip" style="background:${esc(ss.c)}">${ss.svg || ''}</i><span>${esc(ss.short)}</span></button>`;
+      }
+      const on = curStance === s;
       const off = !sim && !on && (u.speedRemaining || 0) < stCost;
       return `<button class="sb-key${on ? ' on' : ''}" data-stance="${i}" ${off ? 'disabled' : ''} title="${esc(ss.name)} (touche ${i + 1})${on ? ' — actuelle' : ` — −${stCost} vitesse${sim ? ', au début de la résolution' : ''}`}" aria-label="${esc(ss.name)}"><kbd>${i + 1}</kbd><i class="st-chip" style="background:${esc(ss.c)}">${ss.svg || ''}</i><span>${esc(ss.short)}</span></button>`;
     }).join('');

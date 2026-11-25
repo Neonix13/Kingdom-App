@@ -1344,7 +1344,8 @@ canvas.addEventListener('dblclick', (e) => {
 canvas.addEventListener('mousedown', (e) => {
   if (e.button === 2 && selectedUnit && window.KBOrient) {
     const hex = getHexUnderMouse(e);
-    if (hex && hex.q === selectedUnit.q && hex.r === selectedUnit.r && KBOrient.start(window.gameBridge, selectedUnit)) { dragStart = { x: e.clientX, y: e.clientY }; return; }
+    const anchor = window.gameBridge.orientAnchor(selectedUnit, hex);
+    if (anchor && KBOrient.start(window.gameBridge, selectedUnit, anchor)) { dragStart = { x: e.clientX, y: e.clientY }; return; }
   }
   if (e.button === 1 || e.button === 2) {
     isDragging = true;
@@ -1432,39 +1433,6 @@ function setUnitStance(unit, stanceId) {
   if (window.KBSim && KBSim.active()) { KBSim.setStance(unit, stanceId); return; }
   if (gameState?.currentPlayerId !== myId || unit.stance === stanceId) return;
   wsSend('change_stance', { roomCode, unitId: unit.id, stanceId });
-}
-
-function showFacingPopup(unit, clientX, clientY) {
-  document.getElementById('facing-popup')?.remove();
-  const popup = document.createElement('div');
-  popup.id = 'facing-popup';
-  // Layout 3x2 : NW(3) N(2) NE(1) / SW(4) S(5) SE(0)
-  const dirs = [
-    { idx: 3, label: '↖' }, { idx: 2, label: '↑' }, { idx: 1, label: '↗' },
-    { idx: 4, label: '↙' }, { idx: 5, label: '↓' }, { idx: 0, label: '↘' },
-  ];
-  Object.assign(popup.style, {
-    position: 'fixed', left: `${clientX - 54}px`, top: `${clientY - 40}px`,
-    display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '3px',
-    background: 'rgba(10,5,0,0.95)', border: '1px solid #5a3c10',
-    borderRadius: '8px', padding: '6px', zIndex: '1000',
-  });
-  for (const { idx, label } of dirs) {
-    const btn = document.createElement('button');
-    btn.textContent = label;
-    Object.assign(btn.style, {
-      background: unit.facing === idx ? '#5a3c10' : '#2a1408',
-      color: '#e8d5a0', border: '1px solid #5a3c10', borderRadius: '4px',
-      cursor: 'pointer', fontSize: '18px', width: '34px', height: '34px',
-    });
-    btn.onclick = () => {
-      wsSend('rotate_facing', { roomCode, unitId: unit.id, facing: idx });
-      popup.remove();
-    };
-    popup.appendChild(btn);
-  }
-  document.body.appendChild(popup);
-  setTimeout(() => document.addEventListener('click', () => popup.remove(), { once: true }), 0);
 }
 
 canvas.addEventListener('wheel', (e) => {
@@ -3907,6 +3875,12 @@ window.gameBridge = {
   },
   contextMenu() { this.deselect(); },
   facingToward(unit, hex) { return facingToward(unit, hex); },
+  // hex where a right-drag starts orienting the selected unit: the unit itself, or (simultaneous) the end of its path
+  orientAnchor(unit, hex) {
+    if (!unit || !hex) return null;
+    if (window.KBSim && KBSim.active()) return KBSim.orientAnchor(unit, hex);
+    return hex.q === unit.q && hex.r === unit.r ? { q: unit.q, r: unit.r } : null;
+  },
   // the selected unit can receive a facing now (simultaneous planning, or my turn with speed left)
   canOrient(unit) {
     if (!unit || !unit.isMine || unit.q == null || unit.isFleeing || mode === 'deploy') return false;

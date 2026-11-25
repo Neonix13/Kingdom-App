@@ -9,8 +9,6 @@ Nouveau:
 Priorité:
 Interface et commandes :
 -Continuer à travailler le tracé / la portée (tir / charisme).
--Bannir définitivement ce menu avec des flèches orientées.
-    -Trouver un meilleur système direction / posture notament pour les points de passage.
 
 
 Question:
@@ -18,6 +16,7 @@ Question:
 -------
 
 FAIT (25/11/2026)
+- plus aucun menu à flèches (menu « À l'arrivée », menu d'étape, popup d'orientation) : Ctrl+clic sur une case du trajet ou sur une destination choisit l'étape (anneau en pointillés, 2D et 3D ; « ÉTAPE n / N » ou « À L'ARRIVÉE » au-dessus de la barre de postures), les touches 1 à 6 y posent la posture (à nouveau : retirée) ; Ctrl+clic à nouveau ou Échap libère l'étape ; orientation à l'arrivée par clic droit glissé depuis l'unité ou depuis la fin de son trajet ; en 2D, la flèche d'orientation prévue est dessinée à l'arrivée
 - général perdu (mort ou sorti de la carte) : ses unités perdent leur moral maximum en moral, sont en déroute et fuient seules à chaque manche (celles qui sortent de la carte disparaissent) ; modes classique et simultané
 - ralliement : un autre général (allié ou ennemi) qui réussit sa motivation avec des troupes sans général à portée les rallie (elles cessent de fuir, moral remonté à 0 au moins) et en prend le contrôle
 - touche « Motiver » (V) à la place des postures quand un général est sélectionné (barre en bas au centre, modes classique et simultané) ; retirée de la colonne d'actions

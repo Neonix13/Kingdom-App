@@ -1,5 +1,6 @@
-// Orienting a unit by dragging with the right button from the selected unit: an arrow follows the cursor, snapped to
-// the nearest of the 6 hex directions, and the facing is given on release. Used by the 2D canvas and the 3D view.
+// Orienting a unit by dragging with the right button from the selected unit (or, in simultaneous mode, from the end of
+// its path: the facing it takes on arrival): an arrow follows the cursor, snapped to the nearest of the 6 hex
+// directions, and the facing is given on release. Used by the 2D canvas and the 3D view.
 (function () {
   const NS = 'http://www.w3.org/2000/svg';
   let svg = null, line = null, head = null, label = null, drag = null;
@@ -21,18 +22,19 @@
   }
 
   // bridge: { hexScreen(q, r), facingToward(unit, hex), canOrient(unit), setUnitFacing(unit, f) }
-  function start(bridge, unit) {
+  function start(bridge, unit, anchor = null) {
     if (!unit || !bridge.canOrient(unit)) return false;
     ensure();
-    drag = { bridge, unit, facing: null };
+    const at = anchor || { q: unit.q, r: unit.r };
+    drag = { bridge, unit, at, arrival: at.q !== unit.q || at.r !== unit.r, facing: null };
     return true;
   }
   function move(hex, clientX, clientY) {
     if (!drag) return;
-    const { bridge, unit } = drag;
-    const c = bridge.hexScreen(unit.q, unit.r);
+    const { bridge, unit, at } = drag;
+    const c = bridge.hexScreen(at.q, at.r);
     if (!c) return;
-    const f = hex ? bridge.facingToward(unit, hex) : null;
+    const f = hex ? bridge.facingToward({ ...unit, q: at.q, r: at.r }, hex) : null;
     drag.facing = f;
     svg.style.display = '';
     svg.querySelector('.o-ring').setAttribute('cx', c.x);
@@ -40,7 +42,7 @@
     let tx = clientX, ty = clientY;
     if (f != null) {
       const DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
-      const n = bridge.hexScreen(unit.q + DIRS[f][0], unit.r + DIRS[f][1]);
+      const n = bridge.hexScreen(at.q + DIRS[f][0], at.r + DIRS[f][1]);
       if (n) {
         const a = Math.atan2(n.y - c.y, n.x - c.x), len = Math.max(48, Math.min(140, Math.hypot(clientX - c.x, clientY - c.y)));
         tx = c.x + Math.cos(a) * len; ty = c.y + Math.sin(a) * len;
@@ -53,7 +55,7 @@
     head.style.display = f == null ? 'none' : '';
     label.style.display = '';
     label.style.left = `${tx}px`; label.style.top = `${ty}px`;
-    label.textContent = f == null ? 'Relâcher sur une case pour orienter' : (f === unit.facing ? 'Orientation actuelle' : 'Orienter ici');
+    label.textContent = f == null ? 'Relâcher sur une case pour orienter' : (drag.arrival ? "Orientation à l'arrivée" : f === unit.facing ? 'Orientation actuelle' : 'Orienter ici');
   }
   function end(apply = true) {
     if (!drag) return false;

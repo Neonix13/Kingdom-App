@@ -270,9 +270,6 @@ body.hud-d #v3-tip .vs span:nth-child(3n+2) { color: #555; }
 body.hud-d .v3-float { font-family: var(--hud-display); font-weight: 400; color: #fff; -webkit-text-stroke: 5px #000; paint-order: stroke fill; text-shadow: none; }
 body.hud-d .v3-float.kill { color: var(--hud-red); }
 body.hud-d .v3-float.morale { color: #9cc0ff; }
-body.hud-d #facing-popup { background: #fff !important; border: 3px solid #000 !important; border-radius: 0 !important; }
-body.hud-d #facing-popup button { background: #fff; border: 2px solid #000; color: #000; border-radius: 0; }
-body.hud-d #facing-popup button:hover, body.hud-d #facing-popup button.active { background: #000; color: #fff; }
 
 /* tutorial coach moves to the right column in the HUD */
 body.hud-d #tuto-coach { left: auto; right: 22px; top: 84px; bottom: auto; width: 330px; background: #fff; color: #000; border: 4px solid #000; border-radius: 0; box-shadow: 0 0 0 3px #fff, 0 0 0 6px #000; }
@@ -637,16 +634,6 @@ body.hud-d #toolbar .tuto-highlight { outline: 3px solid var(--hud-red); outline
 .tt2-note { margin-top: 9px; padding-top: 7px; border-top: 2px dashed #bbb; font-size: 12px; line-height: 1.4; }
 
 /* ---- Ctrl+click: action on arrival ---- */
-.arrival-menu { position: fixed; z-index: 500; width: 300px; padding: 10px 12px 12px; background: #fff; color: #000; border: 4px solid #000; box-shadow: 0 0 0 3px #fff, 0 0 0 6px #000, 8px 10px 0 4px rgba(0, 0, 0, .35); font: 500 13px "Zen Kaku Gothic New", "Segoe UI", sans-serif; }
-.arrival-menu .am-title { font: 400 18px var(--hud-display, "Dela Gothic One", sans-serif); padding-bottom: 6px; border-bottom: 3px solid #000; }
-.arrival-menu .am-sec { margin: 8px 0 4px; font: 700 10px "Zen Kaku Gothic New", sans-serif; letter-spacing: 1.5px; text-transform: uppercase; color: #6a625a; }
-.arrival-menu .am-row { display: flex; flex-wrap: wrap; gap: 4px; }
-.arrival-menu button { display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; border: 2px solid #000; background: #fff; color: #000; font: 700 12px "Zen Kaku Gothic New", sans-serif; cursor: pointer; }
-.arrival-menu button:hover { background: #000; color: #fff; }
-.arrival-menu .am-dirs button { width: 34px; justify-content: center; font-size: 16px; }
-.arrival-menu .st-chip { width: 16px; height: 16px; }
-.arrival-menu .am-none { color: #6a625a; font-style: italic; font-size: 12px; }
-.arrival-menu .am-foot { margin-top: 10px; }
 /* stance names in full: two rows of three */
 .hud-card .stances { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .hud-card .stances .hud-para { height: 26px; }
@@ -656,3 +643,5 @@ body.hud-d #toolbar .tuto-highlight { outline: 3px solid var(--hud-red); outline
 .hud-card .stances .st-btn .st-chip { width: 15px; height: 15px; }
 .hud-stancebar .sb-key.sb-gen { width: 84px; }
 .hud-stancebar .sb-key.sb-gen span { max-width: 80px; }
+
+.hud-stancebar .sb-step { position: absolute; left: 0; bottom: calc(100% + 8px); padding: 3px 9px; background: #000; color: #fff; border: 2px solid #fff; box-shadow: 3px 3px 0 var(--hud-red); font: 900 10px var(--hud-body, sans-serif); letter-spacing: 1px; white-space: nowrap; }

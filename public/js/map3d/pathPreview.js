@@ -332,6 +332,12 @@ export function createPathMarks(world) {
     g.lineWidth = 2; g.strokeStyle = 'rgba(0,0,0,0.8)'; g.stroke();
     if (window.drawStanceIcon) window.drawStanceIcon(g, s, 32, 32, 26);
   });
+  // step chosen with Ctrl+click: dashed ring in the player's colour
+  const stepTex = (ring) => texture(`r${ring}`, (g) => {
+    g.setLineDash([9, 6]);
+    g.lineWidth = 9; g.strokeStyle = '#000'; g.beginPath(); g.arc(32, 32, 26, 0, Math.PI * 2); g.stroke();
+    g.lineWidth = 5; g.strokeStyle = ring; g.stroke();
+  });
   const sprites = [];
   let lastSig = '';
   // marks: [{ q, r, kind: 'turn' | 'stance', n?, stance? }]
@@ -352,9 +358,9 @@ export function createPathMarks(world) {
       if (!mk) return;
       const c = hexToWorld(mk.q, mk.r);
       const y = groundHeight(c.x, c.z);
-      sp.material.map = mk.kind === 'turn' ? turnTex(mk.n) : stanceTex(mk.stance, mk.ring || '#ffffff');
+      sp.material.map = mk.kind === 'turn' ? turnTex(mk.n) : mk.kind === 'step' ? stepTex(mk.ring || '#ffffff') : stanceTex(mk.stance, mk.ring || '#ffffff');
       sp.material.needsUpdate = true;
-      const k = mk.kind === 'turn' ? 0.42 : 0.5;
+      const k = mk.kind === 'turn' ? 0.42 : mk.kind === 'step' ? 0.85 : 0.5;
       sp.scale.set(k, k, 1);
       // the stance seal sits on the trail itself, just above the ground
       sp.position.set(c.x, y + (mk.kind === 'turn' ? 0.45 : 0.3), c.z);
