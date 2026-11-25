@@ -58,6 +58,7 @@ const PLATE_CSS = `
   z-index:2; display:flex; flex-direction:column; align-items:center; gap:calc(3px * var(--mi, 1)); }
 .u3-cloth .k { display:flex; color:#fff; font:400 17px 'Yuji Boku','Zen Old Mincho',serif; line-height:1; filter:drop-shadow(0 0 1px #000) drop-shadow(0 0 1px #000); }
 .u3-cloth .k svg { width:16px; height:16px; }
+.u3-cloth .k.cn { writing-mode:vertical-rl; text-orientation:upright; letter-spacing:-1px; font-size:calc(15px * var(--mi, 1) + 8px * var(--m, 0)); margin-top:2px; }
 .u3-tags { display:flex; flex-direction:column; align-items:center; gap:1px; max-height:calc(60px * var(--mi, 1)); overflow:hidden; }
 .u3-tag { display:flex; align-items:center; justify-content:center; width:12px; height:12px; font:400 9px/1 'Yuji Boku','Zen Old Mincho',serif; background:#fff; color:#000; box-shadow:0 0 0 1px #000; }
 .u3-tag.gen { background:#e8c060; color:#000; } .u3-tag.hide { background:#2f6a3a; color:#cfe9c9; } .u3-tag.stun { background:#ffcf40; color:#000; }
@@ -96,6 +97,8 @@ const PLATE_CSS = `
 #view3d-loading .bar i { display:block; height:100%; width:0; background:#d9bf78; transition:width .2s; }
 `;
 
+// generals' names in Chinese characters (as in the manga), written down their banner
+const GENERAL_CN = { ou_ki: '王騎', mou_bu: '蒙武', ou_sen: '王翦', kan_ki: '桓騎', ri_boku: '李牧', kei_sha: '慶舎', shi_ba_shou: '司馬尚', ren_pa: '廉頗', go_kei: '呉慶', go_hou_mei: '呉鳳明', gai_mou: '凱孟' };
 const hexKey = (q, r) => `${q},${r}`;
 const hexDist = (q1, r1, q2, r2) => (Math.abs(q1 - q2) + Math.abs(r1 - r2) + Math.abs(q1 + r1 - q2 - r2)) / 2;
 
@@ -272,9 +275,10 @@ export async function mountGameView(bridge, { container }) {
     el._unit = u;
     const color = bridge.getPlayerColor(u.playerId);
     el.style.setProperty('--pc', color);
-    const kj = u.isGeneral ? 'general' : u.typeId;
+    const cn = u.isGeneral ? GENERAL_CN[u.generalId] : null;
+    const kj = cn ? `cn:${cn}` : u.isGeneral ? 'general' : u.typeId;
     const kEl = el.querySelector('.k');
-    if (kEl.dataset.t !== kj) { kEl.dataset.t = kj; kEl.innerHTML = self.KBUnitIcon(u.typeId, u.isGeneral); }
+    if (kEl.dataset.t !== kj) { kEl.dataset.t = kj; kEl.classList.toggle('cn', !!cn); kEl.innerHTML = cn || self.KBUnitIcon(u.typeId, u.isGeneral); }
     // kanji tags for the state only (the cloth's colour already tells the side, the gold edge the general, a slow blink a hidden unit): stunned
     const tags = [];
     if (u.stunned) tags.push('<i class="u3-tag stun" title="Sonné">暈</i>');
