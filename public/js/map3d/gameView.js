@@ -520,8 +520,10 @@ export async function mountGameView(bridge, { container }) {
         const s = world.projectToScreen(anchorOf(u));
         if (!s.visible) { el.style.display = 'none'; continue; }
         el.style.display = '';
-        // stacking: the lower on screen (the closer to the camera), the more in front; hovered / selected always on top
-        el.style.zIndex = String(Math.max(0, Math.round(s.y)) + (el.classList.contains('sel') ? 200000 : el.classList.contains('hov') ? 100000 : 0));
+        // stacking by the real distance to the camera (not the screen height, which flips with low or tilted views):
+        // the closer, the more in front; hovered / selected always on top
+        const camD = world.camera.position.distanceTo(anchorOf(u));
+        el.style.zIndex = String(Math.max(1, 90000 - Math.round(camD * 100)) + (el.classList.contains('sel') ? 200000 : el.classList.contains('hov') ? 100000 : 0));
         el.style.transform = `translate(${(s.x - 5.5).toFixed(1)}px, ${s.y.toFixed(1)}px) translate(0, ${mapMode.active ? '-50%' : '-100%'})`;
       }
     }
