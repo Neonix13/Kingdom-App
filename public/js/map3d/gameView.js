@@ -86,7 +86,8 @@ const PLATE_CSS = `
 .u3-plate.sel .u3-ban { filter:drop-shadow(0 0 5px rgba(216,53,42,.9)); }
 .u3-plate.moved .u3-cloth { filter:grayscale(.75) brightness(.8); }
 .u3-plate.fleeing .u3-cloth { animation-duration:.9s; }
-.u3-plate.concealed .u3-cloth { opacity:.65; }
+.u3-plate.concealed .u3-ban { animation:u3-hidden 2.4s ease-in-out infinite; }
+@keyframes u3-hidden { 0%, 100% { opacity:1; } 50% { opacity:.55; } }
 /* far: a smaller flag, vitality only */
 #view3d-loading { position:absolute; inset:0; z-index:3; display:flex; flex-direction:column; align-items:center; justify-content:center;
   background:rgba(10,6,4,0.92); color:#d9bf78; font:12px 'Segoe UI',system-ui,sans-serif; letter-spacing:2px; transition:opacity .6s; }
@@ -273,9 +274,8 @@ export async function mountGameView(bridge, { container }) {
     const kj = u.isGeneral ? 'general' : u.typeId;
     const kEl = el.querySelector('.k');
     if (kEl.dataset.t !== kj) { kEl.dataset.t = kj; kEl.innerHTML = self.KBUnitIcon(u.typeId, u.isGeneral); }
-    // kanji tags for the state only (the cloth's colour already tells the side, the gold edge the general): hidden, stunned
+    // kanji tags for the state only (the cloth's colour already tells the side, the gold edge the general, a slow blink a hidden unit): stunned
     const tags = [];
-    if (u.concealed) tags.push('<i class="u3-tag hide" title="Cachée">伏</i>');
     if (u.stunned) tags.push('<i class="u3-tag stun" title="Sonné">暈</i>');
     const tagEl = el.querySelector('.u3-tags');
     const tagHtml = tags.join('');
