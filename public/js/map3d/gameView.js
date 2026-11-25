@@ -57,8 +57,8 @@ const PLATE_CSS = `
 .u3-plate .st.torn::after { content:''; position:absolute; left:3px; right:3px; top:50%; height:1px; background:rgba(255,255,255,.5); transform:rotate(-35deg); }
 /* gauges: a strip sewn along the right edge of the cloth (seam on its left), vitality wide, morale narrow */
 .u3-gauges { position:absolute; right:3px; top:3px; bottom:4px; z-index:2; width:11px; display:flex; gap:1px; padding:1px;
-  background:rgba(0,0,0,.45); box-shadow:-1px 0 0 rgba(255,255,255,.6); }
-.u3-vbar { position:relative; flex:none; width:4px; height:100%; background:#1d1b19; overflow:hidden; }
+  background:#0f0e0d; box-shadow:0 0 0 1px #fff, 0 0 0 2px #000; }
+.u3-vbar { position:relative; flex:none; width:4px; height:100%; background:#2a2725; overflow:hidden; }
 .u3-vbar > i { position:absolute; left:0; right:0; bottom:0; transition:height .3s; }
 .u3-vbar.hp > i { background:linear-gradient(90deg, #ffffff, #d8d0c2); }
 .u3-vbar.hp.low > i { background:linear-gradient(90deg, #ff6a55, #b8261c); }
