@@ -665,3 +665,44 @@ body.hud-d #toolbar .tuto-highlight { outline: 3px solid var(--hud-red); outline
 .hud-stancebar .sb-key.sb-gen span { max-width: 80px; }
 
 .hud-stancebar .sb-step { position: absolute; left: 0; bottom: calc(100% + 8px); padding: 3px 9px; background: #000; color: #fff; border: 2px solid #fff; box-shadow: 3px 3px 0 var(--hud-red); font: 900 10px var(--hud-body, sans-serif); letter-spacing: 1px; white-space: nowrap; }
+
+/* ---- unit card: chips for what the unit is and its state, labelled gauges (vitality, morale, speed), the stance's
+   modifiers in full as green / red chips, stats with their posture / terrain modifier ---- */
+.hud-card { height: auto; min-height: 196px; }
+.hud-card .pic { width: 138px; }
+.hud-card .body { padding: 8px 12px 9px; gap: 6px; }
+.hud-card .head { flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 4px; }
+.hud-card .meta { gap: 4px; }
+.uc-chip { display: inline-flex; align-items: center; height: 17px; padding: 0 6px; border: 2px solid #000; background: #fff; color: #000; font: 900 10px var(--hud-body); letter-spacing: .4px; white-space: nowrap; }
+.uc-chip.kind { background: #000; color: #fff; }
+.uc-chip.info { border-color: #8a8178; color: #3a3632; }
+.uc-chip.foe, .uc-chip.bad { background: var(--hud-red); border-color: var(--hud-red); color: #fff; }
+.uc-chip.ally, .uc-chip.good { background: #1d7a2a; border-color: #1d7a2a; color: #fff; }
+.uc-chip.done { border-style: dashed; color: #6a625a; border-color: #8a8178; }
+.uc-gauges { display: flex; flex-direction: column; gap: 3px; }
+.uc-g { display: grid; grid-template-columns: 62px 1fr 58px; align-items: center; gap: 8px; }
+.uc-g .gl { font: 900 9.5px var(--hud-body); letter-spacing: .8px; color: #3a3632; }
+.uc-g .gb { height: 11px; border: 2px solid #000; background: #fff; overflow: hidden; }
+.uc-g .gb i { display: block; height: 100%; background: #000; }
+.uc-g b { font: 400 15px/1 var(--hud-display); text-align: right; white-space: nowrap; }
+.uc-g b small { font: 900 10px var(--hud-body); color: #6a625a; }
+.uc-g.hp .gb { height: 14px; background: #fff repeating-linear-gradient(90deg, transparent 0 calc(25% - 1px), rgba(0,0,0,.18) calc(25% - 1px) 25%); }
+.uc-g.hp b { font-size: 19px; }
+.uc-g.hp.low .gb i { background: var(--hud-red); }
+.uc-g.mo .gb i { background: #2f86e6; }
+.uc-g.mo.neg .gb i { background: repeating-linear-gradient(135deg, #ff5a45 0 3px, #8a1a12 3px 6px); }
+.uc-g.mo.neg b { color: var(--hud-red); }
+.uc-g.sp .gb i { background: #b8892e; }
+.hud-card .stance-now { align-items: flex-start; white-space: normal; gap: 7px; }
+.hud-card .stance-now b { flex-shrink: 0; line-height: 20px; }
+.hud-card .stance-now .fx { display: flex; flex-wrap: wrap; gap: 3px; overflow: visible; min-width: 0; padding-top: 1px; }
+.hud-card .stance-now .fx i { font: 800 10px/16px var(--hud-body); font-style: normal; padding: 0 5px; background: #f1eee8; color: #3a3632; white-space: nowrap; }
+.hud-card .stance-now .fx i.up { background: #eaf6ec; color: #1d7a2a; }
+.hud-card .stance-now .fx i.down { background: #fbecea; color: #b8261c; }
+.hud-card .stance-now .fx i.re { background: #000; color: #fff; }
+.hud-card .stats { gap: 4px; }
+.hud-card .stat { padding: 2px 0 1px; border-width: 2px; }
+.hud-card .stat span { font-size: 8.5px; letter-spacing: .4px; white-space: nowrap; }
+.hud-card .stat b { display: flex; align-items: baseline; gap: 2px; font-size: 18px; line-height: 1.05; }
+.hud-card .stat b small { font: 900 9px var(--hud-body); }
+@media (max-width: 1360px) { .hud-card .pic { width: 116px; } }

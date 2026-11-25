@@ -318,11 +318,14 @@ export function mountBattleHud(bridge, view) {
       const d = (sd[key] || 0) + (tr[key] || 0);
       return { label, v: base + d, d };
     };
+    // a shooter's attack and power take the ranged modifiers; defense against both melee and shots
+    const kind = (u.range || 1) > 1 ? 'tir' : 'cac';
     const stats = u.isGeneral
-      ? [{ label: 'FORCE', v: u.force, d: 0 }, { label: 'STRATÉGIE', v: u.strategy, d: 0 }, { label: 'CHARISME', v: u.charisma, d: 0 }, { label: 'ARMURE', v: u.armor, d: 0 }]
-      : [stat('ATTAQUE', u.attack, 'attack_cac'), stat('PUISSANCE', u.power, 'puissance_cac'), stat('DÉFENSE', u.defense, 'defense_cac'), stat('ARMURE', u.armor, 'armure')];
+      ? [{ label: 'FORCE', v: u.force, d: 0 }, { label: 'STRATÉGIE', v: u.strategy, d: 0 }, { label: 'CHARISME', v: u.charisma, d: 0 }, { label: 'ARMURE', v: u.armor, d: 0 }, { label: 'PUISSANCE', v: u.power, d: 0 }]
+      : [stat(kind === 'tir' ? 'ATTAQUE TIR' : 'ATTAQUE', u.attack, `attack_${kind}`), stat('PUISSANCE', u.power, `puissance_${kind}`),
+        stat('DÉF. MÊLÉE', u.defense, 'defense_cac'), stat('DÉF. TIR', u.defense, 'defense_tir'), stat('ARMURE', u.armor, 'armure')];
     for (const s of stats) if (s.v == null || Number.isNaN(s.v)) { s.v = '—'; s.d = 0; }
-    return { stats, terrainName: (TERRAINS[tt] || {}).name || tt };
+    return { stats, kind, terrainName: (TERRAINS[tt] || {}).name || tt };
   }
 
   // ---- my general's active ability, bottom-left: portrait, name, recharge or ready; click = use it (select the general and
@@ -383,20 +386,21 @@ export function mountBattleHud(bridge, view) {
     const color = bridge.getPlayerColor ? bridge.getPlayerColor(u.playerId) : '#000';
     const names = G('stanceNames') || {};
     const list = G('stanceList') || [];
-    const { stats, terrainName } = effective(u);
+    const { stats, terrainName, kind } = effective(u);
     const fmtSpeed = window.fmtSpeed || ((x) => x);
+    // chips: what the unit is (kind, side, terrain, range) in outline, its state in solid colours
+    const chip = (t, cls = '', tip = '') => `<span class="uc-chip ${cls}"${tip ? ` title="${esc(tip)}"` : ''}>${t}</span>`;
     const meta = [];
-    if (!u.isMine && !deploying) meta.push(u.isAlly ? '<span class="flag ok">ALLIÉ</span>' : '<span class="flag">ENNEMI</span>');
-    meta.push(esc(u.isGeneral ? 'GÉNÉRAL' : (u.category || '').toUpperCase()));
-    if (u.speed != null) meta.push(`VITESSE ${u.speedRemaining != null ? esc(fmtSpeed(u.speedRemaining)) + '/' : ''}${u.speed}`);
-    if (!u.isGeneral && u.q != null) meta.push(esc(String(terrainName).toUpperCase()));
-    if (u.range > 1) meta.push(`PORTÉE ${u.range}`);
-    if (u.isFleeing) meta.push('<span class="flag">EN FUITE</span>');
-    if (u.isMine && u.concealed) meta.push('<span class="flag ok">CACHÉE</span>');
-    if (u.stunned) meta.push('<span class="flag">SONNÉ</span>');
-    if (u.isMine && !deploying && !sim && u.hasMoved) meta.push('DÉPLACÉ');
-    if (u.isMine && !deploying && !sim && u.hasAttacked) meta.push('A ATTAQUÉ');
-    if (u.isMine && u.march && u.march.route && u.march.route.length) meta.push(`<span class="flag ok">MARCHE · ${u.march.route.length} CASE${u.march.route.length > 1 ? 'S' : ''}</span>`);
+    meta.push(chip(esc(u.isGeneral ? 'GÉNÉRAL' : (u.category || '').toUpperCase()), 'kind'));
+    if (!u.isMine && !deploying) meta.push(u.isAlly ? chip('ALLIÉ', 'ally') : chip('ENNEMI', 'foe'));
+    if (!u.isGeneral && u.q != null) meta.push(chip(`⛰\uFE0E ${esc(String(terrainName).toUpperCase())}`, 'info', 'Terrain de la case'));
+    if (u.range > 1) meta.push(chip(`◎ PORTÉE ${u.range}`, 'info', 'Portée de tir (cases)'));
+    if (u.isFleeing) meta.push(chip('EN FUITE', 'bad'));
+    if (u.stunned) meta.push(chip('SONNÉ', 'bad'));
+    if (u.isMine && u.concealed) meta.push(chip('CACHÉE', 'good'));
+    if (u.isMine && !deploying && !sim && u.hasMoved) meta.push(chip('DÉPLACÉ', 'done'));
+    if (u.isMine && !deploying && !sim && u.hasAttacked) meta.push(chip('A ATTAQUÉ', 'done'));
+    if (u.isMine && u.march && u.march.route && u.march.route.length) meta.push(chip(`MARCHE · ${u.march.route.length} CASE${u.march.route.length > 1 ? 'S' : ''}`, 'good'));
     const pct = u.maxVitality ? Math.max(0, Math.min(100, (u.vitality / u.maxVitality) * 100)) : 0;
     const simOrder = sim && bridge.simOrderOf ? bridge.simOrderOf(u) : null;
     const curStance = simOrder && simOrder.stance ? simOrder.stance : u.stance;
@@ -436,19 +440,32 @@ export function mountBattleHud(bridge, view) {
       const kind = (u.range || 1) > 1 ? 'tir' : 'cac';
       const fx = window.stanceEffectsText ? window.stanceEffectsText(u.stance, kind, 4) : '';
       const full = [window.stanceEffectsText ? window.stanceEffectsText(u.stance) : '', window.stanceAngleText ? window.stanceAngleText(u.stance) : '', sim && window.stanceReactionText ? `si attaquée : ${window.stanceReactionText(u.stance)}` : ''].filter(Boolean).join(' — ');
-      stanceNow = `<div class="stance-now" title="${esc(full)}"><i class="st-chip" style="background:${esc(ss.c)}">${ss.svg || ''}</i><b>${esc(ss.name.toUpperCase())}</b><span>${esc(fx)}${sim && window.stanceReactionText ? ` · si attaquée : ${esc(window.stanceReactionText(u.stance))}` : ''}</span></div>`;
+      // every modifier of the stance for this unit's kind, as green / red chips, plus its reaction when attacked
+      const fxList = typeof window.stanceEffects === 'function' ? window.stanceEffects(u.stance, kind) : null;
+      const fxHtml = fxList
+        ? (fxList.length ? fxList.map((e) => `<i class="${e.v > 0 ? 'up' : 'down'}">${e.v > 0 ? '+' : '−'}${Math.abs(e.v)} ${esc(e.label)}</i>`).join('') : '<i>aucun modificateur</i>')
+        : `<i>${esc(window.stanceEffectsText ? window.stanceEffectsText(u.stance, kind) : '')}</i>`;
+      const react = sim && window.stanceReactionText ? window.stanceReactionText(u.stance) : '';
+      stanceNow = `<div class="stance-now" title="${esc(full)}"><i class="st-chip" style="background:${esc(ss.c)}">${ss.svg || ''}</i><b>${esc(ss.name.toUpperCase())}</b><span class="fx">${fxHtml}${react ? `<i class="re">si attaquée : ${esc(react)}</i>` : ''}</span></div>`;
+    }
+    // gauges: vitality, morale (red stripes below zero, as long as the deficit) and speed left this turn
+    const gauge = (label, cls, frac, val, max, tip) => `<div class="uc-g ${cls}" title="${esc(tip)}"><span class="gl">${label}</span><div class="gb"><i style="width:${(Math.max(0, Math.min(1, frac)) * 100).toFixed(0)}%"></i></div><b>${val}<small>/${max}</small></b></div>`;
+    const gauges = [gauge('VITALITÉ', `hp${pct < 35 ? ' low' : ''}`, pct / 100, u.vitality ?? '—', u.maxVitality ?? '—', `Vitalité ${u.vitality ?? '?'} / ${u.maxVitality ?? '?'}`)];
+    if (!u.isGeneral && u.maxMorale && u.morale != null) {
+      const neg = u.morale < 0;
+      gauges.push(gauge('MORAL', `mo${neg ? ' neg' : ''}`, Math.abs(u.morale) / u.maxMorale, u.morale, u.maxMorale, neg ? `Moral ${u.morale} : sous zéro, l'unité fuit` : `Moral ${u.morale} / ${u.maxMorale}`));
+    }
+    if (u.speed != null) {
+      const left = u.speedRemaining != null && !sim ? u.speedRemaining : u.speed;
+      gauges.push(gauge('VITESSE', 'sp', u.speed ? left / u.speed : 0, esc(fmtSpeed(left)), u.speed, sim || u.speedRemaining == null ? `Vitesse ${u.speed} par tour` : `Vitesse restante ce tour : ${fmtSpeed(left)} / ${u.speed}`));
     }
     el.card.innerHTML = `
       <div class="pic">${src ? `<img src="${esc(src)}" alt="">` : ''}<span class="k">${unitKanji(u)}</span><i class="owner" style="background:${esc(color)}"></i></div>
       <div class="body">
-        <div class="head">
-          <div style="min-width:0;display:flex;flex-direction:column"><span class="name">${esc((u.name || '').toUpperCase())}</span><span class="meta">${meta.join(' · ')}</span></div>
-          <div class="vit"><b>${u.vitality ?? '—'}</b><small>/${u.maxVitality ?? '—'}</small></div>
-        </div>
-        <div class="vbar${pct < 35 ? ' low' : ''}"><i style="width:${pct}%"></i></div>
+        <div class="head"><span class="name">${esc((u.name || '').toUpperCase())}</span><span class="meta">${meta.join('')}</span></div>
+        <div class="uc-gauges">${gauges.join('')}</div>
         ${stanceNow}
-        <div class="stats">${stats.map((s) => `<div class="stat"><span>${s.label}</span><b class="${s.d > 0 ? 'up' : s.d < 0 ? 'down' : ''}" title="${s.d ? `base ${s.v - s.d}, ${s.d > 0 ? '+' : ''}${s.d} posture/terrain` : ''}">${s.v ?? '—'}</b></div>`).join('')}
-          ${u.isGeneral ? `<div class="stat inv"><span>PUISSANCE</span><b>${u.power ?? '—'}</b></div>` : `<div class="stat inv"><span>MORAL</span><b>${u.morale ?? '—'}</b></div>`}</div>
+        <div class="stats">${stats.map((s) => `<div class="stat" title="${s.d ? `base ${s.v - s.d}, ${s.d > 0 ? '+' : ''}${s.d} posture / terrain` : ''}"><span>${s.label}</span><b class="${s.d > 0 ? 'up' : s.d < 0 ? 'down' : ''}">${s.v ?? '—'}${s.d ? `<small>${s.d > 0 ? '+' : '−'}${Math.abs(s.d)}</small>` : ''}</b></div>`).join('')}</div>
       </div>
       <div class="tools">${u.isMine && u.march && u.march.route && u.march.route.length ? '<button data-card="unmarch" title="Annuler la marche sur plusieurs tours">STOP MARCHE</button>' : ''}<button data-card="sheet" title="Fiche complète de l'unité">FICHE</button></div>`;
   }
