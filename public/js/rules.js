@@ -8,7 +8,7 @@
   const RULES = {
     movement: {
       // Cost paid when leaving a hex of this terrain
-      terrainCost: { plain: 1, road: 1 / 3, forest: 2, river: 2, building: 1, bridge: 1 / 3 }, // a bridge is a road over the water
+      terrainCost: { plain: 1, road: 1 / 2, forest: 2, river: 2, building: 1, bridge: 1 / 2 }, // a bridge is a road over the water
       slopeUpPerLevel: 1,     // +1 per height level climbed (edge without cliff)
       slopeDownPerLevel: 0,   // free downhill
       blockedSegments: ['cliff', 'mur'],          // impassable for everyone (line of sight is not affected)

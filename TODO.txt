@@ -7,7 +7,7 @@ Nouveau:
 -
 
 Priorité:
-
+- n'affichee pas le nom des positions  seulement les logo en grande
 
 Question:
 

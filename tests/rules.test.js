@@ -17,7 +17,7 @@ function registerRulesMap() {
   terrain['9,2'] = 'forest';
   terrain['9,3'] = 'building';
   const tiles = (q0) => ({ tiles: Object.keys(height).filter(k => { const q = +k.split(',')[0]; return q >= q0 && q <= q0 + 1; }) });
-  return maps.registerMap({ id: 'test-rules', name: 'Règles', height, terrain, segments, zones: [tiles(0), tiles(10)], objectives: [{ q: 6, r: 5, type: 'flag', points: 2, name: 'Gué' }] });
+  return maps.registerMap({ id: 'test-rules', name: 'Règles', height, terrain, segments, zones: [tiles(0), tiles(10)], shuffleZones: false, objectives: [{ q: 6, r: 5, type: 'flag', points: 2, name: 'Gué' }] });
 }
 registerRulesMap();
 
@@ -58,7 +58,7 @@ test('escalier de pierre : coût fixe de 2 quelle que soit la pente, interdit à
   assert.equal(T.seg.escalier.mountedBlocked, true);
 });
 
-test('mouvement : falaise infranchissable, échelle pour l\'infanterie seulement, pente +1 par niveau, route 1/3', () => {
+test('mouvement : falaise infranchissable, échelle pour l\'infanterie seulement, pente +1 par niveau, route 1/2', () => {
   const T = rules.MOVE_TABLE;
   const flat = { terrain: 'plain', height: 0 }, high = { terrain: 'plain', height: 1 };
   assert.equal(rules.stepCost(T, flat, high, 'cliff', false), Infinity);
@@ -67,10 +67,10 @@ test('mouvement : falaise infranchissable, échelle pour l\'infanterie seulement
   assert.equal(rules.stepCost(T, flat, high, 'echelle', true), Infinity, 'cavalerie : jamais d\'échelle');
   assert.equal(rules.stepCost(T, flat, high, null, false), 2, 'montée : 1 + 1');
   assert.equal(rules.stepCost(T, high, flat, null, false), 1, 'descente gratuite');
-  assert.equal(rules.stepCost(T, flat, { terrain: 'road', height: 0 }, null, false), 1 / 3, 'payé à l\'entrée de la case');
+  assert.equal(rules.stepCost(T, flat, { terrain: 'road', height: 0 }, null, false), 1 / 2, 'payé à l\'entrée de la case');
   assert.equal(rules.stepCost(T, { terrain: 'road', height: 0 }, flat, null, false), 1);
   assert.equal(rules.stepCost(T, flat, { terrain: 'forest', height: 0 }, null, false), 2);
-  assert.equal(rules.snap(1 / 3 + 1 / 3 + 1 / 3), 1);
+  assert.equal(rules.snap(1 / 2 + 1 / 2 + 1 / 2), 1.5);
 
   const room = battle({ a: [{ typeId: 'soldats', count: 1 }, { typeId: 'cavalier_leger', count: 1 }] });
   const inf = troop(room, 'p0', 0);
@@ -87,8 +87,8 @@ test('mouvement : falaise infranchissable, échelle pour l\'infanterie seulement
   assert.ok(room.moveUnit('p0', cav.id, 6, 3).error, 'la cavalerie ne prend pas l\'échelle');
   cav.speedRemaining = 3;
   assert.ok(room.moveUnit('p0', cav.id, 6, 3).ok, 'contourne par la pente (r=4)');
-  put(room, inf, 2, 0); inf.speedRemaining = 1;
-  assert.ok(room.moveUnit('p0', inf.id, 2, 3).ok, 'trois pas de route = 1');
+  put(room, inf, 2, 0); inf.speedRemaining = 1.5;
+  assert.ok(room.moveUnit('p0', inf.id, 2, 3).ok, 'trois pas de route = 1,5');
   assert.equal(inf.speedRemaining, 0);
 });
 

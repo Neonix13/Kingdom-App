@@ -2602,7 +2602,7 @@ function toggleRules() {
   const R = KBRules.RULES;
   const st = gameState?.settings || KBRules.defaultSettings();
   const tc = R.movement.terrainCost;
-  const frac = (v) => (Math.abs(v - 1 / 3) < 1e-9 ? '1/3' : String(v));
+  const frac = (v) => (Math.abs(v - 1 / 3) < 1e-9 ? '1/3' : Math.abs(v - 0.5) < 1e-9 ? '1/2' : String(v));
   document.getElementById('rules-content').innerHTML = `
     <h3>Déplacement</h3>
     <p>Coût pour entrer dans une case : plaine ${tc.plain}, route ${frac(tc.road)}, forêt ${tc.forest}, fleuve ${tc.river}, bâtiment ${tc.building}, pont ${frac(tc.bridge)}.

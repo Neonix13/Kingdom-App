@@ -41,7 +41,7 @@ Chaque pas coûte le **coût du terrain dans lequel on entre** :
 
 | Terrain d'arrivée | Coût |
 |---|---|
-| Route, pont | 1/3 |
+| Route, pont | 1/2 |
 | Plaine, bâtiment | 1 |
 | Forêt, fleuve | 2 |
 

@@ -95,23 +95,102 @@ const DEPLOY_INTER_ZONE_EXCLUSION = 8;
 
 // maxTiles: the zone keeps only that many tiles, the ones closest to its centre (same size for every player, scaled on
 // the budget like the random zones)
-function fixedZones(numPlayers, zones, td, maxTiles = Infinity) {
+// Edge two neighbouring hexes can be crossed on foot (no cliff or wall: sd = effective segments, automatic cliffs included)
+const ZONE_BLOCKING = new Set(['cliff', 'mur']);
+const walkable = (sd, q1, r1, q2, r2) => !ZONE_BLOCKING.has(sd[segmentEdgeKey(q1, r1, q2, r2)]);
+
+// A deployment zone grown from `center` through walkable edges only, over the hexes allowed(key), lowest priority(q, r)
+// first: always one connected piece the troops can walk across. Returns at most maxTiles tiles [{ q, r }].
+function growZone(center, maxTiles, allowed, sd, priority) {
+  let ck = `${center.q},${center.r}`;
+  if (!allowed(ck)) {
+    // the centre is not usable (taken by another zone, river…): start from the nearest usable hex
+    let best = null;
+    for (let d = 1; d <= 12 && !best; d++) {
+      for (let dq = -d; dq <= d && !best; dq++) for (let dr = Math.max(-d, -dq - d); dr <= Math.min(d, -dq + d); dr++) {
+        if (hexDistance(0, 0, dq, dr) !== d) continue;
+        const k = `${center.q + dq},${center.r + dr}`;
+        if (allowed(k)) { best = { q: center.q + dq, r: center.r + dr }; break; }
+      }
+    }
+    if (!best) return [];
+    center = best;
+    ck = `${center.q},${center.r}`;
+  }
+  const picked = [];
+  const seen = new Set([ck]);
+  const frontier = [{ q: center.q, r: center.r, p: priority(center.q, center.r) }];
+  while (frontier.length && picked.length < maxTiles) {
+    let bi = 0;
+    for (let i = 1; i < frontier.length; i++) {
+      const a = frontier[i], b = frontier[bi];
+      if (a.p < b.p || (a.p === b.p && (a.q < b.q || (a.q === b.q && a.r < b.r)))) bi = i;
+    }
+    const cur = frontier.splice(bi, 1)[0];
+    picked.push({ q: cur.q, r: cur.r });
+    for (const [dq, dr] of DIRS) {
+      const nq = cur.q + dq, nr = cur.r + dr, nk = `${nq},${nr}`;
+      if (seen.has(nk) || !allowed(nk) || !walkable(sd, cur.q, cur.r, nq, nr)) continue;
+      seen.add(nk);
+      frontier.push({ q: nq, r: nr, p: priority(nq, nr) });
+    }
+  }
+  return picked;
+}
+
+// Connected pieces (walkable edges) of a set of tiles, largest first
+function zonePieces(tiles, sd) {
+  const keys = new Set(tiles.map(t => `${t.q},${t.r}`));
+  const seen = new Set();
+  const out = [];
+  for (const t of tiles) {
+    const k = `${t.q},${t.r}`;
+    if (seen.has(k)) continue;
+    const piece = [];
+    const stack = [t];
+    seen.add(k);
+    while (stack.length) {
+      const c = stack.pop();
+      piece.push(c);
+      for (const [dq, dr] of DIRS) {
+        const nq = c.q + dq, nr = c.r + dr, nk = `${nq},${nr}`;
+        if (!keys.has(nk) || seen.has(nk) || !walkable(sd, c.q, c.r, nq, nr)) continue;
+        seen.add(nk);
+        stack.push({ q: nq, r: nr });
+      }
+    }
+    out.push(piece);
+  }
+  return out.sort((a, b) => b.length - a.length);
+}
+
+// Fixed zones of the map, reduced to maxTiles tiles grown from the middle of their largest walkable piece
+function fixedZones(numPlayers, zones, td, maxTiles = Infinity, sd = {}) {
   if (!Array.isArray(zones) || zones.length < numPlayers) return null;
-  const picked = zones.slice(0, numPlayers).map((z, i) => {
+  // hexes of every zone of the map: a zone too small to reach maxTiles in one piece grows onto free land next to it
+  const reserved = new Set(zones.flatMap(z => z.tiles || []));
+  const mains = zones.slice(0, numPlayers).map((z) => {
     const tiles = (z.tiles || [])
       .filter((k) => typeof k === 'string' && td[k] && td[k] !== 'river')
       .map((k) => { const [q, r] = k.split(',').map(Number); return { q, r }; });
-    if (!tiles.length) return null;
-    const cq = tiles.reduce((s, t) => s + t.q, 0) / tiles.length;
-    const cr = tiles.reduce((s, t) => s + t.r, 0) / tiles.length;
-    let center = tiles[0], best = Infinity;
-    for (const t of tiles) {
+    return tiles.length ? zonePieces(tiles, sd)[0] : null;
+  });
+  if (!mains.every(Boolean)) return null;
+  // every player gets as many tiles: the budget's size, or the largest zone when all of them are smaller
+  const target = Math.min(maxTiles, Math.max(...mains.map(m => m.length)));
+  const picked = mains.map((main, i) => {
+    const cq = main.reduce((s, t) => s + t.q, 0) / main.length;
+    const cr = main.reduce((s, t) => s + t.r, 0) / main.length;
+    let center = main[0], best = Infinity;
+    for (const t of main) {
       const d = hexDistance(t.q, t.r, Math.round(cq), Math.round(cr));
       if (d < best) { best = d; center = t; }
     }
-    const kept = tiles.length > maxTiles
-      ? tiles.slice().sort((a, b) => hexDistance(a.q, a.r, center.q, center.r) - hexDistance(b.q, b.r, center.q, center.r) || a.q - b.q || a.r - b.r).slice(0, maxTiles)
-      : tiles;
+    const inZone = new Set(main.map(t => `${t.q},${t.r}`));
+    const land = (k) => td[k] && td[k] !== 'river' && !reserved.has(k);
+    const n = target;
+    // the zone's own hexes first, then the nearest free land if it lacks room (every player gets as many tiles)
+    const kept = growZone(center, n, (k) => inZone.has(k) || land(k), sd, (q, r) => (inZone.has(`${q},${r}`) ? 0 : 1000) + hexDistance(q, r, center.q, center.r));
     return { q: center.q, r: center.r, tiles: kept, mapZone: i };
   });
   return picked.every(Boolean) ? picked : null;
@@ -123,7 +202,7 @@ function getStartingZones(numPlayers, mapRadius, budget, map = maps.getMap('defa
   const sd = getSegmentData(map);
   // Every player gets exactly maxTiles tiles (equal zones), scaled on the budget
   const maxTiles = Math.floor(4 * (budget || 2500) / 1000 + 2);
-  const fixed = fixedZones(numPlayers, map.zones, td, maxTiles);
+  const fixed = fixedZones(numPlayers, map.zones, td, maxTiles, sd);
   if (fixed) return fixed;
   return _randomZones(numPlayers, maxTiles, td, sd);
 }
@@ -166,6 +245,7 @@ function _randomZones(numPlayers, maxTiles, td, sd) {
     playerCenters.push(best || { q: targetQ, r: targetR });
   }
 
+  const taken = new Set();
   const zoneTiles = playerCenters.map((center, pi) => {
     const otherCenters = playerCenters.filter((_, i) => i !== pi);
     // Pass 1: BFS steps from the centre
@@ -218,21 +298,12 @@ function _randomZones(numPlayers, maxTiles, td, sd) {
       }
       scored.push({ q, r, score });
     }
-    scored.sort((a, b) => a.score - b.score);
-    let selectedKeys = new Set(scored.slice(0, maxTiles).map(s => `${s.q},${s.r}`));
-    for (let iter = 0; iter < 20; iter++) {
-      const adjusted = scored.map(s => {
-        if (!selectedKeys.has(`${s.q},${s.r}`)) return s;
-        const isolated = !DIRS.some(([dq, dr]) => selectedKeys.has(`${s.q + dq},${s.r + dr}`));
-        return isolated ? { ...s, score: s.score * 2 } : s;
-      });
-      adjusted.sort((a, b) => a.score - b.score);
-      const newKeys = new Set(adjusted.slice(0, maxTiles).map(s => `${s.q},${s.r}`));
-      const changed = [...newKeys].some(k => !selectedKeys.has(k));
-      selectedKeys = newKeys;
-      if (!changed) break;
-    }
-    return [...selectedKeys].map(k => { const [q, r] = k.split(',').map(Number); return { q, r }; });
+    // grown from the centre through walkable edges, cheapest score first: one connected piece, no river, no overlap
+    const scoreOf = new Map(scored.map(s => [`${s.q},${s.r}`, s.score]));
+    const allowed = (k) => has(k) && td[k] !== 'river' && !taken.has(k);
+    const tiles = growZone(center, maxTiles, allowed, sd, (q, r) => scoreOf.get(`${q},${r}`) ?? Infinity);
+    for (const t of tiles) taken.add(`${t.q},${t.r}`);
+    return tiles;
   });
 
   return playerCenters.map((c, i) => ({ q: c.q, r: c.r, tiles: zoneTiles[i] }));

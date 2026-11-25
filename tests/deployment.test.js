@@ -80,3 +80,36 @@ test('Déploiement automatique et IA : jamais une unité sur une case où elle s
     assert.ok(!next || next.unitId !== cav.id || room.canDeployAt(cav, next.q, next.r));
   }
 });
+
+test('zones de déploiement : d\'un seul tenant (sans falaise ni mur à traverser), de taille égale, sans rivière ni chevauchement', () => {
+  const maps = require('../game/maps');
+  const { getStartingZones, segmentEdgeKey } = require('../game/HexUtils');
+  const { effectiveSegments } = require('../public/js/mapProps.js');
+  const D = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
+  for (const { id } of maps.listMaps()) {
+    const map = maps.getMap(id);
+    const td = maps.terrainLookup(map);
+    const sd = effectiveSegments(map.segments, map.decor, map.height);
+    for (const n of [2, 4]) for (const budget of [2500, 5000, 10000]) {
+      const zones = getStartingZones(n, 70, budget, map);
+      const used = new Set();
+      const size = zones[0].tiles.length;
+      for (const z of zones) {
+        assert.equal(z.tiles.length, size, `${id} ${n} joueurs ${budget} : tailles égales`);
+        const keys = new Set(z.tiles.map(t => `${t.q},${t.r}`));
+        for (const k of keys) { assert.ok(!used.has(k), `${id} : chevauchement ${k}`); used.add(k); assert.notEqual(td[k], 'river', `${id} : rivière ${k}`); }
+        const seen = new Set([[...keys][0]]);
+        const stack = [z.tiles[0]];
+        while (stack.length) {
+          const c = stack.pop();
+          for (const [dq, dr] of D) {
+            const nk = `${c.q + dq},${c.r + dr}`;
+            const seg = sd[segmentEdgeKey(c.q, c.r, c.q + dq, c.r + dr)];
+            if (keys.has(nk) && !seen.has(nk) && seg !== 'cliff' && seg !== 'mur') { seen.add(nk); stack.push({ q: c.q + dq, r: c.r + dr }); }
+          }
+        }
+        assert.equal(seen.size, keys.size, `${id} ${n} joueurs ${budget} : zone d'un seul tenant`);
+      }
+    }
+  }
+});
