@@ -924,11 +924,11 @@ function render() {
     }
   }
 
-  if (rangeTiles.size > 0 && rangeCenter) strokeZone(rangeTiles, rangeCenter, '#ffe6a0');
-  if (motivateTiles.size > 0 && motivateCenter) strokeZone(motivateTiles, motivateCenter, '#8cc4ff');
+  if (rangeTiles.size > 0 && rangeCenter) strokeZone(rangeTiles, rangeCenter, '#ffce5c');
+  if (motivateTiles.size > 0 && motivateCenter) strokeZone(motivateTiles, motivateCenter, '#6ebeff');
   {
     const rp = rangePreview();
-    if (rp && rp.keys.size) strokeZone(rp.keys, rp.center, rp.kind === 'tir' ? '#ffe6a0' : '#8cc4ff', [10, 7]);
+    if (rp && rp.keys.size) strokeZone(rp.keys, rp.center, rp.kind === 'tir' ? '#ffce5c' : '#6ebeff', [10, 7]);
   }
 
   // Weak sides (friend's tool): each unit's open edges coloured by the angle-of-attack bonus an enemy would get there
@@ -1724,41 +1724,33 @@ function marchPlanFor(unit, q, r) {
 }
 
 // Outline of a zone of hexes (range, motivation): black under a coloured line; dash = preview from the destination
-// Range / charisma zone: a light veil inside, a soft halo along the edge, a crisp rounded line (dashed for the preview)
+// Range / charisma zone (dashed: the range planned from the destination)
 function strokeZone(keys, center, color, dash = null) {
-  const interior = new Set(keys);
-  interior.add(`${center.q},${center.r}`);
-  ctx.save();
-  if (!dash) {
-    ctx.fillStyle = color; ctx.globalAlpha = 0.08;
-    ctx.beginPath();
-    for (const key of keys) { const [q, r] = key.split(',').map(Number); const { x, y } = hexToPixel(q, r); const c = hexCorners(x, y); c.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); ctx.closePath(); }
-    ctx.fill();
-    ctx.globalAlpha = 1;
-  }
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  ctx.setLineDash(dash || []);
-  ctx.beginPath();
-  for (const key of keys) {
-    const [q, r] = key.split(',').map(Number);
+  // one smooth contour around the hexes (KBRules.zoneLoops), a faint veil, an inner glow from the rim, dark under-line, crisp rim
+  const dirIdx = KBRules.DIRS.map(([dq, dr]) => SEGMENT_EDGE_DIRS.findIndex(([a, b]) => a === dq && b === dr));
+  const edgeOf = (q, r, d) => {
     const { x, y } = hexToPixel(q, r);
-    const corners = hexCorners(x, y);
-    for (let i = 0; i < 6; i++) {
-      const [dq, dr] = SEGMENT_EDGE_DIRS[i];
-      if (!interior.has(`${q + dq},${r + dr}`)) {
-        ctx.moveTo(corners[i].x, corners[i].y);
-        ctx.lineTo(corners[(i + 1) % 6].x, corners[(i + 1) % 6].y);
-      }
-    }
-  }
-  if (!dash) {
-    ctx.save();
-    ctx.shadowColor = color; ctx.shadowBlur = 14;
-    ctx.strokeStyle = color; ctx.globalAlpha = 0.35; ctx.lineWidth = Math.max(8, 7 / zoom); ctx.stroke();
-    ctx.restore();
-  }
-  ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = Math.max(dash ? 4 : 4.5, (dash ? 3.5 : 4) / zoom); ctx.stroke();
-  ctx.strokeStyle = color; ctx.globalAlpha = dash ? 0.85 : 1; ctx.lineWidth = Math.max(dash ? 2 : 2.2, 2 / zoom); ctx.stroke();
+    const c = hexCorners(x, y), i = dirIdx[d];
+    return [[c[i].x, c[i].y], [c[(i + 1) % 6].x, c[(i + 1) % 6].y]];
+  };
+  const loops = KBRules.zoneLoops(keys, `${center.q},${center.r}`, edgeOf, 3);
+  if (!loops.length) return;
+  const rgb = color.startsWith('#') ? [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16)) : [255, 255, 255];
+  const col = (a) => `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${a})`;
+  const path = new Path2D();
+  for (const l of loops) { path.moveTo(l[0][0], l[0][1]); for (let i = 1; i < l.length; i++) path.lineTo(l[i][0], l[i][1]); path.closePath(); }
+  const k = Math.max(1, 1 / zoom);
+  ctx.save();
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.fillStyle = col(dash ? 0.05 : 0.08);
+  ctx.fill(path, 'evenodd');
+  ctx.save();
+  ctx.clip(path, 'evenodd');
+  for (const [w, a] of [[HEX_SIZE * 1.1, 0.07], [HEX_SIZE * 0.6, 0.1], [HEX_SIZE * 0.28, 0.16]]) { ctx.strokeStyle = col(dash ? a * 0.6 : a); ctx.lineWidth = w; ctx.stroke(path); }
+  ctx.restore();
+  ctx.setLineDash(dash ? dash.map((d) => d * k) : []);
+  ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 4.5 * k; ctx.stroke(path);
+  ctx.strokeStyle = col(dash ? 0.85 : 0.98); ctx.lineWidth = 2 * k; ctx.stroke(path);
   ctx.restore();
 }
 

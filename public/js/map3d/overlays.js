@@ -202,7 +202,41 @@ export function createBoardLayers(world) {
     ctx.stroke();
   }
 
-  // spec: { fills: [{ keys, color }], outlines: [{ keys, center, color, width, dash? (world units) }] }
+  // Zone (range, charisma): one smooth contour around the hexes (KBRules.zoneLoops), a faint veil, an inner glow fading
+  // from the edge toward the inside, a dark under-line and a crisp rim. z: { keys, center, rgb: [r, g, b], dash? }
+  function drawZone(ctx, z) {
+    const R = self.KBRules;
+    if (!R || !R.zoneLoops) return;
+    const edgeOf = (q, r, d) => {
+      const c = hexToWorld(q, r), g = DIR_TO_GEO_EDGE[d];
+      const a0 = Math.PI / 3 * g, a1 = Math.PI / 3 * (g + 1);
+      return [ovP(c.x + Math.cos(a0), c.z + Math.sin(a0)), ovP(c.x + Math.cos(a1), c.z + Math.sin(a1))];
+    };
+    const loops = R.zoneLoops(z.keys, z.center, edgeOf, 3);
+    if (!loops.length) return;
+    const [cr, cg, cb] = z.rgb;
+    const col = (a) => `rgba(${cr},${cg},${cb},${a})`;
+    const path = new Path2D();
+    for (const l of loops) { path.moveTo(l[0][0], l[0][1]); for (let i = 1; i < l.length; i++) path.lineTo(l[i][0], l[i][1]); path.closePath(); }
+    const U = OV_PPU;
+    ctx.save();
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    // veil
+    ctx.fillStyle = col(z.dash ? 0.05 : 0.08);
+    ctx.fill(path, 'evenodd');
+    // inner glow: wide soft strokes clipped inside, strongest at the rim
+    ctx.save();
+    ctx.clip(path, 'evenodd');
+    for (const [w, a] of [[1.1, 0.07], [0.6, 0.1], [0.28, 0.16]]) { ctx.strokeStyle = col(z.dash ? a * 0.6 : a); ctx.lineWidth = w * U; ctx.stroke(path); }
+    ctx.restore();
+    // dark under-line, then the crisp rim
+    ctx.setLineDash(z.dash ? [0.26 * U, 0.16 * U] : []);
+    ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 0.11 * U; ctx.stroke(path);
+    ctx.strokeStyle = col(z.dash ? 0.85 : 0.98); ctx.lineWidth = 0.05 * U; ctx.stroke(path);
+    ctx.restore();
+  }
+
+  // spec: { fills: [{ keys, color }], outlines: [{ keys, center, color, width, dash? (world units) }], zones: [{ keys, center, rgb, dash? }] }
   function setOverlay(spec) {
     const sig = JSON.stringify(spec, (k, v) => (v instanceof Set ? Array.from(v).sort() : v));
     if (sig === lastOvSig) return;
@@ -248,6 +282,7 @@ export function createBoardLayers(world) {
       outline(ctx, o.keys, o.center);
     }
     ctx.setLineDash([]);
+    for (const z of spec.zones || []) if (z.keys && z.keys.size) drawZone(ctx, z);
     ov.tex.needsUpdate = true;
   }
 

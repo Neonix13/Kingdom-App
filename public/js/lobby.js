@@ -530,7 +530,8 @@ function setSetting(el) {
   const key = el.dataset.setting;
   let value = el.value;
   if (key !== 'spectatorVision' && key !== 'victoryMode') {
-    value = parseInt(value, 10);
+    // "∞" (or an empty field) on an unlimited setting means 0
+    value = el.dataset.inf && (String(value).trim() === '∞' || String(value).trim() === '') ? 0 : parseInt(value, 10);
     const lim = window.KBRules && KBRules.RULES.settings[key];
     if (!Number.isInteger(value) || (lim && (value < lim.min || value > lim.max))) {
       notify(lim ? `Valeur invalide (${lim.min} à ${lim.max}).` : 'Valeur invalide.');
@@ -551,7 +552,7 @@ function renderGameSettings(data, host) {
   for (const key of SETTING_KEYS) {
     const el = document.getElementById(`set-${key}`);
     if (!el) continue;
-    if (document.activeElement !== el && settings[key] !== undefined) el.value = settings[key];
+    if (document.activeElement !== el && settings[key] !== undefined) el.value = el.dataset.inf && settings[key] === 0 ? '∞' : settings[key];
     el.disabled = !host;
   }
   const vmode = settings.victoryMode || 'annihilation';
@@ -603,8 +604,9 @@ function initSettingsControls() {
       let v = (parseInt(input.value, 10) || 0) + dir * inc;
       if (/Timer$/.test(input.id) && v > 0 && v < 15) v = dir > 0 ? 15 : 0;
       v = Math.max(min, Math.min(max, v));
-      if (String(v) === input.value) return;
-      input.value = v;
+      const shown = input.dataset.inf && v === 0 ? '∞' : String(v);
+      if (shown === input.value) return;
+      input.value = shown;
       input.dispatchEvent(new Event('change'));
       return;
     }

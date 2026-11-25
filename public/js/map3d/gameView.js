@@ -274,15 +274,17 @@ export async function mountGameView(bridge, { container }) {
   }
   // the range from the selected unit's destination (hovered hex, or end of its planned path) is added to the overlay;
   // it follows the hover without a full sync
-  let lastOverlay = { fills: [], outlines: [] }, previewSig = '';
+  // zone colours: range (warm gold), charisma (sky blue)
+  const ZONE_RGB = { tir: [255, 206, 92], charisme: [110, 190, 255] };
+  let lastOverlay = { fills: [], outlines: [], zones: [] }, previewSig = '';
   function previewOutline() {
     const rp = bridge.rangePreview;
     previewSig = rp ? `${rp.kind}|${rp.center.q},${rp.center.r}|${rp.keys.size}` : '';
     if (!rp || !rp.keys.size) return [];
-    return [{ keys: rp.keys, center: hexKey(rp.center.q, rp.center.r), color: rp.kind === 'tir' ? 'rgba(255,238,170,0.85)' : 'rgba(170,215,255,0.85)', width: 0.06, dash: [0.22, 0.16] }];
+    return [{ keys: rp.keys, center: hexKey(rp.center.q, rp.center.r), rgb: rp.kind === 'tir' ? ZONE_RGB.tir : ZONE_RGB.charisme, dash: true }];
   }
   function applyOverlay() {
-    world.layers.setOverlay({ fills: lastOverlay.fills, outlines: [...lastOverlay.outlines, ...previewOutline()] });
+    world.layers.setOverlay({ fills: lastOverlay.fills, outlines: lastOverlay.outlines, zones: [...lastOverlay.zones, ...previewOutline()] });
   }
   function syncNow() {
     dirty = false;
@@ -317,9 +319,10 @@ export async function mountGameView(bridge, { container }) {
     if (sel && sel.q != null) fills.push({ keys: new Set([hexKey(sel.q, sel.r)]), color: 'rgba(255,210,60,0.32)' });
     const rc = bridge.rangeCenter, mc = bridge.motivateCenter;
     // range (pale gold) and charisma (blue): light veil, soft halo, crisp edge
-    if (rc) outlines.push({ keys: bridge.rangeTiles, center: hexKey(rc.q, rc.r), color: 'rgba(255,238,170,0.95)', glow: 'rgba(255,214,90,0.28)', tint: 'rgba(255,226,130,0.09)', width: 0.06 });
-    if (mc) outlines.push({ keys: bridge.motivateTiles, center: hexKey(mc.q, mc.r), color: 'rgba(170,215,255,0.95)', glow: 'rgba(90,160,255,0.3)', tint: 'rgba(110,170,255,0.1)', width: 0.06 });
-    lastOverlay = { fills, outlines };
+    const zones = [];
+    if (rc) zones.push({ keys: bridge.rangeTiles, center: hexKey(rc.q, rc.r), rgb: ZONE_RGB.tir });
+    if (mc) zones.push({ keys: bridge.motivateTiles, center: hexKey(mc.q, mc.r), rgb: ZONE_RGB.charisme });
+    lastOverlay = { fills, outlines, zones };
     applyOverlay();
 
     world.objectives.group.visible = st && st.phase !== 'deployment' ? (st.objectives || []).length > 0 : ds?.showObjectives !== false;

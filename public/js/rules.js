@@ -141,7 +141,7 @@
       // capture: objectives on the map, the first to victoryPoints wins (or the last general standing)
       victoryMode: { values: ['annihilation', 'capture'], default: 'annihilation' },
       maxTurns: { min: 0, max: 200, default: 0 },          // annihilation: 0 = unlimited
-      victoryPoints: { min: 1, max: 1000, default: 20 },   // capture: points to win
+      victoryPoints: { min: 1, max: 1000, default: 100 },  // capture: points to win
       turnTimer: { min: 0, max: 600, default: 0 },         // seconds, 0 = off (else >= 15)
       spectatorVision: { values: ['full', 'delayed', 'off'], default: 'full' },
       planningTimer: { min: 0, max: 600, default: 90 },    // simultaneous mode: seconds, 0 = off (else >= 15)
@@ -381,6 +381,61 @@
   }
   function stepKey(s) { return s[0] + ',' + s[1] + (s[2] ? '^' : ''); }
 
+  // ---- drawing helper: smooth outline of a set of hexes (range / charisma zones, 2D and 3D) ----
+  // keys: Set of "q,r" (center: extra "q,r" counted inside); edgeOf(q, r, d) -> [[x, y], [x, y]] the two corners of the edge
+  // toward neighbour DIRS[d], in drawing coordinates. Returns closed loops [[x, y], ...] (outer contour and holes),
+  // corners rounded off by Chaikin cutting (iters passes)
+  function zoneLoops(keys, center, edgeOf, iters = 2) {
+    const inside = new Set(keys);
+    if (center) inside.add(center);
+    const kp = (p) => Math.round(p[0] * 100) + ':' + Math.round(p[1] * 100);
+    const next = new Map(), pts = new Map();
+    for (const k of keys) {
+      const [q, r] = k.split(',').map(Number);
+      for (let d = 0; d < 6; d++) {
+        if (inside.has(hexKey(q + DIRS[d][0], r + DIRS[d][1]))) continue;
+        const [a, b] = edgeOf(q, r, d);
+        const ka = kp(a), kb = kp(b);
+        pts.set(ka, a); pts.set(kb, b);
+        if (!next.has(ka)) next.set(ka, []);
+        next.get(ka).push(kb);
+        if (!next.has(kb)) next.set(kb, []);
+        next.get(kb).push(ka);
+      }
+    }
+    const used = new Set();
+    const ek = (a, b) => (a < b ? a + '|' + b : b + '|' + a);
+    const loops = [];
+    for (const start of next.keys()) {
+      for (const first of next.get(start)) {
+        if (used.has(ek(start, first))) continue;
+        const loop = [pts.get(start)];
+        used.add(ek(start, first));
+        let prev = start, cur = first;
+        for (let guard = 0; cur !== start && guard < 100000; guard++) {
+          loop.push(pts.get(cur));
+          const nb = next.get(cur).find((n) => n !== prev && !used.has(ek(cur, n))) || next.get(cur).find((n) => !used.has(ek(cur, n)));
+          if (!nb) break;
+          used.add(ek(cur, nb));
+          prev = cur; cur = nb;
+        }
+        if (loop.length >= 3) loops.push(loop);
+      }
+    }
+    return loops.map((l) => {
+      let out = l;
+      for (let k = 0; k < iters; k++) {
+        const nx = [];
+        for (let i = 0; i < out.length; i++) {
+          const a = out[i], b = out[(i + 1) % out.length];
+          nx.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25], [a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]);
+        }
+        out = nx;
+      }
+      return out;
+    });
+  }
+
   // ---- time ----
   function clampInt(v, min, max, def) {
     const n = typeof v === 'string' && v.trim() !== '' ? Number(v) : v;
@@ -466,7 +521,7 @@
   return {
     RULES, snap, hexKey, edgeKey, DIRS, isMounted,
     movementTable, stepCost, reachable, pathFromPrev, stepOf, stepKey,
-    hexDistance, attackRange, combatKind, hasFullSpeed, bestAttackHex, ability, buildOptions, sabotageOption,
+    hexDistance, attackRange, combatKind, zoneLoops, hasFullSpeed, bestAttackHex, ability, buildOptions, sabotageOption,
     hoursPerTurn, timeOfDay, dayNumber, isNightHour, formatHour,
     defaultSettings, mergeSettings,
   };

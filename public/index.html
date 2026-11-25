@@ -313,15 +313,15 @@
             <label for="set-victoryPoints">Points de victoire<small>Gagnés à chaque tour par objectif tenu ; le premier qui les atteint gagne</small></label>
             <div class="ld-stepper">
               <button type="button" class="ld-step" data-step="-1" data-for="set-victoryPoints" aria-label="Diminuer">−</button>
-              <input type="number" id="set-victoryPoints" data-setting="victoryPoints" value="20" min="1" max="1000" step="5" onchange="setSetting(this)">
+              <input type="number" id="set-victoryPoints" data-setting="victoryPoints" value="100" min="1" max="1000" step="5" onchange="setSetting(this)">
               <button type="button" class="ld-step" data-step="1" data-for="set-victoryPoints" aria-label="Augmenter">+</button>
             </div>
           </div>
           <div class="ld-set-row vmode-annihilation">
-            <label for="set-maxTurns">Tours maximum<small>0 = illimité ; à la limite, l'armée la plus forte gagne</small></label>
+            <label for="set-maxTurns">Tours maximum<small>∞ = illimité ; à la limite, l'armée la plus forte gagne</small></label>
             <div class="ld-stepper">
               <button type="button" class="ld-step" data-step="-1" data-for="set-maxTurns" aria-label="Diminuer">−</button>
-              <input type="number" id="set-maxTurns" data-setting="maxTurns" value="0" min="0" max="200" step="1" onchange="setSetting(this)">
+              <input type="text" inputmode="numeric" id="set-maxTurns" data-setting="maxTurns" data-inf="1" value="∞" min="0" max="200" step="1" onchange="setSetting(this)">
               <button type="button" class="ld-step" data-step="1" data-for="set-maxTurns" aria-label="Augmenter">+</button>
             </div>
           </div>
