@@ -112,6 +112,25 @@
   function current(unit) { return st.orders[unit.id] || null; }
 
   // Same check as the server: adjacent steps, finite costs, total within the budget (one step always allowed when fresh)
+  // speed left this turn once the planned order is paid (stance changes, ability, then the path walked this turn)
+  function speedLeft(unit) {
+    const order = st.orders[unit.id];
+    let b = budgetFor(unit, order);
+    if (order && order.type === 'move' && order.path && order.path.length) {
+      let q = unit.q, r = unit.r;
+      const mounted = KBRules.isMounted(unit);
+      for (const [nq, nr] of order.path) {
+        const a = `${q},${r}`, k = `${nq},${nr}`;
+        if (a !== k && k in mapHeight) {
+          const c = KBRules.stepCost(movementTable(), { terrain: terrainData[a] || 'plain', height: mapHeight[a] || 0 }, { terrain: terrainData[k] || 'plain', height: mapHeight[k] || 0 }, segmentData[segmentEdgeKey(q, r, nq, nr)] || null, mounted);
+          if (isFinite(c)) b = KBRules.snap(b - c);
+        }
+        q = nq; r = nr;
+      }
+    }
+    return Math.max(0, b);
+  }
+
   function pathFits(unit, path, budget) {
     let q = unit.q, r = unit.r, cost = 0;
     const mounted = KBRules.isMounted(unit);
@@ -874,6 +893,7 @@
     routeEdited() { const u = selectedUnit && myUnit(selectedUnit.id); if (u && canPlan()) orderAlongRoute(u); else refresh(); },
     routePath: () => { const u = selectedUnit && myUnit(selectedUnit.id); return u ? simRoute(u) : null; },
     plannedOrders, planning,
+    speedLeft: (unit) => { const u = unit && myUnit(unit.id); return u && u.q != null ? speedLeft(u) : null; },
     playbackInfo() {
       const pb = st.playback;
       return pb ? { turn: pb.data.turn, seed: pb.data.seed, tick: pb.index, ticks: pb.data.ticks.length, durationMs: pb.data.durationMs } : null;

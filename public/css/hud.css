@@ -706,3 +706,14 @@ body.hud-d #toolbar .tuto-highlight { outline: 3px solid var(--hud-red); outline
 .hud-card .stat b { display: flex; align-items: baseline; gap: 2px; font-size: 18px; line-height: 1.05; }
 .hud-card .stat b small { font: 900 9px var(--hud-body); }
 @media (max-width: 1360px) { .hud-card .pic { width: 116px; } }
+/* values inside the gauges; stance icon before the name; stats in three pairs */
+.uc-g { grid-template-columns: 62px 1fr; }
+.uc-g .gb, .uc-g.hp .gb { position: relative; height: 17px; }
+.uc-g .gb > b { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 900 11px/1 var(--hud-body); letter-spacing: .5px; color: #fff; text-shadow: 0 0 2px #000, 0 0 2px #000, 0 0 3px #000; }
+.hud-card .name { display: flex; align-items: center; gap: 8px; }
+.uc-st { width: 26px; height: 26px; flex-shrink: 0; }
+.uc-st svg { width: 17px; height: 17px; }
+.hud-card .stats { gap: 6px; }
+.uc-grp { flex: 1; display: flex; border: 2px solid #000; background: #fff; min-width: 0; }
+.uc-grp .stat { border: 0; }
+.uc-grp .stat + .stat { border-left: 1px dashed #8a8178; }

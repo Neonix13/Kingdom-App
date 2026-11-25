@@ -320,11 +320,14 @@ export function mountBattleHud(bridge, view) {
     };
     // a shooter's attack and power take the ranged modifiers; defense against both melee and shots
     const kind = (u.range || 1) > 1 ? 'tir' : 'cac';
+    // three pairs: to hit / to avoid, damage / protection, morale dealt / morale kept (courage: stance and terrain only);
+    // with the modifiers of the unit's own kind (melee or shots)
     const stats = u.isGeneral
-      ? [{ label: 'FORCE', v: u.force, d: 0 }, { label: 'STRATÉGIE', v: u.strategy, d: 0 }, { label: 'CHARISME', v: u.charisma, d: 0 }, { label: 'ARMURE', v: u.armor, d: 0 }, { label: 'PUISSANCE', v: u.power, d: 0 }]
-      : [stat(kind === 'tir' ? 'ATTAQUE TIR' : 'ATTAQUE', u.attack, `attack_${kind}`), stat('PUISSANCE', u.power, `puissance_${kind}`),
-        stat('DÉF. MÊLÉE', u.defense, 'defense_cac'), stat('DÉF. TIR', u.defense, 'defense_tir'), stat('ARMURE', u.armor, 'armure')];
-    for (const s of stats) if (s.v == null || Number.isNaN(s.v)) { s.v = '—'; s.d = 0; }
+      ? [[{ label: 'FORCE', v: u.force, d: 0 }, { label: 'STRATÉGIE', v: u.strategy, d: 0 }], [{ label: 'PUISSANCE', v: u.power, d: 0 }, { label: 'ARMURE', v: u.armor, d: 0 }], [{ label: 'CHARISME', v: u.charisma, d: 0 }, { label: 'INTIMIDATION', v: u.intimidation, d: 0 }]]
+      : [[stat('ATTAQUE', u.attack, `attack_${kind}`), stat('DÉFENSE', u.defense, `defense_${kind}`)],
+        [stat('PUISSANCE', u.power, `puissance_${kind}`), stat('ARMURE', u.armor, 'armure')],
+        [stat('INTIMIDATION', u.intimidation ?? 0, `intimidation_${kind}`), stat('COURAGE', 0, `courage_${kind}`)]];
+    for (const s of stats.flat()) if (s.v == null || Number.isNaN(s.v)) { s.v = '—'; s.d = 0; }
     return { stats, kind, terrainName: (TERRAINS[tt] || {}).name || tt };
   }
 
@@ -440,32 +443,28 @@ export function mountBattleHud(bridge, view) {
       const kind = (u.range || 1) > 1 ? 'tir' : 'cac';
       const fx = window.stanceEffectsText ? window.stanceEffectsText(u.stance, kind, 4) : '';
       const full = [window.stanceEffectsText ? window.stanceEffectsText(u.stance) : '', window.stanceAngleText ? window.stanceAngleText(u.stance) : '', sim && window.stanceReactionText ? `si attaquée : ${window.stanceReactionText(u.stance)}` : ''].filter(Boolean).join(' — ');
-      // every modifier of the stance for this unit's kind, as green / red chips, plus its reaction when attacked
-      const fxList = typeof window.stanceEffects === 'function' ? window.stanceEffects(u.stance, kind) : null;
-      const fxHtml = fxList
-        ? (fxList.length ? fxList.map((e) => `<i class="${e.v > 0 ? 'up' : 'down'}">${e.v > 0 ? '+' : '−'}${Math.abs(e.v)} ${esc(e.label)}</i>`).join('') : '<i>aucun modificateur</i>')
-        : `<i>${esc(window.stanceEffectsText ? window.stanceEffectsText(u.stance, kind) : '')}</i>`;
-      const react = sim && window.stanceReactionText ? window.stanceReactionText(u.stance) : '';
-      stanceNow = `<div class="stance-now" title="${esc(full)}"><i class="st-chip" style="background:${esc(ss.c)}">${ss.svg || ''}</i><b>${esc(ss.name.toUpperCase())}</b><span class="fx">${fxHtml}${react ? `<i class="re">si attaquée : ${esc(react)}</i>` : ''}</span></div>`;
+      // the stance's icon only, next to the name (its name and effects in the tooltip)
+      stanceNow = `<i class="st-chip uc-st" style="background:${esc(ss.c)}" title="${esc(`${ss.name} — ${full}`)}">${ss.svg || ''}</i>`;
     }
     // gauges: vitality, morale (red stripes below zero, as long as the deficit) and speed left this turn
-    const gauge = (label, cls, frac, val, max, tip) => `<div class="uc-g ${cls}" title="${esc(tip)}"><span class="gl">${label}</span><div class="gb"><i style="width:${(Math.max(0, Math.min(1, frac)) * 100).toFixed(0)}%"></i></div><b>${val}<small>/${max}</small></b></div>`;
+    const gauge = (label, cls, frac, val, max, tip) => `<div class="uc-g ${cls}" title="${esc(tip)}"><span class="gl">${label}</span><div class="gb"><i style="width:${(Math.max(0, Math.min(1, frac)) * 100).toFixed(0)}%"></i><b>${val} / ${max}</b></div></div>`;
     const gauges = [gauge('VITALITÉ', `hp${pct < 35 ? ' low' : ''}`, pct / 100, u.vitality ?? '—', u.maxVitality ?? '—', `Vitalité ${u.vitality ?? '?'} / ${u.maxVitality ?? '?'}`)];
     if (!u.isGeneral && u.maxMorale && u.morale != null) {
       const neg = u.morale < 0;
       gauges.push(gauge('MORAL', `mo${neg ? ' neg' : ''}`, Math.abs(u.morale) / u.maxMorale, u.morale, u.maxMorale, neg ? `Moral ${u.morale} : sous zéro, l'unité fuit` : `Moral ${u.morale} / ${u.maxMorale}`));
     }
     if (u.speed != null) {
-      const left = u.speedRemaining != null && !sim ? u.speedRemaining : u.speed;
-      gauges.push(gauge('VITESSE', 'sp', u.speed ? left / u.speed : 0, esc(fmtSpeed(left)), u.speed, sim || u.speedRemaining == null ? `Vitesse ${u.speed} par tour` : `Vitesse restante ce tour : ${fmtSpeed(left)} / ${u.speed}`));
+      // what the orders already given this turn leave (planning: stance changes, ability and path paid)
+      const planned = sim && u.isMine && window.KBSim && KBSim.speedLeft ? KBSim.speedLeft(u) : null;
+      const left = planned != null ? planned : u.speedRemaining != null ? u.speedRemaining : u.speed;
+      gauges.push(gauge('VITESSE', 'sp', u.speed ? left / u.speed : 0, esc(fmtSpeed(left)), u.speed, `Vitesse restante ce tour, ordres compris : ${fmtSpeed(left)} / ${u.speed}`));
     }
     el.card.innerHTML = `
       <div class="pic">${src ? `<img src="${esc(src)}" alt="">` : ''}<span class="k">${unitKanji(u)}</span><i class="owner" style="background:${esc(color)}"></i></div>
       <div class="body">
-        <div class="head"><span class="name">${esc((u.name || '').toUpperCase())}</span><span class="meta">${meta.join('')}</span></div>
+        <div class="head"><span class="name">${stanceNow}${esc((u.name || '').toUpperCase())}</span><span class="meta">${meta.join('')}</span></div>
         <div class="uc-gauges">${gauges.join('')}</div>
-        ${stanceNow}
-        <div class="stats">${stats.map((s) => `<div class="stat" title="${s.d ? `base ${s.v - s.d}, ${s.d > 0 ? '+' : ''}${s.d} posture / terrain` : ''}"><span>${s.label}</span><b class="${s.d > 0 ? 'up' : s.d < 0 ? 'down' : ''}">${s.v ?? '—'}${s.d ? `<small>${s.d > 0 ? '+' : '−'}${Math.abs(s.d)}</small>` : ''}</b></div>`).join('')}</div>
+        <div class="stats">${stats.map((grp) => `<div class="uc-grp">${grp.map((s) => `<div class="stat" title="${s.d ? `base ${s.v - s.d}, ${s.d > 0 ? '+' : ''}${s.d} posture / terrain` : ''}"><span>${s.label}</span><b class="${s.d > 0 ? 'up' : s.d < 0 ? 'down' : ''}">${s.v ?? '—'}${s.d ? `<small>${s.d > 0 ? '+' : '−'}${Math.abs(s.d)}</small>` : ''}</b></div>`).join('')}</div>`).join('')}</div>
       </div>
       <div class="tools">${u.isMine && u.march && u.march.route && u.march.route.length ? '<button data-card="unmarch" title="Annuler la marche sur plusieurs tours">STOP MARCHE</button>' : ''}<button data-card="sheet" title="Fiche complète de l'unité">FICHE</button></div>`;
   }
