@@ -1,22 +1,20 @@
-// Map mode (M): the camera eases to a top-down view while its field of view narrows, then an orthographic
-// camera takes over (no perspective). Wheel zooms, drag pans, no rotation. M again (or Esc) eases back to the
-// exact previous view. The perspective camera stays the rig driven by OrbitControls; the orthographic camera
-// copies its framing every frame, so picking, projections and camera moves keep working.
+// Map mode (M): the camera eases to a steep view from above (a narrower lens, still in perspective). Wheel zooms,
+// drag pans, no rotation. M again (or Esc) eases back to the battle camera.
 const STYLE = `
 #hud-root .hud-ibtn[hidden] { display: none; }
 /* Strategy view: each unit is a flat square token on its hex (player's colour, pictogram), no pole, no waving cloth */
-body.v3-map #view3d-plates .u3-plate { padding: 0; }
-body.v3-map #view3d-plates .u3-ban { width: auto; height: auto; transform: none; filter: none; }
-body.v3-map #view3d-plates .u3-pole, body.v3-map #view3d-plates .u3-cap, body.v3-map #view3d-plates .u3-bar-x,
-body.v3-map #view3d-plates .u3-ties, body.v3-map #view3d-plates .u3-gauges, body.v3-map #view3d-plates .st,
-body.v3-map #view3d-plates .u3-tags { display: none; }
-body.v3-map #view3d-plates .u3-cloth { position: relative; left: 0; top: 0; width: 26px; height: 26px; clip-path: none; animation: none; transform: none;
+#view3d-plates.tok .u3-plate { padding: 0; }
+#view3d-plates.tok .u3-ban { width: auto; height: auto; transform: none; filter: none; }
+#view3d-plates.tok .u3-pole, #view3d-plates.tok .u3-cap, #view3d-plates.tok .u3-bar-x,
+#view3d-plates.tok .u3-ties, #view3d-plates.tok .u3-gauges, #view3d-plates.tok .st,
+#view3d-plates.tok .u3-tags { display: none; }
+#view3d-plates.tok .u3-cloth { position: relative; left: 0; top: 0; width: 26px; height: 26px; clip-path: none; animation: none; transform: none;
   box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px #000, 2px 3px 4px rgba(0,0,0,.5); }
-body.v3-map #view3d-plates .u3-cloth-edge { display: none; }
-body.v3-map #view3d-plates .u3-main { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
-body.v3-map #view3d-plates .u3-plate.general .u3-cloth { box-shadow: 0 0 0 2px #e8c060, 0 0 0 3.5px #000, 2px 3px 4px rgba(0,0,0,.5); }
-body.v3-map #view3d-plates .u3-plate.sel .u3-cloth { box-shadow: 0 0 0 2px #D8352A, 0 0 0 3.5px #000, 0 0 8px 2px rgba(216,53,42,.8); }
-body.v3-map #view3d-plates .u3-plate.hov .u3-cloth { box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px #000, 0 0 8px 2px rgba(255,255,255,.6); }
+#view3d-plates.tok .u3-cloth-edge { display: none; }
+#view3d-plates.tok .u3-main { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+#view3d-plates.tok .u3-plate.general .u3-cloth { box-shadow: 0 0 0 2px #e8c060, 0 0 0 3.5px #000, 2px 3px 4px rgba(0,0,0,.5); }
+#view3d-plates.tok .u3-plate.sel .u3-cloth { box-shadow: 0 0 0 2px #D8352A, 0 0 0 3.5px #000, 0 0 8px 2px rgba(216,53,42,.8); }
+#view3d-plates.tok .u3-plate.hov .u3-cloth { box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px #000, 0 0 8px 2px rgba(255,255,255,.6); }
 body.v3-map .v3-map-chip.show { display: flex; }
 .v3-map-chip { display: none; position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 60; align-items: center; gap: 10px;
   padding: 6px 14px; background: #000; color: #fff; border: 2px solid #fff; box-shadow: 0 0 0 2px #000, 4px 4px 0 #D8352A;
@@ -26,7 +24,9 @@ body.v3-map .v3-map-chip.show { display: flex; }
 body.v3-map.hud-d .v3-map-chip { bottom: auto; top: 196px; }
 `;
 
-const MAP_FOV = 9;
+// a real perspective, slightly tilted (not a flat top-down orthographic view): relief and buildings keep their volume
+const MAP_FOV = 30;
+const MAP_PHI = 0.38;
 // furthest zoom of the Strategy view: about 44 world units of ground on the screen's height (two dozen hexes)
 const MAX_HALF_H = 22;
 const maxStrategyDistance = () => MAX_HALF_H / Math.tan(MAP_FOV * Math.PI / 360);
@@ -47,7 +47,6 @@ export function createMapMode(world, { onChange } = {}) {
   chip.innerHTML = '<b>STRATÉGIE</b> molette : zoom (à fond : retour à la bataille) · glisser : déplacer · <kbd>M</kbd> ou <kbd>Échap</kbd> : revenir';
   document.body.appendChild(chip);
 
-  const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.5, 900);
   let state = 'off'; // off | in | on | out
   let saved = null;
   let anim = null;
@@ -59,19 +58,6 @@ export function createMapMode(world, { onChange } = {}) {
     const aspect = world.aspect();
     const halfH = Math.max((b.bz1 - b.bz0) / 2, (b.bx1 - b.bx0) / 2 / aspect) * 1.06;
     return halfH / Math.tan(THREE.MathUtils.degToRad(fov) / 2);
-  }
-
-  function syncOrtho() {
-    const dist = camera.position.distanceTo(controls.target);
-    const halfH = dist * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
-    const aspect = world.aspect();
-    ortho.left = -halfH * aspect; ortho.right = halfH * aspect;
-    ortho.top = halfH; ortho.bottom = -halfH;
-    _off.copy(camera.position).sub(controls.target).normalize();
-    ortho.position.copy(controls.target).addScaledVector(_off, 120);
-    ortho.quaternion.copy(camera.quaternion);
-    ortho.updateProjectionMatrix();
-    ortho.updateMatrixWorld();
   }
 
   function frame(dt) {
@@ -98,11 +84,11 @@ export function createMapMode(world, { onChange } = {}) {
         done();
       }
     }
-    if (state === 'on') syncOrtho();
     window.kbMapBusy = state !== 'off'; // the battle camera's own pitch easing stays off meanwhile (gameView.js)
+    // 0 battle view → 1 Strategy view, following the camera transition (the unit banners morph into tokens with it)
+    window.kbMapProgress = state === 'on' ? 1 : state === 'off' ? 0 : anim ? (state === 'in' ? ease(anim.t) : 1 - ease(anim.t)) : (state === 'in' ? 0 : 1);
   }
   world.frameHooks.unshift(frame);
-  world.resizeHooks.push(() => { if (state === 'on') syncOrtho(); });
 
   // toS.radius is ignored: the end distance follows from the end framing (half height of ground seen, toHalfH) and toFov
   function startAnim(toT, toS, toFov, dur, done, toHalfH) {
@@ -131,7 +117,7 @@ export function createMapMode(world, { onChange } = {}) {
     // seen from far above: no haze, no cloud layer between the camera and the board (the grid stays the same)
     if (world.scene.fog) world.scene.fog.density = 0.0006;
     if (world.clouds) world.clouds.visible = false;
-    // same place, same heading, same zoom level (the ground seen keeps its size); only the pitch goes to vertical
+    // same place, same heading, same zoom level (the ground seen keeps its size); the pitch goes to a steep view from above
     const fit = fitDistance(MAP_FOV), cap = maxStrategyDistance();
     const tanMap = Math.tan(THREE.MathUtils.degToRad(MAP_FOV) / 2);
     const now = new THREE.Spherical().setFromVector3(camera.position.clone().sub(controls.target));
@@ -139,15 +125,13 @@ export function createMapMode(world, { onChange } = {}) {
     const halfH = Math.min(now.radius * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2), Math.min(fit, cap) * tanMap);
     const center = controls.target.clone();
     center.y = world.groundHeight(center.x, center.z);
-    startAnim(center, new THREE.Spherical(1, 0.0004, now.theta), MAP_FOV, DUR_IN, () => {
+    startAnim(center, new THREE.Spherical(1, MAP_PHI, now.theta), MAP_FOV, DUR_IN, () => {
       state = 'on';
       // no zooming in within the Strategy view: wheeling in goes back to the battle camera (gameView.js)
       controls.minDistance = (halfH / tanMap) * 0.98;
       controls.maxDistance = Math.min(fitDistance(MAP_FOV) * 1.05, maxStrategyDistance()); // whole map at most, and the zoom limit
       controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
       controls.screenSpacePanning = false;
-      syncOrtho();
-      world.setViewCamera(ortho);
       // camera moves requested by the game (auto camera, focus on a unit) become pans in map mode
       world.setFlyFilter((toPos, toTarget) => {
         const off = camera.position.clone().sub(controls.target);
@@ -218,6 +202,5 @@ export function createMapMode(world, { onChange } = {}) {
     toggle, enter, exit,
     get active() { return state !== 'off'; },
     get state() { return state; },
-    camera: ortho,
   };
 }

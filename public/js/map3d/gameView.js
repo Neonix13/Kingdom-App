@@ -18,8 +18,11 @@ const PLATE_CSS = `
    flag flashes red. Values in the tooltips. Sizes in --cw / --ch (smaller from far away), map mode: cloth only */
 .u3-plate { position:absolute; left:0; top:0; pointer-events:auto; cursor:pointer; will-change:transform; padding:0 4px;
   font:900 10px 'Zen Kaku Gothic New','Segoe UI',system-ui,sans-serif; color:#fff; }
-.u3-ban { --cw:38px; --ch:58px; position:relative; width:calc(var(--cw) + 6px); height:calc(var(--ch) + 23px); transform-origin:1.5px 100%; transition:transform .15s; }
-.u3-plate.hov .u3-ban, .u3-plate.sel .u3-ban { transform:scale(1.18); }
+/* size follows the camera distance continuously (--sc on #view3d-plates), details fade out with it (--det) */
+.u3-ban { --cw:38px; --ch:58px; position:relative; width:calc(var(--cw) + 6px); height:calc(var(--ch) + 23px); transform-origin:1.5px 100%;
+  transform:scale(var(--sc, 1)); transition:transform .15s; }
+.u3-plate.hov .u3-ban, .u3-plate.sel .u3-ban { transform:scale(max(1, calc(var(--sc, 1) * 1.18))); }
+.u3-plate:not(.hov):not(.sel) .u3-vbar.mo, .u3-plate:not(.hov):not(.sel) .st, .u3-plate:not(.hov):not(.sel) .u3-tags { opacity:var(--det, 1); transition:opacity .2s; }
 /* pole, finial and crossbar */
 .u3-pole { position:absolute; left:0; top:4px; bottom:0; width:3px; background:linear-gradient(90deg, #2a1a0e, #7a5634 45%, #2a1a0e); box-shadow:0 0 0 1px #000; }
 .u3-cap { position:absolute; left:-2px; top:0; width:7px; height:7px; border-radius:50%; background:#8a6a48; box-shadow:0 0 0 1px #000; z-index:4; }
@@ -74,10 +77,6 @@ const PLATE_CSS = `
 .u3-plate.fleeing .u3-cloth { animation-duration:.9s; }
 .u3-plate.concealed .u3-cloth { opacity:.65; }
 /* far: a smaller flag, vitality only */
-#view3d-plates.far .u3-plate:not(.hov):not(.sel) .u3-ban { --cw:24px; --ch:40px; }
-#view3d-plates.far .u3-plate:not(.hov):not(.sel) .u3-vbar.mo, #view3d-plates.far .u3-plate:not(.hov):not(.sel) .st, #view3d-plates.far .u3-plate:not(.hov):not(.sel) .u3-tags { display:none; }
-#view3d-plates.far .u3-plate:not(.hov):not(.sel) .u3-gauges { width:6px; }
-#view3d-plates.far .u3-plate:not(.hov):not(.sel) .u3-main { right:9px; }
 #view3d-loading { position:absolute; inset:0; z-index:3; display:flex; flex-direction:column; align-items:center; justify-content:center;
   background:rgba(10,6,4,0.92); color:#d9bf78; font:12px 'Segoe UI',system-ui,sans-serif; letter-spacing:2px; transition:opacity .6s; }
 #view3d-loading .bar { width:260px; height:2px; background:rgba(217,191,120,.15); margin-top:12px; }
@@ -558,7 +557,16 @@ export async function mountGameView(bridge, { container }) {
     const showPlates = !ui.photo && (pm === 'always' || (pm === 'auto' && (camDist < 60 || mapMode.active)));
     plates.classList.toggle('names', camDist < 14);
     plates.classList.toggle('near', camDist < 16);
-    plates.classList.toggle('far', camDist > 30 && !mapMode.active);
+    // banners shrink smoothly with the distance (1 → 0.72) and their details fade (stance, morale, tags)
+    const far = THREE.MathUtils.smoothstep(camDist, 14, 50);
+    plates.style.setProperty('--sc', (1 - 0.28 * far).toFixed(3));
+    plates.style.setProperty('--det', (1 - THREE.MathUtils.smoothstep(camDist, 26, 46)).toFixed(3));
+    // banner <-> Strategy token: follows the camera transition (kbMapProgress 0 → 1): the banner glides to the centre
+    // of its hex while fading out, the token fades in there
+    const mp = Math.max(0, Math.min(1, window.kbMapProgress || 0));
+    const tok = mp >= 0.5;
+    plates.classList.toggle('tok', tok);
+    plates.style.opacity = (tok ? THREE.MathUtils.smoothstep(mp, 0.5, 0.9) : 1 - THREE.MathUtils.smoothstep(mp, 0.1, 0.5)).toFixed(3);
     plates.style.display = showPlates ? '' : 'none';
     if (showPlates) {
       for (const el of plateEls.values()) {
@@ -567,16 +575,18 @@ export async function mountGameView(bridge, { container }) {
         // escort is taller (mounted), its banner is brought down to the height of the others
         // Strategy view (top-down): a flat token on the centre of the unit's hex instead of a banner
         const a = anchorOf(u);
-        const s = mapMode.active
-          ? world.projectToScreen(_plateAt.set(a.x, world.standHeight(a.x, a.z), a.z))
-          : world.projectToScreen(_plateAt.copy(a).setY(a.y - (u.isGeneral ? 0.65 : 0.2)));
+        const sb = mp < 1 ? world.projectToScreen(_plateAt.copy(a).setY(a.y - (u.isGeneral ? 0.65 : 0.2))) : null;
+        const bx = sb ? sb.x : 0, by = sb ? sb.y : 0, bv = sb ? sb.visible : true;
+        const st = mp > 0 ? world.projectToScreen(_plateAt.set(a.x, world.standHeight(a.x, a.z), a.z)) : null;
+        const s = { x: st ? bx + (st.x - bx) * mp : bx, y: st ? by + (st.y - by) * mp : by, visible: mp >= 1 ? st.visible : bv };
+        if (mp >= 1) { s.x = st.x; s.y = st.y; }
         if (!s.visible) { el.style.display = 'none'; continue; }
         el.style.display = '';
         // stacking by the real distance to the camera (not the screen height, which flips with low or tilted views):
         // the closer, the more in front; hovered / selected always on top
         const camD = world.camera.position.distanceTo(anchorOf(u));
         el.style.zIndex = String(Math.max(1, 90000 - Math.round(camD * 100)) + (el.classList.contains('sel') ? 200000 : el.classList.contains('hov') ? 100000 : 0));
-        el.style.transform = mapMode.active
+        el.style.transform = tok
           ? `translate(${s.x.toFixed(1)}px, ${s.y.toFixed(1)}px) translate(-50%, -50%)`
           : `translate(${(s.x - 5.5).toFixed(1)}px, ${s.y.toFixed(1)}px) translate(0, -100%)`;
       }
