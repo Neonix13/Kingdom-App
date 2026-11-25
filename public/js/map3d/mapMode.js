@@ -124,7 +124,7 @@ export function createMapMode(world, { onChange } = {}) {
     startAnim(center, new THREE.Spherical(dist, 0.0004, 0), MAP_FOV, DUR_IN, () => {
       state = 'on';
       controls.minDistance = fitDistance(MAP_FOV) * 0.06;
-      controls.maxDistance = fitDistance(MAP_FOV) * 1.6;
+      controls.maxDistance = fitDistance(MAP_FOV) * 1.05; // no further than the whole map
       controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
       controls.screenSpacePanning = false;
       syncOrtho();
