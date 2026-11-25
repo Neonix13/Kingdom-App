@@ -7,8 +7,6 @@ Nouveau:
 -
 
 Priorité:
-Interface et commandes :
--Continuer à travailler le tracé / la portée (tir / charisme).
 
 
 Question:
@@ -16,6 +14,7 @@ Question:
 -------
 
 FAIT (25/11/2026)
+- portées (tir / charisme) : calcul corrigé (distance et hauteur case par case, une case haute ne masque plus celles derrière, plus de cases hors carte ; tir depuis le chemin de ronde à la hauteur du mur) ; portée prévue depuis la destination en pointillés : case survolée atteignable ce tour, sinon fin du trajet ordonné (mode simultané) ; tireurs en blanc / jaune, généraux en bleu (2D et 3D)
 - plus aucun menu à flèches (menu « À l'arrivée », menu d'étape, popup d'orientation) : Ctrl+clic sur une case du trajet ou sur une destination choisit l'étape (anneau en pointillés, 2D et 3D ; « ÉTAPE n / N » ou « À L'ARRIVÉE » au-dessus de la barre de postures), les touches 1 à 6 y posent la posture (à nouveau : retirée) ; Ctrl+clic à nouveau ou Échap libère l'étape ; orientation à l'arrivée par clic droit glissé depuis l'unité ou depuis la fin de son trajet ; en 2D, la flèche d'orientation prévue est dessinée à l'arrivée
 - général perdu (mort ou sorti de la carte) : ses unités perdent leur moral maximum en moral, sont en déroute et fuient seules à chaque manche (celles qui sortent de la carte disparaissent) ; modes classique et simultané
 - ralliement : un autre général (allié ou ennemi) qui réussit sa motivation avec des troupes sans général à portée les rallie (elles cessent de fuir, moral remonté à 0 au moins) et en prend le contrôle

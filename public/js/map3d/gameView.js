@@ -206,6 +206,18 @@ export async function mountGameView(bridge, { container }) {
     if (ds && ds.units) return ds.units.map((u) => ({ ...u, isMine: true, playerId: bridge.myId }));
     return st?.units || [];
   }
+  // the range from the selected unit's destination (hovered hex, or end of its planned path) is added to the overlay;
+  // it follows the hover without a full sync
+  let lastOverlay = { fills: [], outlines: [] }, previewSig = '';
+  function previewOutline() {
+    const rp = bridge.rangePreview;
+    previewSig = rp ? `${rp.kind}|${rp.center.q},${rp.center.r}|${rp.keys.size}` : '';
+    if (!rp || !rp.keys.size) return [];
+    return [{ keys: rp.keys, center: hexKey(rp.center.q, rp.center.r), color: rp.kind === 'tir' ? 'rgba(255,220,0,0.8)' : 'rgba(80,180,255,0.8)', width: 0.09, dash: [0.22, 0.16] }];
+  }
+  function applyOverlay() {
+    world.layers.setOverlay({ fills: lastOverlay.fills, outlines: [...lastOverlay.outlines, ...previewOutline()] });
+  }
   function syncNow() {
     dirty = false;
     preview.clear();
@@ -240,7 +252,8 @@ export async function mountGameView(bridge, { container }) {
     const rc = bridge.rangeCenter, mc = bridge.motivateCenter;
     if (rc) outlines.push({ keys: bridge.rangeTiles, center: hexKey(rc.q, rc.r), color: 'rgba(255,220,0,0.95)', width: 0.12 });
     if (mc) outlines.push({ keys: bridge.motivateTiles, center: hexKey(mc.q, mc.r), color: 'rgba(80,180,255,0.95)', width: 0.12 });
-    world.layers.setOverlay({ fills, outlines });
+    lastOverlay = { fills, outlines };
+    applyOverlay();
 
     world.objectives.group.visible = st && st.phase !== 'deployment' ? (st.objectives || []).length > 0 : ds?.showObjectives !== false;
     if (st && Array.isArray(st.objectives)) {
@@ -344,6 +357,11 @@ export async function mountGameView(bridge, { container }) {
   function frame(dt = 0.016) {
     if (!view.active) return;
     if (dirty) syncNow();
+    {
+      const rp = bridge.rangePreview;
+      const sig = rp ? `${rp.kind}|${rp.center.q},${rp.center.r}|${rp.keys.size}` : '';
+      if (sig !== previewSig) applyOverlay();
+    }
     // route waypoints changed (Maj+clic, Échap...): markers and path preview follow
     const wps = bridge.routeWaypoints || [];
     const sig = `${bridge.selectedUnit ? bridge.selectedUnit.id : ''}|${wps.join(';')}`;

@@ -202,7 +202,7 @@ export function createBoardLayers(world) {
     ctx.stroke();
   }
 
-  // spec: { fills: [{ keys, color }], outlines: [{ keys, center, color, width }] }
+  // spec: { fills: [{ keys, color }], outlines: [{ keys, center, color, width, dash? (world units) }] }
   function setOverlay(spec) {
     const sig = JSON.stringify(spec, (k, v) => (v instanceof Set ? Array.from(v).sort() : v));
     if (sig === lastOvSig) return;
@@ -229,8 +229,10 @@ export function createBoardLayers(world) {
       ctx.strokeStyle = o.color;
       ctx.lineWidth = (o.width || 0.1) * OV_PPU;
       ctx.lineCap = 'round';
+      ctx.setLineDash(o.dash ? o.dash.map((x) => x * OV_PPU) : []);
       outline(ctx, o.keys, o.center);
     }
+    ctx.setLineDash([]);
     ov.tex.needsUpdate = true;
   }
 

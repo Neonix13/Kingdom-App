@@ -924,54 +924,11 @@ function render() {
     }
   }
 
-  if (rangeTiles.size > 0 && rangeCenter) {
-    const dirs = SEGMENT_EDGE_DIRS;
-    const interior = new Set(rangeTiles);
-    interior.add(`${rangeCenter.q},${rangeCenter.r}`);
-    ctx.save();
-    const outlineColor = '#ffffff';
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    for (const key of rangeTiles) {
-      const [q, r] = key.split(',').map(Number);
-      const { x, y } = hexToPixel(q, r);
-      const corners = hexCorners(x, y);
-      for (let i = 0; i < 6; i++) {
-        const [dq, dr] = dirs[i];
-        if (!interior.has(`${q + dq},${r + dr}`)) {
-          ctx.moveTo(corners[i].x, corners[i].y);
-          ctx.lineTo(corners[(i + 1) % 6].x, corners[(i + 1) % 6].y);
-        }
-      }
-    }
-    ctx.strokeStyle = '#000'; ctx.lineWidth = Math.max(6, 5 / zoom); ctx.stroke();
-    ctx.strokeStyle = outlineColor; ctx.lineWidth = Math.max(3, 2.5 / zoom); ctx.stroke();
-    ctx.restore();
-  }
-
-  if (motivateTiles.size > 0 && motivateCenter) {
-    const dirs = SEGMENT_EDGE_DIRS;
-    const interior = new Set(motivateTiles);
-    interior.add(`${motivateCenter.q},${motivateCenter.r}`);
-    ctx.save();
-    const outlineColor = '#6f9bf0';
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    for (const key of motivateTiles) {
-      const [q, r] = key.split(',').map(Number);
-      const { x, y } = hexToPixel(q, r);
-      const corners = hexCorners(x, y);
-      for (let i = 0; i < 6; i++) {
-        const [dq, dr] = dirs[i];
-        if (!interior.has(`${q + dq},${r + dr}`)) {
-          ctx.moveTo(corners[i].x, corners[i].y);
-          ctx.lineTo(corners[(i + 1) % 6].x, corners[(i + 1) % 6].y);
-        }
-      }
-    }
-    ctx.strokeStyle = '#000'; ctx.lineWidth = Math.max(6, 5 / zoom); ctx.stroke();
-    ctx.strokeStyle = outlineColor; ctx.lineWidth = Math.max(3, 2.5 / zoom); ctx.stroke();
-    ctx.restore();
+  if (rangeTiles.size > 0 && rangeCenter) strokeZone(rangeTiles, rangeCenter, '#ffffff');
+  if (motivateTiles.size > 0 && motivateCenter) strokeZone(motivateTiles, motivateCenter, '#6f9bf0');
+  {
+    const rp = rangePreview();
+    if (rp && rp.keys.size) strokeZone(rp.keys, rp.center, rp.kind === 'tir' ? '#ffffff' : '#6f9bf0', [10, 7]);
   }
 
   // Weak sides (friend's tool): each unit's open edges coloured by the angle-of-attack bonus an enemy would get there
@@ -1766,6 +1723,31 @@ function marchPlanFor(unit, q, r) {
   return marchPlan(unit, node, null, unit.speedRemaining || 0, KBRules.hasFullSpeed(unit));
 }
 
+// Outline of a zone of hexes (range, motivation): black under a coloured line; dash = preview from the destination
+function strokeZone(keys, center, color, dash = null) {
+  const interior = new Set(keys);
+  interior.add(`${center.q},${center.r}`);
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.setLineDash(dash || []);
+  ctx.beginPath();
+  for (const key of keys) {
+    const [q, r] = key.split(',').map(Number);
+    const { x, y } = hexToPixel(q, r);
+    const corners = hexCorners(x, y);
+    for (let i = 0; i < 6; i++) {
+      const [dq, dr] = SEGMENT_EDGE_DIRS[i];
+      if (!interior.has(`${q + dq},${r + dr}`)) {
+        ctx.moveTo(corners[i].x, corners[i].y);
+        ctx.lineTo(corners[(i + 1) % 6].x, corners[(i + 1) % 6].y);
+      }
+    }
+  }
+  ctx.strokeStyle = '#000'; ctx.lineWidth = Math.max(dash ? 5 : 6, (dash ? 4 : 5) / zoom); ctx.stroke();
+  ctx.strokeStyle = color; ctx.globalAlpha = dash ? 0.85 : 1; ctx.lineWidth = Math.max(dash ? 2.5 : 3, (dash ? 2 : 2.5) / zoom); ctx.stroke();
+  ctx.restore();
+}
+
 // ---- path drawing (2D): smoothed trails, black outline, arrow at the end ----
 // Smooth curve through the hex centres (quadratic segments between the midpoints)
 function traceSmooth(c2d, pts) {
@@ -1984,53 +1966,62 @@ function drawApproachPreview(ctx) {
   ctx.restore();
 }
 
-function computeRangeTiles(unit) {
-  const dirs = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
-  rangeCenter = { q: unit.q, r: unit.r };
-  const hd = mapHeight;
-  const hA = hd[`${unit.q},${unit.r}`] || 0;
-  const maxRange = (unit.range || 1) + hA; // portée max si cible au niveau 0
-  const visited = new Set();
-  const queue = [{ q: unit.q, r: unit.r, d: 0 }];
-  visited.add(`${unit.q},${unit.r}`);
-  while (queue.length) {
-    const { q, r, d } = queue.shift();
-    const hT = hd[`${q},${r}`] || 0;
-    const effectiveRange = KBRules.attackRange(unit.range, hA, hT);
-    if (d > 0) rangeTiles.add(`${q},${r}`);
-    if (d >= effectiveRange || d >= maxRange) continue;
-    for (const [dq, dr] of dirs) {
-      const nq = q + dq, nr = r + dr;
-      const nk = `${nq},${nr}`;
-      if (!visited.has(nk)) {
-        visited.add(nk);
-        queue.push({ q: nq, r: nr, d: d + 1 });
-      }
-    }
+// Hexes of the map a shooter on (q, r) can hit: distance within its range, +1 per level above the target, -1 below
+// (on the wall walk above a gate, from the height of the wall)
+function shotZone(unit, q, r, level = 0) {
+  const out = new Set();
+  const k0 = `${q},${r}`;
+  const hA = level && gateInfo.tops[k0] != null ? gateInfo.tops[k0] : (mapHeight[k0] || 0);
+  for (const h of mapHexes) {
+    const d = hexDistance(q, r, h.q, h.r);
+    if (d > 0 && d <= KBRules.attackRange(unit.range, hA, mapHeight[h.key] || 0)) out.add(h.key);
   }
+  return out;
+}
+// Hexes of the map within a general's motivation range (Charisme / 5) around (q, r)
+function charismaZone(unit, q, r) {
+  const out = new Set();
+  const range = Math.floor((unit.charisma || 0) / 5);
+  for (const h of mapHexes) { const d = hexDistance(q, r, h.q, h.r); if (d > 0 && d <= range) out.add(h.key); }
+  return out;
+}
+
+function computeRangeTiles(unit) {
+  rangeCenter = { q: unit.q, r: unit.r };
+  for (const k of shotZone(unit, unit.q, unit.r, unit.level)) rangeTiles.add(k);
 }
 
 function computeMotivateTiles(unit) {
   if (!unit.charisma) return;
-  const range = Math.floor(unit.charisma / 5);
-  const dirs = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
   motivateCenter = { q: unit.q, r: unit.r };
-  const visited = new Set();
-  const queue = [{ q: unit.q, r: unit.r, d: 0 }];
-  visited.add(`${unit.q},${unit.r}`);
-  while (queue.length) {
-    const { q, r, d } = queue.shift();
-    if (d > 0) motivateTiles.add(`${q},${r}`);
-    if (d >= range) continue;
-    for (const [dq, dr] of dirs) {
-      const nq = q + dq, nr = r + dr;
-      const nk = `${nq},${nr}`;
-      if (!visited.has(nk)) {
-        visited.add(nk);
-        queue.push({ q: nq, r: nr, d: d + 1 });
-      }
-    }
+  for (const k of charismaZone(unit, unit.q, unit.r)) motivateTiles.add(k);
+}
+
+// Range from where the selected unit is headed (shooters: shots, generals: motivation): the hovered hex it can reach
+// this turn, else (simultaneous) the end of its planned path. { center, keys, kind: 'tir' | 'charisme' } or null
+let rangePreviewCache = null;
+function rangePreview() {
+  const u = selectedUnit;
+  if (!u || u.q == null || u.isMine === false || u.isFleeing || gameState?.phase !== 'battle') return null;
+  const kind = (u.range || 1) > 1 ? 'tir' : u.isGeneral && u.charisma ? 'charisme' : null;
+  if (!kind) return null;
+  let at = null;
+  if (hoveredHex && !(hoveredHex.q === u.q && hoveredHex.r === u.r)) {
+    const node = hexNode(u, hoveredHex);
+    if (movableTiles.has(node)) at = { q: hoveredHex.q, r: hoveredHex.r, level: node.endsWith('^') ? 1 : 0 };
   }
+  if (!at && window.KBSim && KBSim.active()) {
+    const o = KBSim.orderOf(u);
+    const e = o && o.path && o.path.length ? o.path[o.path.length - 1] : null;
+    if (e) at = { q: e[0], r: e[1], level: e[2] ? 1 : 0 };
+  }
+  if (!at) return null;
+  const sig = [u.id, kind, at.q, at.r, at.level, u.range, u.charisma, mapHexes.length].join('|');
+  if (rangePreviewCache && rangePreviewCache.sig === sig) return rangePreviewCache.value;
+  const keys = kind === 'tir' ? shotZone(u, at.q, at.r, at.level) : charismaZone(u, at.q, at.r);
+  const value = { center: { q: at.q, r: at.r }, keys, kind };
+  rangePreviewCache = { sig, value };
+  return value;
 }
 
 function setMode(newMode) {
@@ -3851,6 +3842,7 @@ window.gameBridge = {
   get rangeCenter() { return rangeCenter; },
   get motivateTiles() { return motivateTiles; },
   get motivateCenter() { return motivateCenter; },
+  get rangePreview() { return rangePreview(); },
   get showTerrain() { return showTerrain; },
   get terrainData() { return terrainData; },
   get pingMode() { return pingMode; },
