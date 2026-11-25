@@ -531,7 +531,8 @@ export async function mountGameView(bridge, { container }) {
     const wps = bridge.routeWaypoints || [];
     const sig = `${bridge.selectedUnit ? bridge.selectedUnit.id : ''}|${wps.join(';')}`;
     if (sig !== routeSig) { routeSig = sig; preview.showWaypoints(wps); hovered = null; lastMove = lastMove || lastPointer; }
-    if (lastMove) {
+    // orienting (left button held): no path preview under the cursor, only the facing arrow
+    if (orienting || holdOrient) { if (lastMove) { lastMove = null; preview.showPath(null); preview.showAttack(null, null); ui.showAttackTip(null); } } else if (lastMove) {
       const e = lastMove;
       lastMove = null;
       const pt = world.pickPoint(e.clientX, e.clientY);
