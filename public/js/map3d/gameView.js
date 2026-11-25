@@ -1,5 +1,5 @@
 import { createWorld } from './world.js';
-import { createPathPreview, createOrdersLayer, createPathMarks, createZoneRims } from './pathPreview.js';
+import { createPathPreview, createOrdersLayer, createPathMarks, createZoneRims, createFacingMarks } from './pathPreview.js';
 import { createMapEditsLayer } from './mapEdits3d.js';
 import { createGameUI } from './gameUI.js';
 import { createMapMode } from './mapMode.js';
@@ -195,6 +195,7 @@ export async function mountGameView(bridge, { container }) {
   const ordersLayer = createOrdersLayer(world, { tint: true }); // moves of this turn: in the player's colour
   const marchLayer = createOrdersLayer(world, { opacity: 0.45 }); // standing marches of my units (rest of the route)
   const zoneRims = createZoneRims(world); // range / charisma zones: crisp ribbons on the relief
+  const facingMarks = createFacingMarks(world); // final facing of the units with an order (flat arrow on the arrival hex)
   const pathMarks = createPathMarks(world); // selected unit: turn numbers of its march, stance changes on its path
   const editsLayer = createMapEditsLayer(world);
   const baseMap = () => (bridge.mapDoc ? { seg: bridge.mapDoc.segments || {}, ter: bridge.mapDoc.terrain || {} } : { seg: {}, ter: {} });
@@ -418,6 +419,20 @@ export async function mountGameView(bridge, { container }) {
       if (u && u.q != null && o.stance !== u.stance) marks.push({ kind: 'stance', q: u.q, r: u.r, stance: o.stance, ring: bridge.getPlayerColor(bridge.myId), onUnit: true });
     }
     pathMarks.show(marks);
+    const FDIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
+    const arrows = [];
+    if (bridge.simultaneous && !bridge.playback) for (const o of bridge.plannedOrders || []) {
+      const path = o.path && o.path.length > 1 ? o.path : null;
+      const end = path ? path[path.length - 1] : null;
+      let d = o.facing != null ? FDIRS[((o.facing % 6) + 6) % 6] : null;
+      if (!d && path) { const pr = path[path.length - 2]; const f = window.hexFacingClient ? window.hexFacingClient(pr[0], pr[1], end[0], end[1]) : null; d = f != null ? FDIRS[f] : null; }
+      if (!d) continue;
+      const u = shownUnits.find((x) => String(x.id) === String(o.unitId));
+      const at = end || (u ? [u.q, u.r] : null);
+      if (!at) continue;
+      arrows.push({ q: at[0], r: at[1], dq: d[0], dr: d[1], color: bridge.getPlayerColor(bridge.myId), dim: !(sel && String(sel.id) === String(o.unitId)) });
+    }
+    facingMarks.show(arrows);
     // trees step aside on hexes holding a unit and on every forest hex in sight, so that a visible forest stays readable
     const seenForest = Array.from(st && st.phase === 'battle' && st.visibleHexes ? st.visibleHexes : []).filter((k) => world.allHexes.get(k)?.terrain === 'forest');
     world.layers.setOccupied(new Set([...shownUnits.map((u) => hexKey(u.q, u.r)), ...seenForest, ...editsLayer.clearedHexes(bridge.mapEdits, baseMap().ter)]));

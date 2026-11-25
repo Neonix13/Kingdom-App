@@ -536,3 +536,48 @@ export function createZoneRims(world) {
   }
   return { show, clear };
 }
+
+// Final facing of the units with an order: a flat arrow on the ground of the arrival hex, in the player's colour, pointing at
+// the neighbour faced (the chosen facing, else the direction of the last step). marks: [{ q, r, dq, dr, color, dim }]
+export function createFacingMarks(world) {
+  const { scene, hexToWorld } = world;
+  const groundHeight = world.walkHeight || world.groundHeight;
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const arrow = () => { g.beginPath(); g.moveTo(32, 6); g.lineTo(56, 34); g.lineTo(42, 34); g.lineTo(42, 58); g.lineTo(22, 58); g.lineTo(22, 34); g.lineTo(8, 34); g.closePath(); };
+  g.lineJoin = 'round';
+  arrow(); g.lineWidth = 8; g.strokeStyle = '#000'; g.stroke();
+  arrow(); g.fillStyle = '#fff'; g.fill();
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const pool = [];
+  let lastSig = '';
+  function show(marks) {
+    const list = marks || [];
+    const sig = JSON.stringify(list);
+    if (sig === lastSig) return;
+    lastSig = sig;
+    while (pool.length < list.length) {
+      const m = new THREE.Mesh(_flatGeo, new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false, fog: false, toneMapped: false }));
+      m.rotation.order = 'YXZ';
+      m.renderOrder = 9;
+      m.scale.set(0.42, 0.42, 1);
+      scene.add(m);
+      pool.push(m);
+    }
+    pool.forEach((m, i) => {
+      const mk = list[i];
+      m.visible = !!mk;
+      if (!mk) return;
+      const a = hexToWorld(mk.q, mk.r), b = hexToWorld(mk.q + mk.dq, mk.r + mk.dr);
+      const dx = b.x - a.x, dz = b.z - a.z, len = Math.hypot(dx, dz) || 1;
+      const x = a.x + (dx / len) * 0.55, z = a.z + (dz / len) * 0.55;
+      m.position.set(x, groundHeight(x, z) + 0.07, z);
+      m.rotation.set(-Math.PI / 2, Math.atan2(-dx, -dz), 0);
+      m.material.color.set(mk.color || '#ffffff');
+      m.material.opacity = mk.dim ? 0.6 : 1;
+    });
+  }
+  return { show, clear: () => show([]) };
+}
