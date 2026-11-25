@@ -63,7 +63,7 @@ function trailMesh(pts, w, ground, lift, mat) {
 }
 const trailMat = (color, opacity, additive = false) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, fog: false, toneMapped: false, side: THREE.DoubleSide, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending });
 // draws a trail for the hexes [[q, r], ...] (origin included): returns the meshes added to the scene
-// opts: { width, color, opacity, shadow, glow (colour), from (index where the faint part starts), faint }
+// opts: { width, color, opacity, shadow, glow (colour), from (index where the faint part starts), faint, restColor (that part) }
 function addTrail(scene, hexToWorld, ground, hexes, opts) {
   const out = [];
   if (!hexes || hexes.length < 2) return out;
@@ -80,7 +80,7 @@ function addTrail(scene, hexToWorld, ground, hexes, opts) {
     pts.forEach((p, i) => { const d = (p.x - c.x) ** 2 + (p.z - c.z) ** 2; if (d < best) { best = d; cut = i; } });
   }
   if (cut > 1) add(trailMesh(pts.slice(0, cut + 1), w, ground, 0.05, trailMat(opts.color || 0xffffff, opts.opacity ?? 0.96)), 8);
-  if (cut < pts.length - 1) add(trailMesh(pts.slice(Math.max(0, cut - 1)), w * 0.8, ground, 0.05, trailMat(opts.color || 0xffffff, (opts.opacity ?? 0.96) * (opts.faint ?? 0.5))), 8);
+  if (cut < pts.length - 1) add(trailMesh(pts.slice(Math.max(0, cut - 1)), w * 0.8, ground, 0.05, trailMat(opts.restColor ?? opts.color ?? 0xffffff, (opts.opacity ?? 0.96) * (opts.faint ?? 0.5))), 8);
   return out;
 }
 const disposeAll = (scene, list) => { for (const m of list) { scene.remove(m); m.geometry.dispose(); m.material.dispose(); } list.length = 0; };
@@ -180,14 +180,17 @@ export function createPathPreview(world) {
     return out;
   }
 
-  // opts.turnEnds (march): index in hexes of the last hex of each turn
+  // opts.turnEnds (march): index in hexes of the last hex of each turn; this turn's part in the player's colour (setColor),
+  // the next turns white and faint
   const trail = [];
+  let pathColor = 0xffffff;
+  const setColor = (c) => { pathColor = c ? new THREE.Color(c).getHex() : 0xffffff; };
   function showPath(hexes, opts = {}) {
     const ends = opts.turnEnds && opts.turnEnds.length > 1 ? opts.turnEnds : null;
     disposeAll(scene, trail);
     chevrons.count = 0; farChev.count = 0; endMark.visible = false; pathPoints = null;
     if (!hexes || hexes.length < 2) { showTurnMarks([], null); return; }
-    trail.push(...addTrail(scene, hexToWorld, groundHeight, hexes, { width: 0.075, from: ends ? ends[0] : null }));
+    trail.push(...addTrail(scene, hexToWorld, groundHeight, hexes, { width: 0.075, from: ends ? ends[0] : null, color: pathColor, restColor: 0xffffff }));
     // a numbered disc ends each turn; a simple move ends on "1"
     showTurnMarks(hexes, ends || [hexes.length - 1]);
   }
@@ -234,7 +237,7 @@ export function createPathPreview(world) {
     if (arc) arcMat.opacity = 0.65 + 0.25 * Math.sin(phase * 6);
   }
 
-  return { showPath, showAttack, showWaypoints, clear, update };
+  return { showPath, showAttack, showWaypoints, clear, update, setColor };
 }
 
 // Planned orders (simultaneous mode): one chevron trail per move, an arc per attack, all in the player's colour

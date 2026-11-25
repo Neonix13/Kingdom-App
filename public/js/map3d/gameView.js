@@ -512,6 +512,7 @@ export async function mountGameView(bridge, { container }) {
         const approach = sel && attackable && hu && bridge.approachTo ? bridge.approachTo(sel, hu) : null;
         const march = sel && !movable && !attackable && !hu && bridge.marchPlan ? bridge.marchPlan(sel, valid.q, valid.r) : null;
         if (march) world.layers.setHover(valid, '#c9d4ff');
+        preview.setColor(bridge.getPlayerColor(bridge.myId));
         if (sel && movable) {
           const res = bridge.pathTo(sel, valid.q, valid.r);
           preview.showPath(res ? [[sel.q, sel.r], ...res.path.slice(1)] : null);
