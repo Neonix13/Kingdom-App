@@ -360,7 +360,6 @@ export async function mountGameView(bridge, { container }) {
       const stuck = bridge.deployBlockedFor ? bridge.deployBlockedFor(bridge.selectedUnit) : null;
       if (stuck) fills.push({ keys: stuck, color: 'rgba(216,53,42,0.55)', edge: 'rgba(255,110,90,0.95)' });
     }
-    fills.push({ keys: new Set([...bridge.movableTiles].map((k) => k.replace('^', ''))), color: 'rgba(60,170,40,0.42)', edge: 'rgba(150,255,100,0.9)' });
     if (bridge.abilityTiles && bridge.abilityTiles.size) fills.push({ keys: new Set(bridge.abilityTiles.keys()), color: 'rgba(40,110,200,0.5)', edge: 'rgba(120,190,255,0.95)' });
     fills.push({ keys: bridge.attackableTiles, color: 'rgba(200,40,20,0.5)', edge: 'rgba(255,120,80,0.95)' });
     if (bridge.approachAt) {

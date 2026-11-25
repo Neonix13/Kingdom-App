@@ -881,7 +881,6 @@ function render() {
       const fogFar = 1 - Math.exp(-((fogDist.get(key) || FOG_DIST_MAX) - 1) / 12);
       let fill = isVisible ? 'rgba(0,0,0,0)' : `rgba(4,3,3,${(fogLight ? 0.42 + 0.14 * fogFar : 0.55 + 0.42 * fogFar).toFixed(3)})`;
       let stroke = isVisible ? `rgba(${gridColorRGB},${gridOpacity})` : 'rgba(0,0,0,0)';
-      if (isVisible && (movableTiles.has(key) || movableTiles.has(key + '^'))) fill = 'rgba(255,255,255,0.22)';
       if (abilityTiles.has(key)) fill = 'rgba(47,95,168,0.45)';
       if (isVisible && attackableTiles.has(key)) fill = approachAttacks.has(key) ? 'rgba(216,53,42,0.24)' : 'rgba(216,53,42,0.45)';
       if (isHovered && isVisible) stroke = '#D8352A';
