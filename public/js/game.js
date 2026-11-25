@@ -1291,6 +1291,12 @@ function drawStar(ctx, cx, cy, spikes, outerR, innerR) {
 }
 
 // ---- INPUT ----
+// A click on the selected unit deselects it a moment later, so that a double click (two clicks) does not toggle the
+// selection twice: the double click cancels the pending deselection
+let pendingDeselect = null;
+function deferDeselect(fn) { clearTimeout(pendingDeselect); pendingDeselect = setTimeout(() => { pendingDeselect = null; fn(); }, 260); }
+function cancelPendingDeselect() { if (!pendingDeselect) return false; clearTimeout(pendingDeselect); pendingDeselect = null; return true; }
+window.deferDeselect = deferDeselect;
 // double click on one of my units: cancel all its moves (see gameBridge.doubleClick)
 canvas.addEventListener('dblclick', (e) => {
   const hex = getHexUnderMouse(e);
@@ -1451,6 +1457,7 @@ function getHexUnderMouse(e) {
 
 // ---- GAME LOGIC ----
 function handleHexClick(hex, opts = {}) {
+  cancelPendingDeselect(); // a new click replaces a pending deselection
   hex = { ...hex, alt: !!opts.altKey };
   const key = `${hex.q},${hex.r}`;
 
@@ -1543,15 +1550,19 @@ function handleHexClick(hex, opts = {}) {
       return;
     }
 
-    // Clic hors portée → déselectionner
-    resetRoute();
-    selectedUnit = null;
-    movableTiles.clear();
-    attackableTiles.clear();
-    rangeTiles.clear(); rangeCenter = null; motivateTiles.clear(); motivateCenter = null;
-    updateActionButtons();
-    showUnitDetail(null);
-    render();
+    // Clic hors portée → déselectionner (sur l'unité sélectionnée elle-même : un peu plus tard, un double-clic l'empêche)
+    const doDeselect = () => {
+      resetRoute();
+      selectedUnit = null;
+      movableTiles.clear();
+      attackableTiles.clear();
+      rangeTiles.clear(); rangeCenter = null; motivateTiles.clear(); motivateCenter = null;
+      updateActionButtons();
+      showUnitDetail(null);
+      render();
+    };
+    if (selectedUnit.q === hex.q && selectedUnit.r === hex.r) deferDeselect(doDeselect);
+    else doDeselect();
     return;
   }
 
@@ -3941,6 +3952,7 @@ window.gameBridge = {
   // double click on one of my units: cancel all its moves (planning: its path and march; classic turn: its standing
   // march, the steps already walked stay walked)
   doubleClick(hex) {
+    cancelPendingDeselect();
     const units = gameState?.units || [];
     const sel = selectedUnit && selectedUnit.q === hex.q && selectedUnit.r === hex.r ? selectedUnit : null;
     const unit = sel || units.find(u => u.q === hex.q && u.r === hex.r && u.isMine);

@@ -237,7 +237,7 @@
       const leaving = (u) => { const o = u && st.orders[u.id]; return !!(o && o.path && o.path.length && (o.type === 'move' || o.type === 'attack' || o.type === 'charge')); };
       const mineHere = atNode && atNode.isMine ? atNode : (!movableTiles.has(node) ? unitAt : null);
       if (mineHere && mineHere.isMine && !(mineHere.id !== sel.id && leaving(mineHere) && movableTiles.has(node))) {
-        if (mineHere.id === sel.id) { select(null); return; }
+        if (mineHere.id === sel.id) { window.deferDeselect(() => select(null)); return; } // a double click cancels it
         select(mineHere);
         return;
       }
