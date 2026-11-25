@@ -336,7 +336,6 @@ export function createOrdersLayer(world, { opacity = 0.85, tint = false } = {}) 
         if (sel) ribbons.push(...addTrail(scene, hexToWorld, groundHeight, o.path, { width: 0.075, glow: base.getHex(), color: tint ? base.getHex() : 0xffffff, opacity: Math.min(0.96, opacity + 0.15) }));
         else {
           ribbons.push(...addTrail(scene, hexToWorld, groundHeight, o.path, { width: tint ? 0.034 : 0.028, opacity: tint ? 0.85 : 0.4, shadow: tint, color: tint ? base.getHex() : 0xffffff }));
-          endDot(pts[pts.length - 1], 0.06, thinMat);
         }
         void curve; void len;
       }
