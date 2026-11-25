@@ -11,77 +11,74 @@ import { createKillCam } from './killCam.js';
 const PLATE_CSS = `
 #view3d-canvas { position:absolute; inset:0; width:100%; height:100%; display:block; z-index:1; outline:none; touch-action:none; }
 #view3d-plates { position:absolute; inset:0; pointer-events:none; z-index:2; overflow:hidden; }
-/* ---- unit plates: a little war banner (nobori) planted above each unit. A pole coming down to the unit with a crossbar
-   on top, a vertical cloth in the player's colour (swallow-tailed hem, the type pictogram, kanji tags for the state)
-   swaying in the wind, two vertical gauges along it (vitality, morale — red stripes below zero), the stance as a round
-   seal at the top of the pole. Values in the tooltips. Detail by camera distance (#view3d-plates.far), map mode: cloth only */
+/* ---- unit plates: a little war banner (nobori) planted above each unit.
+   The cloth hangs from the crossbar and is tied to the pole (loops along its edge); it carries the type pictogram, the
+   stance seal under it, kanji tags for the state, and a strip sewn along its right edge with the two gauges (vitality,
+   morale — red stripes below zero), so the whole flag sways in the wind as one. Fleeing: the stance is torn off and the
+   flag flashes red. Values in the tooltips. Sizes in --cw / --ch (smaller from far away), map mode: cloth only */
 .u3-plate { position:absolute; left:0; top:0; pointer-events:auto; cursor:pointer; will-change:transform; padding:0 4px;
   font:900 10px 'Zen Kaku Gothic New','Segoe UI',system-ui,sans-serif; color:#fff; }
-.u3-ban { position:relative; display:flex; flex-direction:column; align-items:flex-start; transform-origin:4px 100%; transition:transform .15s; }
+.u3-ban { --cw:30px; --ch:54px; position:relative; width:calc(var(--cw) + 6px); height:calc(var(--ch) + 23px); transform-origin:1.5px 100%; transition:transform .15s; }
 .u3-plate.hov .u3-ban, .u3-plate.sel .u3-ban { transform:scale(1.18); }
-/* pole + crossbar */
-.u3-pole { position:absolute; left:3px; top:4px; bottom:0; width:3px; background:linear-gradient(90deg, #2a1a0e, #6b4a2c 45%, #2a1a0e); box-shadow:0 0 0 1px #000; }
-.u3-bar-x { position:absolute; left:1px; top:8px; width:34px; height:3px; background:#3b2716; box-shadow:0 0 0 1px #000; }
+/* pole, finial and crossbar */
+.u3-pole { position:absolute; left:0; top:4px; bottom:0; width:3px; background:linear-gradient(90deg, #2a1a0e, #7a5634 45%, #2a1a0e); box-shadow:0 0 0 1px #000; }
+.u3-cap { position:absolute; left:-2px; top:0; width:7px; height:7px; border-radius:50%; background:#8a6a48; box-shadow:0 0 0 1px #000; z-index:4; }
+.u3-bar-x { position:absolute; left:0; top:6px; width:calc(var(--cw) + 4px); height:3px; background:linear-gradient(#5a3d22, #2e1d0f); box-shadow:0 0 0 1px #000; z-index:3; }
+.u3-bar-x::after { content:''; position:absolute; right:-2px; top:-1px; width:4px; height:5px; border-radius:1px; background:#6b4a2c; box-shadow:0 0 0 1px #000; }
 .u3-plate.general .u3-pole { background:linear-gradient(90deg, #6a4a10, #e8c060 45%, #6a4a10); }
-.u3-plate.general .u3-bar-x { background:#c89a30; }
-.u3-plate.general .u3-bar-x::before, .u3-plate.general .u3-bar-x::after { content:''; position:absolute; top:-2px; width:5px; height:5px; border-radius:50%; background:#f3d27a; box-shadow:0 0 0 1px #000; }
-.u3-plate.general .u3-bar-x::before { left:-3px; } .u3-plate.general .u3-bar-x::after { right:-3px; }
-/* finial on top of the pole */
-.u3-cap { position:relative; z-index:3; width:7px; height:7px; margin:0 0 0 1px; border-radius:50%; background:#8a6a48; box-shadow:0 0 0 1px #000; }
-.u3-plate.general .u3-cap { background:#f3d27a; }
-/* stance seal under the pictogram, on the cloth */
-.u3-plate .st { position:relative; z-index:2; width:15px; height:15px; display:flex; align-items:center; justify-content:center;
-  border-radius:50%; border:1.5px solid #fff; box-shadow:0 0 0 1px #000; }
-.u3-plate .st svg { width:9px; height:9px; }
-.u3-plate .st:empty:not(.torn) { display:none; }
-/* fleeing: the stance has been torn off (a ragged hole with loose threads) and the flag flashes red */
-.u3-plate .st.torn { background:rgba(0,0,0,.55); border:0; box-shadow:none; border-radius:0;
-  clip-path:polygon(50% 0, 62% 14%, 82% 6%, 84% 28%, 100% 40%, 86% 56%, 96% 78%, 72% 80%, 62% 100%, 46% 86%, 26% 98%, 22% 76%, 2% 70%, 14% 50%, 0 30%, 22% 22%, 26% 2%); }
-.u3-plate .st.torn::after { content:''; position:absolute; left:3px; right:3px; top:50%; height:1px; background:rgba(255,255,255,.45); transform:rotate(-35deg); }
-.u3-flash { position:absolute; inset:0; z-index:0; background:#D8352A; opacity:0; pointer-events:none; }
+.u3-plate.general .u3-cap, .u3-plate.general .u3-bar-x::after { background:#f3d27a; }
+.u3-plate.general .u3-bar-x { background:linear-gradient(#e0b450, #8a6418); }
+/* loops tying the cloth to the pole */
+.u3-ties { position:absolute; left:-1px; top:11px; width:6px; height:calc(var(--ch) - 12px); z-index:3; pointer-events:none;
+  background:repeating-linear-gradient(180deg, #efe6d4 0 2px, #000 2px 3px, transparent 3px 10px); }
+/* cloth: hangs right under the crossbar, its left edge along the pole */
+.u3-cloth { position:absolute; left:3px; top:9px; width:var(--cw); height:var(--ch); overflow:hidden;
+  background:linear-gradient(90deg, rgba(0,0,0,.3), transparent 25%, rgba(255,255,255,.14) 55%, rgba(0,0,0,.18)), var(--pc);
+  clip-path:polygon(0 0, 100% 0, 100% 100%, 50% 86%, 0 100%); transform-origin:0 0; animation:u3-wind 2.8s ease-in-out infinite; animation-delay:var(--wd, 0s); }
+@keyframes u3-wind { 0%, 100% { transform:skewY(0deg) scaleX(1); } 35% { transform:skewY(2.5deg) scaleX(.95); } 70% { transform:skewY(-1.5deg) scaleX(1.02); } }
+.u3-cloth-edge { position:absolute; inset:0; z-index:4; pointer-events:none; clip-path:polygon(0 0, 100% 0, 100% 100%, 50% 86%, 0 100%);
+  box-shadow:inset 0 3px 0 rgba(0,0,0,.35), inset 0 0 0 2px #fff, inset 0 0 0 3px #000; }
+.u3-flash { position:absolute; inset:0; z-index:1; background:#D8352A; opacity:0; pointer-events:none; }
 .u3-plate.fleeing .u3-flash { animation:u3-redflash .8s steps(2) infinite; }
 @keyframes u3-redflash { 0% { opacity:0; } 50% { opacity:.85; } }
-/* cloth + gauges */
-.u3-flag { position:relative; display:flex; gap:3px; margin:0 0 0 6px; padding-top:1px; }
-.u3-cloth { position:relative; width:24px; height:52px; display:flex; flex-direction:column; align-items:center; padding-top:4px; gap:3px;
-  background:linear-gradient(90deg, rgba(0,0,0,.25), transparent 30%, rgba(255,255,255,.12) 60%, rgba(0,0,0,.2)), var(--pc);
-  clip-path:polygon(0 0, 100% 0, 100% 100%, 50% 84%, 0 100%); transform-origin:0 0; animation:u3-wind 2.8s ease-in-out infinite; animation-delay:var(--wd, 0s); }
-.u3-cloth-edge { position:absolute; inset:0; pointer-events:none; clip-path:polygon(0 0, 100% 0, 100% 100%, 50% 84%, 0 100%);
-  box-shadow:inset 0 0 0 2px #fff, inset 0 0 0 3px #000; }
-@keyframes u3-wind { 0%, 100% { transform:skewY(0deg) scaleX(1); } 35% { transform:skewY(3deg) scaleX(.94); } 70% { transform:skewY(-2deg) scaleX(1.02); } }
-.u3-cloth .k, .u3-tags { position:relative; z-index:1; }
+/* main column: tags, pictogram, stance */
+.u3-main { position:absolute; left:3px; right:11px; top:5px; z-index:2; display:flex; flex-direction:column; align-items:center; gap:3px; }
 .u3-cloth .k { display:flex; color:#fff; font:400 17px 'Yuji Boku','Zen Old Mincho',serif; line-height:1; filter:drop-shadow(0 0 1px #000) drop-shadow(0 0 1px #000); }
-.u3-cloth .k svg { width:17px; height:17px; }
+.u3-cloth .k svg { width:16px; height:16px; }
 .u3-tags { display:flex; flex-direction:column; align-items:center; gap:1px; }
-.u3-tag { display:flex; align-items:center; justify-content:center; width:13px; height:13px; font:400 10px/1 'Yuji Boku','Zen Old Mincho',serif; background:#fff; color:#000; box-shadow:0 0 0 1px #000; }
-.u3-tag.foe { background:#D8352A; color:#fff; } .u3-tag.gen { background:#e8c060; color:#000; }
-.u3-tag.flee { background:#D8352A; color:#fff; animation:u3-blink .7s steps(2) infinite; }
-.u3-tag.hide { background:#2f6a3a; color:#cfe9c9; } .u3-tag.stun { background:#ffcf40; color:#000; }
-@keyframes u3-blink { 50% { opacity:.35; } }
-.u3-gauges { display:flex; gap:2px; align-items:flex-end; height:46px; padding-top:2px; }
-.u3-vbar { position:relative; width:6px; height:100%; background:#1d1b19; box-shadow:0 0 0 1px #000, 0 0 0 2px rgba(255,255,255,.55); overflow:hidden; }
+.u3-tag { display:flex; align-items:center; justify-content:center; width:12px; height:12px; font:400 9px/1 'Yuji Boku','Zen Old Mincho',serif; background:#fff; color:#000; box-shadow:0 0 0 1px #000; }
+.u3-tag.gen { background:#e8c060; color:#000; } .u3-tag.hide { background:#2f6a3a; color:#cfe9c9; } .u3-tag.stun { background:#ffcf40; color:#000; }
+.u3-plate .st { width:14px; height:14px; display:flex; align-items:center; justify-content:center; border-radius:50%; border:1.5px solid #fff; box-shadow:0 0 0 1px #000; }
+.u3-plate .st svg { width:8px; height:8px; }
+.u3-plate .st:empty:not(.torn) { display:none; }
+/* fleeing: the stance has been torn off — a ragged hole with a loose thread */
+.u3-plate .st.torn { position:relative; background:rgba(0,0,0,.6); border:0; box-shadow:none; border-radius:0;
+  clip-path:polygon(50% 0, 62% 14%, 82% 6%, 84% 28%, 100% 40%, 86% 56%, 96% 78%, 72% 80%, 62% 100%, 46% 86%, 26% 98%, 22% 76%, 2% 70%, 14% 50%, 0 30%, 22% 22%, 26% 2%); }
+.u3-plate .st.torn::after { content:''; position:absolute; left:3px; right:3px; top:50%; height:1px; background:rgba(255,255,255,.5); transform:rotate(-35deg); }
+/* gauges: a strip sewn along the right edge of the cloth (seam on its left), vitality wide, morale narrow */
+.u3-gauges { position:absolute; right:3px; top:3px; bottom:4px; z-index:2; width:8px; display:flex; gap:1px; padding:1px;
+  background:rgba(0,0,0,.45); box-shadow:-1px 0 0 rgba(255,255,255,.6); }
+.u3-vbar { position:relative; flex:none; width:4px; height:100%; background:#1d1b19; overflow:hidden; }
 .u3-vbar > i { position:absolute; left:0; right:0; bottom:0; transition:height .3s; }
 .u3-vbar.hp > i { background:linear-gradient(90deg, #ffffff, #d8d0c2); }
 .u3-vbar.hp.low > i { background:linear-gradient(90deg, #ff6a55, #b8261c); }
-.u3-vbar.hp::after { content:''; position:absolute; inset:0; background:repeating-linear-gradient(0deg, transparent 0 9px, rgba(0,0,0,.65) 9px 10px); }
-.u3-vbar.mo { width:4px; height:80%; }
-.u3-vbar.mo > i { background:linear-gradient(90deg, #bcd4f4, #7c9cc8); }
-.u3-vbar.mo.neg { box-shadow:0 0 0 1px #000, 0 0 0 2px #D8352A; }
-.u3-vbar.mo.neg > i { top:0; bottom:auto; background:repeating-linear-gradient(135deg, #ff5a45 0 3px, #8a1a12 3px 6px); }
-/* the pole goes on below the cloth down to the unit */
-.u3-foot { width:3px; height:12px; margin-left:3px; }
+.u3-vbar.hp::after { content:''; position:absolute; inset:0; background:repeating-linear-gradient(0deg, transparent 0 calc(25% - 1px), rgba(0,0,0,.7) calc(25% - 1px) 25%); }
+.u3-vbar.mo { width:2px; }
+.u3-vbar.mo > i { background:#a8c4ec; }
+.u3-vbar.mo.neg > i { top:0; bottom:auto; background:repeating-linear-gradient(135deg, #ff5a45 0 2px, #8a1a12 2px 4px); }
 /* states */
-.u3-plate.general .u3-cloth-edge { box-shadow:inset 0 0 0 2px #e8c060, inset 0 0 0 3px #000; }
-.u3-plate.sel .u3-cloth-edge { box-shadow:inset 0 0 0 2px #D8352A, inset 0 0 0 3px #000; }
-.u3-plate.sel .u3-cloth { filter:drop-shadow(0 0 6px rgba(216,53,42,.9)); }
+.u3-plate.general .u3-cloth-edge { box-shadow:inset 0 3px 0 rgba(0,0,0,.35), inset 0 0 0 2px #e8c060, inset 0 0 0 3px #000; }
+.u3-plate.sel .u3-cloth-edge { box-shadow:inset 0 3px 0 rgba(0,0,0,.35), inset 0 0 0 2px #D8352A, inset 0 0 0 3px #000; }
+.u3-plate.sel .u3-ban { filter:drop-shadow(0 0 5px rgba(216,53,42,.9)); }
 .u3-plate.hov { z-index:5; } .u3-plate.sel { z-index:6; }
-.u3-plate.moved .u3-flag { filter:grayscale(.75) brightness(.8); }
-.u3-plate.fleeing .u3-cloth { animation:u3-wind .9s ease-in-out infinite; transform-origin:0 0; }
+.u3-plate.moved .u3-cloth { filter:grayscale(.75) brightness(.8); }
+.u3-plate.fleeing .u3-cloth { animation-duration:.9s; }
 .u3-plate.concealed .u3-cloth { opacity:.65; }
-/* far: the cloth and the vitality gauge only */
+/* far: a smaller flag, vitality only */
+#view3d-plates.far .u3-plate:not(.hov):not(.sel) .u3-ban { --cw:22px; --ch:38px; }
 #view3d-plates.far .u3-plate:not(.hov):not(.sel) .u3-vbar.mo, #view3d-plates.far .u3-plate:not(.hov):not(.sel) .st, #view3d-plates.far .u3-plate:not(.hov):not(.sel) .u3-tags { display:none; }
-#view3d-plates.far .u3-plate:not(.hov):not(.sel) .u3-cloth { width:18px; height:34px; }
-#view3d-plates.far .u3-plate:not(.hov):not(.sel) .u3-gauges { height:30px; }
+#view3d-plates.far .u3-plate:not(.hov):not(.sel) .u3-gauges { width:6px; }
+#view3d-plates.far .u3-plate:not(.hov):not(.sel) .u3-main { right:9px; }
 #view3d-loading { position:absolute; inset:0; z-index:3; display:flex; flex-direction:column; align-items:center; justify-content:center;
   background:rgba(10,6,4,0.92); color:#d9bf78; font:12px 'Segoe UI',system-ui,sans-serif; letter-spacing:2px; transition:opacity .6s; }
 #view3d-loading .bar { width:260px; height:2px; background:rgba(217,191,120,.15); margin-top:12px; }
@@ -208,8 +205,9 @@ export async function mountGameView(bridge, { container }) {
       el = document.createElement('div');
       el.className = 'u3-plate';
       el.innerHTML = '<div class="u3-ban"><i class="u3-pole"></i><i class="u3-bar-x"></i><i class="u3-cap"></i>'
-        + '<div class="u3-flag"><div class="u3-cloth"><i class="u3-flash"></i><span class="u3-tags"></span><b class="k"></b><b class="st"></b><i class="u3-cloth-edge"></i></div>'
-        + '<div class="u3-gauges"><div class="u3-vbar hp"><i></i></div><div class="u3-vbar mo"><i></i></div></div></div><i class="u3-foot"></i></div>';
+        + '<div class="u3-cloth"><i class="u3-flash"></i><div class="u3-main"><span class="u3-tags"></span><b class="k"></b><b class="st"></b></div>'
+        + '<div class="u3-gauges"><div class="u3-vbar hp"><i></i></div><div class="u3-vbar mo"><i></i></div></div><i class="u3-cloth-edge"></i></div>'
+        + '<i class="u3-ties"></i></div>';
       el.style.setProperty('--wd', `${(-Math.random() * 2.8).toFixed(2)}s`);
       el.addEventListener('click', (ev) => { ev.stopPropagation(); const cur = el._unit; if (cur && cur.q != null) bridge.click({ q: cur.q, r: cur.r }); });
       el.addEventListener('dblclick', (ev) => { ev.stopPropagation(); const cur = el._unit; if (cur && cur.q != null) bridge.doubleClick({ q: cur.q, r: cur.r }); });
@@ -523,7 +521,7 @@ export async function mountGameView(bridge, { container }) {
         const s = world.projectToScreen(anchorOf(u));
         if (!s.visible) { el.style.display = 'none'; continue; }
         el.style.display = '';
-        el.style.transform = `translate(${(s.x - 9).toFixed(1)}px, ${s.y.toFixed(1)}px) translate(0, ${mapMode.active ? '-50%' : '-100%'})`;
+        el.style.transform = `translate(${(s.x - 5.5).toFixed(1)}px, ${s.y.toFixed(1)}px) translate(0, ${mapMode.active ? '-50%' : '-100%'})`;
       }
     }
   }

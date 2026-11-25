@@ -8,8 +8,8 @@ body.v3-map #view3d-plates .u3-plate { transform-origin: 0 0; }
 body.v3-map #view3d-plates .u3-plate:not(.sel):not(.hov) { padding: 0; }
 body.v3-map #view3d-plates .u3-plate:not(.sel):not(.hov) .u3-gauges,
 body.v3-map #view3d-plates .u3-plate:not(.sel):not(.hov) .st,
-body.v3-map #view3d-plates .u3-plate:not(.sel):not(.hov) .u3-tags,
-body.v3-map #view3d-plates .u3-plate:not(.sel):not(.hov) .u3-foot { display: none; }
+body.v3-map #view3d-plates .u3-plate:not(.sel):not(.hov) .u3-tags { display: none; }
+body.v3-map #view3d-plates .u3-plate:not(.sel):not(.hov) .u3-main { right: 3px; }
 body.v3-map .v3-map-chip.show { display: flex; }
 .v3-map-chip { display: none; position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 60; align-items: center; gap: 10px;
   padding: 6px 14px; background: #000; color: #fff; border: 2px solid #fff; box-shadow: 0 0 0 2px #000, 4px 4px 0 #D8352A;
