@@ -421,14 +421,16 @@ export function createPathMarks(world) {
 // dashes; the planned range (dash: true) is thinner and paler. zones: [{ keys, center: "q,r", kind: 'tir' | 'charisme', dash? }]
 export function createZoneRims(world) {
   const { scene, hexToWorld } = world;
-  const ground = world.walkHeight || world.groundHeight;
+  const ground0 = world.walkHeight || world.groundHeight;
+  const ground = (x, z) => { const h = ground0(x, z); return Number.isFinite(h) ? h : 0; };
   const meshes = [];
   let lastSig = '';
   const DIR_TO_GEO_EDGE = [0, 5, 4, 3, 2, 1];
   const edgeOf = (q, r, d) => {
     const c = hexToWorld(q, r), g = DIR_TO_GEO_EDGE[d];
     const a0 = Math.PI / 3 * g, a1 = Math.PI / 3 * (g + 1);
-    return [[c.x + Math.cos(a0) * 0.98, c.z + Math.sin(a0) * 0.98], [c.x + Math.cos(a1) * 0.98, c.z + Math.sin(a1) * 0.98]];
+    // exact corners (radius 1): neighbouring hexes share them, so the contour closes into one loop around the zone
+    return [[c.x + Math.cos(a0), c.z + Math.sin(a0)], [c.x + Math.cos(a1), c.z + Math.sin(a1)]];
   };
   const STYLE = {
     tir: { color: 0xffc94a, glow: 0xffb020 },
