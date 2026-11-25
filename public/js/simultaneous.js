@@ -793,7 +793,7 @@
           break;
         }
         case 'motivate':
-          if (animate && u) notify(e.success ? `${u.name} motive ses troupes (${e.count} unité(s)).` : `${u.name} ne parvient pas à motiver ses troupes.`, e.success ? 'success' : 'info');
+          if (animate && u) notify(e.success ? `${u.name} motive ses troupes (${e.count} unité(s)).${e.rallied ? ` ${e.rallied} unité(s) sans général rallient son armée.` : ''}` : `${u.name} ne parvient pas à motiver ses troupes.`, e.success ? 'success' : 'info');
           break;
         case 'ambush':
           if (animate) {

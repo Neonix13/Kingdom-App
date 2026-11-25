@@ -173,13 +173,12 @@ function run(room, ordersByPlayer, seed) {
   newTick(0);
   {
     const before = new Map(unitsOnBoard().filter(u => u.isFleeing).map(u => [u.id, { u, q: u.q, r: u.r }]));
-    for (const p of room.players) {
-      if (p.isEliminated) continue;
-      const fled = room._processFleeing(p.id);
-      for (const f of fled) {
-        const b = before.get(f.unitId);
-        if (b) sendSeen(b.u, { k: 'fled', u: f.unitId });
-      }
+    const fled = [];
+    for (const p of room.players) if (!p.isEliminated) fled.push(...room._processFleeing(p.id));
+    fled.push(...room.processLeaderless());
+    for (const f of fled) {
+      const b = before.get(f.unitId);
+      if (b) sendSeen(b.u, { k: 'fled', u: f.unitId });
     }
     const moved = new Map();
     for (const [id, b] of before) {
@@ -231,8 +230,8 @@ function run(room, ordersByPlayer, seed) {
         const res = room.motivateUnit(c.owner, u.id);
         if (res.ok) {
           for (const id of recipients) {
-            if (id === c.owner || id === ALL) send(id, { k: 'motivate', u: u.id, success: res.success, count: res.count, d20: res.d20, charisma: res.charisma, moralGain: res.moralGain });
-            else if (sees(id, u)) send(id, { k: 'motivate', u: u.id, success: res.success, count: res.count });
+            if (id === c.owner || id === ALL) send(id, { k: 'motivate', u: u.id, success: res.success, count: res.count, rallied: res.rallied, d20: res.d20, charisma: res.charisma, moralGain: res.moralGain });
+            else if (sees(id, u)) send(id, { k: 'motivate', u: u.id, success: res.success, count: res.count, rallied: res.rallied });
           }
         }
         c.done = true;

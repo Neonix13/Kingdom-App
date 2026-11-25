@@ -27,6 +27,7 @@ function advance(room) {
   room.manche++;
   skipEliminated(room);
   let newRound = false;
+  let leaderlessFled = [];
   if (room.currentTurnIndex >= room.turnOrder.length) {
     newRound = true;
     room.turn++;
@@ -37,12 +38,13 @@ function advance(room) {
     room._applyPassives();
     room.onRoundStart();
     if (room.phase !== 'battle') return { newRound, fled: [] };
+    leaderlessFled = room.processLeaderless();
     room._rollInitiative();
     skipEliminated(room);
   }
   const next = sequential.currentPlayerId(room);
   const fled = next ? beginPlayerTurn(room, next) : [];
-  return { newRound, fled };
+  return { newRound, fled: [...leaderlessFled, ...fled] };
 }
 
 const sequential = {

@@ -7,15 +7,21 @@ Nouveau:
 -
 
 Priorité:
-- 
+Interface et commandes :
+-Continuer à travailler le tracé / la portée (tir / charisme).
+-Bannir définitivement ce menu avec des flèches orientées.
+    -Trouver un meilleur système direction / posture notament pour les points de passage.
 
 
 Question:
 
-- unité des généraux perdants (rallié, fuite, disparition)
 -------
 
 FAIT (25/11/2026)
+- général perdu (mort ou sorti de la carte) : ses unités perdent leur moral maximum en moral, sont en déroute et fuient seules à chaque manche (celles qui sortent de la carte disparaissent) ; modes classique et simultané
+- ralliement : un autre général (allié ou ennemi) qui réussit sa motivation avec des troupes sans général à portée les rallie (elles cessent de fuir, moral remonté à 0 au moins) et en prend le contrôle
+- touche « Motiver » (V) à la place des postures quand un général est sélectionné (barre en bas au centre, modes classique et simultané) ; retirée de la colonne d'actions
+- tracés des unités non sélectionnées : trait fin continu et point à l'arrivée, plus de petites flèches (2D et 3D)
 - Col de Kankoku : bonus des attaquants en or (montant fixe réglé par l'hôte), plus en pourcentage
 - choix du camp déplacé dans un panneau « Camps » sous la liste des joueurs (une colonne par camp, Rejoindre / Quitter ; l'hôte déplace les IA avec ⇄)
 - mode de victoire au choix : annihilation (par défaut, pas d'objectifs ni de score, tours maximum en option : à la limite, l'armée la plus forte gagne) ou capture (objectifs, nombre de points à atteindre)

@@ -1525,7 +1525,7 @@ class GameRoom {
         fled.push({ unitId: unit.id, unitName: unit.name });
         if (this.stats?.units[unit.id]) this.stats.units[unit.id].fled = true;
         this._stat(unit, 'losses');
-        if (unit.isGeneral) { player.isEliminated = true; this._checkVictory(); }
+        if (unit.isGeneral) this._loseGeneral(player);
       } else {
         // Move toward edge
         delete this.unitMap[hexKey(unit.q, unit.r)];
@@ -1577,7 +1577,10 @@ class GameRoom {
     const generalData = GENERALS.find(g => g.id === general.generalId);
     const charisma = generalData ? generalData.charisma : 10;
     const range = Math.floor(charisma / 5);
-    const targets = player.units.filter(u => !u.isGeneral && u.q !== null && hexDistance(general.q, general.r, u.q, u.r) <= range);
+    const inRange = (u) => !u.isGeneral && u.q !== null && hexDistance(general.q, general.r, u.q, u.r) <= range;
+    const targets = player.units.filter(inRange);
+    const strays = this.players.filter(p => p.id !== playerId).flatMap(p => p.units.filter(u => inRange(u) && this.isLeaderless(u) && this.canSee(playerId, u)));
+    targets.push(...strays);
     if (targets.length === 0) return { error: 'Aucune unité à portée.' };
 
     const d20 = Math.floor(this._random() * 20) + 1;
@@ -1598,13 +1601,27 @@ class GameRoom {
       }
     }
 
+    // Leaderless troops rallied by the general join his army
+    const rallied = [];
+    if (success) {
+      for (const t of strays) {
+        t.morale = Math.max(0, t.morale);
+        t.isFleeing = false;
+        t.speedRemaining = 0;
+        t.hasMoved = true;
+        t.hasAttacked = true;
+        this._transferUnit(t, player);
+        rallied.push(t.id);
+      }
+    }
+
     // Coût : toute la vitesse restante min 1
     const speedCost = Math.max(1, general.speedRemaining);
     general.speedRemaining = Math.max(0, general.speedRemaining - speedCost);
     general.hasAttacked = true;
-    this._record('motivate', { u: general.id, success, count: targets.length });
+    this._record('motivate', { u: general.id, success, count: targets.length, ...(rallied.length ? { rallied } : {}) });
 
-    return { ok: true, success, critSuccess, critFail, charisma, d20, range, moralGain, count: targets.length };
+    return { ok: true, success, critSuccess, critFail, charisma, d20, range, moralGain, count: targets.length, rallied: rallied.length };
   }
 
   // Attack from a distance in one action: walk to (q, r), then strike. Everything is checked before the unit moves,
@@ -1839,7 +1856,7 @@ class GameRoom {
       this._stat(target, 'losses');
       targetPlayer.units = targetPlayer.units.filter(u => u.id !== target.id);
       this._vacate(target);
-      if (target.isGeneral) { targetPlayer.isEliminated = true; combatLog.generalKilled = true; combatLog.eliminatedPlayer = targetPlayer.name; this._dropObjectives(targetPlayer.id); this._checkVictory(); }
+      if (target.isGeneral) { combatLog.generalKilled = true; combatLog.eliminatedPlayer = targetPlayer.name; this._loseGeneral(targetPlayer); }
     }
     if (attacker.vitality <= 0) {
       combatLog.attackerKilled = true;
@@ -1847,7 +1864,7 @@ class GameRoom {
       this._stat(attacker, 'losses');
       attackerPlayer.units = attackerPlayer.units.filter(u => u.id !== attacker.id);
       this._vacate(attacker);
-      if (attacker.isGeneral) { attackerPlayer.isEliminated = true; combatLog.generalKilled = true; combatLog.eliminatedPlayer = attackerPlayer.name; this._dropObjectives(attackerPlayer.id); this._checkVictory(); }
+      if (attacker.isGeneral) { combatLog.generalKilled = true; combatLog.eliminatedPlayer = attackerPlayer.name; this._loseGeneral(attackerPlayer); }
     }
   }
 
@@ -2357,6 +2374,46 @@ class GameRoom {
   // Pass the turn if the active player got eliminated during their own turn
   settleTurn() {
     return this.turns.settle(this);
+  }
+
+  // The general is dead or gone: the army is out, its troops lose their maximum morale (always routed) and flee
+  // until another general rallies them
+  _loseGeneral(player) {
+    player.isEliminated = true;
+    for (const u of player.units) {
+      if (u.isGeneral || u.q === null) continue;
+      u.morale -= u.maxMorale;
+      u.isFleeing = true;
+      u.stance = 'marche';
+      u.march = null;
+    }
+    this._dropObjectives(player.id);
+    this._checkVictory();
+  }
+
+  // Troops of an army whose general is gone
+  isLeaderless(unit) {
+    const owner = unit && this.getPlayer(unit.playerId);
+    return !!owner && owner.isEliminated && !owner.units.some(u => u.isGeneral);
+  }
+
+  // Leaderless troops keep fleeing on their own, once per round
+  processLeaderless() {
+    const fled = [];
+    for (const p of this.players) {
+      if (!p.isEliminated || p.units.some(u => u.isGeneral)) continue;
+      for (const u of p.units) this._initUnitSpeedForTurn(u);
+      fled.push(...this._processFleeing(p.id));
+    }
+    return fled;
+  }
+
+  _transferUnit(unit, toPlayer) {
+    const from = this.getPlayer(unit.playerId);
+    if (from) from.units = from.units.filter(u => u.id !== unit.id);
+    unit.playerId = toPlayer.id;
+    unit.march = null;
+    toPlayer.units.push(unit);
   }
 
   eliminatePlayer(playerId) {

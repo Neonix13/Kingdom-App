@@ -10,7 +10,6 @@ const ACTIONS = [
   { id: 'btn-move', key: 'KeyR', hint: 'R', label: 'Déplacer', cls: '' },
   { id: 'btn-attack', key: 'KeyF', hint: 'F', label: 'Attaquer', cls: 'attack' },
   { id: 'btn-ability', key: 'KeyC', hint: 'C', label: 'Capacité', cls: '' },
-  { id: 'btn-motivate', key: 'KeyV', hint: 'V', label: 'Motiver', cls: '' },
   { id: 'btn-facing', key: 'KeyO', hint: 'O', label: 'Orienter −1', cls: '' },
 ];
 const MIRRORS = [
@@ -412,9 +411,19 @@ export function mountBattleHud(bridge, view) {
       const off = !sim && !on && (u.speedRemaining || 0) < stCost;
       return `<button class="sb-key${on ? ' on' : ''}" data-stance="${i}" ${off ? 'disabled' : ''} title="${esc(ss.name)} (touche ${i + 1})${on ? ' — actuelle' : ` — −${stCost} vitesse${sim ? ', au début de la résolution' : ''}`}" aria-label="${esc(ss.name)}"><kbd>${i + 1}</kbd><i class="st-chip" style="background:${esc(ss.c)}">${ss.svg || ''}</i><span>${esc(ss.short)}</span></button>`;
     }).join('');
-    const barSig = stanceShown ? stanceBtns : '';
+    const genShown = u.isMine && !deploying && u.isGeneral && u.q != null && bridge.selectedUnit && bridge.selectedUnit.id === u.id
+      && (sim ? !!(bridge.planning && bridge.planning.canPlan) : st?.currentPlayerId === bridge.myId);
+    let genBtn = '';
+    if (genShown) {
+      const on = !!(simOrder && simOrder.type === 'motivate');
+      const off = !sim && !!u.hasAttacked;
+      const range = Math.floor((u.charisma || 10) / 5);
+      const tip = `Motiver les troupes à ${range} case${range > 1 ? 's' : ''} ou moins (touche V) : D20 ≤ Charisme ${u.charisma ?? '?'} → elles regagnent du moral et cessent de fuir ; les troupes sans général rallient votre armée${sim ? (on ? ' — ordonné, cliquer pour annuler' : '') : off ? ' — le général a déjà agi ce tour' : ' — toute la vitesse restante'}`;
+      genBtn = `<button class="sb-key sb-gen${on ? ' on' : ''}" data-gen="motivate" ${off ? 'disabled' : ''} title="${esc(tip)}" aria-label="Motiver"><kbd>V</kbd><i class="st-chip" style="background:#6f9bf0"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2.4" aria-hidden="true"><path d="M5 21V3"></path><path d="M5 4h12l-3 4 3 4H5"></path></svg></i><span>MOTIVER</span></button>`;
+    }
+    const barSig = stanceShown ? stanceBtns : genBtn;
     if (el.stancebar.dataset.sig !== barSig) { el.stancebar.dataset.sig = barSig; el.stancebar.innerHTML = barSig; }
-    el.stancebar.hidden = !stanceShown;
+    el.stancebar.hidden = !(stanceShown || genShown);
     let stanceNow = '';
     if (!u.isGeneral && u.stance) {
       const ss = sty(u.stance);
@@ -443,6 +452,14 @@ export function mountBattleHud(bridge, view) {
     if (sel && cu && bridge.setStanceAt) bridge.setStanceAt(cu, Number(sel.value));
   });
   el.stancebar.addEventListener('click', (e) => {
+    const gb = e.target.closest('[data-gen=motivate]');
+    if (gb) {
+      if (gb.disabled) return;
+      if (window.KBSim && window.KBSim.active()) window.KBSim.orderAction('motivate');
+      else if (window.motivateAll) window.motivateAll();
+      render();
+      return;
+    }
     const sb = e.target.closest('[data-stance]');
     if (!sb) return;
     if (window.hideStanceTooltip) window.hideStanceTooltip();
@@ -646,6 +663,7 @@ export function mountBattleHud(bridge, view) {
     if (overlayOpen) return;
     const act = ACTIONS.find((a) => a.key === e.code);
     if (act) { if (el.actions.querySelector(`[data-act=${act.id}]`)) { e.preventDefault(); doAction(act.id); } return; }
+    if (e.code === 'KeyV') { const b = el.stancebar.hidden ? null : el.stancebar.querySelector('[data-gen=motivate]'); if (b) { e.preventDefault(); b.click(); } return; }
     const m = /^Digit([1-9])$/.exec(e.code);
     if (m) { const b = el.stancebar.hidden ? null : el.stancebar.querySelector(`[data-stance="${Number(m[1]) - 1}"]`); if (b) { e.preventDefault(); b.click(); } return; }
     if (e.code === 'Enter' || e.code === 'NumpadEnter') { if (!el.seal.hidden && sealTarget) { e.preventDefault(); el.seal.click(); } return; }

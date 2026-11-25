@@ -126,7 +126,7 @@ Résolution « NGO » (`RULES.combat`, `GameRoom._resolveCombat`) :
    - Contre un tir : pas de défense ni de riposte, sauf la **phalange**, qui peut encaisser — mais jamais contre des archers. Une attaque qui ne peut pas être défendue est résolue aussitôt, sans demander de réponse.
 5. L'attaquant et le défenseur qui riposte se tournent l'un vers l'autre.
 
-**Motivation** (général) : D20 ≤ Charisme → les unités à Charisme/5 cases ou moins regagnent (Charisme − D20) × 10 de moral (et cessent de fuir si leur moral redevient positif ou nul). **1** : réussite critique, moral au maximum. **20** : échec critique, −20 moral.
+**Motivation** (général) : D20 ≤ Charisme → les unités à Charisme/5 cases ou moins regagnent (Charisme − D20) × 10 de moral (et cessent de fuir si leur moral redevient positif ou nul). **1** : réussite critique, moral au maximum. **20** : échec critique, −20 moral. Une motivation réussie rallie aussi les troupes sans général à portée (voir §8).
 
 ## 6. Jour et nuit
 
@@ -169,7 +169,12 @@ Quand un général attaque un général ennemi au corps à corps, c'est un **due
 - Jusqu'à **3 passes**. À chaque passe, chacun lance D20 + Force ; le plus haut frappe pour **Puissance + écart des jets − armure × 0,5** (au moins 1). Égalité : parade.
 - Vainqueur : celui qui a gagné le plus de passes (puis le plus de dégâts). Égalité parfaite : pas de vainqueur.
 - **Le vaincu** (s'il survit) : son armée perd **15 % de son moral maximum**, et il ne peut pas se déplacer à sa prochaine manche. **Le vainqueur** : ses unités à 5 cases ou moins gagnent 10 % de moral maximum.
-- Un général dont la vitalité tombe à 0 meurt : son camp est éliminé.
+- Un général dont la vitalité tombe à 0 meurt (ou qui quitte la carte en fuyant) : son camp est éliminé.
+
+### Troupes sans général
+
+- Quand une armée perd son général, chacune de ses unités perd **son moral maximum** en moral : elles sont toutes **en déroute** et fuient vers le bord de la carte à chaque manche (celles qui sortent disparaissent).
+- Un autre général (allié ou ennemi) qui les a à portée de motivation et **réussit sa motivation** les **rallie** : elles cessent de fuir (moral remonté à 0 au moins) et passent sous son contrôle (elles agiront à la manche suivante). Un échec ne les rallie pas.
 
 ## 9. Objectifs et victoire
 

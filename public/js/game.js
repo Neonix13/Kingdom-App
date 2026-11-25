@@ -1811,10 +1811,11 @@ function traceSmooth(c2d, pts) {
 }
 // opts: { color, width, alpha, dash, arrow, outline, glow, beads, subtle }
 //   glow: selected unit — soft halo in the path colour, bright core, beads on the hexes it walks through
-//   subtle: other units — thin, faint, no outline
+//   subtle: other units — thin, faint, no outline, a dot at the destination instead of an arrow head
 function drawTrail(c2d, pts, { color = '#fff', width = 4, alpha = 1, dash = null, arrow = true, outline = true, glow = false, beads = false, subtle = false } = {}) {
   if (!pts || pts.length < 2) return;
-  if (subtle) { width = Math.min(width, 2.5); alpha = Math.min(alpha, 0.45); outline = false; }
+  let dot = false;
+  if (subtle) { width = Math.min(width, 2.5); alpha = Math.min(alpha, 0.55); outline = false; dot = arrow; arrow = false; }
   c2d.save();
   c2d.globalAlpha = alpha;
   c2d.lineCap = 'round'; c2d.lineJoin = 'round';
@@ -1840,6 +1841,12 @@ function drawTrail(c2d, pts, { color = '#fff', width = 4, alpha = 1, dash = null
       c2d.fillStyle = '#fff'; c2d.fill();
       c2d.lineWidth = 1.5; c2d.strokeStyle = color; c2d.stroke();
     }
+  }
+  if (dot) {
+    const e = pts[pts.length - 1];
+    c2d.beginPath(); c2d.arc(e.x, e.y, width * 1.6, 0, Math.PI * 2);
+    c2d.fillStyle = color; c2d.fill();
+    c2d.lineWidth = 1; c2d.strokeStyle = 'rgba(0,0,0,0.6)'; c2d.stroke();
   }
   if (arrow) {
     // rounded chevron head
@@ -2656,6 +2663,7 @@ function toggleRules() {
     <p>Un général qui attaque un général au corps à corps provoque un duel : ${R.duel.maxRounds} passes, chacun lance D20 + Force ; le plus haut frappe
     (arme + écart − armure × ${R.duel.armorFactor}). Le vaincu (sauf s'il meurt) perd ${Math.round(R.duel.loserMoraleShock * 100)} % du moral de son armée et reste sonné un tour ;
     les unités du vainqueur à ${R.duel.boostRadius} cases gagnent ${Math.round(R.duel.winnerMoraleBoost * 100)} % de moral.</p>
+    <p>Une armée qui perd son général est éliminée : ses unités perdent tout leur moral maximum et fuient. Un autre général qui réussit à les motiver les rallie et en prend le contrôle.</p>
     <h3>Objectifs et victoire</h3>
     <p>Finir son tour sur un objectif le capture ; chaque objectif tenu rapporte ses points au début de chaque tour.
     Victoire : dernier général en vie${st.victoryMode === 'capture' ? `, ou ${st.victoryPoints} points (mode capture)` : st.maxTurns ? `, ou armée la plus forte après ${st.maxTurns} tours (mode annihilation)` : ''}.</p>
@@ -3782,6 +3790,7 @@ function wsDispatch(event, data) {
       break;
     }
     case 'motivate_result':
+      if (data.rallied) notify(`${data.rallied} unité(s) sans général rallient votre armée.`, 'success');
       if (data.critSuccess) {
         notify(`Motivation critique ! (D20 = 1) → ${data.count} unité(s) retrouvent tout leur moral et cessent de fuir.`, 'success');
       } else if (data.critFail) {

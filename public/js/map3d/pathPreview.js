@@ -201,15 +201,16 @@ export function createOrdersLayer(world, { opacity = 0.85 } = {}) {
   scene.add(chev);
   const arcMat = new THREE.MeshBasicMaterial({ color: 0xff5030, transparent: true, opacity: 0.8, depthWrite: false, fog: false, toneMapped: false });
   const arcs = [];
-  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3();
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), p = new THREE.Vector3();
   let lastSig = '';
 
   function clearArcs() { for (const a of arcs) { scene.remove(a); a.geometry.dispose(); } arcs.length = 0; }
 
-  const base = new THREE.Color(), dim = new THREE.Color(), grey = new THREE.Color(0x3a3a3a), big = new THREE.Vector3(1.4, 1, 1.4), small = new THREE.Vector3(0.7, 1, 0.7);
+  const base = new THREE.Color(), grey = new THREE.Color(0x3a3a3a), big = new THREE.Vector3(1.4, 1, 1.4);
   // glow under the selected unit's trail: a soft wide ribbon and a bright thin core, draped on the ground
   const glowMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.32, depthWrite: false, fog: false, toneMapped: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
   const coreMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, depthWrite: false, fog: false, toneMapped: false, side: THREE.DoubleSide });
+  const thinMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: Math.min(0.75, opacity + 0.15), depthWrite: false, fog: false, toneMapped: false, side: THREE.DoubleSide });
   const ribbons = [];
   function clearRibbons() { for (const r of ribbons) { scene.remove(r); r.geometry.dispose(); } ribbons.length = 0; }
   function ribbon(curve, len, width, mat, lift) {
@@ -233,16 +234,26 @@ export function createOrdersLayer(world, { opacity = 0.85 } = {}) {
     scene.add(m);
     ribbons.push(m);
   }
-  // selectedId: that unit's trail is drawn larger and in full colour, the others smaller and darker
+  // destination of an unselected unit's trail: a small disc on the ground
+  function endDot(pt, radius, mat) {
+    const m = new THREE.Mesh(new THREE.CircleGeometry(radius, 16), mat);
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(pt.x, groundHeight(pt.x, pt.z) + 0.05, pt.z);
+    m.renderOrder = 7;
+    m.frustumCulled = false;
+    scene.add(m);
+    ribbons.push(m);
+  }
+  // selectedId: that unit's trail glows with chevrons; the others are a thin darker line ending on a dot
   function show(orders, color, anchorOf, selectedId = null) {
     const sig = JSON.stringify(orders || []) + color + '|' + selectedId;
     if (sig === lastSig) return;
     lastSig = sig;
     mat.color.set(0xffffff);
     base.set(color || '#ffd25a');
-    dim.copy(base).lerp(grey, 0.7);
     glowMat.color.copy(base);
     coreMat.color.copy(base).lerp(new THREE.Color(0xffffff), 0.45);
+    thinMat.color.copy(base).lerp(grey, 0.35);
     clearArcs();
     clearRibbons();
     let n = 0;
@@ -253,15 +264,16 @@ export function createOrdersLayer(world, { opacity = 0.85 } = {}) {
         const pts = o.path.map(([hq, hr]) => { const c = hexToWorld(hq, hr); return new THREE.Vector3(c.x, 0, c.z); });
         const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal', 0.3);
         const len = curve.getLength();
+        if (!sel) { ribbon(curve, len, 0.022, thinMat, 0.05); endDot(pts[pts.length - 1], 0.06, thinMat); }
         if (sel) { ribbon(curve, len, 0.2, glowMat, 0.045); ribbon(curve, len, 0.035, coreMat, 0.05); }
         const cnt = Math.max(2, Math.floor(len / (sel ? 0.3 : 0.5)));
-        for (let i = 1; i <= cnt && n < MAX; i++) {
+        for (let i = 1; sel && i <= cnt && n < MAX; i++) {
           const t = Math.min(0.999, i / cnt);
           const pt = curve.getPointAt(t), tan = curve.getTangentAt(t);
           q.setFromAxisAngle(up, Math.atan2(tan.x, tan.z));
           p.set(pt.x, groundHeight(pt.x, pt.z) + (sel ? 0.09 : 0.07), pt.z);
-          m.compose(p, q, selectedId == null ? one : sel ? big : small);
-          chev.setColorAt(n, selectedId == null || sel ? base : dim);
+          m.compose(p, q, big);
+          chev.setColorAt(n, base);
           chev.setMatrixAt(n++, m);
         }
       }

@@ -654,3 +654,5 @@ body.hud-d #toolbar .tuto-highlight { outline: 3px solid var(--hud-red); outline
 .hud-card .stances { gap: 3px; margin-top: 4px; }
 .hud-card .stances .hud-para { height: 22px; }
 .hud-card .stances .st-btn .st-chip { width: 15px; height: 15px; }
+.hud-stancebar .sb-key.sb-gen { width: 84px; }
+.hud-stancebar .sb-key.sb-gen span { max-width: 80px; }
