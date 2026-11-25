@@ -5,7 +5,7 @@ import { createCombatSplash } from './combatSplash.js';
 import { attackTipHtml } from './attackTip.js';
 import { createGameOver } from './gameOver.js';
 export const KANJI = { pietaille: '卒', soldats: '兵', phalange: '盾', lancier: '槍', espion: '諜', assassin: '刺', cavalier_leger: '騎', cavalier_lourd: '騎', archer: '弓', archer_elite: '弓', batisseurs: '工', char: '車' };
-const CAM_CODES = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Equal', 'Minus', 'NumpadAdd', 'NumpadSubtract']);
+const CAM_CODES = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Equal', 'Minus', 'NumpadAdd', 'NumpadSubtract', 'PageUp', 'PageDown']);
 const ACTIONS = [
   { id: 'btn-move', key: 'KeyR', hint: 'R', label: 'Déplacer', cls: '' },
   { id: 'btn-attack', key: 'KeyF', hint: 'F', label: 'Attaquer', cls: 'attack' },

@@ -33,7 +33,7 @@ body.v3-photo #v3-photo-bar { display:flex; }
 #v3-tip .vs span:nth-child(3n+2) { color:#8e7a50; text-align:center; }
 `;
 
-const CAM_CODES = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Equal', 'Minus', 'NumpadAdd', 'NumpadSubtract']);
+const CAM_CODES = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Equal', 'Minus', 'NumpadAdd', 'NumpadSubtract', 'PageUp', 'PageDown']);
 const DEFAULTS = { quality: 'auto', grid: 0.16, plates: 'auto', hour: 'auto', camSpeed: 1, staging: true, combatCard: 'full', combatClose: 'mine', followPlayback: true, dice: true, killCam: true, dof: true, colors: 'kingdom', fogStyle: 'dark', edgeScroll: true };
 
 export function createGameUI({ world, container, bridge, getView }) {
@@ -84,8 +84,8 @@ export function createGameUI({ world, container, bridge, getView }) {
     <label>Profondeur de champ <input type="checkbox" data-k="dof"></label>
     <div class="row"><button data-act="photo">Mode photo (P)</button><button data-act="top">Stratégie (M)</button></div>
     <div class="row"><button data-act="walk">Promenade sur le terrain (B)</button></div>
-    <div class="hint">Caméra façon Total War : ZQSD / WASD / flèches ou souris au bord de l'écran : déplacer · A/E : pivoter · molette : zoom (la caméra se couche en s'approchant, plonge en s'éloignant) · clic molette ou clic droit maintenu : pivoter et incliner · Maj : plus vite<br>
-    Clic gauche : sélection · glisser : déplacer la vue · clic droit glissé depuis l'unité : orienter · Espace : centrer sur l’unité · Échap : désélectionner · B : promenade · M ou dézoom maximal : vue Stratégie</div>`;
+    <div class="hint">Caméra façon Total War / Baldur's Gate 3 : ZQSD / WASD / flèches ou souris au bord de l'écran : déplacer · A/E : pivoter · molette ou Page préc. / suiv. : zoom (la caméra se couche en s'approchant, plonge en s'éloignant) · clic molette ou clic droit maintenu : pivoter et incliner · Maj : plus vite · Fin : nord en haut · Origine ou Espace : centrer sur l'unité<br>
+    Clic gauche : sélection · glisser : déplacer la vue · clic droit glissé depuis l'unité : orienter · Échap : désélectionner · B : promenade · M, Tab ou dézoom maximal : vue Stratégie</div>`;
   container.appendChild(panel);
   gear.addEventListener('click', (e) => { e.stopPropagation(); panel.classList.toggle('open'); });
   document.addEventListener('pointerdown', (e) => { if (!panel.contains(e.target) && e.target !== gear) panel.classList.remove('open'); });
@@ -227,12 +227,22 @@ export function createGameUI({ world, container, bridge, getView }) {
     const k = e.key.toLowerCase();
     if (CAM_CODES.has(e.code)) {
       keys.add(e.code);
-      if (e.code.startsWith('Arrow')) e.preventDefault();
+      if (e.code.startsWith('Arrow') || e.code.startsWith('Page')) e.preventDefault();
       return;
     }
     if (walker.active) return;
     if (e.code === 'KeyB') { if (!view.mapMode) walker.enter(); return; }
-    if (e.code === 'KeyM') { e.preventDefault(); view.toggleMapMode && view.toggleMapMode(); }
+    // Strategy view: M, or Tab (the tactical map of Total War); O stays "orient the unit"
+    if (e.code === 'KeyM' || e.code === 'Tab') { e.preventDefault(); view.toggleMapMode && view.toggleMapMode(); }
+    // End: back to the default heading (north at the top), as in Total War
+    else if (e.code === 'End') { e.preventDefault(); resetHeading = true; }
+    // Home: centre on the selected unit (Baldur's Gate 3), like Space
+    else if (e.code === 'Home') {
+      e.preventDefault();
+      const st = bridge.state;
+      const u = bridge.selectedUnit || (st?.units || []).find((x) => x.isMine && x.isGeneral && x.q != null);
+      if (u && u.q != null) world.focusHex(u.q, u.r, 0.7);
+    }
     else if (k === 'p') setPhoto(!photo);
     else if (k === 'escape') { if (view.mapMode) view.toggleMapMode(); else if (photo) setPhoto(false); else bridge.deselect && bridge.deselect(); }
     else if (k === ' ') {
@@ -265,39 +275,60 @@ export function createGameUI({ world, container, bridge, getView }) {
   }
   const fwd = new THREE.Vector3(), right = new THREE.Vector3(), move = new THREE.Vector3();
 
+  // Keyboard / edge camera with inertia (Total War, Baldur's Gate 3): the speed eases in when a key is held and eases out
+  // when it is released, instead of starting and stopping dead. vel: pan (world units/s, in the camera's ground frame),
+  // rotVel (rad/s), zoomVel (relative distance/s)
+  const vel = new THREE.Vector2(), want = new THREE.Vector2();
+  let rotVel = 0, zoomVel = 0, resetHeading = false;
+  const ease = (cur, target, dt, up = 9, down = 6) => cur + (target - cur) * Math.min(1, dt * (Math.abs(target) > Math.abs(cur) ? up : down));
   function update(dt) {
-    const edge = walker.active || photo || (getView() && getView().mapMode) ? null : edgeDir();
-    if ((!keys.size && !edge) || walker.active) return;
+    if (walker.active) { vel.set(0, 0); rotVel = zoomVel = 0; return; }
+    const view = getView();
+    const edge = photo || (view && view.mapMode) ? null : edgeDir();
     const dist = camera.position.distanceTo(controls.target);
-    const sp = (shift ? 2.2 : 1) * dist * 0.9 * settings.camSpeed * dt * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) / Math.tan(THREE.MathUtils.degToRad(21));
-    camera.getWorldDirection(fwd);
-    fwd.y = 0; fwd.normalize();
-    right.crossVectors(fwd, camera.up).normalize();
-    move.set(0, 0, 0);
+    const sp = (shift ? 2.2 : 1) * dist * 0.9 * settings.camSpeed * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) / Math.tan(THREE.MathUtils.degToRad(21));
     // Physical key codes: WASD on QWERTY = ZQSD on AZERTY; Q/E (A/E on AZERTY) rotate
-    if (keys.has('KeyW') || keys.has('ArrowUp')) move.add(fwd);
-    if (keys.has('KeyS') || keys.has('ArrowDown')) move.sub(fwd);
-    if (keys.has('KeyD') || keys.has('ArrowRight')) move.add(right);
-    if (keys.has('KeyA') || keys.has('ArrowLeft')) move.sub(right);
-    if (edge) { move.addScaledVector(fwd, edge.dy); move.addScaledVector(right, edge.dx); }
-    if (move.lengthSq() > 0) {
-      move.normalize().multiplyScalar(sp);
+    want.set(0, 0);
+    if (keys.has('KeyW') || keys.has('ArrowUp')) want.y += 1;
+    if (keys.has('KeyS') || keys.has('ArrowDown')) want.y -= 1;
+    if (keys.has('KeyD') || keys.has('ArrowRight')) want.x += 1;
+    if (keys.has('KeyA') || keys.has('ArrowLeft')) want.x -= 1;
+    if (edge) { want.x += edge.dx; want.y += edge.dy; }
+    if (want.lengthSq() > 1) want.normalize();
+    want.multiplyScalar(sp);
+    vel.x = ease(vel.x, want.x, dt); vel.y = ease(vel.y, want.y, dt);
+    const rotWant = ((keys.has('KeyE') ? 1 : 0) - (keys.has('KeyQ') ? 1 : 0)) * 1.4 * settings.camSpeed * (shift ? 1.8 : 1);
+    rotVel = ease(rotVel, rotWant, dt, 8, 6);
+    const zoomWant = ((keys.has('Minus') || keys.has('NumpadSubtract') || keys.has('PageDown') ? 1 : 0) - (keys.has('Equal') || keys.has('NumpadAdd') || keys.has('PageUp') ? 1 : 0)) * 1.6;
+    zoomVel = ease(zoomVel, zoomWant, dt, 8, 7);
+    if (Math.abs(vel.x) + Math.abs(vel.y) > 1e-4) {
+      camera.getWorldDirection(fwd);
+      fwd.y = 0; fwd.normalize();
+      right.crossVectors(fwd, camera.up).normalize();
+      move.set(0, 0, 0).addScaledVector(fwd, vel.y * dt).addScaledVector(right, vel.x * dt);
       camera.position.add(move);
       controls.target.add(move);
-    }
-    const rot = (keys.has('KeyE') ? 1 : 0) - (keys.has('KeyQ') ? 1 : 0);
-    if (rot) {
+    } else vel.set(0, 0);
+    if (Math.abs(rotVel) > 1e-4) {
       const off = camera.position.clone().sub(controls.target);
-      off.applyAxisAngle(camera.up, -rot * dt * 1.4 * settings.camSpeed * (shift ? 1.8 : 1));
+      off.applyAxisAngle(camera.up, -rotVel * dt);
       camera.position.copy(controls.target).add(off);
+    } else rotVel = 0;
+    if (resetHeading) {
+      // ease the heading back to north (camera south of its target, looking toward −z)
+      const off = camera.position.clone().sub(controls.target);
+      const sph = new THREE.Spherical().setFromVector3(off);
+      let d = 0 - sph.theta;
+      d = Math.atan2(Math.sin(d), Math.cos(d));
+      if (Math.abs(d) < 0.003) { sph.theta = 0; resetHeading = false; } else sph.theta += d * Math.min(1, dt * 7);
+      camera.position.copy(controls.target).add(off.setFromSpherical(sph));
     }
-    const zoom = (keys.has('Minus') || keys.has('NumpadSubtract') ? 1 : 0) - (keys.has('Equal') || keys.has('NumpadAdd') ? 1 : 0);
-    if (zoom) {
+    if (Math.abs(zoomVel) > 1e-4) {
       window.kbCamZoomAt = performance.now();
       const off = camera.position.clone().sub(controls.target);
-      const len = Math.min(controls.maxDistance, Math.max(controls.minDistance, off.length() * (1 + zoom * dt * 1.6)));
+      const len = Math.min(controls.maxDistance, Math.max(controls.minDistance, off.length() * (1 + zoomVel * dt)));
       camera.position.copy(controls.target).add(off.setLength(len));
-    }
+    } else zoomVel = 0;
   }
 
   // --- Floating combat text + attack tooltip ---
