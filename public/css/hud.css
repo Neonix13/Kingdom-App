@@ -797,3 +797,13 @@ body.hud-d #toolbar .tuto-highlight { outline: 3px solid var(--hud-red); outline
 .hud-cmd.folded .who span { font-size: 0; width: 12px; height: 12px; padding: 0; background: currentColor; }
 .hud-cmd.folded .who span.ok { background: #000; }
 @media (max-width: 1360px) { .hud-orders.hud-cmd { max-height: calc(100vh - 128px - 236px); } }
+/* command panel: the order as symbols */
+.hud-cmd .cu .seq { display: flex; align-items: center; gap: 2px; flex-shrink: 0; max-width: 112px; overflow: hidden; }
+.hud-cmd .cu .sq { display: flex; align-items: center; justify-content: center; width: 19px; height: 19px; flex-shrink: 0; font-style: normal; color: currentColor; }
+.hud-cmd .cu .sq svg { width: 15px; height: 15px; }
+.hud-cmd .cu .sq.st { border: 1.5px solid #000; color: #fff; } .hud-cmd .cu .sq.st svg { width: 12px; height: 12px; }
+.hud-cmd .cu.sel .sq.st { border-color: #fff; }
+.hud-cmd .cu .sq.hit { background: var(--hud-red); color: #fff; }
+.hud-cmd .cu .sq.later { opacity: .5; }
+.hud-cmd .cu .seq:empty { display: none; }
+.hud-cmd.folded .cu .seq { display: none; }

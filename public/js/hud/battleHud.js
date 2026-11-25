@@ -683,6 +683,44 @@ export function mountBattleHud(bridge, view) {
   // ---- command panel (simultaneous), left: command points, then every unit of my army with its order (or what it does
   // without one), ✕ to cancel; folds into a thin strip (points, pictograms, a dot on the units with an order) ----
   let cmdFolded = localStorage.getItem('kb-cmd-folded') === '1';
+  // the order as a row of symbols, in the order it runs: ability, stance at the start, the move (and the stance changes
+  // along it), the rest of a march, the attack / shot / charge, motivation, final facing
+  const SEQ_SVG = {
+    move: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h14"/><path d="M13 6l6 6-6 6"/></svg>',
+    attack: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/><path d="M4 16l4 4M20 16l-4 4"/></svg>',
+    shoot: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>',
+    charge: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6l6 6-6 6M12 6l6 6-6 6"/></svg>',
+    motivate: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 21V3"/><path d="M5 4h12l-3 4 3 4H5"/></svg>',
+    facing: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M20 12a8 8 0 1 1-3-6.2"/><path d="M18 3v4h-4"/></svg>',
+    ability: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>',
+    more: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2.2"/><circle cx="12" cy="12" r="2.2"/><circle cx="19" cy="12" r="2.2"/></svg>',
+  };
+  function orderSeq(o) {
+    if (!o) return '';
+    const names = G('stanceNames') || {};
+    const out = [];
+    const sym = (k, tip, cls = '') => out.push(`<i class="sq ${k} ${cls}" title="${esc(tip)}">${SEQ_SVG[k]}</i>`);
+    const chip = (st, tip) => { const ss = window.stanceStyle ? window.stanceStyle(st) : { c: '#444', svg: '' }; out.push(`<i class="sq st" style="background:${esc(ss.c)}" title="${esc(tip)}">${ss.svg || ''}</i>`); };
+    if (o.ability) sym('ability', 'Capacité');
+    if (o.stance) chip(o.stance, `Posture ${names[o.stance] || o.stance} au départ`);
+    const steps = o.path ? o.path.length - 1 : 0;
+    if (steps > 0) {
+      const along = (o.stanceSteps || []).filter((x) => x.at <= steps).sort((a, b) => a.at - b.at);
+      let at = 0;
+      for (const x of along) {
+        if (x.at > at) sym('move', `Déplacer ${x.at - at} case${x.at - at > 1 ? 's' : ''}`);
+        chip(x.stance, `Posture ${names[x.stance] || x.stance} après ${x.at} case${x.at > 1 ? 's' : ''}`);
+        at = x.at;
+      }
+      if (steps > at) sym('move', `Déplacer ${steps - at} case${steps - at > 1 ? 's' : ''}`);
+    }
+    if (o.marchRest && o.marchRest.length) sym('more', `Marche : encore ${o.marchRest.length} case${o.marchRest.length > 1 ? 's' : ''} aux tours suivants`, 'later');
+    if (o.type === 'attack') sym(o.ranged ? 'shoot' : 'attack', o.ranged ? 'Tirer' : 'Attaquer', 'hit');
+    else if (o.type === 'charge') sym('charge', 'Charger', 'hit');
+    else if (o.type === 'motivate') sym('motivate', 'Motiver les troupes');
+    if (o.facing != null) sym('facing', "S'orienter à l'arrivée");
+    return out.join('');
+  }
   function renderOrders(st, sim) {
     const pl = bridge.planning;
     if (!sim || !pl || G('isSpectator') || !st || st.phase !== 'battle' || (bridge.mode === 'deploy' && bridge.deployState)) { el.orders.hidden = true; return; }
@@ -710,7 +748,7 @@ export function mountBattleHud(bridge, view) {
       if (sel && sel.id === u.id) cls += ' sel';
       const pct = u.maxVitality ? Math.max(0, Math.min(100, (u.vitality / u.maxVitality) * 100)) : 0;
       const clear = o && pl.canPlan ? `<button data-clear="${esc(u.id)}" title="Annuler l'ordre" aria-label="Annuler l'ordre">✕</button>` : '';
-      return `<div class="${cls}" data-unit="${esc(u.id)}" data-i="${i}" title="${esc(u.name)}"><span class="k">${unitKanji(u)}<i class="dot"></i></span><span class="tx"><b>${esc(u.name)}</b><span>${line}</span></span><span class="v">${u.vitality ?? ''}</span>${clear}<i class="bar" style="width:${pct}%"></i></div>`;
+      return `<div class="${cls}" data-unit="${esc(u.id)}" data-i="${i}" title="${esc(u.name)}"><span class="k">${unitKanji(u)}<i class="dot"></i></span><span class="tx"><b>${esc(u.name)}</b><span>${line}</span></span><span class="seq">${orderSeq(o)}</span>${clear}<i class="bar" style="width:${pct}%"></i></div>`;
     }).join('');
     const holding = mine.filter((u) => u.q != null && !orders.some((o) => String(o.unitId) === String(u.id))).length;
     const foot = pb ? '<div class="foot">Les ordres de tous les généraux s\'exécutent case par case.</div>'
