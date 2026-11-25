@@ -334,8 +334,7 @@ export function mountBattleHud(bridge, view) {
     const tName = (TERRAINS[tt] || {}).name || tt;
     for (const s of stats.flat()) {
       if (s.base == null || s.v === '—') continue;
-      s.tip = [`${s.label} ${s.v}`, `base ${s.base}`, s.ds ? `posture ${stName} ${sgn(s.ds)}` : '', s.dt ? `terrain ${tName} ${sgn(s.dt)}` : ''].filter(Boolean).join('
-');
+      s.tip = [`${s.label} ${s.v}`, `base ${s.base}`, s.ds ? `posture ${stName} ${sgn(s.ds)}` : '', s.dt ? `terrain ${tName} ${sgn(s.dt)}` : ''].filter(Boolean).join('\n');
     }
     return { stats, kind, terrainName: tName };
   }
