@@ -366,10 +366,10 @@ test('protocole : fin de tour automatique quand plus aucune unité ne peut agir,
   const gen = room.getPlayer(first.session.playerId).units[0];
   // general alone: move it once with all its speed -> no action left (no motivate target, no ability for Ou Ki? Ou Ki has one)
   first.clear();
+  // turning is free: spend the speed by hand, then any action triggers the automatic end of the turn
+  gen.speedRemaining = 0;
   await first.send('rotate_facing', { unitId: gen.id, facing: 1 });
-  await first.send('rotate_facing', { unitId: gen.id, facing: 2 });
-  await first.send('rotate_facing', { unitId: gen.id, facing: 3 });
-  await first.send('rotate_facing', { unitId: gen.id, facing: 4 });
+  assert.equal(room.getPlayer(first.session.playerId).units[0].facing, 1, 'se tourner sans vitesse restante');
   if (first.session.playerId === room.players.find(p => p.generalId === 'ou_ki').id) await first.send('use_ability', {});
   const auto = first.all('turn_auto_ended').find(m => m.reason === 'no_actions');
   assert.ok(auto, 'tour terminé automatiquement');

@@ -636,6 +636,22 @@ body.hud-d #toolbar .tuto-highlight { outline: 3px solid var(--hud-red); outline
 .tt2-chip.up { color: #1f7a33; background: #eaf6ec; } .tt2-chip.down { color: #b8261c; background: #fbecea; }
 .tt2-none { color: #6a625a; font-style: italic; }
 .tt2-note { margin-top: 9px; padding-top: 7px; border-top: 2px dashed #bbb; font-size: 12px; line-height: 1.4; }
+/* stance / terrain recap: sections, melee and ranged columns side by side */
+.tt3 { min-width: 250px; }
+.tt3-cols, .tt3-row { display: grid; grid-template-columns: minmax(0, 1fr) 54px 54px; align-items: center; column-gap: 4px; }
+.tt3-cols { margin: 8px 0 2px; font: 700 10px "Zen Kaku Gothic New", sans-serif; letter-spacing: 1px; text-transform: uppercase; color: #6a625a; text-align: center; }
+.tt3.focus-cac .tt3-cols .c-cac, .tt3.focus-tir .tt3-cols .c-tir { color: #000; border-bottom: 3px solid var(--hud-red, #D8352A); }
+.tt3-sec { margin-top: 6px; }
+.tt3-h { font: 700 10px "Zen Kaku Gothic New", sans-serif; letter-spacing: 1.5px; text-transform: uppercase; color: #fff; background: #000; padding: 2px 7px; margin-bottom: 3px; }
+.tt3-row { padding: 2px 0; border-bottom: 1px solid #e5e0d6; }
+.tt3-row:last-child { border-bottom: 0; }
+.tt3-row.one { grid-template-columns: minmax(0, 1fr) 112px; }
+.tt3-l { font-size: 12.5px; font-weight: 700; }
+.tt3-v { text-align: center; font: 400 13px var(--hud-display, "Dela Gothic One", sans-serif); padding: 1px 0; }
+.tt3-v.up { color: #1f7a33; background: #eaf6ec; } .tt3-v.down { color: #b8261c; background: #fbecea; }
+.tt3-v.zero { color: #bbb; } .tt3-v.plain { font: 700 12px "Zen Kaku Gothic New", sans-serif; background: #f1eee8; }
+.tt3.focus-cac .tt3-row:not(.one) .tt3-v:nth-of-type(2), .tt3.focus-tir .tt3-row:not(.one) .tt3-v:nth-of-type(3) { outline: 2px solid #000; outline-offset: -2px; }
+.tt3-who { margin-top: 6px; font-size: 10.5px; color: #6a625a; }
 
 /* ---- Ctrl+click: action on arrival ---- */
 /* stance names in full: two rows of three */

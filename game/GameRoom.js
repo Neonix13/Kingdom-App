@@ -1544,9 +1544,7 @@ class GameRoom {
     const player = this.getPlayer(playerId);
     const unit = player?.units.find(u => u.id === unitId);
     if (!unit || unit.q === null) return { error: 'Unité introuvable.' };
-    if (unit.speedRemaining <= 0) return { error: 'Plus de vitesse disponible.' };
-    unit.speedRemaining = Math.max(0, rules.snap(unit.speedRemaining - 1));
-    unit.facing = facing;
+    unit.facing = facing; // turning is free: it costs no speed
     this._record('facing', { u: unit.id, f: facing });
     return { ok: true };
   }

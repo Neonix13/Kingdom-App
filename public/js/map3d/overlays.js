@@ -226,9 +226,24 @@ export function createBoardLayers(world) {
     }
     for (const o of spec.outlines || []) {
       if (!o.keys || !o.keys.size) continue;
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      // zone style (range, charisma): a light veil inside, a soft halo along the edge, then the crisp line
+      if (o.tint) {
+        ctx.fillStyle = o.tint;
+        ctx.beginPath();
+        for (const k of o.keys) { const [q, r] = k.split(',').map(Number); hexPath(ctx, ovP, q, r, 1.0); }
+        ctx.fill();
+      }
+      if (o.glow) {
+        ctx.save();
+        ctx.setLineDash([]);
+        ctx.shadowColor = o.color; ctx.shadowBlur = 0.35 * OV_PPU;
+        ctx.strokeStyle = o.glow; ctx.lineWidth = (o.width || 0.1) * 3.2 * OV_PPU;
+        outline(ctx, o.keys, o.center);
+        ctx.restore();
+      }
       ctx.strokeStyle = o.color;
       ctx.lineWidth = (o.width || 0.1) * OV_PPU;
-      ctx.lineCap = 'round';
       ctx.setLineDash(o.dash ? o.dash.map((x) => x * OV_PPU) : []);
       outline(ctx, o.keys, o.center);
     }

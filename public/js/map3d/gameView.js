@@ -11,16 +11,26 @@ import { createKillCam } from './killCam.js';
 const PLATE_CSS = `
 #view3d-canvas { position:absolute; inset:0; width:100%; height:100%; display:block; z-index:1; outline:none; touch-action:none; }
 #view3d-plates { position:absolute; inset:0; pointer-events:none; z-index:2; overflow:hidden; }
-.u3-plate { position:absolute; left:0; top:0; display:flex; align-items:center; gap:4px; padding:1px 5px 1px 0;
-  background:#000; border:2px solid #fff; box-shadow:0 0 0 1.5px #000, 2px 2px 0 1.5px rgba(0,0,0,.45);
+/* unit plates, manga style: a slanted black panel with a white frame and a little tail pointing at the unit;
+   type pictogram on the player's colour, vitality (graduated) and morale bars, stance in a round seal */
+.u3-plate { position:absolute; left:0; top:0; display:flex; align-items:center; gap:5px; padding:2px 6px 2px 2px;
+  background:#0d0c0b; border:2px solid #fff; transform-origin:50% 100%;
+  box-shadow:0 0 0 1.5px #000, 3px 3px 0 1px rgba(0,0,0,.5);
   pointer-events:auto; cursor:pointer; white-space:nowrap; font:900 10px 'Zen Kaku Gothic New','Segoe UI',system-ui,sans-serif; color:#fff;
-  will-change:transform; }
-.u3-plate .k { display:flex; align-items:center; justify-content:center; width:21px; height:21px; margin-left:-1px; background:var(--pc); color:#fff;
-  font:400 15px 'Yuji Boku','Zen Old Mincho',serif; line-height:1; text-shadow:0 0 2px #000, 0 0 1px #000; }
+  will-change:transform; clip-path:none; }
+.u3-plate::before { content:''; position:absolute; left:50%; bottom:-7px; width:8px; height:8px; margin-left:-4px; background:#0d0c0b;
+  border-right:2px solid #fff; border-bottom:2px solid #fff; transform:rotate(45deg); }
+.u3-plate .k { display:flex; align-items:center; justify-content:center; width:22px; height:22px; background:var(--pc); color:#fff;
+  font:400 15px 'Yuji Boku','Zen Old Mincho',serif; line-height:1; text-shadow:0 0 2px #000, 0 0 1px #000;
+  border:1.5px solid #000; box-shadow:inset 0 0 0 1px rgba(255,255,255,.35); transform:skewX(-8deg); }
+.u3-plate .k svg { transform:skewX(8deg); }
 .u3-plate .u3-name { display:none; }
 .u3-plate.sel .u3-name, .u3-plate.hov .u3-name, #view3d-plates.names .u3-name { display:block; }
-.u3-plate.hov { z-index:5; background:#222; }
-.u3-plate.sel { z-index:6; border-color:#D8352A; box-shadow:0 0 0 1.5px #000, 0 0 0 4px #D8352A; }
+.u3-plate.hov { z-index:5; background:#1c1a18; }
+.u3-plate.hov::before { background:#1c1a18; }
+.u3-plate.sel { z-index:6; border-color:#D8352A; box-shadow:0 0 0 1.5px #000, 0 0 0 4px #D8352A, 3px 3px 0 4px rgba(0,0,0,.45); }
+.u3-plate.sel::before { border-color:#D8352A; }
+.u3-plate.enemy .k { box-shadow:inset 0 0 0 1px rgba(0,0,0,.35); }
 .u3-plate.moved { opacity:.6; }
 .u3-plate.fleeing { border-color:#D8352A; animation:u3-flee .8s steps(2) infinite; }
 @keyframes u3-flee { 50% { border-color:#fff; } }
@@ -28,13 +38,16 @@ const PLATE_CSS = `
 .u3-plate.concealed::after, .u3-plate.stunned::after { font:400 12px 'Yuji Boku','Zen Old Mincho',serif; margin-left:1px; }
 .u3-plate.concealed::after { content:'伏'; color:#9fd09a; }
 .u3-plate.stunned::after { content:'暈'; color:#ffcf40; }
-.u3-plate .st { display:flex; align-items:center; justify-content:center; width:16px; height:16px; border:1.5px solid #fff; line-height:1; color:#fff; }
+.u3-plate .st { display:flex; align-items:center; justify-content:center; width:17px; height:17px; border-radius:50%; border:1.5px solid #fff; box-shadow:0 0 0 1px #000; line-height:1; color:#fff; }
 .u3-plate .st:empty { display:none; }
 .u3-bars { display:flex; flex-direction:column; gap:2px; }
-.u3-bar { width:32px; height:4px; background:#444; overflow:hidden; }
-.u3-bar.mo { height:2px; }
+.u3-bar { position:relative; width:36px; height:5px; background:#3a3633; overflow:hidden; border:1px solid #000; }
+/* vitality: ticks every 25 % */
+.u3-bar.hp::after { content:''; position:absolute; inset:0; background:repeating-linear-gradient(90deg, transparent 0 8px, rgba(0,0,0,.55) 8px 9px); }
+.u3-bar.mo { height:3px; }
+.u3-bar.mo.neg > i { background:repeating-linear-gradient(135deg, #D8352A 0 3px, #8a1a12 3px 6px) !important; }
 .u3-bar > i { display:block; height:100%; }
-.u3-name { max-width:78px; overflow:hidden; text-overflow:ellipsis; line-height:1.1; }
+.u3-name { max-width:84px; overflow:hidden; text-overflow:ellipsis; line-height:1.1; letter-spacing:.3px; }
 #view3d-loading { position:absolute; inset:0; z-index:3; display:flex; flex-direction:column; align-items:center; justify-content:center;
   background:rgba(10,6,4,0.92); color:#d9bf78; font:12px 'Segoe UI',system-ui,sans-serif; letter-spacing:2px; transition:opacity .6s; }
 #view3d-loading .bar { width:260px; height:2px; background:rgba(217,191,120,.15); margin-top:12px; }
@@ -177,12 +190,17 @@ export async function mountGameView(bridge, { container }) {
     const hp = Math.max(0, Math.min(1, (u.vitality ?? 1) / (u.maxVitality || 1)));
     const hpBar = el.querySelector('.hp > i');
     hpBar.style.width = (hp * 100).toFixed(0) + '%';
-    hpBar.style.background = hp > 0.35 ? '#fff' : '#D8352A';
+    hpBar.style.background = hp > 0.35 ? '#f4efe6' : '#D8352A';
+    hpBar.parentNode.title = `Vitalité ${u.vitality ?? '?'} / ${u.maxVitality ?? '?'}`;
     const moBar = el.querySelector('.mo');
     if (u.maxMorale) {
+      // negative morale (the unit flees below zero): a red striped bar as long as the deficit
+      const neg = u.morale < 0;
       moBar.style.display = '';
-      moBar.firstChild.style.width = (Math.max(0, Math.min(1, u.morale / u.maxMorale)) * 100).toFixed(0) + '%';
+      moBar.classList.toggle('neg', neg);
+      moBar.firstChild.style.width = (Math.max(0, Math.min(1, Math.abs(u.morale) / u.maxMorale)) * 100).toFixed(0) + '%';
       moBar.firstChild.style.background = '#9db4d8';
+      moBar.title = `Moral ${u.morale} / ${u.maxMorale}`;
     } else moBar.style.display = 'none';
     const st = el.querySelector('.st');
     const sst = u.stance && !u.isGeneral && window.stanceStyle ? window.stanceStyle(u.stance) : null;
@@ -213,7 +231,7 @@ export async function mountGameView(bridge, { container }) {
     const rp = bridge.rangePreview;
     previewSig = rp ? `${rp.kind}|${rp.center.q},${rp.center.r}|${rp.keys.size}` : '';
     if (!rp || !rp.keys.size) return [];
-    return [{ keys: rp.keys, center: hexKey(rp.center.q, rp.center.r), color: rp.kind === 'tir' ? 'rgba(255,220,0,0.8)' : 'rgba(80,180,255,0.8)', width: 0.09, dash: [0.22, 0.16] }];
+    return [{ keys: rp.keys, center: hexKey(rp.center.q, rp.center.r), color: rp.kind === 'tir' ? 'rgba(255,238,170,0.85)' : 'rgba(170,215,255,0.85)', width: 0.06, dash: [0.22, 0.16] }];
   }
   function applyOverlay() {
     world.layers.setOverlay({ fills: lastOverlay.fills, outlines: [...lastOverlay.outlines, ...previewOutline()] });
@@ -250,8 +268,9 @@ export async function mountGameView(bridge, { container }) {
     const sel = bridge.selectedUnit;
     if (sel && sel.q != null) fills.push({ keys: new Set([hexKey(sel.q, sel.r)]), color: 'rgba(255,210,60,0.32)' });
     const rc = bridge.rangeCenter, mc = bridge.motivateCenter;
-    if (rc) outlines.push({ keys: bridge.rangeTiles, center: hexKey(rc.q, rc.r), color: 'rgba(255,220,0,0.95)', width: 0.12 });
-    if (mc) outlines.push({ keys: bridge.motivateTiles, center: hexKey(mc.q, mc.r), color: 'rgba(80,180,255,0.95)', width: 0.12 });
+    // range (pale gold) and charisma (blue): light veil, soft halo, crisp edge
+    if (rc) outlines.push({ keys: bridge.rangeTiles, center: hexKey(rc.q, rc.r), color: 'rgba(255,238,170,0.95)', glow: 'rgba(255,214,90,0.28)', tint: 'rgba(255,226,130,0.09)', width: 0.06 });
+    if (mc) outlines.push({ keys: bridge.motivateTiles, center: hexKey(mc.q, mc.r), color: 'rgba(170,215,255,0.95)', glow: 'rgba(90,160,255,0.3)', tint: 'rgba(110,170,255,0.1)', width: 0.06 });
     lastOverlay = { fills, outlines };
     applyOverlay();
 

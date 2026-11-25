@@ -924,11 +924,11 @@ function render() {
     }
   }
 
-  if (rangeTiles.size > 0 && rangeCenter) strokeZone(rangeTiles, rangeCenter, '#ffffff');
-  if (motivateTiles.size > 0 && motivateCenter) strokeZone(motivateTiles, motivateCenter, '#6f9bf0');
+  if (rangeTiles.size > 0 && rangeCenter) strokeZone(rangeTiles, rangeCenter, '#ffe6a0');
+  if (motivateTiles.size > 0 && motivateCenter) strokeZone(motivateTiles, motivateCenter, '#8cc4ff');
   {
     const rp = rangePreview();
-    if (rp && rp.keys.size) strokeZone(rp.keys, rp.center, rp.kind === 'tir' ? '#ffffff' : '#6f9bf0', [10, 7]);
+    if (rp && rp.keys.size) strokeZone(rp.keys, rp.center, rp.kind === 'tir' ? '#ffe6a0' : '#8cc4ff', [10, 7]);
   }
 
   // Weak sides (friend's tool): each unit's open edges coloured by the angle-of-attack bonus an enemy would get there
@@ -1724,11 +1724,19 @@ function marchPlanFor(unit, q, r) {
 }
 
 // Outline of a zone of hexes (range, motivation): black under a coloured line; dash = preview from the destination
+// Range / charisma zone: a light veil inside, a soft halo along the edge, a crisp rounded line (dashed for the preview)
 function strokeZone(keys, center, color, dash = null) {
   const interior = new Set(keys);
   interior.add(`${center.q},${center.r}`);
   ctx.save();
-  ctx.lineCap = 'round';
+  if (!dash) {
+    ctx.fillStyle = color; ctx.globalAlpha = 0.08;
+    ctx.beginPath();
+    for (const key of keys) { const [q, r] = key.split(',').map(Number); const { x, y } = hexToPixel(q, r); const c = hexCorners(x, y); c.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); ctx.closePath(); }
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   ctx.setLineDash(dash || []);
   ctx.beginPath();
   for (const key of keys) {
@@ -1743,8 +1751,14 @@ function strokeZone(keys, center, color, dash = null) {
       }
     }
   }
-  ctx.strokeStyle = '#000'; ctx.lineWidth = Math.max(dash ? 5 : 6, (dash ? 4 : 5) / zoom); ctx.stroke();
-  ctx.strokeStyle = color; ctx.globalAlpha = dash ? 0.85 : 1; ctx.lineWidth = Math.max(dash ? 2.5 : 3, (dash ? 2 : 2.5) / zoom); ctx.stroke();
+  if (!dash) {
+    ctx.save();
+    ctx.shadowColor = color; ctx.shadowBlur = 14;
+    ctx.strokeStyle = color; ctx.globalAlpha = 0.35; ctx.lineWidth = Math.max(8, 7 / zoom); ctx.stroke();
+    ctx.restore();
+  }
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = Math.max(dash ? 4 : 4.5, (dash ? 3.5 : 4) / zoom); ctx.stroke();
+  ctx.strokeStyle = color; ctx.globalAlpha = dash ? 0.85 : 1; ctx.lineWidth = Math.max(dash ? 2 : 2.2, 2 / zoom); ctx.stroke();
   ctx.restore();
 }
 
@@ -2120,8 +2134,8 @@ function updateActionButtons() {
   if (facingBtn) {
     const canFace = hasUnit && selectedUnit.isMine !== false && isMyTurn && !isFleeing && gameState?.phase === 'battle';
     facingBtn.style.display = canFace ? 'block' : 'none';
-    facingBtn.disabled = !(selectedUnit && selectedUnit.speedRemaining >= 1);
-    facingBtn.title = facingBtn.disabled ? 'Plus de vitesse disponible' : 'Orienter l\'unité (−1 vitesse) : cliquez la case vers laquelle elle doit faire face';
+    facingBtn.disabled = !selectedUnit;
+    facingBtn.title = 'Orienter l\'unité (gratuit) : cliquez la case vers laquelle elle doit faire face';
   }
   const endDisplay = isMyTurn ? 'block' : 'none';
   const deployDisplay = (mode === 'deploy') ? 'block' : 'none';
@@ -3221,19 +3235,26 @@ function ttGrid(rows, showTir = true) {
 
 // Bonus tooltips (stance, terrain): title with its marker, bonuses and penalties as green / red chips for the kind of
 // combat of the selected unit (melee or shooting), then movement, armour, morale and a rule line
-function bonusTip({ title, kicker, marker, data, extras = [], notes = [] }) {
-  const ranged = selectedUnit?.range > 1;
-  const sfx = ranged ? '_tir' : '_cac';
-  const STATS = [['attack', 'Attaque'], ['defense', 'Défense'], ['puissance', 'Puissance'], ['intimidation', 'Intimidation'], ['esquive', 'Esquive'], ['precision', 'Précision'], ['courage', 'Courage']];
-  const fx = STATS.map(([k, label]) => ({ label, v: data[k + sfx] || 0 })).filter((x) => x.v);
-  for (const [label, v] of extras) if (v) fx.push({ label, v });
-  const chip = (x) => `<span class="tt2-chip ${x.v > 0 ? 'up' : 'down'}"><b>${x.v > 0 ? '+' : ''}${x.v}</b> ${x.label}</span>`;
-  const up = fx.filter((x) => x.v > 0), down = fx.filter((x) => x.v < 0);
-  let html = `<div class="tt2"><div class="tt2-head">${marker || ''}<div><span class="tt2-kicker">${kicker}</span><b>${escapeHtml(title)}</b></div></div>`;
-  html += `<div class="tt2-ctx">Effets ${ranged ? 'au tir' : 'au corps à corps'}${selectedUnit ? ` · ${escapeHtml(selectedUnit.name)}` : ''}</div>`;
-  if (!fx.length) html += '<div class="tt2-none">Aucun modificateur</div>';
-  if (up.length) html += `<div class="tt2-row"><span class="tt2-lab up">Bonus</span><div>${up.map(chip).join('')}</div></div>`;
-  if (down.length) html += `<div class="tt2-row"><span class="tt2-lab down">Malus</span><div>${down.map(chip).join('')}</div></div>`;
+// Recap card of a stance or a terrain (hover): grouped sections, melee and ranged side by side (the column of the selected
+// unit stands out), green bonuses / red penalties, zero rows left out
+//   single: [[label, value, fmt?]] rows with one value for both columns (speed, armour, per-turn effects, entry cost)
+function bonusTip({ title, kicker, marker, data, attack = true, single = [], notes = [] }) {
+  const ranged = selectedUnit ? (selectedUnit.range || 1) > 1 : null;
+  const val = (v, fmt) => (v ? `<span class="tt3-v ${v > 0 ? 'up' : 'down'}">${fmt ? fmt(v) : (v > 0 ? '+' : '−') + Math.abs(v)}</span>` : '<span class="tt3-v zero">·</span>');
+  const pair = (label, key) => {
+    const c = data[key + '_cac'] || 0, t = data[key + '_tir'] || 0;
+    return c || t ? `<div class="tt3-row"><span class="tt3-l">${label}</span>${val(c)}${val(t)}</div>` : '';
+  };
+  const one = ([label, v, fmt, plain]) => (v || plain ? `<div class="tt3-row one"><span class="tt3-l">${label}</span>${plain ? `<span class="tt3-v plain">${plain}</span>` : val(v, fmt)}</div>` : '');
+  const section = (name, rows) => { const body = rows.join(''); return body ? `<div class="tt3-sec"><div class="tt3-h">${name}</div>${body}</div>` : ''; };
+  const att = attack ? section('En attaque', [pair('Attaque', 'attack'), pair('Puissance', 'puissance'), pair('Intimidation', 'intimidation'), pair('Précision', 'precision')]) : '';
+  const def = section('En défense', [pair('Défense', 'defense'), pair('Esquive', 'esquive'), pair('Courage', 'courage'), one(['Armure', data.armure || 0])]);
+  const misc = section('Mouvement et par tour', single.map(one));
+  let html = `<div class="tt2 tt3${ranged === true ? ' focus-tir' : ranged === false ? ' focus-cac' : ''}"><div class="tt2-head">${marker || ''}<div><span class="tt2-kicker">${kicker}</span><b>${escapeHtml(title)}</b></div></div>`;
+  if (att || def) html += `<div class="tt3-cols"><span></span><span class="c-cac">Mêlée</span><span class="c-tir">Tir</span></div>`;
+  html += att + def + misc;
+  if (!att && !def && !misc) html += '<div class="tt2-none">Aucun modificateur</div>';
+  if (selectedUnit) html += `<div class="tt3-who">Pour ${escapeHtml(selectedUnit.name)} : colonne ${ranged ? 'Tir' : 'Mêlée'}</div>`;
   for (const n of notes) if (n) html += `<div class="tt2-note">${n}</div>`;
   return html + '</div>';
 }
@@ -3241,9 +3262,11 @@ function bonusTip({ title, kicker, marker, data, extras = [], notes = [] }) {
 function buildTerrainTooltip(terrainType) {
   const t = TERRAINS_DATA[terrainType];
   if (!t) return '';
+  const cost = KBRules.RULES.movement.terrainCost[terrainType] ?? 1;
+  const perTurn = (v) => (v > 0 ? '+' : '−') + Math.abs(v);
   return bonusTip({ title: t.name, kicker: 'Terrain', marker: `<i class="tt2-mark terrain t-${escapeHtml(terrainType)}"></i>`, data: t,
-    extras: [['Armure', t.armure]],
-    notes: [`Entrer sur cette case coûte ${fmtSpeed(KBRules.RULES.movement.terrainCost[terrainType] ?? 1)} de vitesse.`, KBRules.RULES.concealment && KBRules.RULES.concealment.terrains.includes(terrainType) ? 'Couvert : les unités qui s\'y trouvent sont cachées tant qu\'on ne les approche pas.' : ''] });
+    single: [["Coût d'entrée", 0, null, `${fmtSpeed(cost)} vitesse`], ['Armure / tour', t.armure_tour, perTurn], ['Moral / tour', t.moral_tour, perTurn], ['Vitalité / tour', t.vitalite_tour, perTurn]],
+    notes: [KBRules.RULES.concealment && KBRules.RULES.concealment.terrains.includes(terrainType) ? 'Couvert : les unités qui s\'y trouvent sont cachées tant qu\'on ne les approche pas.' : ''] });
 }
 
 function buildSegmentTooltip(segType) {
@@ -3312,9 +3335,10 @@ function buildStanceTooltip(stanceId) {
   const sty = window.stanceStyle ? window.stanceStyle(stanceId) : null;
   const marker = sty ? `<i class="tt2-mark" style="background:${sty.c}">${sty.svg || ''}</i>` : '';
   const react = window.stanceReactionText ? window.stanceReactionText(stanceId) : '';
-  return bonusTip({ title: stanceNames[stanceId] || stanceId, kicker: 'Posture', marker, data: st,
-    extras: [['Vitesse', st.vitesse], ['Armure', st.armure], ['Moral / tour', st.moral_tour]],
-    notes: [react ? `Si attaquée : <b>${escapeHtml(react)}</b>` : ''] });
+  const perTurn = (v) => (v > 0 ? '+' : '−') + Math.abs(v);
+  return bonusTip({ title: STANCE_FULL_NAMES[stanceId] || stanceNames[stanceId] || stanceId, kicker: 'Posture', marker, data: st,
+    single: [['Vitesse', st.vitesse], ['Armure / tour', st.armure_tour, perTurn], ['Moral / tour', st.moral_tour, perTurn], ['Vitalité / tour', st.vitalite_tour, perTurn]],
+    notes: [react ? `Si attaquée : <b>${escapeHtml(react)}</b>` : '', window.stanceAngleText ? escapeHtml(window.stanceAngleText(stanceId) || '') : ''] });
 }
 
 function showStanceTooltip(e, stanceId) {

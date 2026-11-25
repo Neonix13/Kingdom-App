@@ -10,7 +10,7 @@ const ACTIONS = [
   { id: 'btn-move', key: 'KeyR', hint: 'R', label: 'Déplacer', cls: '' },
   { id: 'btn-attack', key: 'KeyF', hint: 'F', label: 'Attaquer', cls: 'attack' },
   { id: 'btn-ability', key: 'KeyC', hint: 'C', label: 'Capacité', cls: '' },
-  { id: 'btn-facing', key: 'KeyO', hint: 'O', label: 'Orienter −1', cls: '' },
+  { id: 'btn-facing', key: 'KeyO', hint: 'O', label: 'Orienter', cls: '' },
 ];
 const MIRRORS = [
   ['#unit-list', '.hud-roster'], ['#tool-coords', '[data-hud=tools]'], ['#selected-unit-detail', '.hud-card'],
