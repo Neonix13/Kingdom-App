@@ -411,11 +411,11 @@ export function mountBattleHud(bridge, view) {
       if (step) {
         const on = step.here === s;
         const off = !on && s === step.before;
-        return `<button class="sb-key${on ? ' on' : ''}" data-stance="${i}" ${off ? 'disabled' : ''} title="${esc(ss.name)} (touche ${i + 1})${on ? ' — prévue ici, cliquer pour la retirer' : off ? ' — déjà la posture à cette étape' : ` — à cette étape, −${stCost} vitesse`}" aria-label="${esc(ss.name)}"><kbd>${i + 1}</kbd><i class="st-chip" style="background:${esc(ss.c)}">${ss.svg || ''}</i><span>${esc(ss.short)}</span></button>`;
+        return `<button class="sb-key${on ? ' on' : ''}" data-stance="${i}" ${off ? 'disabled' : ''} title="${esc(ss.name)} (touche ${i + 1})${on ? ' — prévue ici, cliquer pour la retirer' : off ? ' — déjà la posture à cette étape' : ` — à cette étape, −${stCost} vitesse`}" aria-label="${esc(ss.name)}"><kbd>${i + 1}</kbd><i class="st-chip" style="background:${esc(ss.c)}">${ss.svg || ''}</i></button>`;
       }
       const on = curStance === s;
       const off = !sim && !on && (u.speedRemaining || 0) < stCost;
-      return `<button class="sb-key${on ? ' on' : ''}" data-stance="${i}" ${off ? 'disabled' : ''} title="${esc(ss.name)} (touche ${i + 1})${on ? ' — actuelle' : ` — −${stCost} vitesse${sim ? ', au début de la résolution' : ''}`}" aria-label="${esc(ss.name)}"><kbd>${i + 1}</kbd><i class="st-chip" style="background:${esc(ss.c)}">${ss.svg || ''}</i><span>${esc(ss.short)}</span></button>`;
+      return `<button class="sb-key${on ? ' on' : ''}" data-stance="${i}" ${off ? 'disabled' : ''} title="${esc(ss.name)} (touche ${i + 1})${on ? ' — actuelle' : ` — −${stCost} vitesse${sim ? ', au début de la résolution' : ''}`}" aria-label="${esc(ss.name)}"><kbd>${i + 1}</kbd><i class="st-chip" style="background:${esc(ss.c)}">${ss.svg || ''}</i></button>`;
     }).join('');
     const genShown = u.isMine && !deploying && u.isGeneral && u.q != null && bridge.selectedUnit && bridge.selectedUnit.id === u.id
       && (sim ? !!(bridge.planning && bridge.planning.canPlan) : st?.currentPlayerId === bridge.myId);
