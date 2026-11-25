@@ -543,7 +543,7 @@ export function mountBattleHud(bridge, view) {
     const sb = e.target.closest('[data-stance]');
     if (!sb || !window.showStanceTooltip) return;
     const s = (G('stanceList') || [])[Number(sb.dataset.stance)];
-    if (s) window.showStanceTooltip(e, s, sb.dataset.hint || '');
+    if (s) window.showStanceTooltip(e, s, sb.dataset.hint || '', sb);
   });
   el.stancebar.addEventListener('mousemove', (e) => { if (e.target.closest('[data-stance]') && window.positionStanceTooltip) window.positionStanceTooltip(e); });
   el.stancebar.addEventListener('mouseout', (e) => { if (e.target.closest('[data-stance]') && window.hideStanceTooltip) window.hideStanceTooltip(); });

@@ -3359,18 +3359,27 @@ function buildStanceTooltip(stanceId) {
     notes: [react ? `↩︎ Si attaquée : <b>${escapeHtml(react)}</b>` : ''] });
 }
 
-function showStanceTooltip(e, stanceId, hint = '') {
+// anchor: an element the card stands right above (stance bar buttons), instead of following the mouse
+function showStanceTooltip(e, stanceId, hint = '', anchor = null) {
   const tt = document.getElementById('stance-tooltip');
   if (!tt) return;
   tt.innerHTML = buildStanceTooltip(stanceId);
   if (hint) { const card = tt.querySelector('.tt2'); if (card) card.insertAdjacentHTML('beforeend', `<div class="tt4-hint">${escapeHtml(hint)}</div>`); }
   tt.style.display = 'block';
+  if (anchor) {
+    const r = anchor.getBoundingClientRect();
+    tt.dataset.anchored = '1';
+    tt.style.left = Math.max(8, Math.min(r.left + r.width / 2 - tt.offsetWidth / 2, window.innerWidth - tt.offsetWidth - 8)) + 'px';
+    tt.style.top = Math.max(8, r.top - tt.offsetHeight - 12) + 'px';
+    return;
+  }
+  delete tt.dataset.anchored;
   positionStanceTooltip(e);
 }
 
 function positionStanceTooltip(e) {
   const tt = document.getElementById('stance-tooltip');
-  if (!tt || tt.style.display === 'none') return;
+  if (!tt || tt.style.display === 'none' || tt.dataset.anchored) return;
   const x = e.clientX + 12, y = e.clientY - 8;
   const maxX = window.innerWidth - tt.offsetWidth - 8;
   const maxY = window.innerHeight - tt.offsetHeight - 8;
