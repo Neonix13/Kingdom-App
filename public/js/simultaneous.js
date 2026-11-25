@@ -529,7 +529,7 @@
         ctx.beginPath(); ctx.arc(p0.x, p0.y, HEX_SIZE * 0.95, 0, Math.PI * 2); ctx.stroke();
         ctx.strokeStyle = '#6f9bf0'; ctx.lineWidth = 3; ctx.stroke();
       }
-      if (selected && order.stanceSteps) for (const s of order.stanceSteps) window.drawStanceStep(ctx, s.hex[0], s.hex[1], s.stance, color);
+      if (selected && order.stanceSteps) for (const s of order.stanceSteps) window.drawStanceStep(ctx, s.hex[0], s.hex[1], s.stance, color, s.at > (order.path ? order.path.length - 1 : 0));
       ctx.globalAlpha = trail.alpha;
       const tags = [];
       if (order.type === 'hold') tags.push('Tenir');

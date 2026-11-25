@@ -368,7 +368,7 @@ export function createPathMarks(world) {
   }
   const turnTex = (n) => { if (!tex.has(`t${n}`)) tex.set(`t${n}`, turnBadge(n)); return tex.get(`t${n}`); };
   // round seal: ring in the player's colour (soft glow), disc in the stance colour, pictogram
-  const stanceTex = (s, ring) => texture(`s${s}${ring}`, (g) => {
+  const stanceTex = (s, ring, grey = false) => texture(`s${s}${ring}${grey ? 'g' : ''}`, (g) => {
     const sty = window.stanceStyle ? window.stanceStyle(s) : { c: '#444' };
     const grd = g.createRadialGradient(32, 32, 20, 32, 32, 32);
     grd.addColorStop(0, ring); grd.addColorStop(1, 'rgba(0,0,0,0)');
@@ -377,6 +377,11 @@ export function createPathMarks(world) {
     g.fillStyle = sty.c || '#444'; g.beginPath(); g.arc(32, 32, 20, 0, Math.PI * 2); g.fill();
     g.lineWidth = 2; g.strokeStyle = 'rgba(0,0,0,0.8)'; g.stroke();
     if (window.drawStanceIcon) window.drawStanceIcon(g, s, 32, 32, 26);
+    if (grey) {
+      const img = g.getImageData(0, 0, 64, 64), d = img.data;
+      for (let i = 0; i < d.length; i += 4) { const y = d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11; d[i] = d[i + 1] = d[i + 2] = y; }
+      g.putImageData(img, 0, 0);
+    }
   });
   // step chosen with Ctrl+click: dashed ring in the player's colour
   const stepTex = (ring) => texture(`r${ring}`, (g) => {
@@ -404,7 +409,7 @@ export function createPathMarks(world) {
       if (!mk) return;
       const c = hexToWorld(mk.q, mk.r);
       const y = groundHeight(c.x, c.z);
-      sp.material.map = mk.kind === 'turn' ? turnTex(mk.n) : mk.kind === 'step' ? stepTex(mk.ring || '#ffffff') : stanceTex(mk.stance, mk.ring || '#ffffff');
+      sp.material.map = mk.kind === 'turn' ? turnTex(mk.n) : mk.kind === 'step' ? stepTex(mk.ring || '#ffffff') : stanceTex(mk.stance, mk.ring || '#ffffff', !!mk.grey);
       sp.material.needsUpdate = true;
       const k = mk.kind === 'turn' ? 0.36 : mk.kind === 'step' ? 0.85 : 0.5;
       sp.scale.set(k, k, 1);
