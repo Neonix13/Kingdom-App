@@ -26,19 +26,30 @@ const PLATE_CSS = `
 .u3-plate.general .u3-bar-x { background:#c89a30; }
 .u3-plate.general .u3-bar-x::before, .u3-plate.general .u3-bar-x::after { content:''; position:absolute; top:-2px; width:5px; height:5px; border-radius:50%; background:#f3d27a; box-shadow:0 0 0 1px #000; }
 .u3-plate.general .u3-bar-x::before { left:-3px; } .u3-plate.general .u3-bar-x::after { right:-3px; }
-/* stance seal on top of the pole */
-.u3-plate .st { position:relative; z-index:3; width:17px; height:17px; margin-left:-4px; display:flex; align-items:center; justify-content:center;
-  border-radius:50%; border:2px solid #fff; box-shadow:0 0 0 1.5px #000; }
-.u3-plate .st svg { width:10px; height:10px; }
-.u3-plate .st:empty { visibility:hidden; }
+/* finial on top of the pole */
+.u3-cap { position:relative; z-index:3; width:7px; height:7px; margin:0 0 0 1px; border-radius:50%; background:#8a6a48; box-shadow:0 0 0 1px #000; }
+.u3-plate.general .u3-cap { background:#f3d27a; }
+/* stance seal under the pictogram, on the cloth */
+.u3-plate .st { position:relative; z-index:2; width:15px; height:15px; display:flex; align-items:center; justify-content:center;
+  border-radius:50%; border:1.5px solid #fff; box-shadow:0 0 0 1px #000; }
+.u3-plate .st svg { width:9px; height:9px; }
+.u3-plate .st:empty:not(.torn) { display:none; }
+/* fleeing: the stance has been torn off (a ragged hole with loose threads) and the flag flashes red */
+.u3-plate .st.torn { background:rgba(0,0,0,.55); border:0; box-shadow:none; border-radius:0;
+  clip-path:polygon(50% 0, 62% 14%, 82% 6%, 84% 28%, 100% 40%, 86% 56%, 96% 78%, 72% 80%, 62% 100%, 46% 86%, 26% 98%, 22% 76%, 2% 70%, 14% 50%, 0 30%, 22% 22%, 26% 2%); }
+.u3-plate .st.torn::after { content:''; position:absolute; left:3px; right:3px; top:50%; height:1px; background:rgba(255,255,255,.45); transform:rotate(-35deg); }
+.u3-flash { position:absolute; inset:0; z-index:0; background:#D8352A; opacity:0; pointer-events:none; }
+.u3-plate.fleeing .u3-flash { animation:u3-redflash .8s steps(2) infinite; }
+@keyframes u3-redflash { 0% { opacity:0; } 50% { opacity:.85; } }
 /* cloth + gauges */
 .u3-flag { position:relative; display:flex; gap:3px; margin:0 0 0 6px; padding-top:1px; }
-.u3-cloth { position:relative; width:24px; height:44px; display:flex; flex-direction:column; align-items:center; padding-top:4px; gap:3px;
+.u3-cloth { position:relative; width:24px; height:52px; display:flex; flex-direction:column; align-items:center; padding-top:4px; gap:3px;
   background:linear-gradient(90deg, rgba(0,0,0,.25), transparent 30%, rgba(255,255,255,.12) 60%, rgba(0,0,0,.2)), var(--pc);
   clip-path:polygon(0 0, 100% 0, 100% 100%, 50% 84%, 0 100%); transform-origin:0 0; animation:u3-wind 2.8s ease-in-out infinite; animation-delay:var(--wd, 0s); }
 .u3-cloth-edge { position:absolute; inset:0; pointer-events:none; clip-path:polygon(0 0, 100% 0, 100% 100%, 50% 84%, 0 100%);
   box-shadow:inset 0 0 0 2px #fff, inset 0 0 0 3px #000; }
 @keyframes u3-wind { 0%, 100% { transform:skewY(0deg) scaleX(1); } 35% { transform:skewY(3deg) scaleX(.94); } 70% { transform:skewY(-2deg) scaleX(1.02); } }
+.u3-cloth .k, .u3-tags { position:relative; z-index:1; }
 .u3-cloth .k { display:flex; color:#fff; font:400 17px 'Yuji Boku','Zen Old Mincho',serif; line-height:1; filter:drop-shadow(0 0 1px #000) drop-shadow(0 0 1px #000); }
 .u3-cloth .k svg { width:17px; height:17px; }
 .u3-tags { display:flex; flex-direction:column; align-items:center; gap:1px; }
@@ -47,7 +58,7 @@ const PLATE_CSS = `
 .u3-tag.flee { background:#D8352A; color:#fff; animation:u3-blink .7s steps(2) infinite; }
 .u3-tag.hide { background:#2f6a3a; color:#cfe9c9; } .u3-tag.stun { background:#ffcf40; color:#000; }
 @keyframes u3-blink { 50% { opacity:.35; } }
-.u3-gauges { display:flex; gap:2px; align-items:flex-end; height:40px; padding-top:2px; }
+.u3-gauges { display:flex; gap:2px; align-items:flex-end; height:46px; padding-top:2px; }
 .u3-vbar { position:relative; width:6px; height:100%; background:#1d1b19; box-shadow:0 0 0 1px #000, 0 0 0 2px rgba(255,255,255,.55); overflow:hidden; }
 .u3-vbar > i { position:absolute; left:0; right:0; bottom:0; transition:height .3s; }
 .u3-vbar.hp > i { background:linear-gradient(90deg, #ffffff, #d8d0c2); }
@@ -69,7 +80,7 @@ const PLATE_CSS = `
 .u3-plate.concealed .u3-cloth { opacity:.65; }
 /* far: the cloth and the vitality gauge only */
 #view3d-plates.far .u3-plate:not(.hov):not(.sel) .u3-vbar.mo, #view3d-plates.far .u3-plate:not(.hov):not(.sel) .st, #view3d-plates.far .u3-plate:not(.hov):not(.sel) .u3-tags { display:none; }
-#view3d-plates.far .u3-plate:not(.hov):not(.sel) .u3-cloth { width:18px; height:32px; }
+#view3d-plates.far .u3-plate:not(.hov):not(.sel) .u3-cloth { width:18px; height:34px; }
 #view3d-plates.far .u3-plate:not(.hov):not(.sel) .u3-gauges { height:30px; }
 #view3d-loading { position:absolute; inset:0; z-index:3; display:flex; flex-direction:column; align-items:center; justify-content:center;
   background:rgba(10,6,4,0.92); color:#d9bf78; font:12px 'Segoe UI',system-ui,sans-serif; letter-spacing:2px; transition:opacity .6s; }
@@ -196,8 +207,8 @@ export async function mountGameView(bridge, { container }) {
     if (!el) {
       el = document.createElement('div');
       el.className = 'u3-plate';
-      el.innerHTML = '<div class="u3-ban"><i class="u3-pole"></i><i class="u3-bar-x"></i><b class="st"></b>'
-        + '<div class="u3-flag"><div class="u3-cloth"><span class="u3-tags"></span><b class="k"></b><i class="u3-cloth-edge"></i></div>'
+      el.innerHTML = '<div class="u3-ban"><i class="u3-pole"></i><i class="u3-bar-x"></i><i class="u3-cap"></i>'
+        + '<div class="u3-flag"><div class="u3-cloth"><i class="u3-flash"></i><span class="u3-tags"></span><b class="k"></b><b class="st"></b><i class="u3-cloth-edge"></i></div>'
         + '<div class="u3-gauges"><div class="u3-vbar hp"><i></i></div><div class="u3-vbar mo"><i></i></div></div></div><i class="u3-foot"></i></div>';
       el.style.setProperty('--wd', `${(-Math.random() * 2.8).toFixed(2)}s`);
       el.addEventListener('click', (ev) => { ev.stopPropagation(); const cur = el._unit; if (cur && cur.q != null) bridge.click({ q: cur.q, r: cur.r }); });
@@ -215,7 +226,6 @@ export async function mountGameView(bridge, { container }) {
     // kanji tags for the state only (the cloth's colour already tells the side): general, fleeing, hidden, stunned
     const tags = [];
     if (u.isGeneral) tags.push('<i class="u3-tag gen" title="Général">将</i>');
-    if (u.isFleeing) tags.push('<i class="u3-tag flee" title="En fuite">逃</i>');
     if (u.concealed) tags.push('<i class="u3-tag hide" title="Cachée">伏</i>');
     if (u.stunned) tags.push('<i class="u3-tag stun" title="Sonné">暈</i>');
     const tagEl = el.querySelector('.u3-tags');
@@ -237,8 +247,15 @@ export async function mountGameView(bridge, { container }) {
     } else moBar.style.display = 'none';
     const st = el.querySelector('.st');
     const sst = u.stance && !u.isGeneral && window.stanceStyle ? window.stanceStyle(u.stance) : null;
-    const stKey = sst ? u.stance : '';
-    if (st.dataset.st !== stKey) { st.dataset.st = stKey; st.innerHTML = sst ? (window.stanceIconSvg ? window.stanceIconSvg(u.stance, 10) : '') : ''; st.style.background = sst ? sst.c : ''; st.title = sst ? `Posture : ${sst.name}` : ''; }
+    const torn = !!u.isFleeing && !u.isGeneral;
+    const stKey = torn ? 'torn' : sst ? u.stance : '';
+    if (st.dataset.st !== stKey) {
+      st.dataset.st = stKey;
+      st.classList.toggle('torn', torn);
+      st.innerHTML = !torn && sst && window.stanceIconSvg ? window.stanceIconSvg(u.stance, 9) : '';
+      st.style.background = !torn && sst ? sst.c : '';
+      st.title = torn ? 'En fuite : la posture est arrachée' : sst ? `Posture : ${sst.name}` : '';
+    }
     el.classList.toggle('general', !!u.isGeneral);
     el.classList.toggle('enemy', !u.isMine && !u.isAlly);
     el.classList.toggle('moved', !!(u.hasMoved && u.isMine));
