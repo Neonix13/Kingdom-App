@@ -121,8 +121,7 @@ export function createMapMode(world, { onChange } = {}) {
     controls.minDistance = 0.01;
     controls.maxDistance = 1e6;
     controls.enableRotate = false;
-    // seen from far above: no haze, no cloud layer between the camera and the board, a stronger grid
-    world.setGrid(Math.max(0.24, saved.grid));
+    // seen from far above: no haze, no cloud layer between the camera and the board (the grid stays the same)
     if (world.scene.fog) world.scene.fog.density = 0.0006;
     if (world.clouds) world.clouds.visible = false;
     // same place, same heading, same zoom level (the ground seen keeps its size); only the pitch goes to vertical
