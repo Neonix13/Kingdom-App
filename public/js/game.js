@@ -3247,23 +3247,34 @@ function ttGrid(rows, showTir = true) {
 // unit stands out), green bonuses / red penalties, zero rows left out
 //   single: [[label, value, fmt?]] rows with one value for both columns (speed, armour, per-turn effects, entry cost)
 function bonusTip({ title, kicker, marker, data, attack = true, single = [], notes = [] }) {
+  // compact: only the column of the selected unit's kind (melee or shots) as chips, bonuses then penalties; the other kind
+  // on one muted line; no selection: both kinds as two short chip lines
   const ranged = selectedUnit ? (selectedUnit.range || 1) > 1 : null;
-  const val = (v, fmt) => (v ? `<span class="tt3-v ${v > 0 ? 'up' : 'down'}">${fmt ? fmt(v) : (v > 0 ? '+' : '−') + Math.abs(v)}</span>` : '<span class="tt3-v zero">·</span>');
-  const pair = (label, key) => {
-    const c = data[key + '_cac'] || 0, t = data[key + '_tir'] || 0;
-    return c || t ? `<div class="tt3-row"><span class="tt3-l">${label}</span>${val(c)}${val(t)}</div>` : '';
-  };
-  const one = ([label, v, fmt, plain]) => (v || plain ? `<div class="tt3-row one"><span class="tt3-l">${label}</span>${plain ? `<span class="tt3-v plain">${plain}</span>` : val(v, fmt)}</div>` : '');
-  const section = (name, rows) => { const body = rows.join(''); return body ? `<div class="tt3-sec"><div class="tt3-h">${name}</div>${body}</div>` : ''; };
-  const att = attack ? section('En attaque', [pair('Attaque', 'attack'), pair('Puissance', 'puissance'), pair('Intimidation', 'intimidation'), pair('Précision', 'precision')]) : '';
-  const def = section('En défense', [pair('Défense', 'defense'), pair('Esquive', 'esquive'), pair('Courage', 'courage'), one(['Armure', data.armure || 0])]);
-  const misc = section('Mouvement et par tour', single.map(one));
-  let html = `<div class="tt2 tt3${ranged === true ? ' focus-tir' : ranged === false ? ' focus-cac' : ''}"><div class="tt2-head">${marker || ''}<div><span class="tt2-kicker">${kicker}</span><b>${escapeHtml(title)}</b></div></div>`;
-  if (att || def) html += `<div class="tt3-cols"><span></span><span class="c-cac">Mêlée</span><span class="c-tir">Tir</span></div>`;
-  html += att + def + misc;
-  if (!att && !def && !misc) html += '<div class="tt2-none">Aucun modificateur</div>';
-  if (selectedUnit) html += `<div class="tt3-who">Pour ${escapeHtml(selectedUnit.name)} : colonne ${ranged ? 'Tir' : 'Mêlée'}</div>`;
-  for (const n of notes) if (n) html += `<div class="tt2-note">${n}</div>`;
+  const sgn = (v) => (v > 0 ? '+' : '−') + Math.abs(v);
+  const KEYS = [['attack', 'Attaque', true], ['puissance', 'Puissance', true], ['intimidation', 'Intimidation', true], ['precision', 'Précision', true],
+    ['defense', 'Défense', false], ['esquive', 'Esquive', false], ['courage', 'Courage', false]];
+  const mods = (kind) => KEYS.filter(([, , att]) => attack || !att).map(([k, label]) => ({ label, v: data[`${k}_${kind}`] || 0 })).filter((m) => m.v);
+  const chips = (list) => list.slice().sort((x, y) => y.v - x.v).map((m) => `<span class="tt4-c ${m.v > 0 ? 'up' : 'down'}"><b>${sgn(m.v)}</b>${m.label}</span>`).join('');
+  const common = [];
+  if (data.armure) common.push({ label: 'Armure', v: data.armure });
+  for (const [label, v, fmt, plain] of single) {
+    if (plain) common.push({ label, plain });
+    else if (v) common.push({ label, v, txt: fmt ? fmt(v) : sgn(v) });
+  }
+  const commonHtml = common.map((m) => m.plain ? `<span class="tt4-c plain"><b>${m.plain}</b>${m.label}</span>` : `<span class="tt4-c ${m.v > 0 ? 'up' : 'down'}"><b>${m.txt || sgn(m.v)}</b>${m.label}</span>`).join('');
+  const cac = mods('cac'), tir = mods('tir');
+  let html = `<div class="tt2 tt4"><div class="tt4-head">${marker || ''}<div><span class="tt2-kicker">${kicker}</span><b>${escapeHtml(title)}</b></div></div>`;
+  const line = (name, list, main) => list.length ? `<div class="tt4-sec${main ? ' main' : ''}"><span class="tt4-k">${name}</span><div class="tt4-chips">${chips(list)}</div></div>` : '';
+  if (ranged == null) html += line('Mêlée', cac, true) + line('Tir', tir, true);
+  else {
+    const mine = ranged ? tir : cac, other = ranged ? cac : tir;
+    html += line(ranged ? 'Tir' : 'Mêlée', mine, true);
+    if (other.length) html += `<div class="tt4-other">${ranged ? 'Mêlée' : 'Tir'} : ${other.map((m) => `${m.label} <b class="${m.v > 0 ? 'up' : 'down'}">${sgn(m.v)}</b>`).join(' · ')}</div>`;
+  }
+  if (commonHtml) html += `<div class="tt4-sec"><span class="tt4-k">Toujours</span><div class="tt4-chips">${commonHtml}</div></div>`;
+  if (!cac.length && !tir.length && !common.length) html += '<div class="tt2-none">Aucun modificateur</div>';
+  const ns = notes.filter(Boolean);
+  if (ns.length) html += `<div class="tt4-notes">${ns.map((n) => `<div>${n}</div>`).join('')}</div>`;
   return html + '</div>';
 }
 
@@ -3346,7 +3357,7 @@ function buildStanceTooltip(stanceId) {
   const perTurn = (v) => (v > 0 ? '+' : '−') + Math.abs(v);
   return bonusTip({ title: STANCE_FULL_NAMES[stanceId] || stanceNames[stanceId] || stanceId, kicker: 'Posture', marker, data: st,
     single: [['Vitesse', st.vitesse], ['Armure / tour', st.armure_tour, perTurn], ['Moral / tour', st.moral_tour, perTurn], ['Vitalité / tour', st.vitalite_tour, perTurn]],
-    notes: [react ? `Si attaquée : <b>${escapeHtml(react)}</b>` : '', window.stanceAngleText ? escapeHtml(window.stanceAngleText(stanceId) || '') : ''] });
+    notes: [react ? `↩︎ Si attaquée : <b>${escapeHtml(react)}</b>` : '', window.stanceAngleText && window.stanceAngleText(stanceId) ? `◢︎ ${escapeHtml(window.stanceAngleText(stanceId).replace(/^attaquée : /, 'Coups reçus : ').replace(/, /g, ' · '))}` : ''] });
 }
 
 function showStanceTooltip(e, stanceId) {
