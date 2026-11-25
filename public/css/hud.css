@@ -807,3 +807,8 @@ body.hud-d #toolbar .tuto-highlight { outline: 3px solid var(--hud-red); outline
 .hud-cmd .cu .sq.later { opacity: .5; }
 .hud-cmd .cu .seq:empty { display: none; }
 .hud-cmd.folded .cu .seq { display: none; }
+.uc-g[data-tip] { cursor: help; }
+.uc-tip .ut-h b small { font: 900 11px var(--hud-body); color: #bdb5a8; margin-left: 2px; }
+.uc-tip .ut-r.tot { border-top: 2px solid #000; margin-top: 2px; padding-top: 4px; font-weight: 900; }
+.hud-card .name .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.hud-card .name .uc-chip.kind { margin-left: auto; flex-shrink: 0; align-self: center; }

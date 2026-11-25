@@ -387,6 +387,7 @@ export function mountBattleHud(bridge, view) {
   ucTip.className = 'uc-tip';
   ucTip.hidden = true;
   document.body.appendChild(ucTip);
+  const rules_snap = (x) => Math.round(x * 100) / 100;
   function renderCard(st, deploying, sim) {
     const u = currentUnit(st, deploying);
     const tip = $('stance-tooltip');
@@ -402,7 +403,7 @@ export function mountBattleHud(bridge, view) {
     // chips: what the unit is (kind, side, terrain, range) in outline, its state in solid colours
     const chip = (t, cls = '', tip = '') => `<span class="uc-chip ${cls}"${tip ? ` title="${esc(tip)}"` : ''}>${t}</span>`;
     const meta = [];
-    meta.push(chip(esc(u.isGeneral ? 'GÉNÉRAL' : (u.category || '').toUpperCase()), 'kind'));
+    const kindChip = chip(esc(u.isGeneral ? 'GÉNÉRAL' : (u.category || '').toUpperCase()), 'kind');
     if (!u.isMine && !deploying) meta.push(u.isAlly ? chip('ALLIÉ', 'ally') : chip('ENNEMI', 'foe'));
     if (!u.isGeneral && u.q != null) meta.push(chip(`⛰\uFE0E ${esc(String(terrainName).toUpperCase())}`, 'info', 'Terrain de la case'));
     if (u.range > 1) meta.push(chip(`◎ PORTÉE ${u.range}`, 'info', 'Portée de tir (cases)'));
@@ -471,23 +472,49 @@ export function mountBattleHud(bridge, view) {
       // the stance's icon only, next to the name (its name and effects in the tooltip)
       stanceNow = `<i class="st-chip uc-st" style="background:${esc(ss.c)}" data-stance-id="${esc(u.stance)}">${ss.svg || ''}</i>`;
     }
-    // gauges: vitality, morale (red stripes below zero, as long as the deficit) and speed left this turn
-    const gauge = (label, cls, frac, val, max, tip) => `<div class="uc-g ${cls}" title="${esc(tip)}"><span class="gl">${label}</span><div class="gb"><i style="width:${(Math.max(0, Math.min(1, frac)) * 100).toFixed(0)}%"></i><b>${val} / ${max}</b></div></div>`;
-    const gauges = [gauge('VITALITÉ', `hp${pct < 35 ? ' low' : ''}`, pct / 100, u.vitality ?? '—', u.maxVitality ?? '—', `Vitalité ${u.vitality ?? '?'} / ${u.maxVitality ?? '?'}`)];
+    // gauges: vitality, morale (red stripes below zero, as long as the deficit) and speed left this turn; each with its
+    // hover card (what it is, what changes it: stance and terrain per turn, night, orders already given)
+    const gauge = (label, cls, frac, val, max, tip) => `<div class="uc-g ${cls}" data-tip="${esc(tip)}"><span class="gl">${label}</span><div class="gb"><i style="width:${(Math.max(0, Math.min(1, frac)) * 100).toFixed(0)}%"></i><b>${val} / ${max}</b></div></div>`;
+    const SD = !u.isGeneral && u.stance ? ((G('STANCES_DATA') || {})[u.stance] || {}) : {};
+    const ttKey = u.q != null ? ((bridge.terrainData || {})[`${u.q},${u.r}`] || 'plain') : null;
+    const TD = !u.isGeneral && ttKey ? ((G('TERRAINS_DATA') || {})[ttKey] || {}) : {};
+    const row = (ic, label, v, plain = false) => `<div class="ut-r${!plain && !v ? ' zero' : ''}">${ic}<span>${label}</span>${plain ? `<b>${v}</b>` : sgnv(v || 0)}</div>`;
+    const icBase = '<i class="ut-ic">◆</i>', icTer = '<i class="ut-ic">⛰︎</i>', icMoon = '<i class="ut-ic">☾︎</i>', icOrd = '<i class="ut-ic">➜︎</i>';
+    const icSt = stS ? `<i class="st-chip" style="background:${esc(stS.c)}">${stS.svg || ''}</i>` : icBase;
+    const gTip = (title, value, help, rows, cls = '') => `<div class="ut-h"><span>${title}</span><b class="${cls}">${value}</b></div><div class="ut-help">${help}</div>${rows.length ? `<div class="ut-rows">${rows.join('')}</div>` : ''}`;
+    const perTurn = (key) => [stS ? row(icSt, `Posture · ${esc(stS.name)} / tour`, SD[key] || 0) : '', ttKey && !u.isGeneral ? row(icTer, `Terrain · ${esc(terrainName)} / tour`, TD[key] || 0) : ''].filter(Boolean);
+    const gauges = [gauge('VITALITÉ', `hp${pct < 35 ? ' low' : ''}`, pct / 100, u.vitality ?? '—', u.maxVitality ?? '—',
+      gTip('VITALITÉ', `${u.vitality ?? '—'}<small>/${u.maxVitality ?? '—'}</small>`, "Les dégâts reçus la font baisser ; à zéro, l'unité est détruite.", perTurn('vitalite_tour'), pct < 35 ? 'down' : ''))];
     if (!u.isGeneral && u.maxMorale && u.morale != null) {
       const neg = u.morale < 0;
-      gauges.push(gauge('MORAL', `mo${neg ? ' neg' : ''}`, Math.abs(u.morale) / u.maxMorale, u.morale, u.maxMorale, neg ? `Moral ${u.morale} : sous zéro, l'unité fuit` : `Moral ${u.morale} / ${u.maxMorale}`));
+      gauges.push(gauge('MORAL', `mo${neg ? ' neg' : ''}`, Math.abs(u.morale) / u.maxMorale, u.morale, u.maxMorale,
+        gTip('MORAL', `${u.morale}<small>/${u.maxMorale}</small>`, neg ? "Sous zéro : l'unité fuit jusqu'à ce qu'un général la motive." : "Baisse sous les coups (intimidation de l'attaquant, moins le courage) ; sous zéro, l'unité fuit.", perTurn('moral_tour'), neg ? 'down' : '')));
     }
     if (u.speed != null) {
       // what the orders already given this turn leave (planning: stance changes, ability and path paid)
       const planned = sim && u.isMine && window.KBSim && KBSim.speedLeft ? KBSim.speedLeft(u) : null;
       const left = planned != null ? planned : u.speedRemaining != null ? u.speedRemaining : u.speed;
-      gauges.push(gauge('VITESSE', 'sp', u.speed ? left / u.speed : 0, esc(fmtSpeed(left)), u.speed, `Vitesse restante ce tour, ordres compris : ${fmtSpeed(left)} / ${u.speed}`));
+      const night = st?.isNight && st.phase === 'battle' ? ((window.KBRules && KBRules.RULES.night && KBRules.RULES.night.speedMalus) || 0) : 0;
+      const turn = u.turnSpeed != null ? u.turnSpeed : null;
+      const rows = [row(icBase, 'Base', u.speed, true)];
+      if (u.isFleeing) rows.push(row('<i class="ut-ic">⚑︎</i>', 'En fuite : moitié', turn != null ? turn - u.speed : 0));
+      else {
+        if (stS) rows.push(row(icSt, `Posture · ${esc(stS.name)}`, SD.vitesse || 0));
+        if (night) rows.push(row(icMoon, 'Nuit', -night));
+        const known = Math.max(u.speed > 0 ? 1 : 0, u.speed + (SD.vitesse || 0));
+        const other = turn != null ? rules_snap(turn - (night ? Math.max(1, known - night) : known)) : 0;
+        if (other) rows.push(row('<i class="ut-ic">✦︎</i>', other > 0 ? 'Capacité' : 'Autre', other));
+      }
+      if (turn != null) rows.push(`<div class="ut-r tot"><i class="ut-ic">=</i><span>Vitesse du tour</span><b>${esc(fmtSpeed(turn))}</b></div>`);
+      const spent = turn != null ? rules_snap(turn - left) : 0;
+      if (spent > 0) rows.push(row(icOrd, planned != null ? 'Ordres prévus' : 'Déjà utilisée', -spent));
+      gauges.push(gauge('VITESSE', 'sp', u.speed ? left / u.speed : 0, esc(fmtSpeed(left)), u.speed,
+        gTip('VITESSE', `${esc(fmtSpeed(left))}<small>/${esc(fmtSpeed(turn ?? u.speed))}</small>`, 'Ce qui reste ce tour pour se déplacer ou changer de posture (1 par changement).', rows)));
     }
     const cardHtml = `
       <div class="pic">${src ? `<img src="${esc(src)}" alt="">` : ''}<span class="k">${unitKanji(u)}</span><i class="owner" style="background:${esc(color)}"></i></div>
       <div class="body">
-        <div class="head"><span class="name">${stanceNow}${esc((u.name || '').toUpperCase())}</span><span class="meta">${meta.join('')}</span></div>
+        <div class="head"><span class="name">${stanceNow}<span class="nm">${esc((u.name || '').toUpperCase())}</span>${kindChip}</span>${meta.length ? `<span class="meta">${meta.join('')}</span>` : ''}</div>
         <div class="uc-gauges">${gauges.join('')}</div>
         <div class="stats">${stats.map((grp) => `<div class="uc-grp">${grp.map((s) => `<div class="stat" data-tip="${esc(statTip(s))}"><span>${s.label}</span><b class="${s.d > 0 ? 'up' : s.d < 0 ? 'down' : ''}">${s.v ?? '—'}</b></div>`).join('')}</div>`).join('')}</div>
       </div>
@@ -528,7 +555,7 @@ export function mountBattleHud(bridge, view) {
     }
   });
   el.card.addEventListener('mouseover', (e) => {
-    const st = e.target.closest('.uc-grp .stat[data-tip]');
+    const st = e.target.closest('.uc-grp .stat[data-tip], .uc-g[data-tip]');
     if (!st || !st.dataset.tip) { ucTip.hidden = true; return; }
     ucTip.innerHTML = st.dataset.tip;
     ucTip.hidden = false;
