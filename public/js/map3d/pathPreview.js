@@ -543,13 +543,14 @@ export function createFacingMarks(world) {
   const groundHeight = world.walkHeight || world.groundHeight;
   const meshes = [];
   let lastSig = '';
-  function head(tip, dir, size, ground, color, opacity, order) {
+  // notched arrowhead (tip, two wings, notch at the back), lying on the ground
+  function head(tip, dir, size, ground, color, opacity, order, lift = 0.06) {
     const side = { x: -dir.z, z: dir.x };
-    const base = { x: tip.x - dir.x * size, z: tip.z - dir.z * size };
-    const pts = [tip, { x: base.x + side.x * size * 0.62, z: base.z + side.z * size * 0.62 }, { x: base.x - side.x * size * 0.62, z: base.z - side.z * size * 0.62 }];
+    const at = (f, s2) => ({ x: tip.x - dir.x * size * f + side.x * size * s2, z: tip.z - dir.z * size * f + side.z * size * s2 });
+    const pts = [tip, at(1, 0.72), at(0.68, 0), at(1, -0.72)];
     const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pts.flatMap((p) => [p.x, ground(p.x, p.z) + 0.06, p.z]), 3));
-    g.setIndex([0, 1, 2]);
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pts.flatMap((p) => [p.x, ground(p.x, p.z) + lift, p.z]), 3));
+    g.setIndex([0, 1, 2, 0, 2, 3]);
     const m = new THREE.Mesh(g, trailMat(color, opacity));
     m.renderOrder = order;
     scene.add(m);
@@ -568,9 +569,10 @@ export function createFacingMarks(world) {
       const w = mk.width || 0.05;
       const opacity = mk.dim ? 0.85 : 0.96;
       // the arrowhead caps the trail: its base on the arrival point, pointing at the final facing
-      const headL = Math.max(0.2, w * 3.4), tipD = headL;
+      const headL = mk.dim ? 0.3 : 0.4, tipD = headL * 0.75;
       const tip = { x: c.x + dir.x * tipD, z: c.z + dir.z * tipD };
-      head({ x: tip.x + dir.x * 0.03, z: tip.z + dir.z * 0.03 }, dir, headL * 1.25, groundHeight, 0x000000, 0.45, 7);
+      const o = 0.05;
+      head({ x: tip.x + dir.x * o * 1.6, z: tip.z + dir.z * o * 1.6 }, dir, headL + o * 2.6, groundHeight, 0x000000, 0.55, 7, 0.055);
       head(tip, dir, headL, groundHeight, mk.color || 0xffffff, opacity, 8);
     }
   }
