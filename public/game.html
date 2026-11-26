@@ -97,26 +97,6 @@
     .grid-color-swatch:hover { border-color: #c8960c; }
     .grid-color-swatch.active { border-color: #ffd700; }
     #unit-panel { padding: 8px; }
-    /* ---- FICHE UNITÉ (style PDF) ---- */
-    #unit-card-box { max-width:740px !important; width:min(740px,95vw); background:#2a2a2e; border:3px solid #111; padding:12px; }
-    .uc-pdf { display:grid; grid-template-columns:260px 1fr; grid-template-rows:auto auto; gap:8px; color:#111; }
-    .uc-pdf-left { display:flex; flex-direction:column; gap:8px; }
-    .uc-pdf-img { width:100%; aspect-ratio:1/1; object-fit:cover; object-position:top; border:2px solid #444; background:#111; }
-    .uc-pdf-img-placeholder { width:100%; aspect-ratio:1/1; background:#111; border:2px solid #444; display:flex; align-items:center; justify-content:center; font-size:64px; color:#555; }
-    .uc-pdf-hpbar-wrap { background:#ddd; border:2px solid #444; height:14px; }
-    .uc-pdf-hpbar { height:100%; transition:width .3s; }
-    .uc-pdf-bonus { background:#fff; border:2px solid #444; padding:10px 12px; font-size:0.85em; line-height:1.6; flex:1; }
-    .uc-pdf-bonus strong { color:#8b1a1a; }
-    .uc-pdf-right { display:flex; flex-direction:column; gap:7px; }
-    .uc-pdf-title { background:#fff; border:2px solid #444; text-align:center; padding:12px 8px; font-size:1.15em; font-weight:bold; color:#8b1a1a; line-height:1.3; font-family:'Georgia',serif; }
-    .uc-pdf-stats { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
-    .uc-pdf-stat { background:#fff; border:2px solid #444; text-align:center; padding:8px 6px; }
-    .uc-pdf-stat-label { font-weight:bold; font-size:0.85em; color:#222; font-family:'Georgia',serif; }
-    .uc-pdf-stat-value { font-size:1.35em; font-weight:bold; color:#111; margin-top:3px; }
-    .uc-pdf-desc { grid-column:1/-1; background:#fff; border:2px solid #444; padding:10px 12px; font-size:0.85em; line-height:1.6; color:#111; }
-    .uc-pdf-desc strong { color:#8b1a1a; }
-    .uc-pdf-ability { background:#fff; border:2px solid #444; padding:10px 12px; font-size:0.85em; line-height:1.6; }
-    .uc-pdf-ability strong { color:#8b1a1a; }
     /* Fallback ancien style */
     .unit-card-token-placeholder { width:64px; height:64px; border-radius:50%; background:#1a0f04; border:2px solid #3a2408; display:flex; align-items:center; justify-content:center; font-size:24px; flex-shrink:0; }
     .initiative-row {
@@ -450,13 +430,6 @@
     </div>
   </div>
 
-  <!-- Fiche unité -->
-  <div class="overlay" id="overlay-unit-card" style="display:none" onclick="if(event.target===this)closeUnitCard()">
-    <div class="overlay-box" id="unit-card-box" style="position:relative">
-      <button onclick="closeUnitCard()" style="position:absolute;top:8px;right:10px;background:none;border:none;color:#7a5820;font-size:18px;cursor:pointer">✕</button>
-      <div id="unit-card-content"></div>
-    </div>
-  </div>
 
   <!-- Game Over overlay -->
   <div id="turn-popup">

@@ -325,7 +325,8 @@ export function mountBattleHud(bridge, view) {
     // three pairs: to hit / to avoid, damage / protection, morale dealt / morale kept (courage: stance and terrain only);
     // with the modifiers of the unit's own kind (melee or shots)
     const stats = u.isGeneral
-      ? [[{ label: 'FORCE', v: u.force, d: 0 }, { label: 'STRATÉGIE', v: u.strategy, d: 0 }], [{ label: 'PUISSANCE', v: u.power, d: 0 }, { label: 'ARMURE', v: u.armor, d: 0 }], [{ label: 'CHARISME', v: u.charisma, d: 0 }, { label: 'INTIMIDATION', v: u.intimidation, d: 0 }]]
+      // general: his own qualities (with their pictogram) on the first row, his troop's combat values below
+      ? [[{ label: 'FORCE', v: u.force, d: 0, ic: 'force' }, { label: 'STRATÉGIE', v: u.strategy, d: 0, ic: 'strategy' }, { label: 'CHARISME', v: u.charisma, d: 0, ic: 'charisma' }], [{ label: 'PUISSANCE', v: u.power, d: 0 }, { label: 'ARMURE', v: u.armor, d: 0 }, { label: 'INTIMIDATION', v: u.intimidation, d: 0 }]]
       : [[stat('ATTAQUE', u.attack, `attack_${kind}`), stat('DÉFENSE', u.defense, `defense_${kind}`)],
         [stat('PUISSANCE', u.power, `puissance_${kind}`), stat('ARMURE', u.armor, 'armure')],
         [stat('INTIMIDATION', u.intimidation ?? 0, `intimidation_${kind}`), stat('COURAGE', 0, `courage_${kind}`)]];
@@ -388,6 +389,11 @@ export function mountBattleHud(bridge, view) {
   ucTip.hidden = true;
   document.body.appendChild(ucTip);
   const rules_snap = (x) => Math.round(x * 100) / 100;
+  const STAT_ICONS = {
+    force: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 3.5L20.5 3.5 20.5 9.5 9 21 3 15z"/><path d="M6 12l6 6"/></svg>',
+    strategy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>',
+    charisma: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"><path d="M5 21V3"/><path d="M5 4h12l-3 4 3 4H5"/></svg>',
+  };
   function renderCard(st, deploying, sim) {
     const u = currentUnit(st, deploying);
     const tip = $('stance-tooltip');
@@ -516,9 +522,9 @@ export function mountBattleHud(bridge, view) {
       <div class="body">
         <div class="head"><span class="name">${stanceNow}<span class="nm">${esc((u.name || '').toUpperCase())}</span>${kindChip}</span>${meta.length ? `<span class="meta">${meta.join('')}</span>` : ''}</div>
         <div class="uc-gauges">${gauges.join('')}</div>
-        <div class="stats">${stats.map((grp) => `<div class="uc-grp">${grp.map((s) => `<div class="stat" data-tip="${esc(statTip(s))}"><span>${s.label}</span><b class="${s.d > 0 ? 'up' : s.d < 0 ? 'down' : ''}">${s.v ?? '—'}</b></div>`).join('')}</div>`).join('')}</div>
+        <div class="stats${u.isGeneral ? ' gen' : ''}">${stats.map((grp) => `<div class="uc-grp">${grp.map((s) => `<div class="stat" data-tip="${esc(statTip(s))}"><span>${s.ic ? `<i class="sic">${STAT_ICONS[s.ic]}</i>` : ''}${s.label}</span><b class="${s.d > 0 ? 'up' : s.d < 0 ? 'down' : ''}">${s.v ?? '—'}</b></div>`).join('')}</div>`).join('')}</div>
       </div>
-      <div class="tools">${u.isMine && u.march && u.march.route && u.march.route.length ? '<button data-card="unmarch" title="Annuler la marche sur plusieurs tours">STOP MARCHE</button>' : ''}<button data-card="sheet" title="Fiche complète de l'unité">FICHE</button></div>`;
+      <div class="tools">${u.isMine && u.march && u.march.route && u.march.route.length ? '<button data-card="unmarch" title="Annuler la marche sur plusieurs tours">STOP MARCHE</button>' : ''}</div>`;
     // rewritten only when it changes: the hovered value keeps its hover card
     if (cardHtml !== lastCardHtml) { lastCardHtml = cardHtml; el.card.innerHTML = cardHtml; }
   }
@@ -548,10 +554,6 @@ export function mountBattleHud(bridge, view) {
       const cu = bridge.selectedUnit;
       if (cu && bridge.cancelMarch) bridge.cancelMarch(cu.id);
       return;
-    }
-    if (e.target.closest('[data-card=sheet]')) {
-      const u = currentUnit(bridge.state, bridge.mode === 'deploy' && bridge.deployState);
-      if (u && window.showUnitCard) window.showUnitCard(u);
     }
   });
   el.card.addEventListener('mouseover', (e) => {

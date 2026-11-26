@@ -252,7 +252,6 @@ body.hud-d #rules-content h3 { color: var(--hud-red) !important; }
 body.hud-d .recap-table th { color: #000; border-color: #000; }
 body.hud-d .recap-table td { color: #222; border-color: #ccc; }
 body.hud-d .overlay-box button[onclick^="close"], body.hud-d .overlay-box button[onclick^="toggleRules"] { color: #000 !important; }
-body.hud-d #unit-card-box .overlay-box, body.hud-d #unit-card-box { box-shadow: 0 0 0 3px #fff, 0 0 0 6px #000; }
 body.hud-d #notification { background: #000; color: #fff; border: 3px solid #fff; box-shadow: 0 0 0 3px #000, 6px 6px 0 3px var(--hud-red); border-radius: 0; font: 900 14px var(--hud-body); top: 128px; }
 body.hud-d #notification.info { background: #fff; color: #000; border-color: #000; box-shadow: 4px 4px 0 #000; }
 body.hud-d #notification.success { background: #000; color: #fff; }
@@ -812,3 +811,9 @@ body.hud-d #toolbar .tuto-highlight { outline: 3px solid var(--hud-red); outline
 .uc-tip .ut-r.tot { border-top: 2px solid #000; margin-top: 2px; padding-top: 4px; font-weight: 900; }
 .hud-card .name .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .hud-card .name .uc-chip.kind { margin-left: auto; flex-shrink: 0; align-self: center; }
+/* general: two rows of three (his qualities with their pictogram, then combat values) */
+.hud-card .stats.gen { flex-direction: column; gap: 4px; }
+.hud-card .stats.gen .stat span { display: flex; align-items: center; justify-content: center; gap: 4px; }
+.hud-card .stats.gen .uc-grp:first-child .stat b { font-size: 20px; }
+.hud-card .stat .sic { display: inline-flex; width: 13px; height: 13px; font-style: normal; color: var(--hud-red); }
+.hud-card .stat .sic svg { width: 13px; height: 13px; }
