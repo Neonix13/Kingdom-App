@@ -572,7 +572,7 @@ export function createZoneRims(world) {
         for (const p of loop) if (!top || p[1] < top[1]) top = p;
         const pts = resampleLoop(loop, 0.08);
         if (pts.length < 3) continue;
-        innerBand(pts, z.keys, st.fill, z.dash ? 0.12 : 0.28, z.dash ? 0.4 : 0.62);
+        innerBand(pts, z.keys, st.fill, z.dash ? 0.06 : 0.13, z.dash ? 0.7 : 1.2);
         // soft outer glow, dark under-line, then the rim (inner side of the contour = toward the zone)
         strip(pts, 0.07 * k, 0, 0.03, mat(st.glow, z.dash ? 0.1 : 0.16, true), true);
         strip(pts, 0.036 * k, 0, 0.035, mat(0x000000, 0.4), true);

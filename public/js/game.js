@@ -1782,8 +1782,8 @@ function strokeZone(keys, center, color, dash = null) {
   // inner glow: wide strokes clipped to the inside of the zone, the colour fading from the rim inward (middle stays clear)
   ctx.save();
   ctx.clip(path, 'evenodd');
-  const band = HEX_SIZE * (dash ? 0.4 : 0.6);
-  for (let i = 6; i >= 1; i--) { ctx.strokeStyle = col((dash ? 0.025 : 0.055)); ctx.lineWidth = band * 2 * i / 6; ctx.stroke(path); }
+  const band = HEX_SIZE * (dash ? 0.7 : 1.2);
+  for (let i = 8; i >= 1; i--) { ctx.strokeStyle = col((dash ? 0.009 : 0.018)); ctx.lineWidth = band * 2 * i / 8; ctx.stroke(path); }
   ctx.restore();
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
   ctx.save();
