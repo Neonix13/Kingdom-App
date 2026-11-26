@@ -1309,15 +1309,21 @@ function beginOrient2d(e) {
   const h = holdOrient2d;
   holdOrient2d = null;
   clearTimeout(h.timer);
-  if (KBOrient.start(window.gameBridge, h.u, h.anchor)) KBOrient.move(getHexUnderMouse(e), e.clientX, e.clientY);
+  // held on a destination: send the unit there first, then the arrow sets its facing on arrival
+  if (h.move) handleHexClick(h.hex, { clientX: h.x, clientY: h.y });
+  if (KBOrient.start(window.gameBridge, h.u, h.anchor, !!h.move)) KBOrient.move(getHexUnderMouse(e), e.clientX, e.clientY);
 }
 canvas.addEventListener('mousedown', (e) => {
   if (e.button === 0 && selectedUnit && window.KBOrient && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && !pingMode) {
     const hex = getHexUnderMouse(e);
-    const anchor = window.gameBridge.orientAnchor(selectedUnit, hex);
+    let anchor = window.gameBridge.orientAnchor(selectedUnit, hex);
+    // or a destination this turn (or of a march): the unit goes there and faces the direction dragged
+    let move = false;
+    const bk = hex ? `${hex.q},${hex.r}` : null;
+    if (!anchor && hex && (movableTiles.has(bk) || movableTiles.has(bk + '^') || (window.gameBridge.marchPlan && window.gameBridge.marchPlan(selectedUnit, hex.q, hex.r)))) { anchor = { q: hex.q, r: hex.r }; move = true; }
     if (anchor && window.gameBridge.canOrient(selectedUnit)) {
       const ev = { clientX: e.clientX, clientY: e.clientY, x: e.clientX, y: e.clientY };
-      holdOrient2d = { u: selectedUnit, anchor, hex, x: e.clientX, y: e.clientY, last: ev, timer: setTimeout(() => { if (holdOrient2d) beginOrient2d(holdOrient2d.last); }, 260) };
+      holdOrient2d = { u: selectedUnit, anchor, hex, move, x: e.clientX, y: e.clientY, last: ev, timer: setTimeout(() => { if (holdOrient2d) beginOrient2d(holdOrient2d.last); }, 260) };
       return;
     }
   }

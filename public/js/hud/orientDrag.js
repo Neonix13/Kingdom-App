@@ -22,11 +22,13 @@
   }
 
   // bridge: { hexScreen(q, r), facingToward(unit, hex), canOrient(unit), setUnitFacing(unit, f) }
-  function start(bridge, unit, anchor = null) {
+  // moving: the unit has just been sent to anchor (left button held on a destination); the facing waits for the move
+  // order to end there before it is given
+  function start(bridge, unit, anchor = null, moving = false) {
     if (!unit || !bridge.canOrient(unit)) return false;
     ensure();
     const at = anchor || { q: unit.q, r: unit.r };
-    drag = { bridge, unit, at, arrival: at.q !== unit.q || at.r !== unit.r, facing: null };
+    drag = { bridge, unit, at, arrival: at.q !== unit.q || at.r !== unit.r, facing: null, moving };
     return true;
   }
   function move(hex, clientX, clientY) {
@@ -59,11 +61,19 @@
   }
   function end(apply = true) {
     if (!drag) return false;
-    const { bridge, unit, facing } = drag;
+    const { bridge, unit, facing, moving, at } = drag;
     drag = null;
     if (svg) svg.style.display = 'none';
     if (label) label.style.display = 'none';
-    if (apply && facing != null) bridge.setUnitFacing(unit, facing);
+    if (!apply || facing == null) return true;
+    if (!moving) { bridge.setUnitFacing(unit, facing); return true; }
+    let tries = 0;
+    const tryApply = () => {
+      const fresh = bridge.selectedUnit && bridge.selectedUnit.id === unit.id ? bridge.selectedUnit : unit;
+      if (bridge.orientAnchor && bridge.orientAnchor(fresh, at)) bridge.setUnitFacing(fresh, facing);
+      else if (++tries < 40) setTimeout(tryApply, 50);
+    };
+    tryApply();
     return true;
   }
   self.KBOrient = { start, move, end, active: () => !!drag };

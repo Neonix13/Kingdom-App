@@ -217,7 +217,9 @@ export async function mountGameView(bridge, { container }) {
     const h = holdOrient;
     holdOrient = null;
     clearTimeout(h.timer);
-    if (!KBOrient.start(bridge, h.u, h.anchor)) { world.controls.enabled = true; return; }
+    // held on a destination: send the unit there first, then the arrow sets its facing on arrival
+    if (h.move) bridge.click(h.hex, { clientX: h.x, clientY: h.y });
+    if (!KBOrient.start(bridge, h.u, h.anchor, !!h.move)) { world.controls.enabled = true; return; }
     orienting = true;
     KBOrient.move(world.pickHex(e.clientX, e.clientY), e.clientX, e.clientY);
   };
@@ -225,11 +227,14 @@ export async function mountGameView(bridge, { container }) {
     if (e.button !== 0 || e.target !== canvas || !window.KBOrient || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
     const u = bridge.selectedUnit;
     const hex = u && world.pickHex(e.clientX, e.clientY);
-    const anchor = hex && bridge.orientAnchor ? bridge.orientAnchor(u, hex) : null;
+    let anchor = hex && bridge.orientAnchor ? bridge.orientAnchor(u, hex) : null;
+    // or a destination this turn (or of a march): the unit goes there and faces the direction dragged
+    let move = false;
+    if (!anchor && hex && bridge.movableTiles && (bridge.movableTiles.has(hexKey(hex.q, hex.r)) || bridge.movableTiles.has(hexKey(hex.q, hex.r) + '^') || (bridge.marchPlan && bridge.marchPlan(u, hex.q, hex.r)))) { anchor = { q: hex.q, r: hex.r }; move = true; }
     if (!anchor || !(bridge.canOrient && bridge.canOrient(u))) return;
     world.controls.enabled = false;
     const pos = { clientX: e.clientX, clientY: e.clientY };
-    holdOrient = { u, anchor, x: e.clientX, y: e.clientY, timer: setTimeout(() => { if (holdOrient) beginOrient(holdOrient.last || pos); }, 260) };
+    holdOrient = { u, anchor, hex, move, x: e.clientX, y: e.clientY, timer: setTimeout(() => { if (holdOrient) beginOrient(holdOrient.last || pos); }, 260) };
   }, true);
   window.addEventListener('pointermove', (e) => {
     if (holdOrient) { holdOrient.last = { clientX: e.clientX, clientY: e.clientY }; if (Math.hypot(e.clientX - holdOrient.x, e.clientY - holdOrient.y) > 8) beginOrient(e); return; }
