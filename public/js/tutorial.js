@@ -63,12 +63,12 @@
     },
     {
       id: 'card', title: 'La fiche de l\'unité', next: true,
-      text: () => 'La fiche (en bas à gauche) : vitalité, moral, attaque, défense, armure et <b>vitesse restante</b> de l\'unité. Double-cliquez sur une unité pour sa fiche complète.',
+      text: () => 'La fiche (en bas à gauche) : vitalité, moral, attaque, défense, armure et <b>vitesse restante</b> de l\'unité ; survolez une valeur pour son détail.',
       highlight: ['#selected-unit-detail'],
     },
     {
       id: 'move', title: 'Se déplacer',
-      text: () => `Les <b>cases vertes</b> montrent où l'unité peut aller ce tour ; survolez-en une pour voir le chemin. Chaque pas coûte le terrain quitté (route ⅓, plaine 1, forêt 2, +1 par niveau gravi).<br>Avancez vers le drapeau ${at(flag())} en cliquant une case verte.`,
+      text: () => `Survolez une case pour voir le chemin de l'unité. Chaque pas coûte le terrain où l'on entre (route ½, plaine 1, forêt 1,5, +1 par niveau gravi).<br>Avancez vers le drapeau ${at(flag())} en cliquant une case.`,
       hexes: () => [flag()],
       done: (f) => f.moved,
     },
@@ -333,8 +333,6 @@
     const b = bridge();
     const s = state();
     if (b.selectedUnit && myIds().has(b.selectedUnit.id)) setFlag('selected');
-    const card = document.getElementById('overlay-unit-card');
-    if (card && card.style.display !== 'none' && STEPS[progress.step].id === 'card') { progress.step++; save(); }
     if (!s) return;
     if (mine().some(u => !u.isGeneral && progress.stances[u.id] && u.stance !== progress.stances[u.id])) setFlag('stance');
     const f = flag();
