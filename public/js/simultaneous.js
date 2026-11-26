@@ -502,8 +502,9 @@
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     // the selected unit's order is drawn last (on top), the others thinner and fainter
-    const all = plannedOrders();
     const isSel = (o) => !!(selectedUnit && String(selectedUnit.id) === String(o.unitId));
+    // tracing a new path for the selected unit: its current order is hidden (one trail at a time)
+    const all = plannedOrders().filter((o) => !(isSel(o) && window.kbTraceActive && window.kbTraceActive()));
     const ordered = [...all.filter(o => !isSel(o)), ...all.filter(isSel)];
     for (const order of ordered) {
       const u = myUnit(order.unitId);

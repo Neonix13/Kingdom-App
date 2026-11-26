@@ -448,7 +448,10 @@ export async function mountGameView(bridge, { container }) {
       facingEnds.set(String(o.unitId), extra[extra.length - 1]);
       return { ...o, path: [...o.path, ...extra] };
     });
-    if (bridge.simultaneous && !bridge.playback) ordersLayer.show(withFacing(bridge.plannedOrders || []), bridge.getPlayerColor(bridge.myId), (id) => { const u = shownUnits.find((x) => x.id === id); return u ? anchorOf(u).clone().setY(anchorOf(u).y - 0.3) : null; }, sel ? sel.id : null);
+    // tracing a new path for the selected unit: its current order is hidden (one trail at a time)
+    const tracingSel = !!(sel && window.kbTraceActive && window.kbTraceActive());
+    const shownOrders = (bridge.plannedOrders || []).filter((o) => !(tracingSel && String(o.unitId) === String(sel.id)));
+    if (bridge.simultaneous && !bridge.playback) ordersLayer.show(withFacing(shownOrders), bridge.getPlayerColor(bridge.myId), (id) => { const u = shownUnits.find((x) => x.id === id); return u ? anchorOf(u).clone().setY(anchorOf(u).y - 0.3) : null; }, sel ? sel.id : null);
     else ordersLayer.clear();
     const marches = window.marchPaths ? window.marchPaths().map(({ u, path }) => ({ unitId: u.id, type: 'move', path })) : [];
     // the turns after this one are drawn grey (only this turn's part takes the player colour)
@@ -456,7 +459,7 @@ export async function mountGameView(bridge, { container }) {
     const marks = [];
     const sm = sel && !bridge.playback && window.selectedMarch ? window.selectedMarch() : null;
     if (sm) sm.ends.forEach((idx, n) => { if (idx > 0 && sm.path[idx]) marks.push({ kind: 'turn', q: sm.path[idx][0], r: sm.path[idx][1], n: n + 1 }); });
-    const so = sel && bridge.simultaneous && !bridge.playback ? (bridge.plannedOrders || []).find((o) => String(o.unitId) === String(sel.id)) : null;
+    const so = sel && bridge.simultaneous && !bridge.playback ? shownOrders.find((o) => String(o.unitId) === String(sel.id)) : null;
     const sp = so && window.KBSim && KBSim.stepInfo ? KBSim.stepInfo(sel) : null;
     if (sp) marks.push({ kind: 'step', q: sp.hex[0], r: sp.hex[1], ring: bridge.getPlayerColor(bridge.myId) });
     // the end of this turn's move: a white disc numbered 1 (the next turns of a march carry 2, 3…)
@@ -464,14 +467,14 @@ export async function mountGameView(bridge, { container }) {
     // a stance change in a later turn of the march: the seal in black and white
     if (so && so.stanceSteps) for (const s of so.stanceSteps) { const later = s.at > (so.path ? so.path.length - 1 : 0); marks.push({ kind: 'stance', q: s.hex[0], r: s.hex[1], stance: s.stance, ring: later ? '#9a9a9a' : bridge.getPlayerColor(bridge.myId), grey: later }); }
     // a stance change on the spot (taken at the start of the turn): the seal on the unit itself, for every unit of mine
-    if (bridge.simultaneous && !bridge.playback) for (const o of bridge.plannedOrders || []) {
+    if (bridge.simultaneous && !bridge.playback) for (const o of shownOrders) {
       if (!o.stance) continue;
       const u = shownUnits.find((x) => String(x.id) === String(o.unitId));
       if (u && u.q != null && o.stance !== u.stance) marks.push({ kind: 'stance', q: u.q, r: u.r, stance: o.stance, ring: bridge.getPlayerColor(bridge.myId), onUnit: true });
     }
     pathMarks.show(marks);
     const arrows = [];
-    if (bridge.simultaneous && !bridge.playback) for (const o of bridge.plannedOrders || []) {
+    if (bridge.simultaneous && !bridge.playback) for (const o of shownOrders) {
       const path = o.path && o.path.length > 1 ? o.path : null;
       const end = path ? path[path.length - 1] : null;
       // an attack or a charge ends facing its target: no facing arrow

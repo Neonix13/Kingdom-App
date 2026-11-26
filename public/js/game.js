@@ -2006,6 +2006,7 @@ function marchPaths() {
   const out = [];
   for (const u of gameState?.units || []) {
     if (!u.isMine || u.q == null) continue;
+    if (traceActive() && selectedUnit.id === u.id) continue; // tracing a new path: the old one is hidden
     const o = planned.get(String(u.id));
     if (o) {
       if (o.marchRest) { const from = o.path && o.path.length ? o.path[o.path.length - 1] : [u.q, u.r]; out.push({ u, path: [from, ...o.marchRest], planned: true }); }
