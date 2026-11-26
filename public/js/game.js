@@ -1783,7 +1783,7 @@ function strokeZone(keys, center, color, dash = null) {
   ctx.save();
   ctx.clip(path, 'evenodd');
   const band = HEX_SIZE * (dash ? 0.7 : 1.2);
-  for (let i = 8; i >= 1; i--) { ctx.strokeStyle = col((dash ? 0.009 : 0.018)); ctx.lineWidth = band * 2 * i / 8; ctx.stroke(path); }
+  for (let i = 8; i >= 1; i--) { ctx.strokeStyle = col((dash ? 0.005 : 0.011)); ctx.lineWidth = band * 2 * i / 8; ctx.stroke(path); }
   ctx.restore();
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
   ctx.save();

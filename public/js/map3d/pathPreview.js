@@ -466,28 +466,51 @@ export function createZoneRims(world) {
     tir: { color: 0xffc94a, glow: 0xffb020, fill: 0xffb020, label: '◎ PORTÉE DE TIR', css: '#ffc94a' },
     charisme: { color: 0x7cc8ff, glow: 0x3d9bff, fill: 0x3d9bff, label: '⚑ CHARISME', css: '#7cc8ff' },
   };
-  // inner glow: a band along the inside of the rim, the zone's colour fading from the rim to nothing (~0.6 hex inward),
-  // so the zone reads by its tinted edge while its middle stays clear
-  function innerBand(pts, keys, color, alpha, width) {
-    const n = pts.length;
-    const nrm = (i) => { const a = pts[(i - 1 + n) % n], b = pts[(i + 1) % n]; let tx = b.x - a.x, tz = b.z - a.z; const l = Math.hypot(tx, tz) || 1; return [-tz / l, tx / l]; };
-    // which side of the loop is inside the zone
-    let inside = 0;
-    for (let i = 0; i < n; i += Math.max(1, Math.floor(n / 12))) {
-      const [nx, nz] = nrm(i), x = pts[i].x + nx * 0.35, z = pts[i].z + nz * 0.35;
-      const h = world.worldToHex ? world.worldToHex(x, z) : null;
-      if (h) inside += keys.has(`${h.q},${h.r}`) ? 1 : -1;
-    }
-    const sgn = inside >= 0 ? 1 : -1;
+  // inner glow: each hex of the zone is tinted per vertex by its distance to the rim (the zone's colour at the rim,
+  // fading to nothing about `width` inward), outside the smoothed contour nothing; heights clamped to the hex's own level
+  // so that nothing stretches down a cliff
+  function zoneGlow(keys, loops, color, alpha, width) {
+    const segs = [];
+    for (const pts of loops) for (let i = 0; i < pts.length; i++) { const p0 = pts[i], p1 = pts[(i + 1) % pts.length]; segs.push([p0.x, p0.z, p1.x, p1.z]); }
+    const dist = (x, z) => {
+      let best = Infinity;
+      for (const [ax, az, bx, bz] of segs) {
+        const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1;
+        const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2));
+        const ex = ax + dx * t - x, ez = az + dz * t - z, d = ex * ex + ez * ez;
+        if (d < best) best = d;
+      }
+      return Math.sqrt(best);
+    };
+    const inside = (x, z) => {
+      let c = false;
+      for (const [ax, az, bx, bz] of segs) if ((az > z) !== (bz > z) && x < ax + (bx - ax) * (z - az) / (bz - az)) c = !c;
+      return c;
+    };
     const col = new THREE.Color(color);
     const pos = [], cols = [], idx = [];
-    for (let i = 0; i < n; i++) {
-      const [nx, nz] = nrm(i), p = pts[i];
-      const x2 = p.x + nx * width * sgn, z2 = p.z + nz * width * sgn;
-      pos.push(p.x, ground(p.x, p.z) + 0.032, p.z, x2, ground(x2, z2) + 0.032, z2);
-      cols.push(col.r, col.g, col.b, alpha, col.r, col.g, col.b, 0);
-      const k = i * 2, k2 = ((i + 1) % n) * 2;
-      idx.push(k, k + 1, k2, k + 1, k2 + 1, k2);
+    const vert = (x, z, h0) => {
+      const a = inside(x, z) ? alpha * Math.pow(Math.max(0, 1 - dist(x, z) / width), 1.6) : 0;
+      const y = Math.min(h0 + 0.55, Math.max(h0 - 0.55, ground(x, z)));
+      pos.push(x, y + 0.032, z);
+      cols.push(col.r, col.g, col.b, a);
+    };
+    for (const key of keys) {
+      const [q, r] = key.split(',').map(Number);
+      const c = hexToWorld(q, r);
+      const h0 = ground(c.x, c.z);
+      const base = pos.length / 3;
+      vert(c.x, c.z, h0);
+      // two rings (half-way and rim, 12 points each) for a smooth fade inside the hex
+      for (const rad of [0.5, 1]) for (let i = 0; i < 12; i++) {
+        const a0 = Math.PI / 3 * Math.floor(i / 2), a1 = a0 + Math.PI / 3;
+        const x0 = c.x + Math.cos(a0) * rad, z0 = c.z + Math.sin(a0) * rad, x1 = c.x + Math.cos(a1) * rad, z1 = c.z + Math.sin(a1) * rad;
+        vert(i % 2 ? (x0 + x1) / 2 : x0, i % 2 ? (z0 + z1) / 2 : z0, h0);
+      }
+      for (let i = 0; i < 12; i++) {
+        const j = (i + 1) % 12, m0 = base + 1 + i, m1 = base + 1 + j, o0 = base + 13 + i, o1 = base + 13 + j;
+        idx.push(base, m0, m1, m0, o0, o1, m0, o1, m1);
+      }
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -541,7 +564,9 @@ export function createZoneRims(world) {
       const nx = -tz, nz = tx, p = pts[i];
       const ox = p.x + nx * shift, oz = p.z + nz * shift;
       const x1 = ox + nx * w, z1 = oz + nz * w, x2 = ox - nx * w, z2 = oz - nz * w;
-      pos.push(x1, ground(x1, z1) + lift, z1, x2, ground(x2, z2) + lift, z2);
+      // one height for both sides, the highest around: the line stays on top of a cliff instead of spiking down it
+      const y = Math.max(ground(ox, oz), ground(x1, z1), ground(x2, z2), ground(ox + nx * 0.12, oz + nz * 0.12), ground(ox - nx * 0.12, oz - nz * 0.12)) + lift;
+      pos.push(x1, y, z1, x2, y, z2);
       if (i) { const k = i * 2; idx.push(k - 2, k - 1, k, k - 1, k + 1, k); }
     }
     if (closed && n > 2) { const k = (n - 1) * 2; idx.push(k, k + 1, 0, k + 1, 1, 0); }
@@ -568,11 +593,12 @@ export function createZoneRims(world) {
       const st = STYLE[z.kind] || STYLE.tir;
       const k = z.dash ? 0.65 : 1;
       let top = null;
-      for (const loop of R.zoneLoops(z.keys, z.center, edgeOf, 3)) {
+      const loops = R.zoneLoops(z.keys, z.center, edgeOf, 3);
+      zoneGlow(z.keys, loops.map((l) => l.map(([x, zz]) => ({ x, z: zz }))), st.fill, z.dash ? 0.035 : 0.08, z.dash ? 0.8 : 1.3);
+      for (const loop of loops) {
         for (const p of loop) if (!top || p[1] < top[1]) top = p;
         const pts = resampleLoop(loop, 0.08);
         if (pts.length < 3) continue;
-        innerBand(pts, z.keys, st.fill, z.dash ? 0.06 : 0.13, z.dash ? 0.7 : 1.2);
         // soft outer glow, dark under-line, then the rim (inner side of the contour = toward the zone)
         strip(pts, 0.07 * k, 0, 0.03, mat(st.glow, z.dash ? 0.1 : 0.16, true), true);
         strip(pts, 0.036 * k, 0, 0.035, mat(0x000000, 0.4), true);
