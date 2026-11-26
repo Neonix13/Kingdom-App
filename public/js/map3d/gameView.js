@@ -416,7 +416,26 @@ export async function mountGameView(bridge, { container }) {
       if (inside(sel) && !open.includes(sel)) open.push(sel);
       world.setBuildingCutaways(open.map((u) => ({ q: u.q, r: u.r })));
     }
-    if (bridge.simultaneous && !bridge.playback) ordersLayer.show(bridge.plannedOrders || [], bridge.getPlayerColor(bridge.myId), (id) => { const u = shownUnits.find((x) => x.id === id); return u ? anchorOf(u).clone().setY(anchorOf(u).y - 0.3) : null; }, sel ? sel.id : null);
+    // final facing of an order: the chosen one, else the direction of the last step ([dq, dr] toward the neighbour faced)
+    const FDIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
+    const finalDir = (o) => {
+      const path = o.path && o.path.length > 1 ? o.path : null;
+      if (o.facing != null) return FDIRS[((o.facing % 6) + 6) % 6];
+      if (!path) return null;
+      const pr = path[path.length - 2], end = path[path.length - 1];
+      const f = window.hexFacingClient ? window.hexFacingClient(pr[0], pr[1], end[0], end[1]) : null;
+      return f != null ? FDIRS[f] : null;
+    };
+    // the trail goes on past the arrival hex's centre toward the facing (one more point, 0.4 of the way to the neighbour):
+    // its smoothing rounds the turn with a wide radius, starting before the centre; the arrowhead caps that end
+    const FACING_EXT = 0.4;
+    const withFacing = (list) => list.map((o) => {
+      const d = o.type === 'move' && o.path && o.path.length > 1 ? finalDir(o) : null;
+      if (!d) return o;
+      const e = o.path[o.path.length - 1];
+      return { ...o, path: [...o.path, [e[0] + d[0] * FACING_EXT, e[1] + d[1] * FACING_EXT]] };
+    });
+    if (bridge.simultaneous && !bridge.playback) ordersLayer.show(withFacing(bridge.plannedOrders || []), bridge.getPlayerColor(bridge.myId), (id) => { const u = shownUnits.find((x) => x.id === id); return u ? anchorOf(u).clone().setY(anchorOf(u).y - 0.3) : null; }, sel ? sel.id : null);
     else ordersLayer.clear();
     const marches = window.marchPaths ? window.marchPaths().map(({ u, path }) => ({ unitId: u.id, type: 'move', path })) : [];
     // the turns after this one are drawn grey (only this turn's part takes the player colour)
@@ -438,19 +457,18 @@ export async function mountGameView(bridge, { container }) {
       if (u && u.q != null && o.stance !== u.stance) marks.push({ kind: 'stance', q: u.q, r: u.r, stance: o.stance, ring: bridge.getPlayerColor(bridge.myId), onUnit: true });
     }
     pathMarks.show(marks);
-    const FDIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
     const arrows = [];
     if (bridge.simultaneous && !bridge.playback) for (const o of bridge.plannedOrders || []) {
       const path = o.path && o.path.length > 1 ? o.path : null;
       const end = path ? path[path.length - 1] : null;
-      let d = o.facing != null ? FDIRS[((o.facing % 6) + 6) % 6] : null;
-      if (!d && path) { const pr = path[path.length - 2]; const f = window.hexFacingClient ? window.hexFacingClient(pr[0], pr[1], end[0], end[1]) : null; d = f != null ? FDIRS[f] : null; }
+      // an attack or a charge ends facing its target: no facing arrow
+      const d = o.type === 'attack' || o.type === 'charge' ? null : finalDir(o);
       if (!d) continue;
       const u = shownUnits.find((x) => String(x.id) === String(o.unitId));
       const at = end || (u ? [u.q, u.r] : null);
       if (!at) continue;
       const isSel = !!(sel && String(sel.id) === String(o.unitId));
-      arrows.push({ q: at[0], r: at[1], dq: d[0], dr: d[1], from: path ? path[path.length - 2] : null, color: bridge.getPlayerColor(bridge.myId), width: isSel ? 0.075 : 0.034, dim: !isSel });
+      arrows.push({ q: at[0], r: at[1], dq: d[0], dr: d[1], ext: path ? FACING_EXT : 0, color: bridge.getPlayerColor(bridge.myId), width: isSel ? 0.075 : 0.034, dim: !isSel });
     }
     facingMarks.show(arrows);
     // trees step aside on hexes holding a unit and on every forest hex in sight, so that a visible forest stays readable
