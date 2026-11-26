@@ -17,6 +17,24 @@ function smooth2(pts, iters = 3) {
   return out;
 }
 // evenly spaced samples along the polyline (so the ribbon follows the relief between hex centres)
+// a trail that turns back on itself (U-turn) would smooth into a spike: there it loops round through two points to the
+// side, so the smoothing draws a rounded half-turn
+function roundUTurns(pts) {
+  const out = [pts[0]];
+  for (let i = 1; i < pts.length - 1; i++) {
+    const a = pts[i - 1], p = pts[i], b = pts[i + 1];
+    let ix = p.x - a.x, iz = p.z - a.z, ox = b.x - p.x, oz = b.z - p.z;
+    const li = Math.hypot(ix, iz) || 1, lo = Math.hypot(ox, oz) || 1;
+    ix /= li; iz /= li; ox /= lo; oz /= lo;
+    if (ix * ox + iz * oz < -0.85) {
+      const px = -iz, pz = ix, R = 0.42;
+      out.push({ x: p.x + ix * R * 0.6 + px * R * 0.5, z: p.z + iz * R * 0.6 + pz * R * 0.5 });
+      out.push({ x: p.x + px * R * 1.4, z: p.z + pz * R * 1.4 });
+    } else out.push(p);
+  }
+  if (pts.length > 1) out.push(pts[pts.length - 1]);
+  return out;
+}
 function resample(pts, step = 0.1) {
   const out = [pts[0]];
   for (let i = 1; i < pts.length; i++) {
@@ -67,7 +85,7 @@ const trailMat = (color, opacity, additive = false) => new THREE.MeshBasicMateri
 function addTrail(scene, hexToWorld, ground, hexes, opts) {
   const out = [];
   if (!hexes || hexes.length < 2) return out;
-  const pts = resample(smooth2(hexes.map(([q, r]) => { const c = hexToWorld(q, r); return { x: c.x, z: c.z }; })));
+  const pts = resample(smooth2(roundUTurns(hexes.map(([q, r]) => { const c = hexToWorld(q, r); return { x: c.x, z: c.z }; }))));
   const w = opts.width || 0.07;
   const add = (m, order) => { m.renderOrder = order; scene.add(m); out.push(m); };
   if (opts.glow) add(trailMesh(pts, w * 2.6, ground, 0.035, trailMat(opts.glow, 0.28, true)), 6);
@@ -656,11 +674,12 @@ export function createFacingMarks(world) {
       const dir = { x: (n.x - c.x) / len, z: (n.z - c.z) / len };
       const w = mk.width || 0.05;
       const opacity = mk.dim ? 0.85 : 0.96;
-      // the arrowhead caps the trail, which already runs past the centre toward the facing (mk.ext: fraction of the way
-      // to the neighbour, see gameView); without a move it stands from the centre of the unit's hex
+      // the arrowhead caps the trail, which already runs past the centre toward the facing (see gameView); without a move
+      // it stands from the centre of the unit's hex
       const hw = w * 2.3 + 0.03, headL = hw * 1.5;
-      const tipD = mk.ext ? mk.ext * len + 0.12 : 0.8;
-      const tip = { x: c.x + dir.x * tipD, z: c.z + dir.z * tipD };
+      // mk.tail: axial point where the extended trail ends; the tip stands just past it
+      const t0 = mk.tail ? hexToWorld(mk.tail[0], mk.tail[1]) : null;
+      const tip = t0 ? { x: t0.x + dir.x * 0.12, z: t0.z + dir.z * 0.12 } : { x: c.x + dir.x * 0.8, z: c.z + dir.z * 0.8 };
       const o = 0.035;
       head({ x: tip.x + dir.x * o * 1.5, z: tip.z + dir.z * o * 1.5 }, dir, headL + o * 2.2, hw + o, groundHeight, 0x000000, 0.45, 7, 0.055);
       head(tip, dir, headL, hw, groundHeight, mk.color || 0xffffff, opacity, 8);

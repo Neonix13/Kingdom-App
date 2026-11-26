@@ -429,11 +429,24 @@ export async function mountGameView(bridge, { container }) {
     // the trail goes on past the arrival hex's centre toward the facing (one more point, 0.4 of the way to the neighbour):
     // its smoothing rounds the turn with a wide radius, starting before the centre; the arrowhead caps that end
     const FACING_EXT = 0.4;
+    // a U-turn (facing back the way it came) loops round through a point to the side, and its arrow ends beside the
+    // incoming trail instead of on it. facingEnds: unitId -> axial point where the extended trail ends
+    const facingEnds = new Map();
     const withFacing = (list) => list.map((o) => {
       const d = o.type === 'move' && o.path && o.path.length > 1 ? finalDir(o) : null;
       if (!d) return o;
-      const e = o.path[o.path.length - 1];
-      return { ...o, path: [...o.path, [e[0] + d[0] * FACING_EXT, e[1] + d[1] * FACING_EXT]] };
+      const e = o.path[o.path.length - 1], pr = o.path[o.path.length - 2];
+      const inD = [e[0] - pr[0], e[1] - pr[1]];
+      const extra = [];
+      if (inD[0] === -d[0] && inD[1] === -d[1]) {
+        const i = FDIRS.findIndex(([a, b]) => a === inD[0] && b === inD[1]);
+        const s1 = FDIRS[(i + 1) % 6], s2 = FDIRS[(i + 2) % 6];
+        const side = [(s1[0] + s2[0]) / 2, (s1[1] + s2[1]) / 2];
+        extra.push([e[0] + inD[0] * 0.25 + side[0] * 0.45, e[1] + inD[1] * 0.25 + side[1] * 0.45]);
+        extra.push([e[0] + side[0] * 0.38 + d[0] * FACING_EXT, e[1] + side[1] * 0.38 + d[1] * FACING_EXT]);
+      } else extra.push([e[0] + d[0] * FACING_EXT, e[1] + d[1] * FACING_EXT]);
+      facingEnds.set(String(o.unitId), extra[extra.length - 1]);
+      return { ...o, path: [...o.path, ...extra] };
     });
     if (bridge.simultaneous && !bridge.playback) ordersLayer.show(withFacing(bridge.plannedOrders || []), bridge.getPlayerColor(bridge.myId), (id) => { const u = shownUnits.find((x) => x.id === id); return u ? anchorOf(u).clone().setY(anchorOf(u).y - 0.3) : null; }, sel ? sel.id : null);
     else ordersLayer.clear();
@@ -468,7 +481,7 @@ export async function mountGameView(bridge, { container }) {
       const at = end || (u ? [u.q, u.r] : null);
       if (!at) continue;
       const isSel = !!(sel && String(sel.id) === String(o.unitId));
-      arrows.push({ q: at[0], r: at[1], dq: d[0], dr: d[1], ext: path ? FACING_EXT : 0, color: bridge.getPlayerColor(bridge.myId), width: isSel ? 0.075 : 0.034, dim: !isSel });
+      arrows.push({ q: at[0], r: at[1], dq: d[0], dr: d[1], tail: facingEnds.get(String(o.unitId)) || null, color: bridge.getPlayerColor(bridge.myId), width: isSel ? 0.075 : 0.034, dim: !isSel });
     }
     facingMarks.show(arrows);
     // trees step aside on hexes holding a unit and on every forest hex in sight, so that a visible forest stays readable
