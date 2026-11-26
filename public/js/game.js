@@ -2027,6 +2027,7 @@ function marchEnds(u, path) {
   }
   return marchTurns(u, path, costs, 0, false).slice(1);
 }
+window.marchEnds = marchEnds;
 // For the 3D view: the selected unit's march, { path, ends: [0, ...turn ends], turns } or null
 window.selectedMarch = () => {
   const m = selectedUnit && marchPaths().find((x) => x.u.id === selectedUnit.id);

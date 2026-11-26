@@ -432,10 +432,9 @@ export async function mountGameView(bridge, { container }) {
     // a U-turn (facing back the way it came) loops round through a point to the side, and its arrow ends beside the
     // incoming trail instead of on it. facingEnds: unitId -> axial point where the extended trail ends
     const facingEnds = new Map();
-    const withFacing = (list) => list.map((o) => {
-      const d = o.type === 'move' && o.path && o.path.length > 1 ? finalDir(o) : null;
-      if (!d) return o;
-      const e = o.path[o.path.length - 1], pr = o.path[o.path.length - 2];
+    // path extended past its last hex toward the facing d: { path, tail (axial point where it ends) }
+    const extend = (path, d) => {
+      const e = path[path.length - 1], pr = path[path.length - 2];
       const inD = [e[0] - pr[0], e[1] - pr[1]];
       const extra = [];
       if (inD[0] === -d[0] && inD[1] === -d[1]) {
@@ -445,15 +444,71 @@ export async function mountGameView(bridge, { container }) {
         extra.push([e[0] + inD[0] * 0.25 + side[0] * 0.45, e[1] + inD[1] * 0.25 + side[1] * 0.45]);
         extra.push([e[0] + side[0] * 0.38 + d[0] * FACING_EXT, e[1] + side[1] * 0.38 + d[1] * FACING_EXT]);
       } else extra.push([e[0] + d[0] * FACING_EXT, e[1] + d[1] * FACING_EXT]);
-      facingEnds.set(String(o.unitId), extra[extra.length - 1]);
-      return { ...o, path: [...o.path, ...extra] };
+      return { path: [...path, ...extra], tail: extra[extra.length - 1] };
+    };
+    const lastStepDir = (path) => {
+      const pr = path[path.length - 2], e = path[path.length - 1];
+      const f = window.hexFacingClient ? window.hexFacingClient(pr[0], pr[1], e[0], e[1]) : null;
+      return f != null ? FDIRS[f] : null;
+    };
+    // A march is split at the stops (ends of turns) where the unit will set off in another direction than the one it
+    // faces: each piece ends on its own arrow (the trail bends past the stop toward the facing), the next piece starts
+    // again from the stop; where it goes on straight the trail stays one. marchArrows: those arrows; forkSegs: the grey
+    // pieces after the first one (drawn with the standing marches)
+    const marchArrows = [], forkSegs = [];
+    const sameDir = (x, y) => !!(x && y && x[0] === y[0] && x[1] === y[1]);
+    const marchPieces = (unitId, full, base, firstFacing) => {
+      const u = shownUnits.find((x) => String(x.id) === String(unitId));
+      const stops = [];
+      if (base > 0 && base < full.length - 1) stops.push({ i: base, facing: firstFacing || lastStepDir(full.slice(0, base + 1)), now: true });
+      const rest = full.slice(base);
+      const ends = window.marchEnds && u && rest.length > 1 ? window.marchEnds(u, rest) : [];
+      for (const e of ends) { const i = base + e; if (i > base && i < full.length - 1) stops.push({ i, facing: lastStepDir(full.slice(0, i + 1)) }); }
+      stops.sort((x, y) => x.i - y.i);
+      const pieces = [];
+      let start = 0;
+      for (const st of stops) {
+        if (!st.facing || sameDir(st.facing, lastStepDir([full[st.i], full[st.i + 1]]))) continue;
+        pieces.push({ a: start, b: st.i, facing: st.facing, now: !!st.now });
+        start = st.i;
+      }
+      pieces.push({ a: start, b: full.length - 1, facing: lastStepDir(full), now: false });
+      // a piece leaving this turn's (coloured) piece starts in the player's colour and fades to grey
+      for (let k = 1; k < pieces.length; k++) pieces[k].afterNow = pieces[k - 1].now;
+      return pieces.map((pc) => {
+        let path = full.slice(pc.a, pc.b + 1);
+        // a piece after a stop leaves the previous one like a motorway exit: it starts on it ~3/4 of a hex before the
+        // stop, so the rounding peels it off smoothly instead of a sharp fork
+        if (pc.a > 0) { const p0 = full[pc.a - 1], p1 = full[pc.a]; path = [[p1[0] + (p0[0] - p1[0]) * 0.43, p1[1] + (p0[1] - p1[1]) * 0.43], ...path]; }
+        if (!pc.facing || path.length < 2) return { ...pc, path };
+        const x = extend(path, pc.facing), e = full[pc.b];
+        marchArrows.push({ q: e[0], r: e[1], dq: pc.facing[0], dr: pc.facing[1], tail: x.tail, unitId, now: pc.now });
+        return { ...pc, path: x.path };
+      });
+    };
+    const withFacing = (list) => list.map((o) => {
+      if (o.type === 'move' && o.marchRest && o.marchRest.length && o.path && o.path.length) {
+        const base = o.path.length - 1;
+        const pieces = marchPieces(o.unitId, [...o.path, ...o.marchRest], base, o.facing != null ? FDIRS[((o.facing % 6) + 6) % 6] : null);
+        for (const pc of pieces.slice(1)) forkSegs.push({ unitId: o.unitId, type: 'move', path: pc.path, fadeFrom: pc.afterNow ? bridge.getPlayerColor(bridge.myId) : undefined });
+        // first piece: this turn in the player's colour (then grey if it runs on past this turn's stop)
+        return { ...o, path: pieces[0].path, from: pieces[0].b > base ? base : undefined };
+      }
+      const d = o.type === 'move' && o.path && o.path.length > 1 ? finalDir(o) : null;
+      if (!d) return o;
+      const x = extend(o.path, d);
+      facingEnds.set(String(o.unitId), x.tail);
+      return { ...o, path: x.path };
     });
     // tracing a new path for the selected unit: its current order is hidden (one trail at a time)
     const tracingSel = !!(sel && window.kbTraceActive && window.kbTraceActive());
     const shownOrders = (bridge.plannedOrders || []).filter((o) => !(tracingSel && String(o.unitId) === String(sel.id)));
     if (bridge.simultaneous && !bridge.playback) ordersLayer.show(withFacing(shownOrders), bridge.getPlayerColor(bridge.myId), (id) => { const u = shownUnits.find((x) => x.id === id); return u ? anchorOf(u).clone().setY(anchorOf(u).y - 0.3) : null; }, sel ? sel.id : null);
     else ordersLayer.clear();
-    const marches = window.marchPaths ? window.marchPaths().map(({ u, path }) => ({ unitId: u.id, type: 'move', path })) : [];
+    // standing marches (a march ordered this turn is drawn with its order), and the grey pieces of the ordered ones
+    const marches = (window.marchPaths ? window.marchPaths().filter((m) => !(m.planned && bridge.simultaneous && !bridge.playback)) : [])
+      .flatMap(({ u, path }) => marchPieces(u.id, path, 0, null).map((pc) => ({ unitId: u.id, type: 'move', path: pc.path })))
+      .concat(forkSegs);
     // the turns after this one are drawn grey (only this turn's part takes the player colour)
     if (marches.length) marchLayer.show(marches, '#9a9a9a', null, sel ? sel.id : null); else marchLayer.clear();
     const marks = [];
@@ -478,13 +533,18 @@ export async function mountGameView(bridge, { container }) {
       const path = o.path && o.path.length > 1 ? o.path : null;
       const end = path ? path[path.length - 1] : null;
       // an attack or a charge ends facing its target: no facing arrow
-      const d = o.type === 'attack' || o.type === 'charge' ? null : finalDir(o);
+      const d = o.type === 'attack' || o.type === 'charge' || (o.marchRest && o.marchRest.length) ? null : finalDir(o);
       if (!d) continue;
       const u = shownUnits.find((x) => String(x.id) === String(o.unitId));
       const at = end || (u ? [u.q, u.r] : null);
       if (!at) continue;
       const isSel = !!(sel && String(sel.id) === String(o.unitId));
       arrows.push({ q: at[0], r: at[1], dq: d[0], dr: d[1], tail: facingEnds.get(String(o.unitId)) || null, color: bridge.getPlayerColor(bridge.myId), width: isSel ? 0.075 : 0.034, dim: !isSel });
+    }
+    for (const m of marchArrows) {
+      const isSel = !!(sel && String(sel.id) === String(m.unitId));
+      // the stop at the end of this turn takes the player's colour, the later ones grey
+      arrows.push({ q: m.q, r: m.r, dq: m.dq, dr: m.dr, tail: m.tail, color: m.now ? bridge.getPlayerColor(bridge.myId) : '#b4b4b4', width: (isSel ? 0.075 : 0.034) * (m.now ? 1 : 0.8), dim: !(m.now && isSel) });
     }
     facingMarks.show(arrows);
     // trees step aside on hexes holding a unit and on every forest hex in sight, so that a visible forest stays readable

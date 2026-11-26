@@ -52,7 +52,8 @@ function roundCorners(pts, radius = 0.75) {
   for (let i = 1; i < runs.length - 1; i++) {
     const a = runs[i - 1], p = runs[i], b = runs[i + 1];
     const la = Math.hypot(p.x - a.x, p.z - a.z) || 1, lb = Math.hypot(b.x - p.x, b.z - p.z) || 1;
-    const r1 = Math.min(radius, la * 0.48), r2 = Math.min(radius, lb * 0.48);
+    // the first run may be used whole (a branch starting on another trail curves away from its very start)
+    const r1 = Math.min(radius, i === 1 ? la * 0.98 : la * 0.48), r2 = Math.min(radius, lb * 0.48);
     const s0 = { x: p.x - (p.x - a.x) / la * r1, z: p.z - (p.z - a.z) / la * r1 }, e0 = { x: p.x + (b.x - p.x) / lb * r2, z: p.z + (b.z - p.z) / lb * r2 };
     for (let k = 0; k <= 8; k++) {
       const t = k / 8, u = 1 - t;
@@ -72,36 +73,44 @@ function resample(pts, step = 0.1) {
   return out;
 }
 // ribbon mesh along pts, width w, lifted above the ground; round caps at both ends
-function trailMesh(pts, w, ground, lift, mat) {
-  const pos = [], idx = [];
+// colorAt(distance along the trail) -> THREE.Color: a colour gradient along the ribbon (vertex colours)
+function trailMesh(pts, w, ground, lift, mat, colorAt = null) {
+  const pos = [], idx = [], cols = [];
   const n = pts.length;
+  let run = 0;
   for (let i = 0; i < n; i++) {
     const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)];
     let tx = b.x - a.x, tz = b.z - a.z;
     const l = Math.hypot(tx, tz) || 1; tx /= l; tz /= l;
     const nx = -tz * w, nz = tx * w, p = pts[i];
     pos.push(p.x + nx, ground(p.x + nx, p.z + nz) + lift, p.z + nz, p.x - nx, ground(p.x - nx, p.z - nz) + lift, p.z - nz);
+    if (i) run += Math.hypot(p.x - pts[i - 1].x, p.z - pts[i - 1].z);
+    if (colorAt) { const c = colorAt(run); cols.push(c.r, c.g, c.b, c.r, c.g, c.b); }
     if (i) { const k = i * 2; idx.push(k - 2, k - 1, k, k - 1, k + 1, k); }
   }
   // round caps: fans of triangles around both ends
-  const cap = (p, dirx, dirz) => {
+  const cap = (p, dirx, dirz, d) => {
     const c0 = pos.length / 3;
+    const cc = colorAt ? colorAt(d) : null;
     pos.push(p.x, ground(p.x, p.z) + lift, p.z);
+    if (cc) cols.push(cc.r, cc.g, cc.b);
     const seg = 8, base = Math.atan2(dirz, dirx);
     for (let j = 0; j <= seg; j++) {
       const ang = base - Math.PI / 2 + Math.PI * j / seg;
       const x = p.x + Math.cos(ang) * w, z = p.z + Math.sin(ang) * w;
       pos.push(x, ground(x, z) + lift, z);
+      if (cc) cols.push(cc.r, cc.g, cc.b);
       if (j) idx.push(c0, c0 + j, c0 + j + 1);
     }
   };
   if (n > 1) {
-    cap(pts[n - 1], pts[n - 1].x - pts[n - 2].x, pts[n - 1].z - pts[n - 2].z);
-    cap(pts[0], pts[0].x - pts[1].x, pts[0].z - pts[1].z);
+    cap(pts[n - 1], pts[n - 1].x - pts[n - 2].x, pts[n - 1].z - pts[n - 2].z, run);
+    cap(pts[0], pts[0].x - pts[1].x, pts[0].z - pts[1].z, 0);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setIndex(idx);
+  if (colorAt) { g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3)); mat.vertexColors = true; mat.color.set(0xffffff); }
   const m = new THREE.Mesh(g, mat);
   m.frustumCulled = false;
   return m;
@@ -115,7 +124,6 @@ function addTrail(scene, hexToWorld, ground, hexes, opts) {
   const pts = resample(smooth2(roundCorners(roundUTurns(hexes.map(([q, r]) => { const c = hexToWorld(q, r); return { x: c.x, z: c.z }; }))), 2));
   const w = opts.width || 0.07;
   const add = (m, order) => { m.renderOrder = order; scene.add(m); out.push(m); };
-  if (opts.glow) add(trailMesh(pts, w * 2.6, ground, 0.035, trailMat(opts.glow, 0.28, true)), 6);
   if (opts.shadow !== false) add(trailMesh(pts, w * 1.45, ground, 0.04, trailMat(0x000000, 0.3)), 7);
   // split where the next turns begin: the rest of the march is fainter
   let cut = pts.length;
@@ -124,7 +132,12 @@ function addTrail(scene, hexToWorld, ground, hexes, opts) {
     let best = Infinity;
     pts.forEach((p, i) => { const d = (p.x - c.x) ** 2 + (p.z - c.z) ** 2; if (d < best) { best = d; cut = i; } });
   }
-  if (cut > 1) add(trailMesh(pts.slice(0, cut + 1), w, ground, 0.05, trailMat(opts.color || 0xffffff, opts.opacity ?? 0.96)), 8);
+  // the glow only under this turn's part
+  if (opts.glow) add(trailMesh(pts.slice(0, Math.min(pts.length, cut + 1)), w * 2.6, ground, 0.035, trailMat(opts.glow, 0.28, true)), 6);
+  // fadeFrom: the trail starts in that colour and turns into its own over ~1.1 (a branch leaving a trail of that colour)
+  const own = new THREE.Color(opts.color || 0xffffff), fromC = opts.fadeFrom != null ? new THREE.Color(opts.fadeFrom) : null;
+  const fade = fromC ? (d) => { const t = Math.min(1, d / 1.1); return fromC.clone().lerp(own, t * t * (3 - 2 * t)); } : null;
+  if (cut > 1) add(trailMesh(pts.slice(0, cut + 1), w, ground, 0.05, trailMat(opts.color || 0xffffff, opts.opacity ?? 0.96), fade), 8);
   if (cut < pts.length - 1) add(trailMesh(pts.slice(Math.max(0, cut - 1)), w * 0.8, ground, 0.05, trailMat(opts.restColor ?? opts.color ?? 0xffffff, (opts.opacity ?? 0.96) * (opts.faint ?? 0.5))), 8);
   return out;
 }
@@ -378,9 +391,9 @@ export function createOrdersLayer(world, { opacity = 0.85, tint = false } = {}) 
         const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal', 0.3);
         const len = curve.getLength();
         // selected: thick white trail, soft glow in the player's colour; others: thin faint trail ending on a dot
-        if (sel) ribbons.push(...addTrail(scene, hexToWorld, groundHeight, o.path, { width: 0.075, glow: base.getHex(), color: tint ? base.getHex() : 0xffffff, opacity: Math.min(0.96, opacity + 0.15) }));
+        if (sel) ribbons.push(...addTrail(scene, hexToWorld, groundHeight, o.path, { from: o.from, fadeFrom: o.fadeFrom, restColor: 0xb4b4b4, faint: 0.75, width: 0.075, glow: base.getHex(), color: tint ? base.getHex() : 0xffffff, opacity: Math.min(0.96, opacity + 0.15) }));
         else {
-          ribbons.push(...addTrail(scene, hexToWorld, groundHeight, o.path, { width: tint ? 0.034 : 0.028, opacity: tint ? 0.85 : 0.4, shadow: tint, color: tint ? base.getHex() : 0xffffff }));
+          ribbons.push(...addTrail(scene, hexToWorld, groundHeight, o.path, { from: o.from, fadeFrom: o.fadeFrom, restColor: 0xb4b4b4, faint: 0.6, width: tint ? 0.034 : 0.028, opacity: tint ? 0.85 : 0.4, shadow: tint, color: tint ? base.getHex() : 0xffffff }));
         }
         void curve; void len;
       }
@@ -453,17 +466,24 @@ export function createPathMarks(world) {
     const sig = JSON.stringify(marks || []);
     if (sig === lastSig) return;
     lastSig = sig;
-    const turns = (marks || []).filter((mk) => mk.kind === 'turn');
-    const list = (marks || []).filter((mk) => mk.kind !== 'turn');
+    // turn numbers and stance seals lie flat on the ground (as in Humankind); the step ring stays a billboard
+    const turns = (marks || []).filter((mk) => mk.kind === 'turn' || mk.kind === 'stance');
+    const list = (marks || []).filter((mk) => mk.kind !== 'turn' && mk.kind !== 'stance');
     while (flats.length < turns.length) { const m = flatMark(0.46); scene.add(m); flats.push(m); }
     flats.forEach((m, i) => {
       const mk = turns[i];
       m.visible = !!mk;
       if (!mk) return;
       const c = hexToWorld(mk.q, mk.r);
-      m.material.map = turnTex(mk.n);
+      m.material.map = mk.kind === 'turn' ? turnTex(mk.n) : stanceTex(mk.stance, mk.ring || '#ffffff', !!mk.grey);
       m.material.needsUpdate = true;
-      m.position.set(c.x, groundHeight(c.x, c.z) + 0.08, c.z);
+      const k = mk.kind === 'turn' ? 0.46 : 0.56;
+      m.scale.set(k, k, 1);
+      // on the unit's own hex (change on the spot) the seal lies beside the troops
+      // a seal on a hex that also carries a turn number moves aside so both stay readable
+      const shared = mk.kind === 'stance' && turns.some((t) => t.kind === 'turn' && t.q === mk.q && t.r === mk.r);
+      const x = mk.onUnit ? c.x + 0.5 : shared ? c.x + 0.42 : c.x, z = mk.onUnit ? c.z + 0.32 : c.z;
+      m.position.set(x, groundHeight(x, z) + (mk.kind === 'turn' ? 0.08 : 0.09), z);
     });
     while (sprites.length < list.length) {
       const sp = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false, depthWrite: false, fog: false, toneMapped: false }));

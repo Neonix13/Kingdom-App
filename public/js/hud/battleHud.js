@@ -779,9 +779,7 @@ export function mountBattleHud(bridge, view) {
       const clear = o && pl.canPlan ? `<button data-clear="${esc(u.id)}" title="Annuler l'ordre" aria-label="Annuler l'ordre">✕</button>` : '';
       return `<div class="${cls}" data-unit="${esc(u.id)}" data-i="${i}" title="${esc(u.name)}"><span class="k">${unitKanji(u)}<i class="dot"></i></span><span class="tx"><b>${esc(u.name)}</b>${line ? `<span>${line}</span>` : ''}</span><span class="seq">${o ? orderSeq(o) : !pb && u.q != null && !u.isFleeing && u.march && u.march.route && u.march.route.length ? `<i class="sq more later" title="${esc(`Marche : encore ${u.march.route.length} case${u.march.route.length > 1 ? 's' : ''}`)}">${SEQ_SVG.more}</i>` : ''}</span>${clear}<i class="bar" style="width:${pct}%"></i></div>`;
     }).join('');
-    const holding = mine.filter((u) => u.q != null && !orders.some((o) => String(o.unitId) === String(u.id))).length;
-    const foot = pb ? '<div class="foot">Les ordres de tous les généraux s\'exécutent case par case.</div>'
-      : `<div class="foot">${orders.length ? '' : 'Sélectionnez une unité puis cliquez une case ou un ennemi. '}${holding ? `Sans ordre, une unité tient sa position et réagit selon sa posture.` : 'Toutes les unités ont un ordre.'}</div>`;
+    const foot = pb ? '<div class="foot">Les ordres de tous les généraux s\'exécutent case par case.</div>' : '';
     const players = (st.players || []).filter((p) => !p.isEliminated);
     const who = pb ? '' : `<div class="who">${players.map((p) => { const ok = (pl.committedIds || []).includes(p.id); return `<span class="${ok ? 'ok' : ''}" style="${ok ? '' : `color:${esc(p.color)}`}" title="${esc(p.name)}">${ok ? 'PRÊT' : 'RÉFLÉCHIT'} · ${esc(p.name)}</span>`; }).join('')}</div>`;
     const html = head + pips + `<div class="list">${rows}</div>` + foot + who;
