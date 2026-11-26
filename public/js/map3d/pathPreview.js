@@ -447,7 +447,7 @@ export function createPathMarks(world) {
 }
 
 // Range (shots) and charisma zones: crisp ribbons draped on the relief along one smooth contour (KBRules.zoneLoops),
-// no fill (the movement range is the filled one). Shots: a double golden line with a soft outer glow; charisma: sky-blue
+// no fill. Shots: one thin solid golden line with a light glow; charisma: sky-blue
 // dashes; the planned range (dash: true) is thinner and paler. zones: [{ keys, center: "q,r", kind: 'tir' | 'charisme', dash? }]
 export function createZoneRims(world) {
   const { scene, hexToWorld } = world;
@@ -517,8 +517,8 @@ export function createZoneRims(world) {
         const pts = resampleLoop(loop, 0.08);
         if (pts.length < 3) continue;
         // soft outer glow, dark under-line, then the rim (inner side of the contour = toward the zone)
-        strip(pts, 0.16 * k, 0, 0.03, mat(st.glow, z.dash ? 0.12 : 0.2, true), true);
-        strip(pts, 0.05 * k, 0, 0.035, mat(0x000000, 0.45), true);
+        strip(pts, 0.07 * k, 0, 0.03, mat(st.glow, z.dash ? 0.1 : 0.16, true), true);
+        strip(pts, 0.036 * k, 0, 0.035, mat(0x000000, 0.4), true);
         if (z.kind === 'charisme') {
           // dashes
           const dash = z.dash ? 3 : 4, gap = 3;
@@ -526,9 +526,8 @@ export function createZoneRims(world) {
         } else if (z.dash) {
           for (let i = 0; i < pts.length; i += 6) strip(pts.slice(i, Math.min(pts.length, i + 4)), 0.022, 0, 0.04, mat(st.color, 0.8), false);
         } else {
-          // double golden line
-          strip(pts, 0.016, 0.04, 0.04, mat(st.color, 0.98), true);
-          strip(pts, 0.016, -0.04, 0.04, mat(st.color, 0.98), true);
+          // one solid golden line, thin: the ground stays readable on both sides
+          strip(pts, 0.024, 0, 0.04, mat(st.color, 0.98), true);
         }
       }
     }
