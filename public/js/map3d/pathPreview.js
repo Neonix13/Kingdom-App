@@ -624,8 +624,8 @@ export function createZoneRims(world) {
   return { show, clear };
 }
 
-// Final facing of the units with an order: an arrowhead caps the trail on the arrival hex, pointing at the neighbour
-// faced (the chosen facing, else the direction of the last step), same colour as the trail. marks: [{ q, r, dq, dr, from: [q, r] | null (hex before the arrival), color, width, dim }]
+// Final facing of the units with an order: the trail goes on past the arrival point, bending smoothly toward the
+// neighbour faced (the chosen facing, else the direction of the last step), and ends on an arrowhead near the edge. marks: [{ q, r, dq, dr, from: [q, r] | null (hex before the arrival), color, width, dim }]
 export function createFacingMarks(world) {
   const { scene, hexToWorld } = world;
   const groundHeight = world.walkHeight || world.groundHeight;
@@ -635,7 +635,7 @@ export function createFacingMarks(world) {
   function head(tip, dir, len, hw, ground, color, opacity, order, lift = 0.06) {
     const side = { x: -dir.z, z: dir.x };
     const at = (f, s2) => ({ x: tip.x - dir.x * len * f + side.x * s2, z: tip.z - dir.z * len * f + side.z * s2 });
-    const pts = [tip, at(1, hw), at(0.8, 0), at(1, -hw)];
+    const pts = [tip, at(1, hw), at(0.92, 0), at(1, -hw)];
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pts.flatMap((p) => [p.x, ground(p.x, p.z) + lift, p.z]), 3));
     g.setIndex([0, 1, 2, 0, 2, 3]);
@@ -656,13 +656,27 @@ export function createFacingMarks(world) {
       const dir = { x: (n.x - c.x) / len, z: (n.z - c.z) / len };
       const w = mk.width || 0.05;
       const opacity = mk.dim ? 0.85 : 0.96;
-      // the arrowhead caps the trail: its base on the arrival point, pointing at the final facing
-      // a slender dart from the end of the trail (centre of the hex) to near the edge the unit will face
-      const tipD = 0.78, dart = tipD + 0.04, hw = mk.dim ? 0.15 : 0.21;
+      // the trail goes on from the centre of the hex: it leaves along the last step, bends smoothly (cubic curve, no
+      // corner) toward the final facing and ends on an arrowhead near the edge
+      let inDir = dir;
+      if (mk.from) { const f = hexToWorld(mk.from[0], mk.from[1]); const fl = Math.hypot(c.x - f.x, c.z - f.z) || 1; inDir = { x: (c.x - f.x) / fl, z: (c.z - f.z) / fl }; }
+      const hw = w * 2.3 + 0.03, headL = hw * 1.5;
+      const tipD = 0.8, baseD = tipD - headL;
+      const end = { x: c.x + dir.x * baseD, z: c.z + dir.z * baseD };
+      const turn = inDir.x * dir.x + inDir.z * dir.z;
+      const k1 = turn > 0.9 ? baseD / 3 : 0.32, k2 = turn > 0.9 ? baseD / 3 : 0.22;
+      const P1 = { x: c.x + inDir.x * k1, z: c.z + inDir.z * k1 }, P2 = { x: end.x - dir.x * k2, z: end.z - dir.z * k2 };
+      const pts = [];
+      for (let i = 0; i <= 20; i++) {
+        const t = i / 20, u = 1 - t;
+        pts.push({ x: u * u * u * c.x + 3 * u * u * t * P1.x + 3 * u * t * t * P2.x + t * t * t * end.x, z: u * u * u * c.z + 3 * u * u * t * P1.z + 3 * u * t * t * P2.z + t * t * t * end.z });
+      }
+      const sh = trailMesh(pts, w * 1.45, groundHeight, 0.04, trailMat(0x000000, 0.3)); sh.renderOrder = 7; scene.add(sh); meshes.push(sh);
+      const rb = trailMesh(pts, w, groundHeight, 0.05, trailMat(mk.color || 0xffffff, opacity)); rb.renderOrder = 8; scene.add(rb); meshes.push(rb);
       const tip = { x: c.x + dir.x * tipD, z: c.z + dir.z * tipD };
-      const o = 0.05;
-      head({ x: tip.x + dir.x * o, z: tip.z + dir.z * o }, dir, dart + o * 1.8, hw + o, groundHeight, 0x000000, 0.55, 7, 0.055);
-      head(tip, dir, dart, hw, groundHeight, mk.color || 0xffffff, opacity, 8);
+      const o = 0.035;
+      head({ x: tip.x + dir.x * o * 1.5, z: tip.z + dir.z * o * 1.5 }, dir, headL + o * 2.2, hw + o, groundHeight, 0x000000, 0.45, 7, 0.055);
+      head(tip, dir, headL, hw, groundHeight, mk.color || 0xffffff, opacity, 8);
     }
   }
   return { show, clear: () => show([]) };
