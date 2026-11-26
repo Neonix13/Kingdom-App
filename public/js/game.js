@@ -1775,10 +1775,11 @@ function strokeZone(keys, center, color, dash = null) {
   const col = (a) => `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${a})`;
   const path = new Path2D();
   for (const l of loops) { path.moveTo(l[0][0], l[0][1]); for (let i = 1; i < l.length; i++) path.lineTo(l[i][0], l[i][1]); path.closePath(); }
-  // no fill (the movement range is the filled one): shots = double golden line with a soft glow, charisma = blue dashes
+  // a light fill of the zone's colour and its name on the rim; shots = one solid golden line, charisma = blue dashes
   const k = Math.max(1, 1 / zoom);
   const charisma = color === '#6ebeff';
   ctx.save();
+  ctx.fillStyle = col(dash ? 0.06 : 0.13); ctx.fill(path, 'evenodd');
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
   ctx.save();
   ctx.shadowColor = col(0.8); ctx.shadowBlur = dash ? 6 : 10;
@@ -1789,9 +1790,19 @@ function strokeZone(keys, center, color, dash = null) {
     ctx.setLineDash((charisma ? [9, 7] : [6, 8]).map((d) => d * k));
     ctx.strokeStyle = col(dash ? 0.85 : 0.98); ctx.lineWidth = (dash ? 1.8 : 2.4) * k; ctx.stroke(path);
   } else {
-    // double line: a wide coloured stroke with a dark core
-    ctx.strokeStyle = col(0.98); ctx.lineWidth = 4.2 * k; ctx.stroke(path);
-    ctx.strokeStyle = 'rgba(20,14,4,0.85)'; ctx.lineWidth = 1.3 * k; ctx.stroke(path);
+    ctx.strokeStyle = col(0.98); ctx.lineWidth = 3 * k; ctx.stroke(path);
+  }
+  if (!dash) {
+    let top = null;
+    for (const l of loops) for (const pt of l) if (!top || pt[1] < top[1]) top = pt;
+    if (top) {
+      const text = charisma ? '⚑ CHARISME' : '◎ PORTÉE DE TIR';
+      ctx.font = `900 ${11 * k}px "Zen Kaku Gothic New", "Segoe UI", sans-serif`;
+      const w = ctx.measureText(text).width + 14 * k, h = 18 * k;
+      ctx.fillStyle = 'rgba(0,0,0,0.82)'; ctx.fillRect(top[0] - w / 2, top[1] - h / 2, w, h);
+      ctx.strokeStyle = col(1); ctx.lineWidth = 1.5 * k; ctx.setLineDash([]); ctx.strokeRect(top[0] - w / 2, top[1] - h / 2, w, h);
+      ctx.fillStyle = col(1); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, top[0], top[1] + 0.5 * k);
+    }
   }
   ctx.restore();
 }

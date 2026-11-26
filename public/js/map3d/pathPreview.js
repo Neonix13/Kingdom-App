@@ -447,7 +447,7 @@ export function createPathMarks(world) {
 }
 
 // Range (shots) and charisma zones: crisp ribbons draped on the relief along one smooth contour (KBRules.zoneLoops),
-// no fill. Shots: one thin solid golden line with a light glow; charisma: sky-blue
+// a light fill of the zone's colour and its name on the rim. Shots: one thin solid golden line with a light glow; charisma: sky-blue
 // dashes; the planned range (dash: true) is thinner and paler. zones: [{ keys, center: "q,r", kind: 'tir' | 'charisme', dash? }]
 export function createZoneRims(world) {
   const { scene, hexToWorld } = world;
@@ -463,9 +463,55 @@ export function createZoneRims(world) {
     return [[c.x + Math.cos(a0), c.z + Math.sin(a0)], [c.x + Math.cos(a1), c.z + Math.sin(a1)]];
   };
   const STYLE = {
-    tir: { color: 0xffc94a, glow: 0xffb020 },
-    charisme: { color: 0x7cc8ff, glow: 0x3d9bff },
+    tir: { color: 0xffc94a, glow: 0xffb020, fill: 0xffb020, label: '◎ PORTÉE DE TIR', css: '#ffc94a' },
+    charisme: { color: 0x7cc8ff, glow: 0x3d9bff, fill: 0x3d9bff, label: '⚑ CHARISME', css: '#7cc8ff' },
   };
+  // translucent fill of the zone's hexes, draped on the relief (a fan of 12 rim points per hex)
+  function fill(keys, color, opacity) {
+    const pos = [], idx = [];
+    for (const key of keys) {
+      const [q, r] = key.split(',').map(Number);
+      const c = hexToWorld(q, r);
+      const base = pos.length / 3;
+      pos.push(c.x, ground(c.x, c.z) + 0.03, c.z);
+      for (let i = 0; i < 12; i++) {
+        const a0 = Math.PI / 3 * Math.floor(i / 2), a1 = a0 + Math.PI / 3;
+        const p0 = [c.x + Math.cos(a0) * 0.97, c.z + Math.sin(a0) * 0.97], p1 = [c.x + Math.cos(a1) * 0.97, c.z + Math.sin(a1) * 0.97];
+        const x = i % 2 ? (p0[0] + p1[0]) / 2 : p0[0], z = i % 2 ? (p0[1] + p1[1]) / 2 : p0[1];
+        pos.push(x, ground(x, z) + 0.03, z);
+        idx.push(base, base + 1 + i, base + 1 + ((i + 1) % 12));
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setIndex(idx);
+    const m = new THREE.Mesh(g, mat(color, opacity));
+    m.frustumCulled = false;
+    m.renderOrder = 5;
+    scene.add(m);
+    meshes.push(m);
+  }
+  // name of the zone on its rim (always facing the camera)
+  const labelTex = new Map();
+  function label(text, css) {
+    if (!labelTex.has(text)) {
+      const c = document.createElement('canvas');
+      c.width = 256; c.height = 48;
+      const g = c.getContext('2d');
+      g.font = '900 26px "Zen Kaku Gothic New", "Segoe UI", sans-serif';
+      const w = Math.min(248, g.measureText(text).width + 28);
+      g.fillStyle = 'rgba(0,0,0,0.82)'; g.fillRect((256 - w) / 2, 6, w, 36);
+      g.strokeStyle = css; g.lineWidth = 3; g.strokeRect((256 - w) / 2 + 1.5, 7.5, w - 3, 33);
+      g.fillStyle = css; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, 128, 25);
+      const t = new THREE.CanvasTexture(c);
+      t.colorSpace = THREE.SRGBColorSpace;
+      labelTex.set(text, t);
+    }
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTex.get(text), depthTest: false, depthWrite: false, fog: false, toneMapped: false }));
+    sp.scale.set(1.6, 0.3, 1);
+    sp.renderOrder = 12;
+    return sp;
+  }
   // closed polyline resampled every `step`, as [{ x, z }]
   function resampleLoop(loop, step) {
     const out = [];
@@ -501,7 +547,7 @@ export function createZoneRims(world) {
     meshes.push(m);
   }
   const mat = (color, opacity, additive = false) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, fog: false, toneMapped: false, side: THREE.DoubleSide, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending, polygonOffset: true, polygonOffsetFactor: -2 });
-  function clear() { for (const m of meshes) { scene.remove(m); m.geometry.dispose(); m.material.dispose(); } meshes.length = 0; }
+  function clear() { for (const m of meshes) { scene.remove(m); if (!m.isSprite) m.geometry.dispose(); m.material.dispose(); } meshes.length = 0; }
   function show(zones) {
     const sig = JSON.stringify((zones || []).map((z) => [z.kind, z.center, z.dash ? 1 : 0, [...z.keys].sort()]));
     if (sig === lastSig) return;
@@ -513,7 +559,10 @@ export function createZoneRims(world) {
       if (!z.keys || !z.keys.size) continue;
       const st = STYLE[z.kind] || STYLE.tir;
       const k = z.dash ? 0.65 : 1;
+      fill(z.keys, st.fill, z.dash ? 0.08 : 0.15);
+      let top = null;
       for (const loop of R.zoneLoops(z.keys, z.center, edgeOf, 3)) {
+        for (const p of loop) if (!top || p[1] < top[1]) top = p;
         const pts = resampleLoop(loop, 0.08);
         if (pts.length < 3) continue;
         // soft outer glow, dark under-line, then the rim (inner side of the contour = toward the zone)
@@ -529,6 +578,12 @@ export function createZoneRims(world) {
           // one solid golden line, thin: the ground stays readable on both sides
           strip(pts, 0.024, 0, 0.04, mat(st.color, 0.98), true);
         }
+      }
+      if (top && !z.dash) {
+        const sp = label(st.label, st.css);
+        sp.position.set(top[0], ground(top[0], top[1]) + 0.35, top[1]);
+        scene.add(sp);
+        meshes.push(sp);
       }
     }
   }
