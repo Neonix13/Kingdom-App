@@ -1310,7 +1310,7 @@ function beginOrient2d(e) {
   holdOrient2d = null;
   clearTimeout(h.timer);
   // held on a destination: send the unit there first, then the arrow sets its facing on arrival
-  if (h.move) handleHexClick(h.hex, { clientX: h.x, clientY: h.y });
+  if (h.move) handleHexClick(h.hex, { clientX: h.x, clientY: h.y, force: true });
   if (KBOrient.start(window.gameBridge, h.u, h.anchor, !!h.move)) KBOrient.move(getHexUnderMouse(e), e.clientX, e.clientY);
 }
 canvas.addEventListener('mousedown', (e) => {
@@ -1482,6 +1482,11 @@ function getHexUnderMouse(e) {
 }
 
 // ---- GAME LOGIC ----
+// Trace mode: selecting a unit shows no path under the cursor; a first plain click on an empty hex turns the trace on
+// (the path follows the cursor), the next one gives the destination and turns it off, the unit staying selected
+let traceFor = null;
+function traceActive() { return !!(selectedUnit && traceFor != null && traceFor === selectedUnit.id); }
+window.kbTraceActive = traceActive;
 function handleHexClick(hex, opts = {}) {
   cancelPendingDeselect(); // a new click replaces a pending deselection
   hex = { ...hex, alt: !!opts.altKey };
@@ -1497,6 +1502,15 @@ function handleHexClick(hex, opts = {}) {
     setMode('select');
     render();
     return;
+  }
+  if ((gameState?.units || []).some((u) => u.isMine && u.q === hex.q && u.r === hex.r)) traceFor = null; // clicking one of my units (re)selects it
+  if (gameState?.phase === 'battle' && selectedUnit && selectedUnit.isMine && mode !== 'ability' && !opts.ctrlKey && !opts.altKey
+      && !(selectedUnit.q === hex.q && selectedUnit.r === hex.r) && !(gameState.units || []).some((u) => u.q === hex.q && u.r === hex.r)) {
+    if (opts.shiftKey || route.tool) traceFor = selectedUnit.id; // laying steps: tracing
+    else if (!opts.force) {
+      if (!traceActive()) { traceFor = selectedUnit.id; render(); return; }
+      traceFor = null; // this click gives the destination
+    }
   }
   if (window.KBSim && KBSim.active()) { KBSim.click(hex, opts); return; }
 
@@ -1646,6 +1660,7 @@ function handleDeployClick(hex) {
 }
 
 function selectUnit(unit) {
+  traceFor = null; // a (re)selected unit starts without trace
   if (window.KBSim && KBSim.active()) { KBSim.select(unit); return; }
   if (!unit || route.unitId !== unit.id) { route.unitId = null; route.waypoints = []; }
   pendingMarch = null;
@@ -2033,7 +2048,7 @@ function drawRoutePreview(ctx) {
   const unit = selectedUnit;
   if (!unit || !unit.isMine) return;
   const sim = !!(window.KBSim && KBSim.active());
-  const hk = hoveredHex ? hexNode(unit, hoveredHex) : null;
+  const hk = hoveredHex && traceActive() ? hexNode(unit, hoveredHex) : null;
   const mp = hk && !movableTiles.has(hk) ? marchPlanFor(unit, hoveredHex.q, hoveredHex.r) : null;
   if (mp) {
     const confirm = pendingMarch && pendingMarch.unitId === unit.id && pendingMarch.key === hk;
@@ -2129,7 +2144,7 @@ function rangePreview() {
   const kind = (u.range || 1) > 1 ? 'tir' : u.isGeneral && u.charisma ? 'charisme' : null;
   if (!kind) return null;
   let at = null;
-  if (hoveredHex && !(hoveredHex.q === u.q && hoveredHex.r === u.r)) {
+  if (hoveredHex && traceActive() && !(hoveredHex.q === u.q && hoveredHex.r === u.r)) {
     const node = hexNode(u, hoveredHex);
     if (movableTiles.has(node)) at = { q: hoveredHex.q, r: hoveredHex.r, level: node.endsWith('^') ? 1 : 0 };
   }

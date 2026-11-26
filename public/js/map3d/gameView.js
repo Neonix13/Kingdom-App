@@ -218,7 +218,7 @@ export async function mountGameView(bridge, { container }) {
     holdOrient = null;
     clearTimeout(h.timer);
     // held on a destination: send the unit there first, then the arrow sets its facing on arrival
-    if (h.move) bridge.click(h.hex, { clientX: h.x, clientY: h.y });
+    if (h.move) bridge.click(h.hex, { clientX: h.x, clientY: h.y, force: true });
     if (!KBOrient.start(bridge, h.u, h.anchor, !!h.move)) { world.controls.enabled = true; return; }
     orienting = true;
     KBOrient.move(world.pickHex(e.clientX, e.clientY), e.clientX, e.clientY);
@@ -589,11 +589,13 @@ export async function mountGameView(bridge, { container }) {
         const march = sel && !movable && !attackable && !hu && bridge.marchPlan ? bridge.marchPlan(sel, valid.q, valid.r) : null;
         if (march) world.layers.setHover(valid, '#c9d4ff');
         preview.setColor(bridge.getPlayerColor(bridge.myId));
-        if (sel && movable) {
+        // trace mode off (unit just selected, or destination given): no path under the cursor
+        const tracing = !window.kbTraceActive || window.kbTraceActive();
+        if (sel && movable && tracing) {
           const res = bridge.pathTo(sel, valid.q, valid.r);
           preview.showPath(res ? [[sel.q, sel.r], ...res.path.slice(1)] : null);
         } else if (approach && approach.path.length > 1) preview.showPath(approach.path);
-        else if (march) preview.showPath(march.path, { turnEnds: march.turnEnds });
+        else if (march && tracing) preview.showPath(march.path, { turnEnds: march.turnEnds });
         else preview.showPath(null);
         if (sel && attackable && hu) {
           let from = anchorOf(sel).clone().setY(anchorOf(sel).y - 0.35);
