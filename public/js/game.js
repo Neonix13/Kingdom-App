@@ -1779,7 +1779,12 @@ function strokeZone(keys, center, color, dash = null) {
   const k = Math.max(1, 1 / zoom);
   const charisma = color === '#6ebeff';
   ctx.save();
-  ctx.fillStyle = col(dash ? 0.06 : 0.13); ctx.fill(path, 'evenodd');
+  // inner glow: wide strokes clipped to the inside of the zone, the colour fading from the rim inward (middle stays clear)
+  ctx.save();
+  ctx.clip(path, 'evenodd');
+  const band = HEX_SIZE * (dash ? 0.4 : 0.6);
+  for (let i = 6; i >= 1; i--) { ctx.strokeStyle = col((dash ? 0.025 : 0.055)); ctx.lineWidth = band * 2 * i / 6; ctx.stroke(path); }
+  ctx.restore();
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
   ctx.save();
   ctx.shadowColor = col(0.8); ctx.shadowBlur = dash ? 6 : 10;
@@ -1797,11 +1802,10 @@ function strokeZone(keys, center, color, dash = null) {
     for (const l of loops) for (const pt of l) if (!top || pt[1] < top[1]) top = pt;
     if (top) {
       const text = charisma ? '⚑ CHARISME' : '◎ PORTÉE DE TIR';
-      ctx.font = `900 ${11 * k}px "Zen Kaku Gothic New", "Segoe UI", sans-serif`;
-      const w = ctx.measureText(text).width + 14 * k, h = 18 * k;
-      ctx.fillStyle = 'rgba(0,0,0,0.82)'; ctx.fillRect(top[0] - w / 2, top[1] - h / 2, w, h);
-      ctx.strokeStyle = col(1); ctx.lineWidth = 1.5 * k; ctx.setLineDash([]); ctx.strokeRect(top[0] - w / 2, top[1] - h / 2, w, h);
-      ctx.fillStyle = col(1); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, top[0], top[1] + 0.5 * k);
+      ctx.font = `800 ${10 * k}px "Zen Kaku Gothic New", "Segoe UI", sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.setLineDash([]);
+      ctx.lineWidth = 3 * k; ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.strokeText(text, top[0], top[1] - 8 * k);
+      ctx.fillStyle = col(0.95); ctx.fillText(text, top[0], top[1] - 8 * k);
     }
   }
   ctx.restore();

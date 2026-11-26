@@ -447,7 +447,7 @@ export function createPathMarks(world) {
 }
 
 // Range (shots) and charisma zones: crisp ribbons draped on the relief along one smooth contour (KBRules.zoneLoops),
-// a light fill of the zone's colour and its name on the rim. Shots: one thin solid golden line with a light glow; charisma: sky-blue
+// an inner glow along the rim (the middle stays clear) and the zone's name, small, on the rim. Shots: one thin solid golden line with a light glow; charisma: sky-blue
 // dashes; the planned range (dash: true) is thinner and paler. zones: [{ keys, center: "q,r", kind: 'tir' | 'charisme', dash? }]
 export function createZoneRims(world) {
   const { scene, hexToWorld } = world;
@@ -466,26 +466,34 @@ export function createZoneRims(world) {
     tir: { color: 0xffc94a, glow: 0xffb020, fill: 0xffb020, label: '◎ PORTÉE DE TIR', css: '#ffc94a' },
     charisme: { color: 0x7cc8ff, glow: 0x3d9bff, fill: 0x3d9bff, label: '⚑ CHARISME', css: '#7cc8ff' },
   };
-  // translucent fill of the zone's hexes, draped on the relief (a fan of 12 rim points per hex)
-  function fill(keys, color, opacity) {
-    const pos = [], idx = [];
-    for (const key of keys) {
-      const [q, r] = key.split(',').map(Number);
-      const c = hexToWorld(q, r);
-      const base = pos.length / 3;
-      pos.push(c.x, ground(c.x, c.z) + 0.03, c.z);
-      for (let i = 0; i < 12; i++) {
-        const a0 = Math.PI / 3 * Math.floor(i / 2), a1 = a0 + Math.PI / 3;
-        const p0 = [c.x + Math.cos(a0) * 0.97, c.z + Math.sin(a0) * 0.97], p1 = [c.x + Math.cos(a1) * 0.97, c.z + Math.sin(a1) * 0.97];
-        const x = i % 2 ? (p0[0] + p1[0]) / 2 : p0[0], z = i % 2 ? (p0[1] + p1[1]) / 2 : p0[1];
-        pos.push(x, ground(x, z) + 0.03, z);
-        idx.push(base, base + 1 + i, base + 1 + ((i + 1) % 12));
-      }
+  // inner glow: a band along the inside of the rim, the zone's colour fading from the rim to nothing (~0.6 hex inward),
+  // so the zone reads by its tinted edge while its middle stays clear
+  function innerBand(pts, keys, color, alpha, width) {
+    const n = pts.length;
+    const nrm = (i) => { const a = pts[(i - 1 + n) % n], b = pts[(i + 1) % n]; let tx = b.x - a.x, tz = b.z - a.z; const l = Math.hypot(tx, tz) || 1; return [-tz / l, tx / l]; };
+    // which side of the loop is inside the zone
+    let inside = 0;
+    for (let i = 0; i < n; i += Math.max(1, Math.floor(n / 12))) {
+      const [nx, nz] = nrm(i), x = pts[i].x + nx * 0.35, z = pts[i].z + nz * 0.35;
+      const h = world.worldToHex ? world.worldToHex(x, z) : null;
+      if (h) inside += keys.has(`${h.q},${h.r}`) ? 1 : -1;
+    }
+    const sgn = inside >= 0 ? 1 : -1;
+    const col = new THREE.Color(color);
+    const pos = [], cols = [], idx = [];
+    for (let i = 0; i < n; i++) {
+      const [nx, nz] = nrm(i), p = pts[i];
+      const x2 = p.x + nx * width * sgn, z2 = p.z + nz * width * sgn;
+      pos.push(p.x, ground(p.x, p.z) + 0.032, p.z, x2, ground(x2, z2) + 0.032, z2);
+      cols.push(col.r, col.g, col.b, alpha, col.r, col.g, col.b, 0);
+      const k = i * 2, k2 = ((i + 1) % n) * 2;
+      idx.push(k, k + 1, k2, k + 1, k2 + 1, k2);
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 4));
     g.setIndex(idx);
-    const m = new THREE.Mesh(g, mat(color, opacity));
+    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, fog: false, toneMapped: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 }));
     m.frustumCulled = false;
     m.renderOrder = 5;
     scene.add(m);
@@ -498,17 +506,17 @@ export function createZoneRims(world) {
       const c = document.createElement('canvas');
       c.width = 256; c.height = 48;
       const g = c.getContext('2d');
-      g.font = '900 26px "Zen Kaku Gothic New", "Segoe UI", sans-serif';
-      const w = Math.min(248, g.measureText(text).width + 28);
-      g.fillStyle = 'rgba(0,0,0,0.82)'; g.fillRect((256 - w) / 2, 6, w, 36);
-      g.strokeStyle = css; g.lineWidth = 3; g.strokeRect((256 - w) / 2 + 1.5, 7.5, w - 3, 33);
-      g.fillStyle = css; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, 128, 25);
+      g.font = '800 22px "Zen Kaku Gothic New", "Segoe UI", sans-serif';
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.lineWidth = 5; g.strokeStyle = 'rgba(0,0,0,0.85)'; g.lineJoin = 'round'; g.strokeText(text, 128, 25);
+      g.fillStyle = css; g.fillText(text, 128, 25);
       const t = new THREE.CanvasTexture(c);
       t.colorSpace = THREE.SRGBColorSpace;
       labelTex.set(text, t);
     }
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTex.get(text), depthTest: false, depthWrite: false, fog: false, toneMapped: false }));
-    sp.scale.set(1.6, 0.3, 1);
+    sp.scale.set(1.15, 0.22, 1);
+    sp.material.opacity = 0.9;
     sp.renderOrder = 12;
     return sp;
   }
@@ -559,12 +567,12 @@ export function createZoneRims(world) {
       if (!z.keys || !z.keys.size) continue;
       const st = STYLE[z.kind] || STYLE.tir;
       const k = z.dash ? 0.65 : 1;
-      fill(z.keys, st.fill, z.dash ? 0.08 : 0.15);
       let top = null;
       for (const loop of R.zoneLoops(z.keys, z.center, edgeOf, 3)) {
         for (const p of loop) if (!top || p[1] < top[1]) top = p;
         const pts = resampleLoop(loop, 0.08);
         if (pts.length < 3) continue;
+        innerBand(pts, z.keys, st.fill, z.dash ? 0.12 : 0.28, z.dash ? 0.4 : 0.62);
         // soft outer glow, dark under-line, then the rim (inner side of the contour = toward the zone)
         strip(pts, 0.07 * k, 0, 0.03, mat(st.glow, z.dash ? 0.1 : 0.16, true), true);
         strip(pts, 0.036 * k, 0, 0.035, mat(0x000000, 0.4), true);
