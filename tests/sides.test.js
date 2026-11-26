@@ -75,3 +75,17 @@ test('moral : peut devenir négatif, l\'unité fuit seulement en dessous de zér
   assert.equal(t.morale, -5);
   assert.ok(t.isFleeing, 'sous zéro : fuit');
 });
+
+test('charge : une unité en Charge qui n\'a pas bougé du tour repasse en Combat', () => {
+  const r = room('kankoku', 2);
+  r.objectives = [];
+  const p = r.getPlayer('p0');
+  const still = { id: 'a', q: 1, r: 1, stance: 'charge', hasMoved: false };
+  const moved = { id: 'b', q: 2, r: 1, stance: 'charge', hasMoved: true };
+  const gen = { id: 'g', q: 3, r: 1, isGeneral: true, stance: 'charge', hasMoved: false };
+  p.units = [still, moved, gen];
+  r.onPlayerTurnEnd('p0');
+  assert.equal(still.stance, 'combat');
+  assert.equal(moved.stance, 'charge');
+  assert.equal(gen.stance, 'charge');
+});

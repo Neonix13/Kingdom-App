@@ -2250,6 +2250,12 @@ class GameRoom {
   onPlayerTurnEnd(playerId) {
     const player = this.getPlayer(playerId);
     if (!player) return;
+    // a charge needs momentum: a unit in Charge that has not moved this turn falls back to Combat
+    for (const u of player.units) {
+      if (u.q === null || u.isGeneral || u.isFleeing || u.stance !== 'charge' || u.hasMoved) continue;
+      u.stance = 'combat';
+      this._record('stance', { u: u.id, s: 'combat' });
+    }
     for (const o of this.objectives) {
       const occ = this.unitMap[hexKey(o.q, o.r)];
       if (occ && occ.playerId === playerId && o.owner !== playerId) {
