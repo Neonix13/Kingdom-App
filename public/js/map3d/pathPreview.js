@@ -35,6 +35,33 @@ function roundUTurns(pts) {
   if (pts.length > 1) out.push(pts[pts.length - 1]);
   return out;
 }
+// wide bends: aligned points merged into straight runs, then each change of direction replaced by a curve starting up to
+// `radius` before the corner and ending as far after it (a quadratic through the corner), so turns are never tight kinks
+function roundCorners(pts, radius = 0.75) {
+  if (pts.length < 3) return pts;
+  const runs = [pts[0]];
+  for (let i = 1; i < pts.length - 1; i++) {
+    const a = runs[runs.length - 1], p = pts[i], b = pts[i + 1];
+    const ax = p.x - a.x, az = p.z - a.z, bx = b.x - p.x, bz = b.z - p.z;
+    const cross = ax * bz - az * bx, la = Math.hypot(ax, az) || 1, lb = Math.hypot(bx, bz) || 1;
+    if (Math.abs(cross) / (la * lb) > 0.05 || ax * bx + az * bz < 0) runs.push(p);
+  }
+  runs.push(pts[pts.length - 1]);
+  if (runs.length < 3) return runs;
+  const out = [runs[0]];
+  for (let i = 1; i < runs.length - 1; i++) {
+    const a = runs[i - 1], p = runs[i], b = runs[i + 1];
+    const la = Math.hypot(p.x - a.x, p.z - a.z) || 1, lb = Math.hypot(b.x - p.x, b.z - p.z) || 1;
+    const r1 = Math.min(radius, la * 0.48), r2 = Math.min(radius, lb * 0.48);
+    const s0 = { x: p.x - (p.x - a.x) / la * r1, z: p.z - (p.z - a.z) / la * r1 }, e0 = { x: p.x + (b.x - p.x) / lb * r2, z: p.z + (b.z - p.z) / lb * r2 };
+    for (let k = 0; k <= 8; k++) {
+      const t = k / 8, u = 1 - t;
+      out.push({ x: u * u * s0.x + 2 * u * t * p.x + t * t * e0.x, z: u * u * s0.z + 2 * u * t * p.z + t * t * e0.z });
+    }
+  }
+  out.push(runs[runs.length - 1]);
+  return out;
+}
 function resample(pts, step = 0.1) {
   const out = [pts[0]];
   for (let i = 1; i < pts.length; i++) {
@@ -85,7 +112,7 @@ const trailMat = (color, opacity, additive = false) => new THREE.MeshBasicMateri
 function addTrail(scene, hexToWorld, ground, hexes, opts) {
   const out = [];
   if (!hexes || hexes.length < 2) return out;
-  const pts = resample(smooth2(roundUTurns(hexes.map(([q, r]) => { const c = hexToWorld(q, r); return { x: c.x, z: c.z }; }))));
+  const pts = resample(smooth2(roundCorners(roundUTurns(hexes.map(([q, r]) => { const c = hexToWorld(q, r); return { x: c.x, z: c.z }; }))), 2));
   const w = opts.width || 0.07;
   const add = (m, order) => { m.renderOrder = order; scene.add(m); out.push(m); };
   if (opts.glow) add(trailMesh(pts, w * 2.6, ground, 0.035, trailMat(opts.glow, 0.28, true)), 6);
